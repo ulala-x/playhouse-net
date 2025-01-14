@@ -1,5 +1,4 @@
-﻿using CommonLib;
-using PlayHouse.Communicator;
+﻿using PlayHouse.Communicator;
 using PlayHouse.Communicator.PlaySocket;
 using PlayHouse.Production.Api;
 using PlayHouse.Production.Shared;
@@ -14,7 +13,6 @@ public class ApiServer : IServer
         PlayhouseOption commonOption,
         ApiOption apiOption)
     {
-
         var communicatorOption = new CommunicatorOption.Builder()
             .SetIp(commonOption.Ip)
             .SetPort(commonOption.Port)
@@ -25,7 +23,7 @@ public class ApiServer : IServer
             .SetPacketProducer(commonOption.PacketProducer)
             .Build();
 
-        
+
         PooledBuffer.Init(commonOption.MaxBufferPoolSize);
         ConstOption.ServerTimeLimitMs = commonOption.ServerTimeLimitsMs;
 
@@ -35,14 +33,15 @@ public class ApiServer : IServer
         var serviceId = commonOption.ServiceId;
         var serverId = commonOption.ServerId;
         var nid = communicatorOption.Nid;
-        
+
         var bindEndpoint = communicatorOption.BindEndpoint;
         var playSocketConfig = commonOption.PlaySocketConfig;
 
         var communicateClient =
-            new XClientCommunicator(PlaySocketFactory.CreatePlaySocket(new SocketConfig(nid, bindEndpoint, playSocketConfig)));
+            new XClientCommunicator(
+                PlaySocketFactory.CreatePlaySocket(new SocketConfig(nid, bindEndpoint, playSocketConfig)));
 
-        var service = new ApiService(serviceId, serverId,nid, apiOption, requestCache, communicateClient,
+        var service = new ApiService(serviceId, serverId, nid, apiOption, requestCache, communicateClient,
             communicatorOption.ServiceProvider);
 
         _communicator = new Communicator.Communicator(

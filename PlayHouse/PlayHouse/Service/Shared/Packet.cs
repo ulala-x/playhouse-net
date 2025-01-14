@@ -79,7 +79,7 @@ internal class EmptyPacket : IPacket
         set => _msgSeq = value;
     }
 
-    public string MsgId => String.Empty;
+    public string MsgId => string.Empty;
     public IPayload Payload { get; } = new EmptyPayload();
 
     public void Dispose()

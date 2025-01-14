@@ -1,6 +1,6 @@
 ﻿using System.Text;
-using CommonLib;
 using FluentAssertions;
+using PlayHouse;
 using Xunit;
 
 namespace PlayHouseTests.Service.Session;
@@ -112,7 +112,7 @@ public class RingBufferSpec
     public void WriteAndReadInt32_ShouldHandleNetworkOrder()
     {
         var buffer = new RingBuffer(10);
-        int value = 0x12345678;
+        var value = 0x12345678;
 
         buffer.WriteInt32(value);
         buffer.Count.Should().Be(4);
@@ -125,7 +125,7 @@ public class RingBufferSpec
     public void WriteAndReadInt64_ShouldHandleNetworkOrder()
     {
         var buffer = new RingBuffer(20);
-        long value = 0x123456789ABCDEF0;
+        var value = 0x123456789ABCDEF0;
 
         buffer.WriteInt64(value);
         buffer.Count.Should().Be(8);
@@ -138,11 +138,11 @@ public class RingBufferSpec
     public void WriteAndReadString_ShouldHandleUtf8Encoding()
     {
         var buffer = new RingBuffer(50);
-        string value = "Hello, World!";
+        var value = "Hello, World!";
 
         buffer.Write(value);
 
-        int count = Encoding.UTF8.GetByteCount(value) + 1;
+        var count = Encoding.UTF8.GetByteCount(value) + 1;
         buffer.Count.Should().Be(count);
 
         int length = buffer.ReadByte();
@@ -155,8 +155,8 @@ public class RingBufferSpec
     {
         var buffer = new RingBuffer(20);
         ushort value16 = 0x1234;
-        int value32 = 0x12345678;
-        long value64 = 0x123456789ABCDEF0;
+        var value32 = 0x12345678;
+        var value64 = 0x123456789ABCDEF0;
 
         buffer.WriteInt16(value16);
         buffer.WriteInt32(value32);
@@ -195,7 +195,7 @@ public class RingBufferSpec
     [Fact]
     public void WriteAndRead_ShouldHandleEdgeCases()
     {
-        var buffer = new RingBuffer(5,10);
+        var buffer = new RingBuffer(5, 10);
 
         // Enqueue to capacity
         buffer.Enqueue(1);

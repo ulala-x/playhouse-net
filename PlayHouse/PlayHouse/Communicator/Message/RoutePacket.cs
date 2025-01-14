@@ -1,8 +1,8 @@
 ﻿using Google.Protobuf;
 using PlayHouse.Production.Shared;
 using Playhouse.Protocol;
-using PlayHouse.Service.Shared;
 using PlayHouse.Service.Session.Network;
+using PlayHouse.Service.Shared;
 using PlayHouse.Utils;
 
 namespace PlayHouse.Communicator.Message;
@@ -406,8 +406,7 @@ internal class RoutePacket : IBasePacket
 
     public static void WriteClientPacketBytes(ClientPacket clientPacket, PooledByteBuffer buffer)
     {
-
-        int msgIdLength = clientPacket.MsgId.Length;
+        var msgIdLength = clientPacket.MsgId.Length;
         if (msgIdLength > PacketConst.MsgIdLimit)
         {
             throw new Exception($"MsgId size is over : {msgIdLength}");
@@ -449,8 +448,6 @@ internal class RoutePacket : IBasePacket
             buffer.WriteInt32(originalSize); // 압축했을경우 원래 사이즈
             buffer.Write(compressed);
         }
-
-
     }
 
 

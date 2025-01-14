@@ -43,5 +43,4 @@ public class PacketContext
     }
 
     public static PacketContext Instance { get; } = new();
-    public static List<SendPacketInfo> SendPackets => AsyncCore.GetSendPackets();
 }

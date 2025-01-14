@@ -1,6 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using NetMQ;
-using System.Security.Cryptography;
 using PlayHouse.Communicator;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Production.Session;
@@ -12,19 +10,19 @@ namespace PlayHouse.Service.Session;
 
 internal class SessionDispatcher : ISessionDispatcher
 {
+    private readonly PooledByteBuffer _buffer = new(ConstOption.MaxPacketSize);
     private readonly IClientCommunicator _clientCommunicator;
     private readonly LOG<SessionDispatcher> _log = new();
     private readonly RequestCache _requestCache;
+
+    private readonly BlockingCollection<KeyValuePair<ISession, ClientPacket>> _sendQueueToClient = new();
+    private readonly Thread _sendThread;
     private readonly IServerInfoCenter _serverInfoCenter;
     private readonly ushort _serviceId;
     private readonly ConcurrentDictionary<long, SessionActor> _sessionActors = new();
     private readonly SessionNetwork _sessionNetwork;
     private readonly SessionOption _sessionOption;
     private readonly Timer _timer;
-
-    private readonly BlockingCollection<KeyValuePair<ISession, ClientPacket>> _sendQueueToClient = new();
-    private readonly PooledByteBuffer _buffer = new(ConstOption.MaxPacketSize);
-    private readonly Thread _sendThread ;
 
     public SessionDispatcher(
         ushort serviceId,
@@ -44,30 +42,14 @@ internal class SessionDispatcher : ISessionDispatcher
         _timer = new Timer(TimerCallback, this, 1000, 1000);
         _sendThread = new Thread(SendingPacket);
         _sendThread.Start();
-
-    }
-
-    private void SendingPacket()
-    {
-        // _sendQueueToClient.CompleteAdding() 가 호출되기 전까지 루프
-        foreach (var result in _sendQueueToClient.GetConsumingEnumerable())
-        {
-            ISession session = result.Key;
-            ClientPacket packet = result.Value;
-
-            _buffer.Clear();
-            RoutePacket.WriteClientPacketBytes(packet,_buffer);
-            session.Send(new ClientPacket(packet.Header,new PooledBytePayload(_buffer)));
-
-        }
     }
 
     public void SendToClient(ISession session, ClientPacket packet)
     {
-        _sendQueueToClient.Add(new KeyValuePair<ISession, ClientPacket>(session,packet));
+        _sendQueueToClient.Add(new KeyValuePair<ISession, ClientPacket>(session, packet));
     }
 
-    public void OnConnect(long sid, ISession session,string remoteIp)
+    public void OnConnect(long sid, ISession session, string remoteIp)
     {
         if (!_sessionActors.ContainsKey(sid))
         {
@@ -82,7 +64,7 @@ internal class SessionDispatcher : ISessionDispatcher
                 remoteIp,
                 _sessionOption.SessionUserFactory,
                 this
-                );
+            );
         }
         else
         {
@@ -106,6 +88,20 @@ internal class SessionDispatcher : ISessionDispatcher
     public void OnReceive(long sid, ClientPacket clientPacket)
     {
         Dispatch(sid, clientPacket);
+    }
+
+    private void SendingPacket()
+    {
+        // _sendQueueToClient.CompleteAdding() 가 호출되기 전까지 루프
+        foreach (var result in _sendQueueToClient.GetConsumingEnumerable())
+        {
+            var session = result.Key;
+            var packet = result.Value;
+
+            _buffer.Clear();
+            RoutePacket.WriteClientPacketBytes(packet, _buffer);
+            session.Send(new ClientPacket(packet.Header, new PooledBytePayload(_buffer)));
+        }
     }
 
     public void Start()
@@ -158,7 +154,6 @@ internal class SessionDispatcher : ISessionDispatcher
                 var msgId = clientPacket.MsgId;
                 if (msgId == PacketConst.HeartBeat) //heartbeat
                 {
-                    
                     sessionClient.SendHeartBeat(clientPacket);
 
                     return;
@@ -174,13 +169,12 @@ internal class SessionDispatcher : ISessionDispatcher
 
                 if (clientPacket.ServiceId == _serviceId)
                 {
-                    sessionClient.UserPost(new ClientPacket(clientPacket.Header,clientPacket.MovePayload()));
+                    sessionClient.UserPost(new ClientPacket(clientPacket.Header, clientPacket.MovePayload()));
                 }
                 else
                 {
                     sessionClient.Dispatch(clientPacket);
                 }
-                
             }
         }
     }

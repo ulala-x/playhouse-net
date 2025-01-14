@@ -1,6 +1,6 @@
 ﻿using PlayHouse.Production.Session;
-using PlayHouse.Service.Session.Network.tcp;
-using PlayHouse.Service.Session.Network.websocket;
+using PlayHouse.Service.Session.Network.Tcp;
+using PlayHouse.Service.Session.Network.Websocket;
 
 namespace PlayHouse.Service.Session.Network;
 

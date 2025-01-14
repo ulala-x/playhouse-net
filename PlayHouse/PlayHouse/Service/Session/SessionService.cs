@@ -19,7 +19,9 @@ internal class SessionService(
 {
     private readonly LOG<SessionService> _log = new();
     private readonly PerformanceTester _performanceTester = new(showQps, "client");
-    private readonly SessionDispatcher _sessionDispatcher = new(serviceId, sessionOption, serverInfoCenter, clientCommunicator, requestCache);
+
+    private readonly SessionDispatcher _sessionDispatcher =
+        new(serviceId, sessionOption, serverInfoCenter, clientCommunicator, requestCache);
 
     private readonly AtomicEnum<ServerState> _state = new(ServerState.DISABLE);
 
@@ -27,7 +29,7 @@ internal class SessionService(
     public ushort ServiceId { get; } = serviceId;
     public int ServerId { get; } = serverId;
     public string Nid { get; } = nid;
-    
+
 
     public void OnStart()
     {

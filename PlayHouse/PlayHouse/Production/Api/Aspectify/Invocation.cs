@@ -59,6 +59,7 @@ public class Invocation(
     public object[] Arguments => arguments;
     public MethodInfo Method { get; } = method;
     public IServiceProvider ServiceProvider { get; } = serviceProvider;
+
     public async Task Proceed()
     {
         _currentInterceptorIndex++;
@@ -104,6 +105,7 @@ public class Invocation(
             invoker = CompileMethodInvoker(method);
             _compiledInvokers[key] = invoker;
         }
+
         return invoker;
     }
 

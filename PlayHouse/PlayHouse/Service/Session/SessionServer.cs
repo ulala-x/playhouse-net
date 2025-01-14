@@ -1,6 +1,4 @@
-﻿using CommonLib;
-using Google.Protobuf.WellKnownTypes;
-using PlayHouse.Communicator;
+﻿using PlayHouse.Communicator;
 using PlayHouse.Communicator.PlaySocket;
 using PlayHouse.Production.Session;
 using PlayHouse.Production.Shared;
@@ -39,7 +37,8 @@ public class SessionServer : IServer
         var bindEndpoint = communicatorOption.BindEndpoint;
         var playSocketOption = commonOption.PlaySocketConfig;
         var communicateClient =
-        new XClientCommunicator(PlaySocketFactory.CreatePlaySocket(new SocketConfig(nid, bindEndpoint, commonOption.PlaySocketConfig)));
+            new XClientCommunicator(
+                PlaySocketFactory.CreatePlaySocket(new SocketConfig(nid, bindEndpoint, commonOption.PlaySocketConfig)));
         var requestCache = new RequestCache(commonOption.RequestTimeoutMSec);
 
         var serverInfoCenter = new XServerInfoCenter(commonOption.DebugMode);

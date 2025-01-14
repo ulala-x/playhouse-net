@@ -29,12 +29,12 @@ public class CommunicatorOption(
     public class Builder
     {
         private string _ip = string.Empty;
-        private int _serverId;
         private Func<string, IPayload, ushort, IPacket>? _packetProducer;
         private int _port;
+        private int _serverId;
+        private ushort _serviceId;
         private IServiceProvider? _serviceProvider;
         private bool _showQps;
-        private ushort _serviceId;
 
         public Builder SetIp(string ip)
         {
@@ -155,11 +155,12 @@ internal class Communicator : ICommunicateListener
         _serviceId = _service.ServiceId;
 
         _serverCommunicator =
-            new XServerCommunicator(PlaySocketFactory.CreatePlaySocket(new SocketConfig(option.Nid,option.BindEndpoint, config)));
+            new XServerCommunicator(
+                PlaySocketFactory.CreatePlaySocket(new SocketConfig(option.Nid, option.BindEndpoint, config)));
         _performanceTester = new PerformanceTester(_option.ShowQps);
         _messageLoop = new MessageLoop(_serverCommunicator, _clientCommunicator);
         var sender = new XSender(_serviceId, _clientCommunicator, _requestCache);
-        _systemPanel = new XSystemPanel(serverInfoCenter, _clientCommunicator, _option.ServerId,_option.Nid);
+        _systemPanel = new XSystemPanel(serverInfoCenter, _clientCommunicator, _option.ServerId, _option.Nid);
 
         var systemController = _option.ServiceProvider.GetRequiredService<ISystemController>();
 
@@ -169,10 +170,10 @@ internal class Communicator : ICommunicateListener
             _clientCommunicator,
             _service,
             systemController
-            );
+        );
         _systemDispatcher = new SystemDispatcher(_serviceId, _requestCache, _clientCommunicator, _systemPanel,
             option.ServiceProvider);
-        
+
         ControlContext.Init(sender, _systemPanel);
         PacketProducer.Init(_option.PacketProducer!);
     }
@@ -187,7 +188,6 @@ internal class Communicator : ICommunicateListener
 
     public void Start()
     {
-
         var nid = _option.Nid;
         var bindEndpoint = _option.BindEndpoint;
         _systemPanel.Communicator = this;
@@ -197,7 +197,7 @@ internal class Communicator : ICommunicateListener
         _messageLoop.Start();
 
 
-        _clientCommunicator.Connect(nid,bindEndpoint);
+        _clientCommunicator.Connect(nid, bindEndpoint);
 
 
         _addressResolver.Start();
@@ -290,7 +290,7 @@ internal class Communicator : ICommunicateListener
             }
 
             _log.Error(() => $"Packet processing failed due to an unexpected error. - [msgId:{routePacket.MsgId}]");
-            _log.Error(() =>$"[exception message:{e.Message}]");
+            _log.Error(() => $"[exception message:{e.Message}]");
             _log.Error(() => $"[exception message:{e.StackTrace}]");
 
             if (e.InnerException != null)

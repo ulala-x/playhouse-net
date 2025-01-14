@@ -1,12 +1,12 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Communicator;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Production.Api;
-using PlayHouse.Service.Api.Reflection;
-using PlayHouse.Utils;
-using System.Collections.Concurrent;
 using Playhouse.Protocol;
+using PlayHouse.Service.Api.Reflection;
 using PlayHouse.Service.Shared;
+using PlayHouse.Utils;
 
 namespace PlayHouse.Service.Api;
 
@@ -14,11 +14,11 @@ internal class ApiDispatcher
 {
     private readonly ApiReflection _apiReflection;
     private readonly ApiReflectionCallback _apiReflectionCallback;
+    private readonly ConcurrentDictionary<long, ApiActor> _cache = new();
     private readonly IClientCommunicator _clientCommunicator;
     private readonly LOG<ApiService> _log = new();
     private readonly RequestCache _requestCache;
     private readonly ushort _serviceId;
-    private readonly ConcurrentDictionary<long, ApiActor> _cache = new();
     private bool _isRunning = true;
 
     public ApiDispatcher(
@@ -38,7 +38,6 @@ internal class ApiDispatcher
 
         var controllerTester = serviceProvider.GetService<ControllerTester>();
         controllerTester?.Init(_apiReflection, _apiReflectionCallback);
-
     }
 
     public void Start()
@@ -171,8 +170,8 @@ internal class ApiDispatcher
                 _log.Error(() => $"[internal exception trace:{e.InnerException.StackTrace}");
             }
         }
-
     }
+
     private void Remove(long accountId)
     {
         _cache.TryRemove(accountId, out var _);
@@ -182,5 +181,4 @@ internal class ApiDispatcher
     {
         return _cache.GetValueOrDefault(accountId);
     }
-
 }

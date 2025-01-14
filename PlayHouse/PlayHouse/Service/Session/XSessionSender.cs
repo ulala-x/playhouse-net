@@ -15,6 +15,25 @@ internal class XSessionSender(
     : XSender(serviceId, clientCommunicator, reqCache), ISessionSender
 {
     private ushort _msgSeq;
+
+    public void SendToClient(IPacket packet)
+    {
+        var routePacket = RoutePacket.Of(packet);
+        routePacket.Header.ServiceId = ServiceId;
+
+        sessionDispatcher.SendToClient(session, routePacket.ToClientPacket());
+    }
+
+    public void ReplyToClient(IPacket packet)
+    {
+        var routePacket = RoutePacket.Of(packet);
+
+        routePacket.Header.MsgSeq = _msgSeq;
+        routePacket.Header.ServiceId = ServiceId;
+
+        sessionDispatcher.SendToClient(session, routePacket.ToClientPacket());
+    }
+
     public void RelayToStage(string playNid, long stageId, long sid, long accountId, ClientPacket packet)
     {
         var routePacket = RoutePacket.ApiOf(packet.ToRoutePacket(), false, false);
@@ -37,33 +56,14 @@ internal class XSessionSender(
         ClientCommunicator.Send(apiNid, routePacket);
     }
 
-    public void SendToClient(IPacket packet)
-    {
-        var routePacket = RoutePacket.Of(packet);
-        routePacket.Header.ServiceId = ServiceId;
-
-        sessionDispatcher.SendToClient(session, routePacket.ToClientPacket());
-    }
-
     public void SendToClient(ClientPacket packet)
     {
-        sessionDispatcher.SendToClient(session,packet);
+        sessionDispatcher.SendToClient(session, packet);
     }
 
     public void RelayToClient(ClientPacket packet)
     {
-        session.Send(packet); 
-    }
-
-    public void ReplyToClient(IPacket packet)
-    {
-        var routePacket = RoutePacket.Of(packet);
-
-        routePacket.Header.MsgSeq = _msgSeq;
-        routePacket.Header.ServiceId = ServiceId;
-        
-        sessionDispatcher.SendToClient(session,routePacket.ToClientPacket());
-        
+        session.Send(packet);
     }
 
     public void SetClientRequestMsgSeq(ushort headerMsgSeq)

@@ -14,7 +14,7 @@ internal class ApiReflectionCallback(IServiceProvider serviceProvider)
 
     public async Task OnDisconnectAsync(IApiSender sender)
     {
-        await _invoker.InvokeMethods(serviceProvider,"OnDisconnectAsync", [sender]);
+        await _invoker.InvokeMethods(serviceProvider, "OnDisconnectAsync", [sender]);
     }
 
     //public async Task<List<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)

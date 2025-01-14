@@ -48,7 +48,8 @@ public class ReflectionInstance(Type type, IEnumerable<AspectifyAttribute> filte
     {
         await using var scope = serviceProvider.CreateAsyncScope();
         var targetInstance = scope.ServiceProvider.GetRequiredService(Type);
-        var invocation = new Invocation(targetInstance, targetMethod.Method, arguments, targetMethod.Filters,scope.ServiceProvider);
+        var invocation = new Invocation(targetInstance, targetMethod.Method, arguments, targetMethod.Filters,
+            scope.ServiceProvider);
         await invocation.Proceed();
     }
 
@@ -57,7 +58,8 @@ public class ReflectionInstance(Type type, IEnumerable<AspectifyAttribute> filte
     {
         await using var scope = serviceProvider.CreateAsyncScope();
         var targetInstance = scope.ServiceProvider.GetRequiredService(Type);
-        var invocation = new Invocation(targetInstance, targetMethod.Method, arguments, targetMethod.Filters, scope.ServiceProvider);
+        var invocation = new Invocation(targetInstance, targetMethod.Method, arguments, targetMethod.Filters,
+            scope.ServiceProvider);
         await invocation.Proceed();
         return invocation.ReturnValue!;
     }
@@ -87,7 +89,7 @@ internal class ReflectionOperator
 
     private Type[] GetAllSubtypes(params Type[] subTypes)
     {
-        List<Type> typeList = AppDomain.CurrentDomain.GetAssemblies()
+        var typeList = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(assembly => assembly.GetTypes())
             .Where(type => type is { IsClass: true, IsAbstract: false } &&
                            subTypes.Any(subType => subType.IsAssignableFrom(type)))
@@ -174,7 +176,7 @@ internal class SystemHandleReflectionInvoker
         });
     }
 
-    public async Task InvokeMethods(IServiceProvider serviceProvider,string msgId, object[] arguments)
+    public async Task InvokeMethods(IServiceProvider serviceProvider, string msgId, object[] arguments)
     {
         var method = _methods[msgId];
 
@@ -183,7 +185,7 @@ internal class SystemHandleReflectionInvoker
             throw new ServiceException.NotRegisterInstance(
                 $"{method.ClassName}: reflection instance is not registered");
 
-        await instance.Invoke(serviceProvider,method, arguments);
+        await instance.Invoke(serviceProvider, method, arguments);
     }
 }
 
@@ -234,13 +236,14 @@ internal class CallbackReflectionInvoker
     {
         var method = _methods[methodName];
         var instance = _instances[method.ClassName];
-        await instance.Invoke(serviceProvider,method, arguements);
+        await instance.Invoke(serviceProvider, method, arguements);
     }
 
-    public async Task<object?> InvokeMethodsWithReturn(IServiceProvider serviceProvider,string methodName, object[] arguments)
+    public async Task<object?> InvokeMethodsWithReturn(IServiceProvider serviceProvider, string methodName,
+        object[] arguments)
     {
         var method = _methods[methodName];
         var instance = _instances[method.ClassName];
-        return await instance.InvokeWithReturn(serviceProvider,method, arguments);
+        return await instance.InvokeWithReturn(serviceProvider, method, arguments);
     }
 }

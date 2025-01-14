@@ -11,9 +11,9 @@ namespace PlayHouse.Communicator.PlaySocket;
 internal class NetMqPlaySocket : IPlaySocket
 {
     private readonly string _bindEndpoint;
-    private readonly string _nid;
     private readonly PooledByteBuffer _buffer = new(ConstOption.MaxPacketSize);
     private readonly LOG<NetMqPlaySocket> _log = new();
+    private readonly string _nid;
     private readonly RouterSocket _socket = new();
 
     public NetMqPlaySocket(SocketConfig socketConfig)
@@ -66,6 +66,7 @@ internal class NetMqPlaySocket : IPlaySocket
         {
             return;
         }
+
         _socket.Disconnect(endPoint);
     }
 
@@ -110,7 +111,6 @@ internal class NetMqPlaySocket : IPlaySocket
 
     public void Send(string nid, RoutePacket routePacket)
     {
-
         if (TestOption.IsUnitTest)
         {
             return;
@@ -118,7 +118,6 @@ internal class NetMqPlaySocket : IPlaySocket
 
         using (routePacket)
         {
-
             var message = new NetMQMessage();
             var payload = routePacket.Payload;
 

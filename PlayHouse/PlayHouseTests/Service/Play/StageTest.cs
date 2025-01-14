@@ -19,18 +19,18 @@ namespace PlayHouseTests.Service.Play;
 
 public class StageTest
 {
+    private readonly long _accountId = 0;
+    private readonly Mock<IClientCommunicator> _clientCommunicator;
+    private readonly IStage _contentStage = Mock.Of<IStage>();
     private readonly string _nid = "2:0";
 
     private readonly List<RoutePacket> _resultList = [];
 
     //private readonly long _testStageId = 0;
     private readonly string _sessionNid = "0:0";
-    private readonly string _stageType = "dungeon";
-    private readonly long _accountId = 0;
-    private readonly Mock<IClientCommunicator> _clientCommunicator;
-    private readonly IStage _contentStage = Mock.Of<IStage>();
     private readonly BaseStage _stage;
     private readonly long _stageId = 0;
+    private readonly string _stageType = "dungeon";
 
 
     public StageTest()
@@ -84,7 +84,7 @@ public class StageTest
 
         Mock.Get(_contentStage)
             .Setup(stage => stage.OnJoinStage(It.IsAny<IActor>(), It.IsAny<IPacket>()))
-            .Returns(Task.FromResult(((ushort)0, (IPacket)CPacket.Of(new TestMsg { TestMsg_ = "onJoinStage" }))));
+            .Returns(Task.FromResult(((ushort)0, CPacket.Of(new TestMsg { TestMsg_ = "onJoinStage" }))));
     }
 
     [Fact]

@@ -1,11 +1,10 @@
 ﻿using System.Net.Sockets;
-using CommonLib;
 using NetCoreServer;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Production.Session;
 using PlayHouse.Utils;
 
-namespace PlayHouse.Service.Session.Network.tcp;
+namespace PlayHouse.Service.Session.Network.Tcp;
 
 internal class XTcpSession(TcpServer server, ISessionDispatcher sessionDispatcher) : TcpSession(server), ISession
 {
@@ -32,14 +31,13 @@ internal class XTcpSession(TcpServer server, ISessionDispatcher sessionDispatche
         return _sid;
     }
 
-    protected  override void OnConnecting()
+    protected override void OnConnecting()
     {
         try
         {
             _log.Debug(() => $"TCP session OnConnected - [Sid:{GetSid()}]");
             var remoteEndpoint = Socket.RemoteEndPoint?.ToString() ?? string.Empty;
-            sessionDispatcher.OnConnect(GetSid(), this,remoteEndpoint);
-
+            sessionDispatcher.OnConnect(GetSid(), this, remoteEndpoint);
         }
         catch (Exception e)
         {
@@ -65,14 +63,13 @@ internal class XTcpSession(TcpServer server, ISessionDispatcher sessionDispatche
         try
         {
             _buffer.Write(buffer, offset, size);
-            List<ClientPacket> packets = _packetParser.Parse(_buffer);
-            
+            var packets = _packetParser.Parse(_buffer);
+
             foreach (var packet in packets)
             {
                 _log.Trace(() => $"OnReceive from:client - [sid:{GetSid()},packetInfo:{packet.Header}]");
                 sessionDispatcher.OnReceive(GetSid(), packet);
             }
-
         }
         catch (Exception e)
         {
@@ -110,8 +107,8 @@ internal class TcpSessionServer : TcpServer
         OptionKeepAlive = true;
 
         OptionReceiveBufferSize = 1024 * 64;
-        OptionSendBufferSize    = 1024 * 256;
-        OptionAcceptorBacklog   = 4096 * 3;
+        OptionSendBufferSize = 1024 * 256;
+        OptionAcceptorBacklog = 4096 * 3;
     }
 
     protected override TcpSession CreateSession()

@@ -1,5 +1,6 @@
 ﻿using FluentAssertions;
 using Moq;
+using PlayHouse;
 using PlayHouse.Communicator;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Production.Shared;
@@ -7,7 +8,6 @@ using Playhouse.Protocol;
 using PlayHouse.Service.Session;
 using PlayHouse.Service.Session.Network;
 using Xunit;
-using CommonLib;
 
 namespace PlayHouseTests.Service.Session;
 
@@ -17,9 +17,9 @@ public class SessionClientTest : IDisposable
 
     private readonly ushort _idApi = 2;
     private readonly ushort _idSession = 1;
-    private readonly int _serverId = 1;
-    
+
     private readonly RequestCache _reqCache;
+    private readonly int _serverId = 1;
     private readonly IServerInfoCenter _serviceCenter;
     private readonly ISession _session;
     private readonly int _sid = 1;
@@ -36,7 +36,7 @@ public class SessionClientTest : IDisposable
 
         _serviceCenter.Update(new List<XServerInfo>
         {
-            XServerInfo.Of("tcp://127.0.0.1:0021",_idApi,_serverId,apiNid, ServiceType.API,  ServerState.RUNNING, 21,
+            XServerInfo.Of("tcp://127.0.0.1:0021", _idApi, _serverId, apiNid, ServiceType.API, ServerState.RUNNING, 21,
                 DateTimeOffset.Now.ToUnixTimeMilliseconds())
         });
 
@@ -54,7 +54,7 @@ public class SessionClientTest : IDisposable
     public void WithoutAuthenticate_SendPacket_SocketShouldBeDisconnected()
     {
         var sessionClient = new SessionActor(_idSession, _sid, _serviceCenter, _session, _clientCommunicator, _urls,
-            _reqCache,string.Empty,null,new SessionServerDispatcher());
+            _reqCache, string.Empty, null, new SessionServerDispatcher());
         var clientPacket = new ClientPacket(new Header(_idApi), new EmptyPayload());
         sessionClient.Dispatch(clientPacket);
         Mock.Get(_session).Verify(s => s.ClientDisconnect(), Times.Once());
@@ -63,12 +63,12 @@ public class SessionClientTest : IDisposable
     [Fact]
     public void PacketOnTheAuthList_ShouldBeDelivered()
     {
-        string messageId = "AuthenticateReq";
+        var messageId = "AuthenticateReq";
         //var messageId = "1";
         _urls.Add($"{_idApi}:{messageId}");
 
         var sessionClient = new SessionActor(_idSession, _sid, _serviceCenter, _session, _clientCommunicator, _urls,
-            _reqCache,string.Empty, null, new SessionServerDispatcher());
+            _reqCache, string.Empty, null, new SessionServerDispatcher());
         var clientPacket = new ClientPacket(new Header(_idApi, messageId), new EmptyPayload());
         sessionClient.Dispatch(clientPacket);
 

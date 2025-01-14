@@ -11,6 +11,6 @@ internal class SystemReflection(IServiceProvider serviceProvider)
     public async Task CallMethodAsync(IPacket packet, ISystemPanel panel, ISender sender)
     {
         var msgId = packet.MsgId;
-        await _reflectionInvoker.InvokeMethods(serviceProvider,msgId, new object[] { packet, panel, sender });
+        await _reflectionInvoker.InvokeMethods(serviceProvider, msgId, new object[] { packet, panel, sender });
     }
 }

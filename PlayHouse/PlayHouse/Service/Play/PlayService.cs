@@ -17,6 +17,7 @@ internal class PlayService(
     : IService
 {
     private readonly LOG<PlayService> _log = new();
+
     private readonly PlayDispatcher _playDispatcher = new(serviceId, clientCommunicator, requestCache, serverInfoCenter,
         nid, playOption);
 
@@ -24,6 +25,7 @@ internal class PlayService(
     public ushort ServiceId { get; } = serviceId;
     public int ServerId { get; } = serverId;
     public string Nid { get; } = nid;
+
     public void OnStart()
     {
         _state.Set(ServerState.RUNNING);

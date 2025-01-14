@@ -1,9 +1,7 @@
-﻿using CommonLib;
-using PlayHouse.Communicator;
+﻿using PlayHouse.Communicator;
 using PlayHouse.Communicator.PlaySocket;
 using PlayHouse.Production.Play;
 using PlayHouse.Production.Shared;
-using PlayHouse.Service.Shared;
 
 namespace PlayHouse.Service.Play;
 
@@ -13,7 +11,6 @@ public class PlayServer : IServer
 
     public PlayServer(PlayhouseOption commonOption, PlayOption playOption)
     {
-
         var communicatorOption = new CommunicatorOption.Builder()
             .SetIp(commonOption.Ip)
             .SetPort(commonOption.Port)
@@ -35,11 +32,12 @@ public class PlayServer : IServer
 
         var playSocketConfig = commonOption.PlaySocketConfig;
         var communicateClient =
-            new XClientCommunicator(PlaySocketFactory.CreatePlaySocket(new SocketConfig(nid, bindEndpoint, playSocketConfig)));
+            new XClientCommunicator(
+                PlaySocketFactory.CreatePlaySocket(new SocketConfig(nid, bindEndpoint, playSocketConfig)));
 
         var requestCache = new RequestCache(commonOption.RequestTimeoutMSec);
         var serverInfoCenter = new XServerInfoCenter(commonOption.DebugMode);
-        var playService = new PlayService(serviceId,serverId,nid, playOption, communicateClient, requestCache,
+        var playService = new PlayService(serviceId, serverId, nid, playOption, communicateClient, requestCache,
             serverInfoCenter);
 
         _communicator = new Communicator.Communicator(

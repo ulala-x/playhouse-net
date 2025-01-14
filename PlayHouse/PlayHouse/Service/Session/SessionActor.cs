@@ -10,6 +10,7 @@ using PlayHouse.Service.Shared;
 using PlayHouse.Utils;
 
 namespace PlayHouse.Service.Session;
+
 internal class TargetAddress(string nid, long stageId)
 {
     public string Nid { get; } = nid;
@@ -34,27 +35,27 @@ internal class StageIndexGenerator
 
 internal class SessionActor
 {
-    private readonly LOG<SessionActor> _log = new();
-
     private readonly AtomicBoolean _isMsgQueueUsing = new(false);
-    private readonly ConcurrentQueue<RoutePacket> _msgQueue = new();
 
     private readonly AtomicBoolean _isSessionUserQueueUsing = new(false);
-    private readonly ConcurrentQueue<ClientPacket> _sessionUserQueue = new();
+    private readonly Stopwatch _lastUpdateTime = new();
+    private readonly LOG<SessionActor> _log = new();
+    private readonly ConcurrentQueue<RoutePacket> _msgQueue = new();
 
     private readonly Dictionary<long, TargetAddress> _playEndpoints = new();
+    private readonly string _remoteIp;
     private readonly IServerInfoCenter _serviceInfoCenter;
     private readonly ISession _session;
 
     private readonly XSessionSender _sessionSender;
+    private readonly ISessionUser? _sessionUser;
+    private readonly ConcurrentQueue<ClientPacket> _sessionUserQueue = new();
     private readonly HashSet<string> _signInUrIs = new();
     private readonly TargetServiceCache _targetServiceCache;
     private ushort _authenticateServiceId;
     private string _authServerNid = ServiceConst.DefaultNid;
     private bool _debugMode;
-    private readonly Stopwatch _lastUpdateTime = new();
-    private readonly string _remoteIp;
-    private readonly ISessionUser? _sessionUser;
+
     public SessionActor(
         ushort serviceId,
         long sid,
@@ -108,11 +109,11 @@ internal class SessionActor
         {
             var serverInfo = FindSuitableServer(_authenticateServiceId, _authServerNid);
             var disconnectPacket = RoutePacket.Of(new DisconnectNoticeMsg());
-            _sessionSender.SendToBaseApi(serverInfo.GetNid(), Sid,AccountId, disconnectPacket);
+            _sessionSender.SendToBaseApi(serverInfo.GetNid(), Sid, AccountId, disconnectPacket);
             foreach (var targetId in _playEndpoints.Values)
             {
                 IServerInfo targetServer = _serviceInfoCenter.FindServer(targetId.Nid);
-                _sessionSender.SendToBaseStage(targetServer.GetNid(), Sid,targetId.StageId, AccountId,
+                _sessionSender.SendToBaseStage(targetServer.GetNid(), Sid, targetId.StageId, AccountId,
                     disconnectPacket);
             }
         }
@@ -127,15 +128,15 @@ internal class SessionActor
     {
         try
         {
-
-            _log.Trace(() => $"From:client - [sid:{Sid},accountId:{AccountId.ToString():accountId},packetInfo:{clientPacket.Header}]");
+            _log.Trace(() =>
+                $"From:client - [sid:{Sid},accountId:{AccountId.ToString():accountId},packetInfo:{clientPacket.Header}]");
 
             var serviceId = clientPacket.ServiceId;
             var msgId = clientPacket.MsgId;
 
             _lastUpdateTime.Restart();
 
-            
+
             if (IsAuthenticated)
             {
                 RelayTo(serviceId, clientPacket);
@@ -257,7 +258,7 @@ internal class SessionActor
     {
         var msgId = packet.MsgId;
         var isBase = packet.IsBase();
-        
+
 
         if (isBase)
         {
@@ -291,11 +292,12 @@ internal class SessionActor
             {
                 var stageId = LeaveStageMsg.Parser.ParseFrom(packet.Span).StageId;
                 ClearRoomInfo(stageId);
-                _log.Debug(() => $"stage info clear - [accountId:{AccountId.ToString():accountId}, stageId: {stageId}]");
+                _log.Debug(() =>
+                    $"stage info clear - [accountId:{AccountId.ToString():accountId}, stageId: {stageId}]");
             }
             else if (msgId == RemoteIpReq.Descriptor.Name)
             {
-                _sessionSender.Reply(XPacket.Of(new RemoteIpRes(){Ip = _remoteIp }));
+                _sessionSender.Reply(XPacket.Of(new RemoteIpRes { Ip = _remoteIp }));
             }
             else
             {
@@ -323,7 +325,8 @@ internal class SessionActor
     {
         using (clientPacket)
         {
-            _log.Trace(() => $"sendTo:client - [accountId:{AccountId.ToString():accountId},packetInfo:{clientPacket.Header}]");
+            _log.Trace(() =>
+                $"sendTo:client - [accountId:{AccountId.ToString():accountId},packetInfo:{clientPacket.Header}]");
             _sessionSender.RelayToClient(clientPacket);
         }
     }

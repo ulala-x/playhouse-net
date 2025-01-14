@@ -21,8 +21,8 @@ internal class PlayDispatcher : IPlayDispatcher
     private readonly ConcurrentDictionary<long, BaseActor> _baseUsers = new();
     private readonly IClientCommunicator _clientCommunicator;
     private readonly LOG<PlayDispatcher> _log = new();
-    private readonly PlayOption _playOption;
     private readonly string _nid;
+    private readonly PlayOption _playOption;
     private readonly RequestCache _requestCache;
     private readonly XSender _sender;
     private readonly IServerInfoCenter _serverInfoCenter;

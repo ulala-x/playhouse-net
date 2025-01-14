@@ -3,12 +3,13 @@ using PlayHouse.Production.Shared;
 
 namespace PlayHouse.Service.Api.Reflection;
 
-internal class ApiReflection(IServiceProvider serviceProvider ,ApiControllAspectifyManager aspectifyManager)
+internal class ApiReflection(IServiceProvider serviceProvider, ApiControllAspectifyManager aspectifyManager)
 {
-    private readonly AsyncLocal<IServiceProvider> _localProvider = new();
     private readonly ApiHandleReflectionInvoker _apiReflectionInvoker = new(serviceProvider,
         aspectifyManager.Get(),
         aspectifyManager.GetBackend());
+
+    private readonly AsyncLocal<IServiceProvider> _localProvider = new();
 
 
     public async Task CallMethodAsync(IPacket packet, IApiSender apiSender)
@@ -21,7 +22,6 @@ internal class ApiReflection(IServiceProvider serviceProvider ,ApiControllAspect
         {
             await _apiReflectionInvoker.InvokeMethods(_localProvider.Value, packet.MsgId, packet, apiSender);
         }
-        
     }
 
     public async Task CallBackendMethodAsync(IPacket packet, IApiBackendSender apiBackendSender)
@@ -34,7 +34,6 @@ internal class ApiReflection(IServiceProvider serviceProvider ,ApiControllAspect
         {
             await _apiReflectionInvoker.InvokeBackendMethods(serviceProvider, packet.MsgId, packet, apiBackendSender);
         }
-        
     }
 
     public void Reset(IServiceProvider provider)

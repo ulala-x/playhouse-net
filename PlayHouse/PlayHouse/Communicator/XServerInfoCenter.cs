@@ -1,18 +1,14 @@
-﻿using PlayHouse.Production.Shared;
-using System.Collections.Immutable;
-using System.Diagnostics;
+﻿using System.Collections.Immutable;
+using PlayHouse.Production.Shared;
 using PlayHouse.Utils;
 
 namespace PlayHouse.Communicator;
 
-using System.Collections.Immutable;
-using System.Threading;
-
 internal class XServerInfoCenter(bool debugMode) : IServerInfoCenter
 {
+    private LOG<XServerCommunicator> _log = new();
     private int _offset;
     private ImmutableList<XServerInfo> _serverInfoList = ImmutableList<XServerInfo>.Empty;
-    private LOG<XServerCommunicator> _log = new();
 
     public IReadOnlyList<XServerInfo> Update(IReadOnlyList<XServerInfo> serverList)
     {
@@ -69,7 +65,6 @@ internal class XServerInfoCenter(bool debugMode) : IServerInfoCenter
 
         return updateList;
     }
-
 
 
     public XServerInfo FindServer(string nid)
@@ -141,5 +136,4 @@ internal class XServerInfoCenter(bool debugMode) : IServerInfoCenter
 
         return list.First().GetServiceType();
     }
-
 }

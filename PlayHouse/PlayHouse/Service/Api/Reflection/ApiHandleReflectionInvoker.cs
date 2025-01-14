@@ -92,7 +92,7 @@ internal class ApiHandleReflectionInvoker
                 $"{method.ClassName}: reflection instance is not registered");
         }
 
-        await instance.Invoke(serviceProvider,method, packet, apiSender);
+        await instance.Invoke(serviceProvider, method, packet, apiSender);
     }
 
     public async Task InvokeBackendMethods(IServiceProvider serviceProvider, string msgId, IPacket packet,
@@ -109,6 +109,6 @@ internal class ApiHandleReflectionInvoker
                 $"{method.ClassName}: reflection instance is not registered");
         }
 
-        await instance.Invoke(serviceProvider,method, packet, apiSender);
+        await instance.Invoke(serviceProvider, method, packet, apiSender);
     }
 }

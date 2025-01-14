@@ -1,6 +1,6 @@
-﻿using CommonLib;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Org.Ulalax.Playhouse.Protocol;
+using PlayHouse;
 using PlayHouse.Communicator;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Communicator.PlaySocket;
@@ -24,6 +24,7 @@ public class CommunicatorTest
 {
     private const string SessionNid = "session:1";
     private const string ApiNid = "api:1";
+
     public CommunicatorTest()
     {
         PooledBuffer.Init();
@@ -37,16 +38,22 @@ public class CommunicatorTest
         var sessionPort = IpFinder.FindFreePort();
         var sessionEndpoint = $"tcp://{localIp}:{sessionPort}";
 
-        var sessionServer = new XServerCommunicator(new NetMqPlaySocket(new SocketConfig(SessionNid, sessionEndpoint, new PlaySocketConfig())));
-        var sessionClient = new XClientCommunicator(new NetMqPlaySocket(new SocketConfig(SessionNid, sessionEndpoint, new PlaySocketConfig())));
+        var sessionServer =
+            new XServerCommunicator(
+                new NetMqPlaySocket(new SocketConfig(SessionNid, sessionEndpoint, new PlaySocketConfig())));
+        var sessionClient =
+            new XClientCommunicator(
+                new NetMqPlaySocket(new SocketConfig(SessionNid, sessionEndpoint, new PlaySocketConfig())));
 
         var sessionListener = new TestListener();
         sessionServer.Bind(sessionListener);
 
         var apiPort = IpFinder.FindFreePort();
         var apiEndpoint = $"tcp://{localIp}:{apiPort}";
-        var apiServer = new XServerCommunicator(new NetMqPlaySocket(new SocketConfig(ApiNid, apiEndpoint, new PlaySocketConfig())));
-        var apiClient = new XClientCommunicator(new NetMqPlaySocket(new SocketConfig(ApiNid, apiEndpoint, new PlaySocketConfig())));
+        var apiServer =
+            new XServerCommunicator(new NetMqPlaySocket(new SocketConfig(ApiNid, apiEndpoint, new PlaySocketConfig())));
+        var apiClient =
+            new XClientCommunicator(new NetMqPlaySocket(new SocketConfig(ApiNid, apiEndpoint, new PlaySocketConfig())));
 
         var apiListener = new TestListener();
         apiServer.Bind(apiListener);
@@ -66,7 +73,7 @@ public class CommunicatorTest
 
         ///////// session to api ///////////
 
-        sessionClient.Connect(ApiNid,apiEndpoint);
+        sessionClient.Connect(ApiNid, apiEndpoint);
         apiListener.Results.Clear();
 
         Thread.Sleep(100);
@@ -81,7 +88,7 @@ public class CommunicatorTest
 
         ////////// api to session ///////////////
 
-        apiClient.Connect(SessionNid,sessionEndpoint);
+        apiClient.Connect(SessionNid, sessionEndpoint);
         sessionListener.Results.Clear();
 
         Thread.Sleep(100);

@@ -8,7 +8,7 @@ public class ControllerTester
     private ApiReflection? _apiReflection;
     private ApiReflectionCallback? _apiReflectionCallback;
 
-    internal void Init(ApiReflection apiReflection,ApiReflectionCallback apiReflectionCallback)
+    internal void Init(ApiReflection apiReflection, ApiReflectionCallback apiReflectionCallback)
     {
         _apiReflection = apiReflection;
         _apiReflectionCallback = apiReflectionCallback;

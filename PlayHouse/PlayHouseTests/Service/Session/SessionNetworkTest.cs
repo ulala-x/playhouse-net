@@ -1,5 +1,4 @@
-﻿using CommonLib;
-using FluentAssertions;
+﻿using FluentAssertions;
 using NetMQ;
 using Org.Ulalax.Playhouse.Protocol;
 using PlayHouse;

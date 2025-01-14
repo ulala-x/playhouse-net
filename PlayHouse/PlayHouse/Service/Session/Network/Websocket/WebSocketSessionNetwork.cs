@@ -1,11 +1,10 @@
 ﻿using System.Net.Sockets;
-using CommonLib;
 using NetCoreServer;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Production.Session;
 using PlayHouse.Utils;
 
-namespace PlayHouse.Service.Session.Network.websocket;
+namespace PlayHouse.Service.Session.Network.Websocket;
 
 internal class XWsSession(WsSessionServer server, ISessionDispatcher sessionDispatcher) : WsSession(server), ISession
 {
@@ -13,6 +12,7 @@ internal class XWsSession(WsSessionServer server, ISessionDispatcher sessionDisp
     private readonly LOG<XWsSession> _log = new();
     private readonly PacketParser _packetParser = new();
     private readonly long _sid = SocketIdGenerator.IdGenerator.NextId();
+
     public void ClientDisconnect()
     {
         base.Disconnect();
@@ -37,7 +37,7 @@ internal class XWsSession(WsSessionServer server, ISessionDispatcher sessionDisp
         {
             _log.Debug(() => $"WS session OnConnected - [Sid:{GetSid()}]");
             var remoteEndpoint = Socket.RemoteEndPoint?.ToString() ?? string.Empty;
-            sessionDispatcher.OnConnect(GetSid(), this,remoteEndpoint);
+            sessionDispatcher.OnConnect(GetSid(), this, remoteEndpoint);
         }
         catch (Exception e)
         {
@@ -63,14 +63,13 @@ internal class XWsSession(WsSessionServer server, ISessionDispatcher sessionDisp
         try
         {
             _buffer.Write(buffer, offset, size);
-            List<ClientPacket> packets = _packetParser.Parse(_buffer);
+            var packets = _packetParser.Parse(_buffer);
 
             foreach (var packet in packets)
             {
                 _log.Trace(() => $"OnReceive from:client - [packetInfo:{packet.Header}]");
                 sessionDispatcher.OnReceive(GetSid(), packet);
             }
-
         }
         catch (Exception e)
         {

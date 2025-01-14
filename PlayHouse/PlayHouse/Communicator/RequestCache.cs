@@ -1,10 +1,11 @@
 ﻿using System.Collections.Concurrent;
-using Playhouse.Protocol;
 using PlayHouse.Communicator.Message;
+using Playhouse.Protocol;
 using PlayHouse.Service.Shared;
 using PlayHouse.Utils;
 
 namespace PlayHouse.Communicator;
+
 internal class ReplyObject(
     ReplyCallback? callback = null,
     TaskCompletionSource<RoutePacket>? taskCompletionSource = null)
@@ -37,7 +38,7 @@ internal class ReplyObject(
         taskCompletionSource?.TrySetException(new PlayHouseException($"request has exception - errorCode:{errorCode}",
             errorCode));
     }
-    
+
     public bool IsExpired(int timeoutMs)
     {
         var difference = DateTime.UtcNow - _requestTime;
@@ -47,9 +48,9 @@ internal class ReplyObject(
 
 internal class RequestCache(int timeout)
 {
+    private readonly ConcurrentDictionary<int, ReplyObject> _cache = new();
     private readonly LOG<RequestCache> _log = new();
     private readonly AtomicShort _sequence = new();
-    private readonly ConcurrentDictionary<int, ReplyObject> _cache = new();
     private bool _isRunning = true;
 
     private void CheckExpire()
@@ -74,6 +75,7 @@ internal class RequestCache(int timeout)
             }
         }
     }
+
     public ushort GetSequence()
     {
         return _sequence.IncrementAndGet();
@@ -83,6 +85,7 @@ internal class RequestCache(int timeout)
     {
         _cache.TryRemove(seq, out var _);
     }
+
     public void Put(int seq, ReplyObject replyObject)
     {
         _cache[seq] = replyObject;
@@ -132,9 +135,7 @@ internal class RequestCache(int timeout)
                     _log.Error(() => $"{ex}");
                     throw;
                 }
-                
             }
-            
         });
 
         thread.Start();

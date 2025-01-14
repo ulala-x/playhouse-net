@@ -1,16 +1,16 @@
-﻿using CommonLib;
-using FluentAssertions;
+﻿using FluentAssertions;
+using PlayHouse;
 using PlayHouse.Service.Session.Network;
 using Xunit;
 
 namespace PlayHouseTests.Service.Session;
+
 public class PacketParserTests
 {
     private readonly PacketParser _parser = new();
 
     public PacketParserTests()
     {
-
         PooledBuffer.Init();
     }
 
@@ -66,7 +66,7 @@ public class PacketParserTests
         var stageId = 67890L;
         var body = new byte[] { 1, 2, 3, 4, 5 };
 
-        for (int i = 0; i < packetCount; i++)
+        for (var i = 0; i < packetCount; i++)
         {
             buffer.WriteInt32(body.Length);
             buffer.WriteInt16(serviceId);
@@ -135,7 +135,7 @@ public class PacketParserTests
         var stageId = 67890L;
         var body = new byte[] { 1, 2, 3, 4, 5 };
 
-        for (int i = 0; i < packetCount; i++)
+        for (var i = 0; i < packetCount; i++)
         {
             buffer.WriteInt32(body.Length);
             buffer.WriteInt16(serviceId);
@@ -169,7 +169,7 @@ public class PacketParserTests
         var stageId = 67890L;
         var body = new byte[] { 1, 2, 3, 4, 5 };
 
-        for (int i = 0; i < packetCount; i++)
+        for (var i = 0; i < packetCount; i++)
         {
             buffer.WriteInt32(body.Length);
             buffer.WriteInt16(serviceId);
@@ -190,7 +190,5 @@ public class PacketParserTests
                 packet.Payload.Data.ToArray().Should().Equal(body);
             }
         }
-
-        
     }
 }

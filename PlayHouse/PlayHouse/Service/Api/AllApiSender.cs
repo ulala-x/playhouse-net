@@ -25,7 +25,8 @@ internal class AllApiSender(ushort serviceId, IClientCommunicator clientCommunic
 
         Authenticate(accountId, apiNid);
     }
-    public void Authenticate(long accountId,string apiNid)
+
+    public void Authenticate(long accountId, string apiNid)
     {
         var message = new AuthenticateMsg
         {

@@ -1,5 +1,4 @@
-﻿using System.DirectoryServices.ActiveDirectory;
-using Google.Protobuf;
+﻿using Google.Protobuf;
 using PlayHouse.Production.Shared;
 using Playhouse.Protocol;
 
@@ -16,7 +15,6 @@ internal class XServerInfo(
     long lastUpdate)
     : IServerInfo
 {
-
     public string GetBindEndpoint()
     {
         return bindEndpoint;
@@ -98,7 +96,7 @@ internal class XServerInfo(
     {
         return new XServerInfo(
             bindEndpoint,
-            serviceId, 
+            serviceId,
             serverId,
             nid,
             serviceType,
@@ -153,7 +151,7 @@ internal class XServerInfo(
 
     public bool IsValid()
     {
-        return serverState == ServerState.RUNNING ;
+        return serverState == ServerState.RUNNING;
     }
 
     public byte[] ToByteArray()

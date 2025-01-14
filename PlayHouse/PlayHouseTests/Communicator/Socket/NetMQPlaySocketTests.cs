@@ -1,6 +1,6 @@
-﻿using CommonLib;
-using FluentAssertions;
+﻿using FluentAssertions;
 using Org.Ulalax.Playhouse.Protocol;
+using PlayHouse;
 using PlayHouse.Communicator;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Communicator.PlaySocket;
@@ -15,8 +15,8 @@ public class NetMQPlaySocketTests : IDisposable
     private readonly NetMqPlaySocket? _clientSocket;
 
     private readonly NetMqPlaySocket? _serverSocket;
-    private string  ServerNid = "sever:1";
-    private string  ClientNid = "client:1";
+    private readonly string ClientNid = "client:1";
+    private readonly string ServerNid = "sever:1";
 
     public NetMQPlaySocketTests()
     {
@@ -28,9 +28,9 @@ public class NetMQPlaySocketTests : IDisposable
 
         var serverBindEndpoint = $"tcp://{localIp}:{serverPort}";
         var clientBindEndpoint = $"tcp://{localIp}:{clientPort}";
-        
-        _serverSocket = new NetMqPlaySocket(new SocketConfig(ServerNid, serverBindEndpoint,new PlaySocketConfig()));
-        _clientSocket = new NetMqPlaySocket(new SocketConfig(ClientNid, clientBindEndpoint,new PlaySocketConfig()));
+
+        _serverSocket = new NetMqPlaySocket(new SocketConfig(ServerNid, serverBindEndpoint, new PlaySocketConfig()));
+        _clientSocket = new NetMqPlaySocket(new SocketConfig(ClientNid, clientBindEndpoint, new PlaySocketConfig()));
 
         _serverSocket.Bind();
         _clientSocket.Bind();

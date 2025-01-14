@@ -1,5 +1,4 @@
-﻿using CommonLib;
-using NetMQ;
+﻿using NetMQ;
 using PlayHouse.Communicator.Message;
 using PlayHouse.Utils;
 
@@ -23,7 +22,7 @@ internal sealed class PacketParser
         var packets = new List<ClientPacket>();
         while (buffer.Count >= PacketConst.MinPacketSize)
         {
-            int bodySize = buffer.PeekInt32(buffer.ReaderIndex);
+            var bodySize = buffer.PeekInt32(buffer.ReaderIndex);
 
             if (bodySize > PacketConst.MaxPacketSize)
             {
@@ -31,7 +30,7 @@ internal sealed class PacketParser
                 throw new Exception("BodySizeOver");
             }
 
-            int checkSizeOfMsg = buffer.PeekByte(buffer.MoveIndex(buffer.ReaderIndex,  4 + 2));
+            int checkSizeOfMsg = buffer.PeekByte(buffer.MoveIndex(buffer.ReaderIndex, 4 + 2));
 
             // If the remaining buffer is smaller than the expected packet size, wait for more data
             if (buffer.Count < bodySize + checkSizeOfMsg + PacketConst.MinPacketSize)
@@ -51,9 +50,11 @@ internal sealed class PacketParser
 
             buffer.Read(body.Buffer, 0, bodySize);
 
-            var clientPacket = new ClientPacket(new Header(serviceId, msgId, msgSeq, 0, stageId), new FramePayload(body));
+            var clientPacket =
+                new ClientPacket(new Header(serviceId, msgId, msgSeq, 0, stageId), new FramePayload(body));
             packets.Add(clientPacket);
         }
+
         return packets;
     }
 }

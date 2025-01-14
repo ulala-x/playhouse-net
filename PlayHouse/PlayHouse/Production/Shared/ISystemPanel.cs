@@ -12,9 +12,9 @@ public interface ISystemPanel
     Task ShutdownASync();
     ServerState GetServerState();
     long GenerateUUID();
+
     public static string MakeNid(ushort serviceId, int serverId)
     {
         return $"{serviceId}:{serverId}";
     }
-
 }

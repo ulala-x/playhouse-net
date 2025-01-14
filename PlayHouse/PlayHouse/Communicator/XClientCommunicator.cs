@@ -12,7 +12,7 @@ internal class XClientCommunicator(IPlaySocket playSocket) : IClientCommunicator
     private readonly LOG<XClientCommunicator> _log = new();
     private readonly BlockingCollection<Action> _queue = new();
 
-    public void Connect(string nid,string endpoint)
+    public void Connect(string nid, string endpoint)
     {
         if (!_connected.Add(endpoint))
         {
@@ -35,9 +35,8 @@ internal class XClientCommunicator(IPlaySocket playSocket) : IClientCommunicator
         });
     }
 
-    public void Disconnect(string nid,string endpoint)
+    public void Disconnect(string nid, string endpoint)
     {
-        
         if (_disconnected.Contains(endpoint))
         {
             return;
@@ -52,7 +51,6 @@ internal class XClientCommunicator(IPlaySocket playSocket) : IClientCommunicator
                 _connected.Remove(endpoint);
                 _disconnected.Add(endpoint);
             }
-            
         }
         catch (Exception ex)
         {
@@ -85,7 +83,8 @@ internal class XClientCommunicator(IPlaySocket playSocket) : IClientCommunicator
 
     public void Send(string nid, RoutePacket routePacket)
     {
-        _log.Trace(() => $"before send queue:{nid} - [accountId:{routePacket.AccountId.ToString():accountId},packetInfo:{routePacket.RouteHeader}]");
+        _log.Trace(() =>
+            $"before send queue:{nid} - [accountId:{routePacket.AccountId.ToString():accountId},packetInfo:{routePacket.RouteHeader}]");
 
         //if (_connected.Contains(endpoint) == false)
         //{
@@ -99,7 +98,8 @@ internal class XClientCommunicator(IPlaySocket playSocket) : IClientCommunicator
             {
                 using (routePacket)
                 {
-                    _log.Trace(() => $"sendTo: nid:{nid} - [accountId:{routePacket.AccountId.ToString():accountId},packetInfo:{routePacket.RouteHeader}]");
+                    _log.Trace(() =>
+                        $"sendTo: nid:{nid} - [accountId:{routePacket.AccountId.ToString():accountId},packetInfo:{routePacket.RouteHeader}]");
                     playSocket.Send(nid, routePacket);
                 }
             }
@@ -111,7 +111,6 @@ internal class XClientCommunicator(IPlaySocket playSocket) : IClientCommunicator
                 );
             }
         });
-
     }
 
     public void Communicate()

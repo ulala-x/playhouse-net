@@ -11,9 +11,9 @@ internal class ServerAddressResolver(
     ISystemController system)
 {
     private readonly LOG<ServerAddressResolver> _log = new();
+    private CancellationTokenSource? _cts;
 
     private PeriodicTimer? _periodicTimer;
-    private CancellationTokenSource? _cts;
 
     public void Start()
     {
@@ -64,7 +64,7 @@ internal class ServerAddressResolver(
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
 
-            IReadOnlyList<IServerInfo> serverInfoList = await system.UpdateServerInfoAsync(myServerInfo);
+            var serverInfoList = await system.UpdateServerInfoAsync(myServerInfo);
 
             var updateList = serverInfoCenter.Update(serverInfoList.Select(XServerInfo.Of).ToList());
 
@@ -73,7 +73,7 @@ internal class ServerAddressResolver(
                 switch (serverInfo.GetState())
                 {
                     case ServerState.RUNNING:
-                        communicateClient.Connect(serverInfo.GetNid(),serverInfo.GetBindEndpoint());
+                        communicateClient.Connect(serverInfo.GetNid(), serverInfo.GetBindEndpoint());
                         break;
 
                     case ServerState.DISABLE:

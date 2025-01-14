@@ -8,7 +8,8 @@ internal static class PacketProducer
     private static Func<string, IPayload, ushort, IPacket>? CreateFunc { get; set; } //msgId,
 
 
-    public static void Init(Func<string, IPayload, ushort, IPacket> createFunc) //int msgId, payload,msgSeq return IPacket
+    public static void
+        Init(Func<string, IPayload, ushort, IPacket> createFunc) //int msgId, payload,msgSeq return IPacket
     {
         CreateFunc = createFunc;
     }
