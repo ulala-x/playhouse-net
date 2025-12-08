@@ -1,33 +1,250 @@
 # PlayHouse-NET 아키텍처
 
-## 1. 전체 시스템 아키텍처
+## 1. PlayHouse-NET 프레임워크 소개
 
-### 1.1 단순화된 단일 서버 구조
+### 1.1 기존 PlayHouse와의 차이점
 
-기존 PlayHouse는 Session, API, Play 세 개의 서버로 구성되었으나, PlayHouse-NET은 단일 Room 서버로 통합되어 복잡도를 대폭 감소시켰습니다.
+기존 PlayHouse는 Session, API, Play 세 개의 서버로 구성되었으나, PlayHouse-NET은 단일 서버 구조로 통합되어 복잡도를 대폭 감소시켰습니다.
 
 ```
 [기존 PlayHouse - 3-Tier Architecture]
+Session Server → API Server → Play Server
+(NetMQ Full-Mesh + Redis Discovery)
 
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Session    │────▶│     API      │────▶│     Play     │
-│   Server     │     │   Server     │     │   Server     │
-│              │     │              │     │              │
-│ - TCP/WS     │     │ - Stateless  │     │ - Stage Mgmt │
-│ - Auth       │     │ - HTTP API   │     │ - Actor Mgmt │
-│ - Routing    │     │ - Logic      │     │ - Game Logic │
-└──────────────┘     └──────────────┘     └──────────────┘
-       ▲                    ▲                    ▲
-       │                    │                    │
-    NetMQ               NetMQ                NetMQ
-    Full-Mesh TCP Communication
-    + Redis for Discovery
+[PlayHouse-NET - Single Server Framework]
+단일 프로세스 내 통합 (HTTP API + Socket Server + Core Engine)
+```
 
+**구조 단순화의 이점**:
 
-[PlayHouse-NET - Single Server Architecture]
+| 측면 | 이점 |
+|------|------|
+| **배포** | 단일 프로세스 배포, 설정 간소화 |
+| **개발** | 서버 간 통신 로직 불필요, 디버깅 용이 |
+| **운영** | 모니터링 포인트 감소, 장애 지점 최소화 |
+| **성능** | 네트워크 홉 제거, 지연 시간 감소 |
+| **비용** | Redis 불필요, 인프라 비용 절감 |
 
+### 1.2 프레임워크 핵심 기능
+
+PlayHouse-NET 프레임워크는 다음 기능을 제공합니다:
+
+- **메시지 기반 액터 모델**: Stage/Actor 패턴을 통한 동시성 제어
+- **다중 프로토콜 지원**: TCP, WebSocket, HTTPS 동시 지원
+- **비동기 메시지 처리**: Lock-Free 큐 기반 메시지 파이프라인
+- **타이머 시스템**: Stage별 타이머 관리 및 콜백
+- **세션 관리**: 클라이언트 연결 및 인증 상태 관리
+- **HTTP API 통합**: ASP.NET Core 기반 REST API와 소켓 서버 통합
+
+## 2. 프레임워크 아키텍처
+
+### 2.1 Clean Architecture 기반 레이어 구조
+
+PlayHouse-NET 프레임워크는 Clean Architecture 원칙에 따라 설계되었습니다.
+
+```
 ┌─────────────────────────────────────────────────────────┐
-│                    Room Server                          │
+│              의존성 방향 (Dependency Direction)          │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│          Application (서버 개발자 코드)                  │
+│                       │                                 │
+│                       ▼                                 │
+│              ┌─────────────────┐                        │
+│              │  Abstractions   │  ← 중심 (Domain Layer)  │
+│              │    (Domain)     │     의존성 없음         │
+│              └─────────────────┘                        │
+│                   ▲         ▲                           │
+│                   │         │                           │
+│              ┌────┴────┐ ┌──┴──────────┐               │
+│              │  Core   │ │Infrastructure│               │
+│              │ Engine  │ │    Layer     │               │
+│              └─────────┘ └──────────────┘               │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**의존성 규칙** (architecture-guide.md 기준):
+
+```
+Core Engine → Abstractions ← Infrastructure
+              (Domain은 아무것도 의존하지 않음)
+```
+
+### 2.2 프레임워크 레이어별 역할
+
+#### Abstractions Layer (Domain Layer)
+
+**역할**: 프레임워크의 핵심 추상화 및 계약 정의
+
+**특징**:
+- 외부 의존성 없음 (순수 C# 인터페이스와 값 객체만)
+- 프레임워크의 핵심 개념 정의 (IStage, IActor, ISender, IPacket 등)
+- 도메인 모델과 에러 코드 정의
+
+**주요 컴포넌트**:
+- `IStage`: Stage 인터페이스
+- `IActor`: Actor 인터페이스
+- `ISender`: 메시지 전송 인터페이스
+- `IPacket`: 패킷 추상화
+- `RoutePacket`: 라우팅 정보를 포함한 값 객체
+- `ErrorCode`: 프레임워크 에러 코드 정의
+
+#### Core Engine Layer
+
+**역할**: 프레임워크의 핵심 비즈니스 로직
+
+**특징**:
+- Abstractions Layer만 의존
+- 인프라 구현 방식에 독립적
+- Stage/Actor 생명주기 관리
+- 메시지 디스패칭 및 큐 관리
+
+**주요 컴포넌트**:
+- **Message Pipeline**: Dispatcher, Handler, Message Queue
+- **Stage Management**: Stage Pool, Actor Pool
+- **Support Services**: Timer Manager, Request Cache, Session Manager
+
+#### Infrastructure Layer
+
+**역할**: 외부 시스템 연동 및 기술적 구현
+
+**특징**:
+- Core Engine과 Abstractions에 의존
+- 외부 시스템별로 하위 디렉토리 분리
+- 전송, 직렬화, 압축 등 기술적 관심사 처리
+
+**주요 컴포넌트**:
+- **Transport**: TCP, WebSocket, HTTPS 서버
+- **Serialization**: Protobuf, JSON 직렬화
+- **Compression**: LZ4 압축
+- **HTTP**: ASP.NET Core 통합
+
+## 3. 프레임워크 프로젝트 구조
+
+### 3.1 디렉토리 구조
+
+```
+playhouse-net/
+├── src/
+│   └── PlayHouse/                 # 서버 프레임워크
+│       ├── Abstractions/          # Domain Layer (의존성 없음)
+│       │   ├── IStage.cs
+│       │   ├── IActor.cs
+│       │   ├── ISender.cs
+│       │   ├── IPacket.cs
+│       │   ├── RoutePacket.cs
+│       │   └── ErrorCode.cs
+│       │
+│       ├── Core/                  # Core Engine Layer
+│       │   ├── Stage/
+│       │   │   ├── StagePool.cs
+│       │   │   └── ActorPool.cs
+│       │   ├── Messaging/
+│       │   │   ├── Dispatcher.cs
+│       │   │   ├── MessageQueue.cs
+│       │   │   └── Handler.cs
+│       │   ├── Timer/
+│       │   │   └── TimerManager.cs
+│       │   └── Session/
+│       │       ├── SessionManager.cs
+│       │       └── RequestCache.cs
+│       │
+│       ├── Infrastructure/        # Infrastructure Layer
+│       │   ├── Transport/
+│       │   │   ├── Tcp/
+│       │   │   ├── WebSocket/
+│       │   │   └── Https/
+│       │   ├── Serialization/
+│       │   │   ├── Protobuf/
+│       │   │   └── Json/
+│       │   ├── Compression/
+│       │   │   └── Lz4/
+│       │   └── Http/
+│       │       └── AspNetCore/
+│       │
+│       └── PlayHouse.csproj
+│
+├── connector/
+│   └── PlayHouse.Connector/       # 클라이언트 라이브러리 (테스트용)
+│       ├── IPlayHouseClient.cs    # 메인 클라이언트 인터페이스
+│       ├── PlayHouseClient.cs     # 클라이언트 구현
+│       ├── PlayHouseClientOptions.cs
+│       ├── Connection/
+│       │   ├── IConnection.cs
+│       │   ├── TcpConnection.cs
+│       │   └── WebSocketConnection.cs
+│       ├── Protocol/
+│       │   ├── PacketEncoder.cs
+│       │   ├── PacketDecoder.cs
+│       │   └── RequestTracker.cs
+│       ├── Events/
+│       │   ├── ConnectionEventArgs.cs
+│       │   ├── MessageEventArgs.cs
+│       │   └── ErrorEventArgs.cs
+│       ├── Extensions/
+│       │   └── ServiceCollectionExtensions.cs
+│       └── PlayHouse.Connector.csproj
+│
+├── tests/
+│   ├── PlayHouse.Tests.E2E/       # E2E 테스트 (Connector 사용)
+│   ├── PlayHouse.Tests.Integration/  # 통합 테스트 (우선)
+│   └── PlayHouse.Tests.Unit/      # 유닛 테스트 (통합으로 커버 어려운 부분만)
+│
+└── playhouse-net.sln              # 솔루션 파일
+```
+
+### 3.2 프로젝트 구성
+
+| 프로젝트 | 역할 | 의존성 |
+|---------|------|--------|
+| PlayHouse | 서버 프레임워크 | 없음 (독립) |
+| PlayHouse.Connector | 클라이언트 라이브러리 | 없음 (독립) |
+| PlayHouse.Tests.E2E | E2E 테스트 | PlayHouse, Connector |
+| PlayHouse.Tests.Integration | 통합 테스트 | PlayHouse |
+| PlayHouse.Tests.Unit | 유닛 테스트 | PlayHouse |
+
+### 3.3 레이어 간 의존성 규칙
+
+```
+Infrastructure → Core → Abstractions
+                        (Abstractions는 의존성 없음)
+```
+
+- `Abstractions/`: 외부 의존성 없음, 순수 인터페이스와 값 객체
+- `Core/`: Abstractions만 참조
+- `Infrastructure/`: Core와 Abstractions 참조
+
+### 3.4 PlayHouse.Connector 역할
+
+E2E/통합 테스트에서 실제 서버에 연결하여 패킷을 주고받는 클라이언트 라이브러리입니다.
+
+**주요 기능**:
+- TCP/WebSocket 연결 관리
+- 패킷 인코딩/디코딩 (서버와 동일한 프로토콜)
+- Request-Reply 패턴 지원
+- 세션 상태 관리
+
+**사용 예시**:
+```csharp
+// E2E 테스트에서 Connector 사용
+var connector = new PlayHouseConnector();
+await connector.ConnectAsync("localhost", 9000);
+await connector.AuthenticateAsync(accountId, token);
+
+var response = await connector.RequestToStageAsync(stageId, new JoinRoomRequest());
+Assert.Equal(ErrorCode.Success, response.ErrorCode);
+```
+
+## 4. 프레임워크를 사용한 서버 구조 (예시)
+
+### 4.1 Sample Room Server 구조
+
+프레임워크를 사용하여 구현한 Room 서버의 예시 구조입니다. (이는 프레임워크 자체가 아니라 **사용 예시**입니다)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              SampleRoomServer (User Application)        │
 │                                                         │
 │  ┌──────────────┐         ┌──────────────┐             │
 │  │  HTTP API    │         │Socket Server │             │
@@ -37,7 +254,7 @@
 │         └────────┬───────────────┘                      │
 │                  │                                      │
 │         ┌────────▼────────┐                             │
-│         │  Core Engine    │                             │
+│         │  Core Engine    │ ← PlayHouse 프레임워크       │
 │         │                 │                             │
 │         │  ┌───────────┐  │                             │
 │         │  │Dispatcher │  │                             │
@@ -53,105 +270,34 @@
 │         └─────────────────┘                             │
 │                                                         │
 │         ┌─────────────────┐                             │
-│         │ Stage/Actor     │                             │
-│         │ (User Logic)    │                             │
+│         │ Custom Stages   │ ← 사용자 구현                │
+│         │ Custom Actors   │                             │
+│         │ HTTP Handlers   │                             │
 │         └─────────────────┘                             │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 1.2 구조 단순화의 이점
+### 4.2 사용자 애플리케이션 레이어
 
-| 측면 | 이점 |
-|------|------|
-| **배포** | 단일 프로세스 배포, 설정 간소화 |
-| **개발** | 서버 간 통신 로직 불필요, 디버깅 용이 |
-| **운영** | 모니터링 포인트 감소, 장애 지점 최소화 |
-| **성능** | 네트워크 홉 제거, 지연 시간 감소 |
-| **비용** | Redis 불필요, 인프라 비용 절감 |
-
-## 2. Room Server 상세 구조
-
-### 2.1 계층별 컴포넌트
+사용자가 프레임워크 위에 구현하는 애플리케이션 계층:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  Application Layer                      │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐        │
-│  │Custom Stage│  │Custom Actor│  │HTTP Handler│        │
-│  └────────────┘  └────────────┘  └────────────┘        │
-└──────────────────────┬──────────────────────────────────┘
-                       │ implements/uses
-┌──────────────────────▼──────────────────────────────────┐
-│              Abstractions Layer                         │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐   │
-│  │ IStage  │  │ IActor  │  │ ISender │  │ IPacket │   │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────┘   │
-└──────────────────────┬──────────────────────────────────┘
-                       │ uses
-┌──────────────────────▼──────────────────────────────────┐
-│                 Core Engine Layer                       │
-│                                                         │
-│  ┌──────────────────────────────────────────────┐      │
-│  │            Message Pipeline                  │      │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐   │      │
-│  │  │ Receiver │→ │Dispatcher│→ │ Handler  │   │      │
-│  │  └──────────┘  └──────────┘  └──────────┘   │      │
-│  └──────────────────────────────────────────────┘      │
-│                                                         │
-│  ┌──────────────────────────────────────────────┐      │
-│  │            Stage Management                  │      │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐   │      │
-│  │  │Stage Pool│  │Actor Pool│  │Queue Mgr │   │      │
-│  │  └──────────┘  └──────────┘  └──────────┘   │      │
-│  └──────────────────────────────────────────────┘      │
-│                                                         │
-│  ┌──────────────────────────────────────────────┐      │
-│  │            Support Services                  │      │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐   │      │
-│  │  │Timer Mgr │  │Request   │  │Session   │   │      │
-│  │  │          │  │Cache     │  │Manager   │   │      │
-│  │  └──────────┘  └──────────┘  └──────────┘   │      │
-│  └──────────────────────────────────────────────┘      │
-└──────────────────────┬──────────────────────────────────┘
-                       │ uses
-┌──────────────────────▼──────────────────────────────────┐
-│            Infrastructure Layer                         │
-│                                                         │
-│  ┌──────────────────┐  ┌──────────────────┐            │
-│  │ Socket Transport │  │  HTTP Server     │            │
-│  │  - TCP           │  │  - REST API      │            │
-│  │  - WebSocket     │  │  - Swagger       │            │
-│  │  - HTTPS/TLS     │  │  - Monitoring    │            │
-│  └──────────────────┘  └──────────────────┘            │
-│                                                         │
-│  ┌──────────────────┐  ┌──────────────────┐            │
-│  │  Serialization   │  │  Compression     │            │
-│  │  - Binary        │  │  - LZ4           │            │
-│  │  - JSON          │  │                  │            │
-│  └──────────────────┘  └──────────────────┘            │
-└─────────────────────────────────────────────────────────┘
+SampleRoomServer/
+├── Stages/
+│   ├── LobbyStage.cs          # IStage 구현
+│   └── GameRoomStage.cs       # IStage 구현
+├── Actors/
+│   ├── PlayerActor.cs         # IActor 구현
+│   └── BotActor.cs            # IActor 구현
+├── Controllers/
+│   └── GameApiController.cs   # ASP.NET Core Controller
+└── Program.cs                 # 서버 진입점
 ```
 
-### 2.2 의존성 규칙
+## 5. Core Engine 구성요소
 
-```
-Application Layer ──depends on──▶ Abstractions Layer
-                                         ▲
-                                         │
-Core Engine Layer ───depends on──────────┘
-        ▲
-        │
-Infrastructure Layer ──depends on────────┘
-```
-
-- **상위 레이어는 하위 레이어에만 의존**
-- **하위 레이어는 상위 레이어를 알지 못함**
-- **Abstractions Layer는 외부 의존성 없음**
-
-## 3. Core Engine 구성요소
-
-### 3.1 Message Pipeline
+### 5.1 Message Pipeline
 
 메시지 처리의 핵심 파이프라인
 
@@ -191,7 +337,7 @@ Client/HTTP
 └─────────────┘
 ```
 
-#### 3.1.1 Dispatcher
+#### 5.1.1 Dispatcher
 
 ```csharp
 // Dispatcher 역할
@@ -205,7 +351,7 @@ void OnPost(IPacket packet)           // 메시지 디스패치
 void OnTimer(long stageId, long timerId)  // 타이머 이벤트
 ```
 
-#### 3.1.2 Message Queue
+#### 5.1.2 Message Queue
 
 ```csharp
 // Stage별 독립 큐
@@ -223,7 +369,7 @@ class StageMessageQueue
 - Actor 간 경쟁 조건 방지
 ```
 
-### 3.2 Stage Management
+### 5.2 Stage Management
 
 Stage 생명주기 및 풀 관리
 
@@ -265,7 +411,7 @@ Create Request
 └─────────────┘
 ```
 
-#### 3.2.1 Stage Pool
+#### 5.2.1 Stage Pool
 
 ```csharp
 class StagePool
@@ -288,7 +434,7 @@ class StagePool
 }
 ```
 
-#### 3.2.2 Actor Pool
+#### 5.2.2 Actor Pool
 
 ```csharp
 class ActorPool
@@ -307,9 +453,9 @@ class ActorPool
 }
 ```
 
-### 3.3 Support Services
+### 5.3 Support Services
 
-#### 3.3.1 Timer Manager
+#### 5.3.1 Timer Manager
 
 ```csharp
 class TimerManager
@@ -332,7 +478,7 @@ class TimerManager
 }
 ```
 
-#### 3.3.2 Request Cache
+#### 5.3.2 Request Cache
 
 ```csharp
 class RequestCache
@@ -351,7 +497,7 @@ class RequestCache
 }
 ```
 
-#### 3.3.3 Session Manager
+#### 5.3.3 Session Manager
 
 ```csharp
 class SessionManager
@@ -374,9 +520,9 @@ class SessionManager
 }
 ```
 
-## 4. HTTP API + Socket Server 통합 구조
+## 6. HTTP API + Socket Server 통합 구조
 
-### 4.1 통합 아키텍처
+### 6.1 통합 아키텍처
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -402,7 +548,7 @@ class SessionManager
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 포트 구성
+### 6.2 포트 구성
 
 ```yaml
 # 기본 포트 구성
@@ -413,7 +559,7 @@ HTTPS_API_PORT: 8443      # HTTPS (옵션)
 WSS_SOCKET_PORT: 9443     # WebSocket Secure (옵션)
 ```
 
-### 4.3 요청 처리 흐름
+### 6.3 요청 처리 흐름
 
 ```
 [HTTP 요청]
@@ -423,9 +569,9 @@ Client → HTTP Controller → Core Engine → Response
 Client → Socket Handler → Dispatcher → Stage → Response
 ```
 
-## 5. 동시성 및 스레딩 모델
+## 7. 동시성 및 스레딩 모델
 
-### 5.1 스레드 풀 구성
+### 7.1 스레드 풀 구성
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -441,7 +587,7 @@ Client → Socket Handler → Dispatcher → Stage → Response
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Lock-Free 메시지 처리
+### 7.2 Lock-Free 메시지 처리
 
 ```
 [동시성 제어 전략]
@@ -462,9 +608,9 @@ Client → Socket Handler → Dispatcher → Stage → Response
    - 높은 처리량
 ```
 
-## 6. 확장성 고려사항
+## 8. 확장성 고려사항
 
-### 6.1 수평 확장 (Scale-Out)
+### 8.1 수평 확장 (Scale-Out)
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -485,15 +631,15 @@ Client → Socket Handler → Dispatcher → Stage → Response
                          Clients
 ```
 
-### 6.2 수직 확장 (Scale-Up)
+### 8.2 수직 확장 (Scale-Up)
 
 - **CPU**: 코어 수만큼 병렬 처리 증가
 - **메모리**: Stage/Actor 수 증가
 - **네트워크**: NIC 대역폭에 비례
 
-## 7. 모니터링 및 관리
+## 9. 모니터링 및 관리
 
-### 7.1 메트릭 수집
+### 9.1 메트릭 수집
 
 ```
 - Stage 수
@@ -507,7 +653,7 @@ Client → Socket Handler → Dispatcher → Stage → Response
 - CPU 사용률
 ```
 
-### 7.2 Health Check
+### 9.2 Health Check
 
 ```
 GET /health
@@ -520,9 +666,9 @@ GET /health
 }
 ```
 
-## 8. 장애 처리
+## 10. 장애 처리
 
-### 8.1 클라이언트 연결 끊김
+### 10.1 클라이언트 연결 끊김
 
 ```
 Client Disconnect
@@ -537,7 +683,7 @@ OnDisconnect(actor) 호출
 Actor 제거
 ```
 
-### 8.2 Stage 예외 처리
+### 10.2 Stage 예외 처리
 
 ```csharp
 try {
@@ -553,22 +699,22 @@ try {
 }
 ```
 
-## 9. 보안 고려사항
+## 11. 보안 고려사항
 
-### 9.1 전송 보안
+### 11.1 전송 보안
 
 - **TLS/SSL**: HTTPS, WSS 지원
 - **인증서 관리**: Let's Encrypt 연동
 
-### 9.2 애플리케이션 보안
+### 11.2 애플리케이션 보안
 
 - **인증**: Token 기반 인증
 - **권한**: Stage 접근 제어
 - **검증**: 패킷 크기 제한, 속도 제한
 
-## 10. 설정 및 배포
+## 12. 설정 및 배포
 
-### 10.1 설정 파일 예시
+### 12.1 설정 파일 예시
 
 ```json
 {
@@ -591,7 +737,7 @@ try {
 }
 ```
 
-### 10.2 Docker 배포
+### 12.2 Docker 배포
 
 ```dockerfile
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
