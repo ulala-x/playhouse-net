@@ -1086,8 +1086,811 @@ public sealed class MetricsOptions
    - 대시보드/알림 깨질 수 있음
 ```
 
-## 10. 다음 단계
+## 10. 테스트 전략
+
+### 10.1 테스트 피라미드
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│               Metrics 테스트 피라미드                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│                    Unit Tests (30%)                          │
+│                  ┌──────────────┐                            │
+│                  │  순수 로직   │                            │
+│                  │  검증 전용   │                            │
+│                  └──────────────┘                            │
+│                        │                                     │
+│           ┌────────────┴────────────┐                        │
+│           │  Integration Tests (70%) │                        │
+│           │  InMemory Exporter 활용  │                        │
+│           │  실제 동작 검증          │                        │
+│           └─────────────────────────┘                        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**통합 테스트 우선 (70%)**
+- InMemoryExporter를 활용한 실제 메트릭 수집 검증
+- 메트릭 API와 OpenTelemetry 통합 동작 확인
+- 실제 사용 시나리오에 가까운 테스트
+- 태그, 단위, 메트릭 이름이 올바르게 기록되는지 검증
+
+**유닛 테스트 보완 (30%)**
+- 통합 테스트로 검증하기 어려운 순수 로직만 테스트
+- 복잡한 계산 로직 (버킷 경계값, 정규화 로직)
+- 입력 검증 및 예외 처리
+- 통합 테스트 비용이 높은 엣지 케이스
+
+### 10.2 Fake 구현 패턴
+
+```csharp
+/// <summary>
+/// 통합 테스트용 InMemory Exporter 활용 패턴.
+/// </summary>
+public class MetricsIntegrationTestBase : IDisposable
+{
+    protected List<Metric> CollectedMetrics { get; }
+    protected MeterProvider MeterProvider { get; }
+    protected PlayHouseMetrics Metrics { get; }
+
+    public MetricsIntegrationTestBase()
+    {
+        CollectedMetrics = new List<Metric>();
+
+        // InMemory Exporter로 실제 메트릭 수집
+        MeterProvider = Sdk.CreateMeterProviderBuilder()
+            .AddMeter("PlayHouse.Server")
+            .AddInMemoryExporter(CollectedMetrics)
+            .Build();
+
+        // 실제 PlayHouseMetrics 인스턴스 생성
+        var meterFactory = new DefaultMeterFactory(
+            new ServiceCollection()
+                .AddSingleton(MeterProvider)
+                .BuildServiceProvider());
+
+        Metrics = new PlayHouseMetrics(meterFactory);
+    }
+
+    /// <summary>수집된 메트릭에서 특정 이름의 메트릭 조회</summary>
+    protected Metric? FindMetric(string name)
+    {
+        MeterProvider.ForceFlush();
+        return CollectedMetrics.FirstOrDefault(m => m.Name == name);
+    }
+
+    /// <summary>특정 태그를 가진 데이터 포인트 조회</summary>
+    protected MetricPoint? FindDataPoint(
+        string metricName,
+        params (string key, object? value)[] tags)
+    {
+        var metric = FindMetric(metricName);
+        if (metric == null) return null;
+
+        foreach (ref readonly var point in metric.GetMetricPoints())
+        {
+            bool allTagsMatch = tags.All(tag =>
+                point.Tags.Any(t => t.Key == tag.key &&
+                                    Equals(t.Value, tag.value)));
+
+            if (allTagsMatch)
+                return point;
+        }
+
+        return null;
+    }
+
+    public void Dispose()
+    {
+        Metrics.Dispose();
+        MeterProvider.Dispose();
+    }
+}
+```
+
+### 10.3 통합 테스트 시나리오
+
+#### 10.3.1 기본 동작 (Basic Behavior)
+
+메트릭이 예상대로 생성되고 기록되는지 검증합니다.
+
+| Given | When | Then |
+|-------|------|------|
+| PlayHouseMetrics 인스턴스 생성 | Counter.Add(1) 호출 | 메트릭 값이 1 증가 |
+| PlayHouseMetrics 인스턴스 생성 | Histogram.Record(100) 호출 | 히스토그램에 100ms 기록 |
+| PlayHouseMetrics 인스턴스 생성 | UpDownCounter.Add(1) 후 Add(-1) | 현재 값이 0 |
+| PlayHouseMetrics 인스턴스 생성 | ConnectionOpened("tcp") 호출 | connections.total, connections.active 모두 증가 |
+| PlayHouseMetrics 인스턴스 생성 | StageCreated("BattleStage") 호출 | stages.created, stages.active 모두 증가 |
+
+```csharp
+public class MetricsBasicBehaviorTests : MetricsIntegrationTestBase
+{
+    [Fact]
+    public void RecordMessageReceived_IncreasesCounter()
+    {
+        // Given: PlayHouseMetrics 인스턴스가 준비됨
+
+        // When: 메시지 수신 기록
+        Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+
+        // Then: 메트릭 값이 1 증가
+        var point = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+
+        Assert.NotNull(point);
+        Assert.Equal(1, point.Value.GetSumLong());
+    }
+
+    [Fact]
+    public void RecordProcessingTime_RecordsHistogram()
+    {
+        // Given: PlayHouseMetrics 인스턴스가 준비됨
+
+        // When: 처리 시간 기록 (100ms)
+        Metrics.RecordProcessingTime(100, "BattleStage", "PlayerMove");
+
+        // Then: 히스토그램에 100ms 기록됨
+        var point = FindDataPoint(
+            "playhouse.message.duration",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+
+        Assert.NotNull(point);
+        Assert.Equal(1, point.Value.GetHistogramCount());
+        Assert.Equal(100, point.Value.GetHistogramSum());
+    }
+
+    [Fact]
+    public void ConnectionLifecycle_UpdatesCounters()
+    {
+        // Given: PlayHouseMetrics 인스턴스가 준비됨
+
+        // When: 연결 수립 후 해제
+        Metrics.ConnectionOpened("tcp");
+        Metrics.ConnectionClosed("tcp", "normal");
+
+        // Then: 누적 카운터는 증가, 활성 카운터는 0
+        var totalPoint = FindDataPoint(
+            "playhouse.connections.total",
+            ("transport", "tcp"));
+        var activePoint = FindDataPoint(
+            "playhouse.connections.active",
+            ("transport", "tcp"));
+
+        Assert.Equal(1, totalPoint.Value.GetSumLong());
+        Assert.Equal(0, activePoint.Value.GetSumLong());
+    }
+}
+```
+
+#### 10.3.2 응답 검증 (Response Validation)
+
+메트릭이 올바른 형식과 값으로 수집되는지 검증합니다.
+
+| Given | When | Then |
+|-------|------|------|
+| 메트릭 수집 완료 | Metric 조회 | Name, Unit, Description이 정확함 |
+| Counter 기록 | 메트릭 조회 | MetricType이 Sum, Monotonic=true |
+| Histogram 기록 | 메트릭 조회 | MetricType이 Histogram, Buckets 존재 |
+| 태그와 함께 기록 | 메트릭 조회 | 태그가 정확히 저장됨 |
+| ObservableGauge 콜백 등록 | ForceFlush 호출 | 콜백이 실행되어 현재 값 반환 |
+
+```csharp
+public class MetricsResponseValidationTests : MetricsIntegrationTestBase
+{
+    [Fact]
+    public void Metric_HasCorrectMetadata()
+    {
+        // Given: 메시지 수신 기록
+        Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+
+        // When: 메트릭 조회
+        var metric = FindMetric("playhouse.messages.received");
+
+        // Then: 메타데이터가 정확함
+        Assert.NotNull(metric);
+        Assert.Equal("playhouse.messages.received", metric.Name);
+        Assert.Equal("{message}", metric.Unit);
+        Assert.Equal("Total number of messages received", metric.Description);
+    }
+
+    [Fact]
+    public void Counter_HasCorrectType()
+    {
+        // Given: Counter 기록
+        Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+
+        // When: 메트릭 타입 확인
+        var metric = FindMetric("playhouse.messages.received");
+
+        // Then: Sum 타입이고 Monotonic
+        Assert.Equal(MetricType.LongSum, metric.MetricType);
+        Assert.True(metric.Temporality == AggregationTemporality.Cumulative);
+    }
+
+    [Fact]
+    public void Histogram_HasBuckets()
+    {
+        // Given: Histogram 기록
+        Metrics.RecordProcessingTime(150, "BattleStage", "PlayerMove");
+
+        // When: 메트릭 조회
+        var metric = FindMetric("playhouse.message.duration");
+        var point = metric.GetMetricPoints().First();
+
+        // Then: 히스토그램 버킷이 존재
+        Assert.Equal(MetricType.Histogram, metric.MetricType);
+        Assert.NotEmpty(point.GetHistogramBuckets());
+
+        // 150ms는 100-250 버킷에 포함되어야 함
+        var buckets = point.GetHistogramBuckets().ToArray();
+        var bucket250 = Array.Find(buckets, b =>
+            b.ExplicitBound == 250);
+        Assert.Equal(1, bucket250.BucketCount);
+    }
+
+    [Fact]
+    public void Tags_AreStoredCorrectly()
+    {
+        // Given: 태그와 함께 기록
+        Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+
+        // When: 데이터 포인트 조회
+        var point = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+
+        // Then: 태그가 정확히 저장됨
+        Assert.NotNull(point);
+        var tags = point.Value.Tags.ToArray();
+        Assert.Contains(tags, t =>
+            t.Key == "stage.type" && (string)t.Value == "BattleStage");
+        Assert.Contains(tags, t =>
+            t.Key == "message.id" && (string)t.Value == "PlayerMove");
+    }
+}
+```
+
+#### 10.3.3 입력 검증 (Input Validation)
+
+잘못된 입력이나 엣지 케이스를 처리하는지 검증합니다.
+
+| Given | When | Then |
+|-------|------|------|
+| PlayHouseMetrics 인스턴스 | null 태그 값 전달 | 예외 없이 기록됨 (null 허용) |
+| PlayHouseMetrics 인스턴스 | 음수 값으로 Histogram 기록 | 예외 발생하지 않고 기록됨 |
+| PlayHouseMetrics 인스턴스 | 매우 큰 값 (long.MaxValue) 기록 | 정상 기록됨 |
+| PlayHouseMetrics 인스턴스 | 빈 문자열 태그 | 정상 기록됨 |
+| PlayHouseMetrics 인스턴스 | 100개 이상의 서로 다른 태그 조합 | 모두 정상 기록됨 (카디널리티 경고는 운영 관심사) |
+
+```csharp
+public class MetricsInputValidationTests : MetricsIntegrationTestBase
+{
+    [Fact]
+    public void RecordMessage_WithNullTag_DoesNotThrow()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+
+        // When/Then: null 태그 값으로 기록해도 예외 없음
+        var exception = Record.Exception(() =>
+            Metrics.RecordMessageReceived(null!, "PlayerMove"));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void RecordHistogram_WithNegativeValue_DoesNotThrow()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+
+        // When/Then: 음수 값으로 기록해도 예외 없음
+        var exception = Record.Exception(() =>
+            Metrics.RecordProcessingTime(-100, "BattleStage", "PlayerMove"));
+
+        Assert.Null(exception);
+
+        // 메트릭이 기록되었는지 확인
+        var point = FindDataPoint(
+            "playhouse.message.duration",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+        Assert.NotNull(point);
+    }
+
+    [Fact]
+    public void RecordCounter_WithMaxValue_RecordsSuccessfully()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+
+        // When: long.MaxValue 기록
+        // Counter는 Add 메서드를 사용하므로 직접 테스트 불가
+        // 대신 매우 큰 값을 여러 번 더함
+        for (int i = 0; i < 1000; i++)
+        {
+            Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+        }
+
+        // Then: 정상 기록됨
+        var point = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+
+        Assert.Equal(1000, point.Value.GetSumLong());
+    }
+
+    [Fact]
+    public void RecordMessage_WithEmptyStringTag_RecordsSuccessfully()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+
+        // When: 빈 문자열 태그로 기록
+        Metrics.RecordMessageReceived("", "");
+
+        // Then: 정상 기록됨
+        var point = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", ""),
+            ("message.id", ""));
+
+        Assert.NotNull(point);
+    }
+}
+```
+
+#### 10.3.4 엣지 케이스 (Edge Cases)
+
+동시성, 대량 데이터, 경계값 등의 엣지 케이스를 검증합니다.
+
+| Given | When | Then |
+|-------|------|------|
+| PlayHouseMetrics 인스턴스 | 10개 스레드에서 동시에 기록 | 모든 값이 정확히 누적됨 |
+| PlayHouseMetrics 인스턴스 | 1만 번 연속 기록 | 성능 저하 없이 모두 기록됨 |
+| PlayHouseMetrics 인스턴스 | Dispose 후 메트릭 기록 | ObjectDisposedException 발생 |
+| 여러 Meter 인스턴스 | 같은 이름의 메트릭 생성 | 각각 독립적으로 동작 |
+| Histogram | 모든 버킷 경계값에 정확히 일치하는 값 기록 | 올바른 버킷에 카운트됨 |
+
+```csharp
+public class MetricsEdgeCaseTests : MetricsIntegrationTestBase
+{
+    [Fact]
+    public void ConcurrentRecording_AccumulatesCorrectly()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+        const int ThreadCount = 10;
+        const int RecordsPerThread = 100;
+
+        // When: 10개 스레드에서 동시 기록
+        Parallel.For(0, ThreadCount, _ =>
+        {
+            for (int i = 0; i < RecordsPerThread; i++)
+            {
+                Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+            }
+        });
+
+        // Then: 모든 값이 정확히 누적됨
+        var point = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+
+        Assert.Equal(ThreadCount * RecordsPerThread,
+                     point.Value.GetSumLong());
+    }
+
+    [Fact]
+    public void BulkRecording_PerformsWell()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+        const int RecordCount = 10000;
+
+        // When: 1만 번 연속 기록
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < RecordCount; i++)
+        {
+            Metrics.RecordMessageReceived("BattleStage", "PlayerMove");
+        }
+        sw.Stop();
+
+        // Then: 성능 저하 없이 모두 기록됨 (100ms 이내)
+        Assert.True(sw.ElapsedMilliseconds < 100);
+
+        var point = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", "BattleStage"),
+            ("message.id", "PlayerMove"));
+
+        Assert.Equal(RecordCount, point.Value.GetSumLong());
+    }
+
+    [Fact]
+    public void Dispose_ThrowsOnSubsequentUse()
+    {
+        // Given: Disposed PlayHouseMetrics
+        Metrics.Dispose();
+
+        // When/Then: 메트릭 기록 시 예외 발생
+        Assert.Throws<ObjectDisposedException>(() =>
+            Metrics.RecordMessageReceived("BattleStage", "PlayerMove"));
+    }
+
+    [Fact]
+    public void Histogram_BucketBoundaries_WorkCorrectly()
+    {
+        // Given: PlayHouseMetrics 인스턴스
+        // 버킷: [1, 5, 10, 25, 50, 100, 250, 500, 1000]
+
+        // When: 각 버킷 경계값에 정확히 일치하는 값 기록
+        double[] values = { 1, 5, 10, 25, 50, 100, 250, 500, 1000 };
+        foreach (var value in values)
+        {
+            Metrics.RecordProcessingTime(value, "BattleStage", "PlayerMove");
+        }
+
+        // Then: 올바른 버킷에 카운트됨
+        var metric = FindMetric("playhouse.message.duration");
+        var point = metric.GetMetricPoints().First();
+
+        Assert.Equal(values.Length, point.GetHistogramCount());
+
+        // 각 버킷 확인
+        var buckets = point.GetHistogramBuckets().ToArray();
+        foreach (var expectedBound in values)
+        {
+            var bucket = Array.Find(buckets, b =>
+                b.ExplicitBound >= expectedBound);
+            Assert.NotNull(bucket);
+        }
+    }
+}
+```
+
+#### 10.3.5 활용 예제 (Usage Examples)
+
+실제 사용 시나리오를 검증합니다.
+
+| Given | When | Then |
+|-------|------|------|
+| MetricsAwareStage 인스턴스 | OnCreate 호출 | stages.created, stages.active 증가 |
+| MetricsAwareStage 인스턴스 | OnJoinStage 호출 | actors.active 증가, join.duration 기록 |
+| MetricsAwareStage 인스턴스 | OnDispatch 호출 | messages.received, message.duration 기록 |
+| MetricsAwareStage 인스턴스 | OnDispatch 예외 발생 | errors.total 증가, Activity Error 상태 |
+| MetricsAwareStage 인스턴스 | DisposeAsync 호출 | stages.active 감소 |
+
+```csharp
+public class MetricsUsageExampleTests : MetricsIntegrationTestBase
+{
+    [Fact]
+    public async Task Stage_OnCreate_RecordsMetrics()
+    {
+        // Given: MetricsAwareStage 인스턴스
+        var logger = new Mock<ILogger<MetricsAwareStage>>();
+        var stage = new MetricsAwareStage(Metrics, logger.Object)
+        {
+            StageSender = CreateMockStageSender("BattleStage", 1)
+        };
+
+        // When: OnCreate 호출
+        await stage.OnCreate(CreateMockPacket());
+
+        // Then: stages.created, stages.active 증가
+        var createdPoint = FindDataPoint(
+            "playhouse.stages.created",
+            ("stage.type", "BattleStage"));
+        var activePoint = FindDataPoint(
+            "playhouse.stages.active",
+            ("stage.type", "BattleStage"));
+
+        Assert.Equal(1, createdPoint.Value.GetSumLong());
+        Assert.Equal(1, activePoint.Value.GetSumLong());
+    }
+
+    [Fact]
+    public async Task Stage_OnJoinStage_RecordsMetrics()
+    {
+        // Given: MetricsAwareStage 인스턴스
+        var logger = new Mock<ILogger<MetricsAwareStage>>();
+        var stage = new MetricsAwareStage(Metrics, logger.Object)
+        {
+            StageSender = CreateMockStageSender("BattleStage", 1)
+        };
+
+        // When: OnJoinStage 호출
+        await stage.OnJoinStage(CreateMockActor(), CreateMockPacket());
+
+        // Then: actors.active 증가, join.duration 기록
+        var actorsPoint = FindDataPoint(
+            "playhouse.actors.active",
+            ("stage.type", "BattleStage"));
+        var durationMetric = FindMetric("playhouse.stage.join.duration");
+
+        Assert.Equal(1, actorsPoint.Value.GetSumLong());
+        Assert.NotNull(durationMetric);
+    }
+
+    [Fact]
+    public async Task Stage_OnDispatch_WithError_RecordsError()
+    {
+        // Given: 예외를 발생시키는 Stage
+        var logger = new Mock<ILogger<MetricsAwareStage>>();
+        var stage = new ThrowingStage(Metrics, logger.Object)
+        {
+            StageSender = CreateMockStageSender("BattleStage", 1)
+        };
+
+        // When: OnDispatch 호출 시 예외 발생
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            stage.OnDispatch(CreateMockActor(), CreateMockPacket()));
+
+        // Then: errors.total 증가
+        var errorPoint = FindDataPoint(
+            "playhouse.errors.total",
+            ("error.type", "InvalidOperationException"),
+            ("stage.type", "BattleStage"));
+
+        Assert.NotNull(errorPoint);
+        Assert.Equal(1, errorPoint.Value.GetSumLong());
+    }
+
+    [Fact]
+    public async Task Stage_Lifecycle_RecordsCompleteMetrics()
+    {
+        // Given: MetricsAwareStage 인스턴스
+        var logger = new Mock<ILogger<MetricsAwareStage>>();
+        var stage = new MetricsAwareStage(Metrics, logger.Object)
+        {
+            StageSender = CreateMockStageSender("BattleStage", 1)
+        };
+
+        // When: 전체 생명주기 실행
+        await stage.OnCreate(CreateMockPacket());
+        var actor = CreateMockActor();
+        await stage.OnJoinStage(actor, CreateMockPacket());
+        await stage.OnDispatch(actor, CreateMockPacket());
+        await stage.OnDisconnect(actor);
+        await stage.DisposeAsync();
+
+        // Then: 모든 메트릭이 기록됨
+        var createdPoint = FindDataPoint(
+            "playhouse.stages.created",
+            ("stage.type", "BattleStage"));
+        var activePoint = FindDataPoint(
+            "playhouse.stages.active",
+            ("stage.type", "BattleStage"));
+        var messagesPoint = FindDataPoint(
+            "playhouse.messages.received",
+            ("stage.type", "BattleStage"));
+
+        Assert.Equal(1, createdPoint.Value.GetSumLong());
+        Assert.Equal(0, activePoint.Value.GetSumLong()); // Disposed
+        Assert.Equal(1, messagesPoint.Value.GetSumLong());
+    }
+}
+```
+
+### 10.4 유닛 테스트 시나리오
+
+통합 테스트로 검증하기 어려운 순수 로직만 유닛 테스트로 작성합니다.
+
+#### 10.4.1 태그 정규화 로직 (MetricTags 클래스)
+
+**통합 테스트로 커버 불가한 이유**:
+- 순수 함수 로직으로 외부 의존성 없음
+- 다양한 입력 조합을 빠르게 검증해야 함
+- 통합 테스트는 메트릭 수집 전체 플로우를 검증하므로 이런 세부 로직 테스트에 오버헤드
+
+```csharp
+public class MetricTagsTests
+{
+    [Theory]
+    [InlineData("BattleStage", "BattleStage")]
+    [InlineData("ChatStage", "ChatStage")]
+    [InlineData("UnknownStage", "unknown")]
+    [InlineData(null, "unknown")]
+    [InlineData("", "unknown")]
+    public void NormalizeStageType_ReturnsExpectedValue(
+        string input,
+        string expected)
+    {
+        // When: Stage 타입 정규화
+        var result = MetricTags.NormalizeStageType(input);
+
+        // Then: 예상 값 반환
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData(typeof(ValidationException), "validation")]
+    [InlineData(typeof(TimeoutException), "timeout")]
+    [InlineData(typeof(OperationCanceledException), "cancelled")]
+    [InlineData(typeof(SocketException), "network")]
+    [InlineData(typeof(Exception), "unknown")]
+    public void NormalizeErrorType_ReturnsExpectedValue(
+        Type exceptionType,
+        string expected)
+    {
+        // Given: 예외 인스턴스
+        var exception = (Exception)Activator.CreateInstance(exceptionType);
+
+        // When: 에러 타입 정규화
+        var result = MetricTags.NormalizeErrorType(exception);
+
+        // Then: 예상 값 반환
+        Assert.Equal(expected, result);
+    }
+}
+```
+
+#### 10.4.2 Histogram 버킷 경계값 계산 (커스텀 Histogram View)
+
+**통합 테스트로 커버 불가한 이유**:
+- 통합 테스트는 실제 버킷 할당을 검증하지만, 경계값 계산 로직 자체는 검증 어려움
+- 수학적 정확성을 요구하는 순수 계산 로직
+- 다양한 버킷 설정 조합을 빠르게 검증해야 함
+
+```csharp
+/// <summary>
+/// 커스텀 Histogram 버킷 경계값 계산 로직.
+/// </summary>
+public static class HistogramBucketCalculator
+{
+    /// <summary>값이 어느 버킷에 속하는지 계산</summary>
+    public static int FindBucketIndex(double value, double[] boundaries)
+    {
+        for (int i = 0; i < boundaries.Length; i++)
+        {
+            if (value <= boundaries[i])
+                return i;
+        }
+        return boundaries.Length; // Overflow bucket
+    }
+
+    /// <summary>버킷 경계값이 유효한지 검증</summary>
+    public static bool ValidateBuckets(double[] boundaries)
+    {
+        if (boundaries.Length == 0)
+            return false;
+
+        for (int i = 1; i < boundaries.Length; i++)
+        {
+            if (boundaries[i] <= boundaries[i - 1])
+                return false; // 증가하지 않음
+        }
+
+        return true;
+    }
+}
+
+public class HistogramBucketCalculatorTests
+{
+    [Theory]
+    [InlineData(0.5, new[] { 1.0, 5.0, 10.0 }, 0)]
+    [InlineData(1.0, new[] { 1.0, 5.0, 10.0 }, 0)]
+    [InlineData(3.0, new[] { 1.0, 5.0, 10.0 }, 1)]
+    [InlineData(5.0, new[] { 1.0, 5.0, 10.0 }, 1)]
+    [InlineData(10.0, new[] { 1.0, 5.0, 10.0 }, 2)]
+    [InlineData(15.0, new[] { 1.0, 5.0, 10.0 }, 3)] // Overflow
+    public void FindBucketIndex_ReturnsCorrectIndex(
+        double value,
+        double[] boundaries,
+        int expectedIndex)
+    {
+        // When: 버킷 인덱스 계산
+        var index = HistogramBucketCalculator.FindBucketIndex(
+            value,
+            boundaries);
+
+        // Then: 올바른 인덱스 반환
+        Assert.Equal(expectedIndex, index);
+    }
+
+    [Theory]
+    [InlineData(new[] { 1.0, 5.0, 10.0 }, true)]
+    [InlineData(new[] { 1.0 }, true)]
+    [InlineData(new double[] { }, false)]
+    [InlineData(new[] { 5.0, 1.0, 10.0 }, false)] // 감소
+    [InlineData(new[] { 1.0, 1.0, 10.0 }, false)] // 동일
+    public void ValidateBuckets_ReturnsExpectedResult(
+        double[] boundaries,
+        bool expected)
+    {
+        // When: 버킷 유효성 검증
+        var isValid = HistogramBucketCalculator.ValidateBuckets(boundaries);
+
+        // Then: 예상 결과 반환
+        Assert.Equal(expected, isValid);
+    }
+}
+```
+
+#### 10.4.3 메트릭 이름 컨벤션 검증
+
+**통합 테스트로 커버 불가한 이유**:
+- OpenTelemetry 네이밍 규칙 준수 여부는 문자열 검증 로직
+- 통합 테스트는 실제 메트릭 수집을 검증하지만, 이름 규칙 자체는 별도 검증 필요
+- 정규식 기반 검증으로 빠른 피드백 필요
+
+```csharp
+/// <summary>
+/// 메트릭 이름 컨벤션 검증기.
+/// </summary>
+public static class MetricNameValidator
+{
+    // OpenTelemetry 메트릭 이름 규칙:
+    // - 소문자, 숫자, '.', '_' 만 허용
+    // - 알파벳으로 시작
+    // - 연속된 '.' 금지
+    private static readonly Regex NamePattern = new(
+        @"^[a-z][a-z0-9._]*[a-z0-9]$",
+        RegexOptions.Compiled);
+
+    public static bool IsValid(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        if (!NamePattern.IsMatch(name))
+            return false;
+
+        // 연속된 '.' 체크
+        if (name.Contains(".."))
+            return false;
+
+        return true;
+    }
+}
+
+public class MetricNameValidatorTests
+{
+    [Theory]
+    [InlineData("playhouse.messages.received", true)]
+    [InlineData("playhouse.message.duration", true)]
+    [InlineData("playhouse.connections.active", true)]
+    [InlineData("PlayHouse.Messages", false)] // 대문자
+    [InlineData("playhouse..messages", false)] // 연속 '.'
+    [InlineData(".playhouse.messages", false)] // '.'로 시작
+    [InlineData("playhouse.messages.", false)] // '.'로 끝
+    [InlineData("1playhouse", false)] // 숫자로 시작
+    [InlineData("playhouse-messages", false)] // '-' 포함
+    [InlineData("", false)] // 빈 문자열
+    [InlineData(null, false)] // null
+    public void IsValid_ReturnsExpectedResult(string name, bool expected)
+    {
+        // When: 이름 유효성 검증
+        var isValid = MetricNameValidator.IsValid(name);
+
+        // Then: 예상 결과 반환
+        Assert.Equal(expected, isValid);
+    }
+}
+```
+
+### 10.5 테스트 조직화
+
+```
+PlayHouse.Tests/
+├── Metrics/
+│   ├── Integration/                  # 통합 테스트 (70%)
+│   │   ├── MetricsIntegrationTestBase.cs
+│   │   ├── BasicBehaviorTests.cs
+│   │   ├── ResponseValidationTests.cs
+│   │   ├── InputValidationTests.cs
+│   │   ├── EdgeCaseTests.cs
+│   │   └── UsageExampleTests.cs
+│   └── Unit/                         # 유닛 테스트 (30%)
+│       ├── MetricTagsTests.cs
+│       ├── HistogramBucketCalculatorTests.cs
+│       └── MetricNameValidatorTests.cs
+```
+
+## 11. 다음 단계
 
 - `00-overview.md`: 프레임워크 전체 개요
 - `03-stage-actor-model.md`: Stage/Actor 메트릭 수집 적용
 - `06-socket-transport.md`: 연결 메트릭 수집 적용
+- `10-testing-spec.md`: 전체 테스트 전략 및 가이드라인

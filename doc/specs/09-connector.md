@@ -1089,7 +1089,286 @@ public class MockPlayHouseClient : IPlayHouseClient
 </Project>
 ```
 
-## 9. 다음 단계
+## 9. 테스트 전략
+
+### 9.1 테스트 피라미드
+
+PlayHouse.Connector는 테스트 친화적인 클라이언트 라이브러리로, 다음과 같은 테스트 피라미드를 따릅니다:
+
+```
+        E2E Tests (70%)
+       /               \
+      /  Integration    \
+     /    Tests (20%)    \
+    /___________________\
+    Unit Tests (10%)
+```
+
+#### 비율 설정 이유
+
+**E2E 테스트 (70%)**
+- **이유**: Connector의 핵심 가치는 실제 서버와의 통신 검증
+- **목적**: 네트워크 연결, 프로토콜 호환성, 메시지 송수신, 상태 관리 검증
+- **범위**: 실제 PlayHouse Room Server와 연결하여 전체 시나리오 테스트
+
+**통합 테스트 (20%)**
+- **이유**: 내부 컴포넌트 간 상호작용 검증 필요
+- **목적**: Connection, PacketEncoder/Decoder, RequestTracker 간 통합 동작 확인
+- **범위**: Mock 서버 또는 로컬 서버를 사용한 컴포넌트 조합 테스트
+
+**유닛 테스트 (10%)**
+- **이유**: 네트워크 없이 검증 가능한 순수 로직만 대상
+- **목적**: Protobuf 직렬화, LZ4 압축, 패킷 조립 등 독립적 검증
+- **범위**: 네트워크 의존성이 없는 알고리즘 및 데이터 변환 로직
+
+### 9.2 E2E 테스트 시나리오
+
+#### 카테고리 1: 기본 동작 (Basic Operations)
+
+| Given | When | Then |
+|-------|------|------|
+| 유효한 endpoint와 roomToken | ConnectAsync() 호출 | Success=true, StageId 반환, State=Connected |
+| 연결된 클라이언트 | SendAsync(ChatMsg) 호출 | 서버에 메시지 전송 완료, 예외 없음 |
+| 연결된 클라이언트 | RequestAsync<GetRoomInfoReq, GetRoomInfoRes>() 호출 | Success=true, 유효한 응답 데이터 반환 |
+| 연결된 클라이언트 | LeaveRoomAsync() 호출 | Success=true, State=Disconnected |
+| 연결된 클라이언트 | DisconnectAsync() 호출 | State=Disconnected, Disconnected 이벤트 발생 |
+
+#### 카테고리 2: 응답 검증 (Response Validation)
+
+| Given | When | Then |
+|-------|------|------|
+| 연결된 2개 클라이언트 | Client1이 ChatMsg 전송 | Client2가 ChatMsg 수신, 내용 일치 |
+| 연결된 클라이언트 | RequestAsync()로 유효한 요청 전송 | 5초 내 응답 수신, Success=true |
+| 연결된 클라이언트 | 잘못된 StageId로 요청 전송 | Success=false, ErrorCode!=0, ErrorMessage 포함 |
+| 연결된 클라이언트 | 10개 요청을 동시 전송 | 모든 요청에 대한 응답 수신, MsgSeq 매칭 정확 |
+| 연결된 클라이언트 | On<PlayerJoinedNotify>() 등록 후 대기 | 새 플레이어 입장 시 핸들러 호출, 올바른 데이터 전달 |
+
+#### 카테고리 3: 입력 검증 (Input Validation)
+
+| Given | When | Then |
+|-------|------|------|
+| State=Disconnected | ConnectAsync("invalid-endpoint", token) 호출 | 연결 실패, 적절한 예외 발생 |
+| State=Disconnected | ConnectAsync(endpoint, "invalid-token") 호출 | Success=false, 인증 실패 ErrorCode 반환 |
+| State=Connecting | ConnectAsync() 재호출 | InvalidOperationException 발생 |
+| State=Disconnected | RequestAsync() 호출 | InvalidOperationException 발생 ("Not connected") |
+| 연결된 클라이언트 | null 메시지로 SendAsync() 호출 | ArgumentNullException 발생 |
+
+#### 카테고리 4: 엣지 케이스 (Edge Cases)
+
+| Given | When | Then |
+|-------|------|------|
+| 연결된 클라이언트 | 서버 강제 종료 | Disconnected 이벤트 발생, Reason=NetworkError |
+| AutoReconnect=true | 네트워크 일시 끊김 | 자동 재연결 시도, 3회 백오프 재시도 |
+| 연결된 클라이언트 | RequestAsync() 타임아웃(10초) 초과 | Success=false, ErrorCode=3 (Timeout) |
+| 연결된 클라이언트 | 대용량 메시지(>512bytes) 전송 | LZ4 압축 적용, 정상 전송 및 수신 |
+| 100개 동시 클라이언트 | 동시 ConnectAsync() 호출 | 모든 클라이언트 연결 성공, StageId 일관성 유지 |
+
+#### 카테고리 5: 활용 예제 (Usage Examples)
+
+| Given | When | Then |
+|-------|------|------|
+| 재연결 시나리오 | DisconnectAsync() 후 ReconnectAsync() 호출 | 동일 StageId 복원, AccountId 유지 |
+| 메시지 핸들러 패턴 | On<ChatMsg>() 등록 후 using 블록 종료 | 핸들러 자동 해제, 이후 메시지 수신 안 함 |
+| DI 통합 | AddPlayHouseConnector() 후 서비스 해결 | IPlayHouseClient 인스턴스 생성, 설정 적용 |
+| 부하 테스트 | 100개 클라이언트가 초당 1개씩 메시지 전송 | 모든 메시지 정상 전송, 메모리 누수 없음 |
+| 하트비트 유지 | 연결 후 90초 동안 아무 작업 안 함 | 하트비트로 연결 유지, Disconnected 이벤트 없음 |
+
+### 9.3 통합 테스트 시나리오
+
+#### 카테고리 1: 기본 동작 (Basic Operations)
+
+| Given | When | Then |
+|-------|------|------|
+| PacketEncoder | IMessage를 Encode() 호출 | 유효한 byte[] 반환, 헤더+페이로드 구조 |
+| PacketDecoder | 유효한 byte[]로 Decode() 호출 | 원본 IMessage 복원, 필드 값 일치 |
+| RequestTracker | NextSequence() 10회 호출 | 1~10 증가, 0 스킵, 중복 없음 |
+| Connection 인터페이스 | TcpConnection.ConnectAsync("localhost:9000") | 연결 성공, IsConnected=true |
+| Connection 인터페이스 | WebSocketConnection.ConnectAsync("ws://localhost:9000") | 연결 성공, IsConnected=true |
+
+#### 카테고리 2: 응답 검증 (Response Validation)
+
+| Given | When | Then |
+|-------|------|------|
+| RequestTracker + 등록된 MsgSeq=5 | TryComplete(packet with MsgSeq=5) 호출 | true 반환, TaskCompletionSource 완료 |
+| RequestTracker | Register<T>(msgSeq) 후 5초 대기 | 타임아웃 발생, Task 취소 상태 |
+| PacketEncoder + 512바이트 이상 메시지 | Encode() 호출 | 압축 플래그 설정, 압축된 페이로드 반환 |
+| PacketDecoder + 압축된 패킷 | Decode() 호출 | 압축 해제 후 원본 메시지 복원 |
+| PlayHouseClient (통합) | Mock IConnection + RequestAsync() | RequestTracker와 Connection 정상 연동 |
+
+#### 카테고리 3: 입력 검증 (Input Validation)
+
+| Given | When | Then |
+|-------|------|------|
+| PacketEncoder | null 메시지로 Encode() 호출 | ArgumentNullException 발생 |
+| PacketDecoder | 잘못된 헤더의 byte[]로 Decode() 호출 | InvalidDataException 발생 |
+| RequestTracker | 존재하지 않는 MsgSeq로 TryComplete() | false 반환, 부작용 없음 |
+| Connection | 잘못된 endpoint로 ConnectAsync() | 연결 실패 예외 발생 |
+| PlayHouseClient | State=Connected에서 ConnectAsync() 재호출 | InvalidOperationException 발생 |
+
+#### 카테고리 4: 엣지 케이스 (Edge Cases)
+
+| Given | When | Then |
+|-------|------|------|
+| RequestTracker + 65535개 요청 | NextSequence() 호출하여 ushort 오버플로우 | 1로 순환, 0 스킵 유지 |
+| PacketEncoder | 10MB 대용량 메시지 Encode() | 정상 처리 또는 크기 제한 예외 |
+| Connection + 버퍼 오버플로우 | ReceiveBufferSize 초과 데이터 수신 | 여러 청크로 분할 수신, 완전한 패킷 조립 |
+| PlayHouseClient + 동시 요청 | 100개 RequestAsync() 동시 호출 | 모든 MsgSeq 고유, 응답 정확히 매칭 |
+| TcpConnection | 연결 중 네트워크 끊김 | ReceiveAsync() 예외 발생, State 업데이트 |
+
+#### 카테고리 5: 활용 예제 (Usage Examples)
+
+| Given | When | Then |
+|-------|------|------|
+| Mock IConnection | PlayHouseClient 생성 및 의존성 주입 | 네트워크 없이 로직 테스트 가능 |
+| TestHelper | WaitForMessageAsync<T>() 사용 | 지정 메시지 수신 시 Task 완료 |
+| PlayHouseClientOptions | HeartbeatInterval=10s 설정 | 10초마다 하트비트 패킷 전송 |
+| PlayHouseClient + 핸들러 등록 | On<T>() 반환 IDisposable.Dispose() | 핸들러 즉시 해제, 메모리 정리 |
+| PacketEncoder/Decoder | Protobuf Any 타입 메시지 처리 | 동적 타입 직렬화/역직렬화 성공 |
+
+### 9.4 유닛 테스트 시나리오
+
+**유닛 테스트 대상**: 네트워크 및 실제 서버 연결 없이 검증 가능한 순수 로직만 포함합니다.
+
+#### 카테고리 1: 기본 동작 (Basic Operations)
+
+| Given | When | Then |
+|-------|------|------|
+| Protobuf 메시지 | SerializeToByteArray() 호출 | 유효한 byte[] 반환 |
+| byte[] Protobuf 데이터 | Parser.ParseFrom(bytes) 호출 | 원본 메시지 복원, 필드 값 동일 |
+| LZ4 압축기 | Compress(원본 데이터) 호출 | 압축된 byte[] 반환, 크기 < 원본 |
+| LZ4 압축 해제기 | Decompress(압축 데이터) 호출 | 원본 데이터 복원, 바이트 단위 일치 |
+| 패킷 헤더 구조체 | 필드 값 설정 후 직렬화 | 고정 크기 byte[] 반환 |
+
+**유닛 테스트가 필요한 이유**: Protobuf 직렬화 및 LZ4 압축은 네트워크 통신과 무관하게 입출력 데이터만으로 검증 가능합니다. 이러한 로직은 유닛 테스트로 빠르고 정확하게 검증할 수 있으며, E2E/통합 테스트에서 중복 검증할 필요가 없습니다.
+
+#### 카테고리 2: 응답 검증 (Response Validation)
+
+| Given | When | Then |
+|-------|------|------|
+| 복잡한 Protobuf 메시지 (중첩 필드) | 직렬화 후 역직렬화 | 모든 중첩 필드 값 정확히 복원 |
+| LZ4 압축 + 반복 패턴 데이터 | Compress() 호출 | 압축률 >50%, 데이터 무결성 유지 |
+| 패킷 헤더 + 플래그 비트 | 압축 플래그 설정/해제 | 비트 마스킹 정확, 다른 플래그 영향 없음 |
+| MsgSeq 생성기 (ushort) | 연속 호출 1000회 | 순차 증가, 0 스킵, 중복 없음 |
+| Response<T> 생성 | Ok() vs Fail() 호출 | Success 플래그 정확, 데이터 정확히 설정 |
+
+#### 카테고리 3: 입력 검증 (Input Validation)
+
+| Given | When | Then |
+|-------|------|------|
+| Protobuf 파서 | 잘못된 형식의 byte[] | InvalidProtocolBufferException 발생 |
+| LZ4 압축 해제기 | 손상된 압축 데이터 | 압축 해제 실패 예외 |
+| 패킷 헤더 파서 | 길이가 부족한 byte[] | ArgumentException 또는 IndexOutOfRangeException |
+| MsgSeq 생성기 | 멀티스레드 동시 호출 100회 | 모든 값 고유, Race condition 없음 |
+| Response<T> | null 데이터로 Ok() 호출 | ArgumentNullException 또는 유효성 검증 실패 |
+
+#### 카테고리 4: 엣지 케이스 (Edge Cases)
+
+| Given | When | Then |
+|-------|------|------|
+| Protobuf | 빈 메시지 직렬화 | 최소 크기 byte[] 반환, 역직렬화 성공 |
+| LZ4 | 1바이트 데이터 압축 | 압축 오버헤드로 크기 증가 가능, 무결성 유지 |
+| LZ4 | 압축 불가능한 랜덤 데이터 | 압축률 낮음 또는 크기 증가, 정확히 복원 |
+| 패킷 헤더 | MsgSeq=0 설정 | Fire-and-forget 패킷으로 해석 가능 |
+| 패킷 조립 | 여러 청크로 분할된 데이터 | 순서대로 조립 시 완전한 패킷 복원 |
+
+**유닛 테스트가 필요한 이유**: 엣지 케이스(빈 메시지, 극단적 압축, 경계 조건)는 네트워크 환경과 무관하게 알고리즘 자체의 견고성을 검증해야 합니다. 유닛 테스트로 이러한 케이스를 철저히 검증하면 E2E 테스트에서 예기치 않은 실패를 방지할 수 있습니다.
+
+#### 카테고리 5: 활용 예제 (Usage Examples)
+
+| Given | When | Then |
+|-------|------|------|
+| Protobuf Any 타입 | Pack() 후 Unpack<T>() | 원본 타입과 데이터 복원 |
+| 패킷 헤더 + 페이로드 | 수동 조립 (헤더 bytes + 페이로드 bytes) | 전체 패킷 구조 정확, 파서 통과 |
+| LZ4 + CompressionThreshold=512 | 511바이트 vs 513바이트 데이터 | 511은 압축 안 함, 513은 압축 적용 |
+| MsgSeq | ushort.MaxValue에서 NextSequence() | 1로 순환, 0 건너뜀 |
+| Response<T> | Success=false + ErrorMessage | ErrorCode 및 Message 정확히 전달 |
+
+**유닛 테스트가 필요한 이유**: 패킷 조립, 압축 임계값 로직, 시퀀스 순환 등은 순수 계산 로직으로 네트워크 없이 빠르게 검증 가능합니다. 이러한 유닛 테스트는 회귀 방지와 리팩토링 안전성을 제공합니다.
+
+### 9.5 테스트 실행 전략
+
+#### 테스트 프로젝트 구조
+
+```
+PlayHouse.Connector.Tests/          # 유닛 + 통합 테스트 (10% + 20%)
+├── Unit/
+│   ├── ProtobufSerializationTests.cs
+│   ├── LZ4CompressionTests.cs
+│   ├── PacketHeaderTests.cs
+│   └── MsgSeqGeneratorTests.cs
+├── Integration/
+│   ├── PacketEncoderDecoderTests.cs
+│   ├── RequestTrackerTests.cs
+│   ├── ConnectionTests.cs
+│   └── PlayHouseClientIntegrationTests.cs
+└── Helpers/
+    └── MockConnection.cs
+
+PlayHouse.E2E.Tests/                # E2E 테스트 (70%)
+├── BasicOperationsTests.cs
+├── ResponseValidationTests.cs
+├── InputValidationTests.cs
+├── EdgeCaseTests.cs
+├── UsageExamplesTests.cs
+└── LoadTests.cs
+```
+
+#### CI/CD 파이프라인 통합
+
+```yaml
+# .github/workflows/connector-tests.yml
+name: Connector Tests
+
+on: [push, pull_request]
+
+jobs:
+  unit-integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Run Unit + Integration Tests
+        run: dotnet test PlayHouse.Connector.Tests --filter Category!=E2E
+        timeout-minutes: 5
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    services:
+      playhouse-server:
+        image: playhouse/room-server:latest
+        ports:
+          - 9000:9000
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Wait for Server
+        run: |
+          timeout 30 bash -c 'until nc -z localhost 9000; do sleep 1; done'
+      - name: Run E2E Tests
+        run: dotnet test PlayHouse.E2E.Tests
+        timeout-minutes: 10
+```
+
+#### 테스트 실행 순서
+
+1. **로컬 개발**: 유닛 테스트 → 통합 테스트 → E2E 테스트 (선택적)
+2. **PR 검증**: 모든 테스트 실행 (병렬)
+3. **릴리스**: E2E 테스트 + 부하 테스트 포함
+
+#### 성공 기준
+
+- **유닛 테스트**: 100% 통과, <1초 실행
+- **통합 테스트**: 100% 통과, <10초 실행
+- **E2E 테스트**: 100% 통과, <2분 실행
+- **부하 테스트**: 100 동시 클라이언트 연결 성공, 메모리 누수 없음
+
+## 10. 다음 단계
 
 - 프로젝트 생성: `PlayHouse.Connector` 폴더 및 파일 생성
 - 단위 테스트: `PlayHouse.Connector.Tests` 프로젝트
