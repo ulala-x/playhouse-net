@@ -17,7 +17,7 @@ namespace PlayHouse.Core.Stage;
 /// ActorPool provides thread-safe actor management using ConcurrentDictionary.
 /// All operations are thread-safe and can be called from multiple threads.
 /// </remarks>
-internal sealed class ActorPool
+public sealed class ActorPool
 {
     private readonly ConcurrentDictionary<long, ActorContext> _actors = new();
     private readonly ILogger _logger;

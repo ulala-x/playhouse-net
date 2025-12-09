@@ -22,7 +22,7 @@ namespace PlayHouse.Core.Timer;
 /// 4. Stage-based timer grouping for bulk operations
 /// 5. Integration with the event loop via callback dispatch
 /// </remarks>
-internal sealed class TimerManager : IDisposable
+public sealed class TimerManager : IDisposable
 {
     private readonly ConcurrentDictionary<long, TimerEntry> _timers = new();
     private readonly Action<RoutePacket> _dispatchAction;

@@ -17,7 +17,7 @@ namespace PlayHouse.Core.Session;
 /// It maintains bidirectional mapping between sessions and accounts to support
 /// pause-resume functionality and reconnection.
 /// </remarks>
-internal sealed class SessionManager
+public sealed class SessionManager
 {
     private readonly ConcurrentDictionary<long, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<long, long> _accountToSession = new();

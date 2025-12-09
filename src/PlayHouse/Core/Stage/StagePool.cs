@@ -16,7 +16,7 @@ namespace PlayHouse.Core.Stage;
 /// StagePool provides thread-safe stage management using ConcurrentDictionary.
 /// It generates unique stage IDs and maintains the lifecycle of all stages.
 /// </remarks>
-internal sealed class StagePool
+public sealed class StagePool
 {
     private readonly ConcurrentDictionary<int, StageContext> _stages = new();
     private int _stageIdCounter = 0;

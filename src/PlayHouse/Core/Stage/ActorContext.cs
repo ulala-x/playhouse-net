@@ -16,7 +16,7 @@ namespace PlayHouse.Core.Stage;
 /// 2. Lifecycle hooks (OnCreate, OnDestroy, OnAuthenticate)
 /// 3. Integration with session management
 /// </remarks>
-internal sealed class ActorContext : IAsyncDisposable
+public sealed class ActorContext : IAsyncDisposable
 {
     private readonly IActor _userActor;
     private readonly ILogger _logger;

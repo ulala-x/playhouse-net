@@ -12,7 +12,7 @@ namespace PlayHouse.Core.Timer;
 /// TimerEntry tracks the timer's configuration, execution state, and provides
 /// lifecycle management for System.Threading.Timer instances.
 /// </remarks>
-internal sealed class TimerEntry : IDisposable
+public sealed class TimerEntry : IDisposable
 {
     private readonly System.Threading.Timer _systemTimer;
     private int _executionCount;
@@ -131,7 +131,7 @@ internal sealed class TimerEntry : IDisposable
 /// <summary>
 /// Specifies the type of timer.
 /// </summary>
-internal enum TimerType
+public enum TimerType
 {
     /// <summary>
     /// A timer that repeats indefinitely until cancelled.

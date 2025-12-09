@@ -4,6 +4,9 @@ using System.Net;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PlayHouse.Core.Messaging;
+using PlayHouse.Core.Session;
+using PlayHouse.Infrastructure.Serialization;
 using PlayHouse.Infrastructure.Transport.Tcp;
 using PlayHouse.Infrastructure.Transport.WebSocket;
 
@@ -18,6 +21,9 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
     private readonly ILogger<PlayHouseServer> _logger;
     private readonly PlayHouseOptions _options;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly PacketSerializer _packetSerializer;
+    private readonly PacketDispatcher _packetDispatcher;
+    private readonly SessionManager _sessionManager;
     private TcpServer? _tcpServer;
     private WebSocketServer? _webSocketServer;
     private bool _disposed;
@@ -27,13 +33,20 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
     /// </summary>
     /// <param name="options">Server configuration options.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
+    /// <param name="packetDispatcher">The packet dispatcher for routing messages.</param>
+    /// <param name="sessionManager">The session manager for tracking connections.</param>
     public PlayHouseServer(
         IOptions<PlayHouseOptions> options,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        PacketDispatcher packetDispatcher,
+        SessionManager sessionManager)
     {
         _options = options.Value;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<PlayHouseServer>();
+        _packetSerializer = new PacketSerializer();
+        _packetDispatcher = packetDispatcher;
+        _sessionManager = sessionManager;
     }
 
     /// <summary>
@@ -169,7 +182,52 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
     {
         _logger.LogDebug("TCP message received from session {SessionId}: {Size} bytes", sessionId, data.Length);
 
-        // TODO: Process message (deserialize packet, route to appropriate handler)
+        try
+        {
+            // Deserialize packet
+            var packet = _packetSerializer.Deserialize(data.Span);
+
+            _logger.LogTrace("Deserialized packet from session {SessionId}: MsgId={MsgId}, StageId={StageId}, MsgSeq={MsgSeq}",
+                sessionId, packet.MsgId, packet.StageId, packet.MsgSeq);
+
+            // Update session with stage information if present
+            var session = _sessionManager.GetSession(sessionId);
+            if (session != null && packet.StageId > 0 && !session.StageId.HasValue)
+            {
+                session.JoinStage(packet.StageId);
+            }
+
+            // Route packet to appropriate stage
+            // StageId should be determined from packet or session context
+            var targetStageId = packet.StageId > 0 ? packet.StageId : session?.StageId ?? 0;
+
+            if (targetStageId == 0)
+            {
+                _logger.LogWarning("Cannot route packet from session {SessionId}: no stage ID available", sessionId);
+                return;
+            }
+
+            // Determine account ID from session
+            var accountId = session?.AccountId ?? 0;
+            if (accountId == 0)
+            {
+                _logger.LogWarning("Cannot route packet from session {SessionId}: no account ID available", sessionId);
+                return;
+            }
+
+            // Dispatch to actor in stage
+            var dispatched = _packetDispatcher.DispatchToActor(targetStageId, accountId, packet);
+
+            if (!dispatched)
+            {
+                _logger.LogWarning("Failed to dispatch packet from session {SessionId} to stage {StageId}",
+                    sessionId, targetStageId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing TCP message from session {SessionId}", sessionId);
+        }
     }
 
     private void OnTcpSessionDisconnected(long sessionId, Exception? exception)
@@ -189,7 +247,52 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
         _logger.LogDebug("WebSocket message received from session {SessionId}: {Size} bytes",
             sessionId, data.Length);
 
-        // TODO: Process message (deserialize packet, route to appropriate handler)
+        try
+        {
+            // Deserialize packet
+            var packet = _packetSerializer.Deserialize(data.Span);
+
+            _logger.LogTrace("Deserialized packet from session {SessionId}: MsgId={MsgId}, StageId={StageId}, MsgSeq={MsgSeq}",
+                sessionId, packet.MsgId, packet.StageId, packet.MsgSeq);
+
+            // Update session with stage information if present
+            var session = _sessionManager.GetSession(sessionId);
+            if (session != null && packet.StageId > 0 && !session.StageId.HasValue)
+            {
+                session.JoinStage(packet.StageId);
+            }
+
+            // Route packet to appropriate stage
+            // StageId should be determined from packet or session context
+            var targetStageId = packet.StageId > 0 ? packet.StageId : session?.StageId ?? 0;
+
+            if (targetStageId == 0)
+            {
+                _logger.LogWarning("Cannot route packet from session {SessionId}: no stage ID available", sessionId);
+                return;
+            }
+
+            // Determine account ID from session
+            var accountId = session?.AccountId ?? 0;
+            if (accountId == 0)
+            {
+                _logger.LogWarning("Cannot route packet from session {SessionId}: no account ID available", sessionId);
+                return;
+            }
+
+            // Dispatch to actor in stage
+            var dispatched = _packetDispatcher.DispatchToActor(targetStageId, accountId, packet);
+
+            if (!dispatched)
+            {
+                _logger.LogWarning("Failed to dispatch packet from session {SessionId} to stage {StageId}",
+                    sessionId, targetStageId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing WebSocket message from session {SessionId}", sessionId);
+        }
     }
 
     private void OnWebSocketSessionDisconnected(long sessionId, Exception? exception)
