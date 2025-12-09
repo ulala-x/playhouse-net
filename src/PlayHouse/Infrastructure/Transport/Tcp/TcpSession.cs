@@ -107,15 +107,15 @@ public sealed class TcpSession : IAsyncDisposable
 
         try
         {
-            // Write length prefix (4 bytes) + data
-            var writer = _sendPipe.Writer;
-            var memory = writer.GetMemory(4 + data.Length);
+            // Create buffer with length prefix
+            var buffer = new byte[4 + data.Length];
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0, 4), data.Length);
+            data.CopyTo(buffer.AsMemory(4));
 
-            BinaryPrimitives.WriteInt32LittleEndian(memory.Span, data.Length);
-            data.CopyTo(memory.Slice(4));
+            // Send directly to socket (bypassing send pipe for immediate delivery)
+            await _socket.SendAsync(buffer, SocketFlags.None, _cts.Token);
 
-            writer.Advance(4 + data.Length);
-            await writer.FlushAsync(_cts.Token);
+            _logger.LogTrace("Sent {ByteCount} bytes to session {SessionId}", buffer.Length, _sessionId);
         }
         catch (Exception ex)
         {

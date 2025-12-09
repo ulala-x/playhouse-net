@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Net;
+using Google.Protobuf;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -25,6 +26,7 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
     private readonly PacketDispatcher _packetDispatcher;
     private readonly SessionManager _sessionManager;
     private readonly RoomTokenManager _tokenManager;
+    private readonly Core.Stage.StagePool _stagePool;
     private TcpServer? _tcpServer;
     private WebSocketServer? _webSocketServer;
     private bool _disposed;
@@ -37,12 +39,14 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
     /// <param name="packetDispatcher">The packet dispatcher for routing messages.</param>
     /// <param name="sessionManager">The session manager for tracking connections.</param>
     /// <param name="tokenManager">The room token manager for authentication.</param>
+    /// <param name="stagePool">The stage pool for accessing stages.</param>
     public PlayHouseServer(
         IOptions<PlayHouseOptions> options,
         ILoggerFactory loggerFactory,
         PacketDispatcher packetDispatcher,
         SessionManager sessionManager,
-        RoomTokenManager tokenManager)
+        RoomTokenManager tokenManager,
+        Core.Stage.StagePool stagePool)
     {
         _options = options.Value;
         _loggerFactory = loggerFactory;
@@ -51,6 +55,7 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
         _packetDispatcher = packetDispatcher;
         _sessionManager = sessionManager;
         _tokenManager = tokenManager;
+        _stagePool = stagePool;
     }
 
     /// <summary>
@@ -156,7 +161,7 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
     private async Task<TcpSession> CreateTcpSessionAsync(long sessionId, System.Net.Sockets.Socket socket)
     {
         // Register session in SessionManager
-        _sessionManager.CreateSession(sessionId);
+        var sessionInfo = _sessionManager.CreateSession(sessionId);
 
         var session = new TcpSession(
             sessionId,
@@ -165,6 +170,12 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
             OnTcpMessageReceived,
             OnTcpSessionDisconnected,
             _loggerFactory.CreateLogger<TcpSession>());
+
+        // Set transport send function for message routing from Stage/Actor to Client
+        sessionInfo.SendFunction = async (data) =>
+        {
+            await session.SendAsync(data);
+        };
 
         await Task.CompletedTask;
         return session;
@@ -341,30 +352,23 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
 
         try
         {
-            // Parse room token from packet payload
-            // AuthenticateRequest proto: { string room_token = 1; }
-            // Protobuf encoding: field 1 (0x0a), length-delimited string
+            // Parse AuthenticateRequest using generated Protobuf class
             var payload = packet.Payload.Data.ToArray();
+            Proto.AuthenticateRequest authRequest;
 
-            if (payload.Length < 2 || payload[0] != 0x0a) // field 1, type string
+            try
             {
-                _logger.LogWarning("Invalid AuthenticateRequest payload from session {SessionId}", sessionId);
+                authRequest = Proto.AuthenticateRequest.Parser.ParseFrom(payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Invalid AuthenticateRequest payload from session {SessionId}", sessionId);
                 await SendAuthenticateReply(sessionId, packet.MsgSeq, authenticated: false,
                     errorMessage: "Invalid request format");
                 return;
             }
 
-            // Read string length (varint)
-            int stringLength = payload[1];
-            if (payload.Length < 2 + stringLength)
-            {
-                _logger.LogWarning("Invalid AuthenticateRequest payload length from session {SessionId}", sessionId);
-                await SendAuthenticateReply(sessionId, packet.MsgSeq, authenticated: false,
-                    errorMessage: "Invalid request format");
-                return;
-            }
-
-            var roomToken = System.Text.Encoding.UTF8.GetString(payload, 2, stringLength);
+            var roomToken = authRequest.RoomToken;
 
             _logger.LogDebug("AuthenticateRequest with token: {Token}",
                 roomToken.Substring(0, Math.Min(8, roomToken.Length)) + "...");
@@ -385,6 +389,42 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
 
             // Generate AccountId from SessionId (simple strategy for E2E tests)
             var accountId = sessionId;
+
+            // Get stage context
+            var stageContext = _stagePool.GetStage(stageId);
+            if (stageContext == null)
+            {
+                _logger.LogError("Stage {StageId} not found for authentication", stageId);
+                await SendAuthenticateReply(sessionId, packet.MsgSeq, authenticated: false,
+                    errorMessage: "Stage not found");
+                return;
+            }
+
+            // Create user info packet (using nickname from token)
+            var userInfoPacket = new Serialization.SimplePacket(
+                msgId: "UserInfo",
+                payload: new Serialization.BinaryPayload(System.Text.Encoding.UTF8.GetBytes(nickname)),
+                msgSeq: 0,
+                stageId: stageId,
+                errorCode: 0);
+
+            // Join actor to stage - this will:
+            // 1. Create Actor instance
+            // 2. Call Actor.OnCreate()
+            // 3. Call Stage.OnJoinRoom(actor, userInfo)
+            // 4. Call Stage.OnPostJoinRoom(actor)
+            var (errorCode, joinReply, actorContext) = await stageContext.JoinActorAsync(accountId, sessionId, userInfoPacket);
+
+            if (errorCode != 0 || actorContext == null)
+            {
+                _logger.LogWarning("Actor join failed for session {SessionId}: ErrorCode={ErrorCode}", sessionId, errorCode);
+                await SendAuthenticateReply(sessionId, packet.MsgSeq, authenticated: false,
+                    errorMessage: $"Failed to join stage: error code {errorCode}");
+                return;
+            }
+
+            // Call Actor.OnAuthenticate() with auth data
+            await actorContext.OnAuthenticateAsync(packet);
 
             // Update session with authentication info
             session.AccountId = accountId;
@@ -416,43 +456,18 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
             return;
         }
 
-        // AuthenticateReply proto:
-        // { int64 account_id=1; int32 stage_id=2; bool authenticated=3; string error_message=4; }
-        var payloadBytes = new List<byte>();
-
-        if (authenticated)
+        // Create AuthenticateReply using generated Protobuf class
+        var reply = new Proto.AuthenticateReply
         {
-            // account_id (field 1, varint/int64)
-            payloadBytes.Add(0x08); // field 1, type varint
-            payloadBytes.AddRange(EncodeVarint((ulong)accountId));
-
-            // stage_id (field 2, varint/int32)
-            payloadBytes.Add(0x10); // field 2, type varint
-            payloadBytes.AddRange(EncodeVarint((ulong)stageId));
-
-            // authenticated (field 3, varint/bool)
-            payloadBytes.Add(0x18); // field 3, type varint
-            payloadBytes.Add(0x01); // true
-        }
-        else
-        {
-            // authenticated (field 3, varint/bool)
-            payloadBytes.Add(0x18); // field 3, type varint
-            payloadBytes.Add(0x00); // false
-
-            // error_message (field 4, length-delimited string)
-            if (!string.IsNullOrEmpty(errorMessage))
-            {
-                var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorMessage);
-                payloadBytes.Add(0x22); // field 4, type string
-                payloadBytes.Add((byte)errorBytes.Length);
-                payloadBytes.AddRange(errorBytes);
-            }
-        }
+            AccountId = accountId,
+            StageId = stageId,
+            Authenticated = authenticated,
+            ErrorMessage = errorMessage ?? ""
+        };
 
         var replyPacket = new Serialization.SimplePacket(
-            msgId: "AuthenticateReply",
-            payload: new Serialization.BinaryPayload(payloadBytes.ToArray()),
+            msgId: nameof(Proto.AuthenticateReply),
+            payload: new Serialization.BinaryPayload(reply.ToByteArray()),
             msgSeq: (ushort)msgSeq,
             stageId: stageId,
             errorCode: authenticated ? (ushort)0 : (ushort)1);
@@ -462,18 +477,6 @@ public sealed class PlayHouseServer : IHostedService, IAsyncDisposable
 
         _logger.LogDebug("AuthenticateReply sent to session {SessionId}: Authenticated={Authenticated}",
             sessionId, authenticated);
-    }
-
-    private static byte[] EncodeVarint(ulong value)
-    {
-        var bytes = new List<byte>();
-        while (value >= 0x80)
-        {
-            bytes.Add((byte)((value & 0x7F) | 0x80));
-            value >>= 7;
-        }
-        bytes.Add((byte)value);
-        return bytes.ToArray();
     }
 
     private async void HandleJoinStageRequest(long sessionId, SessionInfo? session)

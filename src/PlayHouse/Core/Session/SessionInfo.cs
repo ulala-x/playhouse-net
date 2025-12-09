@@ -86,6 +86,15 @@ public sealed class SessionInfo
     public object? Metadata { get; set; }
 
     /// <summary>
+    /// Gets or sets the transport send function for sending messages to the client.
+    /// </summary>
+    /// <remarks>
+    /// This delegate is set by the transport layer (TcpSession, WebSocketSession)
+    /// and is used by StageSender to send messages back to the client.
+    /// </remarks>
+    public Func<ReadOnlyMemory<byte>, System.Threading.Tasks.Task>? SendFunction { get; set; }
+
+    /// <summary>
     /// Gets the duration of the current connection (if connected) or last connection (if disconnected).
     /// </summary>
     public TimeSpan? ConnectionDuration
