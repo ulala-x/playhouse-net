@@ -171,7 +171,7 @@ public class MessageTransmissionTests : IAsyncLifetime
             var serverPacket = new ServerPacket
             {
                 MsgSeq = 1,
-                MsgId = 200,
+                MsgId = "Msg200",
                 ErrorCode = 0,
                 Payload = ByteString.CopyFromUtf8("Hello from server")
             };
@@ -208,7 +208,7 @@ public class MessageTransmissionTests : IAsyncLifetime
         var clientPacket = new ClientPacket
         {
             MsgSeq = 1,
-            MsgId = 100,
+            MsgId = "Msg100",
             Payload = ByteString.CopyFromUtf8("fragmented message test")
         };
 
@@ -248,7 +248,7 @@ public class MessageTransmissionTests : IAsyncLifetime
             var packet = new ClientPacket
             {
                 MsgSeq = (ushort)i,
-                MsgId = (ushort)(100 + i),
+                MsgId = $"Msg{100 + i}",
                 Payload = ByteString.CopyFromUtf8($"message {i}")
             };
 
@@ -293,7 +293,7 @@ public class MessageTransmissionTests : IAsyncLifetime
         var packet = new ClientPacket
         {
             MsgSeq = 1,
-            MsgId = 999,
+            MsgId = "Msg999",
             Payload = ByteString.CopyFrom(largePayload)
         };
 
@@ -339,7 +339,7 @@ public class MessageTransmissionTests : IAsyncLifetime
             var packet = new ClientPacket
             {
                 MsgSeq = (ushort)(i % ushort.MaxValue),
-                MsgId = 100,
+                MsgId = "Msg100",
                 Payload = ByteString.CopyFromUtf8($"rapid message {i}")
             };
 
@@ -406,7 +406,7 @@ public class MessageTransmissionTests : IAsyncLifetime
                     var packet = new ClientPacket
                     {
                         MsgSeq = (ushort)index,
-                        MsgId = 100,
+                        MsgId = "Msg100",
                         Payload = ByteString.CopyFromUtf8($"message from client {index}")
                     };
 
@@ -462,7 +462,7 @@ public class MessageTransmissionTests : IAsyncLifetime
             var packet = new ClientPacket
             {
                 MsgSeq = (ushort)i,
-                MsgId = 100,
+                MsgId = "Msg100",
                 Payload = ByteString.CopyFromUtf8($"ordered message {i:D4}")
             };
 

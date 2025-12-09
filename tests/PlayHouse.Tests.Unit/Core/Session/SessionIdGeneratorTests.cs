@@ -46,7 +46,7 @@ public class SessionIdGeneratorTests
     }
 
     [Fact(DisplayName = "동시성 테스트 - 여러 스레드에서 동시 호출 시 모든 ID가 고유함")]
-    public void Generate_ConcurrentCalls_AllIdsAreUnique()
+    public async Task Generate_ConcurrentCalls_AllIdsAreUnique()
     {
         // Given (전제조건)
         const int threadCount = 10;
@@ -67,7 +67,7 @@ public class SessionIdGeneratorTests
             }));
         }
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         var idList = allIds.ToList();
@@ -115,7 +115,7 @@ public class SessionIdGeneratorTests
     }
 
     [Fact(DisplayName = "동시성 스트레스 테스트 - 100개 스레드에서 동시 생성")]
-    public void Generate_HighConcurrency_StressTest()
+    public async Task Generate_HighConcurrency_StressTest()
     {
         // Given (전제조건)
         const int threadCount = 100;
@@ -135,7 +135,7 @@ public class SessionIdGeneratorTests
             }));
         }
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         var idList = allIds.ToList();

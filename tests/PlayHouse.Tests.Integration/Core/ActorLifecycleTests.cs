@@ -1,17 +1,12 @@
 #nullable enable
 
-using System.Collections.Concurrent;
-using System.Net;
 using System.Net.Sockets;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Session;
 using PlayHouse.Core.Stage;
-using PlayHouse.Infrastructure.Http;
+using PlayHouse.Tests.Shared;
 using Xunit;
 
 namespace PlayHouse.Tests.Integration.Core;
@@ -23,123 +18,35 @@ namespace PlayHouse.Tests.Integration.Core;
 [Collection("ActorLifecycle")] // Run tests in this class sequentially
 public class ActorLifecycleTests : IAsyncLifetime
 {
-    private static int _portCounter = 19500;
-    private readonly int _testPort;
-    private const string TestIp = "127.0.0.1";
-
-    public ActorLifecycleTests()
-    {
-        // Use unique port for each test instance to avoid port conflicts
-        _testPort = Interlocked.Increment(ref _portCounter);
-    }
-
-    private IHost? _host;
-    private StageFactory? _stageFactory;
-    private StagePool? _stagePool;
-    private SessionManager? _sessionManager;
-    private PacketDispatcher? _dispatcher;
+    private TestServerFixture _fixture = null!;
+    private TestServer _server = null!;
 
     public async Task InitializeAsync()
     {
         // Reset test state tracking
         TestStage.Reset();
 
-        _host = Host.CreateDefaultBuilder()
-            .ConfigureServices(services =>
-            {
-                // Configure PlayHouse options using object initializer syntax
-                services.AddOptions<PlayHouseOptions>()
-                    .Configure(opts =>
-                    {
-                        // Use reflection to set init-only properties in test
-                        typeof(PlayHouseOptions).GetProperty(nameof(PlayHouseOptions.Ip))!
-                            .SetValue(opts, TestIp);
-                        typeof(PlayHouseOptions).GetProperty(nameof(PlayHouseOptions.Port))!
-                            .SetValue(opts, _testPort);
-                        typeof(PlayHouseOptions).GetProperty(nameof(PlayHouseOptions.EnableWebSocket))!
-                            .SetValue(opts, false);
-                    })
-                    .ValidateOnStart();
+        // Setup fixture with TestStage registration
+        _fixture = new TestServerFixture()
+            .RegisterStage<TestStage>("test-stage");
 
-                // Register core PlayHouse services manually since we're bypassing AddPlayHouse
-                services.AddSingleton<PlayHouse.Infrastructure.Serialization.PacketSerializer>();
-                services.AddSingleton<SessionManager>();
-                services.AddSingleton<StagePool>();
-                services.AddSingleton<PacketDispatcher>();
-
-                // Register TimerManager with proper dispatch action
-                services.AddSingleton<PlayHouse.Core.Timer.TimerManager>(sp =>
-                {
-                    var dispatcher = sp.GetRequiredService<PacketDispatcher>();
-                    var logger = sp.GetRequiredService<ILoggerFactory>()
-                        .CreateLogger<PlayHouse.Core.Timer.TimerManager>();
-                    return new PlayHouse.Core.Timer.TimerManager(
-                        packet => dispatcher.Dispatch(packet),
-                        logger);
-                });
-
-                services.AddSingleton<StageFactory>(sp =>
-                {
-                    var stagePool = sp.GetRequiredService<StagePool>();
-                    var dispatcher = sp.GetRequiredService<PacketDispatcher>();
-                    var timerManager = sp.GetRequiredService<PlayHouse.Core.Timer.TimerManager>();
-                    var sessionManager = sp.GetRequiredService<SessionManager>();
-                    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-
-                    var factory = new StageFactory(
-                        stagePool,
-                        dispatcher,
-                        timerManager,
-                        sessionManager,
-                        loggerFactory);
-
-                    // Register test stage type
-                    factory.Registry.RegisterStageType<TestStage>("test-stage");
-
-                    return factory;
-                });
-
-                // Register PlayHouseServer as hosted service
-                services.AddHostedService<PlayHouseServer>();
-                services.AddSingleton<PlayHouseServer>(sp =>
-                    sp.GetServices<Microsoft.Extensions.Hosting.IHostedService>()
-                        .OfType<PlayHouseServer>()
-                        .First());
-            })
-            .ConfigureLogging(logging =>
-            {
-                logging.SetMinimumLevel(LogLevel.Debug);
-                logging.AddConsole();
-            })
-            .Build();
-
-        await _host.StartAsync();
-
-        // Get service instances
-        _stageFactory = _host.Services.GetRequiredService<StageFactory>();
-        _stagePool = _host.Services.GetRequiredService<StagePool>();
-        _sessionManager = _host.Services.GetRequiredService<SessionManager>();
-        _dispatcher = _host.Services.GetRequiredService<PacketDispatcher>();
+        _server = await _fixture.StartServerAsync();
     }
 
     public async Task DisposeAsync()
     {
-        if (_host != null)
-        {
-            await _host.StopAsync();
-            _host.Dispose();
-        }
+        await _fixture.DisposeAsync();
     }
 
     [Fact]
     public async Task Server_ShouldStartAndAcceptTcpConnections()
     {
         // Arrange
-        var server = _host!.Services.GetRequiredService<PlayHouseServer>();
+        var server = _server.Server;
 
         // Act - Connect a TCP client
         using var client = new TcpClient();
-        await client.ConnectAsync(TestIp, _testPort);
+        await client.ConnectAsync("127.0.0.1", _server.Port);
 
         // Assert
         client.Connected.Should().BeTrue();
@@ -153,7 +60,7 @@ public class ActorLifecycleTests : IAsyncLifetime
         var creationPacket = CreateTestPacket("CreateStage");
 
         // Act
-        var (stageContext, errorCode, reply) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, errorCode, reply) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
 
         // Assert
         errorCode.Should().Be(ErrorCode.Success);
@@ -171,12 +78,12 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
         stageContext.Should().NotBeNull();
 
         // Create a session
-        var session = _sessionManager!.CreateSession(1);
-        _sessionManager.MapAccountId(1, 100);
+        var session = _server.SessionManager.CreateSession(1);
+        _server.SessionManager.MapAccountId(1, 100);
 
         var joinPacket = CreateTestPacket("JoinRoom");
 
@@ -201,10 +108,10 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange - Create stage and join actor
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
 
-        var session = _sessionManager!.CreateSession(1);
-        _sessionManager.MapAccountId(1, 100);
+        var session = _server.SessionManager.CreateSession(1);
+        _server.SessionManager.MapAccountId(1, 100);
 
         var joinPacket = CreateTestPacket("JoinRoom");
         await stageContext!.JoinActorAsync(100, 1, joinPacket);
@@ -213,7 +120,7 @@ public class ActorLifecycleTests : IAsyncLifetime
         var messagePacket = CreateTestPacket("TestMessage", stageContext.StageId);
 
         // Act - Dispatch message to actor
-        var dispatched = _dispatcher!.DispatchToActor(stageContext.StageId, 100, messagePacket);
+        var dispatched = _server.PacketDispatcher.DispatchToActor(stageContext.StageId, 100, messagePacket);
 
         // Wait for message processing
         await Task.Delay(100);
@@ -229,10 +136,10 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange - Create stage and join actor
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
 
-        var session = _sessionManager!.CreateSession(1);
-        _sessionManager.MapAccountId(1, 100);
+        var session = _server.SessionManager.CreateSession(1);
+        _server.SessionManager.MapAccountId(1, 100);
 
         var joinPacket = CreateTestPacket("JoinRoom");
         await stageContext!.JoinActorAsync(100, 1, joinPacket);
@@ -251,15 +158,15 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange - Create stage
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
         var stageId = stageContext!.StageId;
 
         // Act - Destroy stage
-        var destroyed = await _stageFactory!.DestroyStageAsync(stageId);
+        var destroyed = await _server.StageFactory.DestroyStageAsync(stageId);
 
         // Assert
         destroyed.Should().BeTrue();
-        _stagePool!.GetStage(stageId).Should().BeNull();
+        _server.StagePool.GetStage(stageId).Should().BeNull();
         TestStage.DisposeCalled.Should().BeTrue();
     }
 
@@ -268,15 +175,15 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange - Create stage
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
 
         // Create sessions for multiple actors
-        _sessionManager!.CreateSession(1);
-        _sessionManager.MapAccountId(1, 100);
-        _sessionManager.CreateSession(2);
-        _sessionManager.MapAccountId(2, 101);
-        _sessionManager.CreateSession(3);
-        _sessionManager.MapAccountId(3, 102);
+        _server.SessionManager.CreateSession(1);
+        _server.SessionManager.MapAccountId(1, 100);
+        _server.SessionManager.CreateSession(2);
+        _server.SessionManager.MapAccountId(2, 101);
+        _server.SessionManager.CreateSession(3);
+        _server.SessionManager.MapAccountId(3, 102);
 
         var joinPacket = CreateTestPacket("JoinRoom");
 
@@ -301,10 +208,10 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange - Create stage and join first actor
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
 
-        _sessionManager!.CreateSession(1);
-        _sessionManager.MapAccountId(1, 100);
+        _server.SessionManager.CreateSession(1);
+        _server.SessionManager.MapAccountId(1, 100);
 
         var joinPacket = CreateTestPacket("JoinRoom");
         await stageContext!.JoinActorAsync(100, 1, joinPacket);
@@ -323,7 +230,7 @@ public class ActorLifecycleTests : IAsyncLifetime
         var messagePacket = CreateTestPacket("TestMessage", 99999);
 
         // Act
-        var dispatched = _dispatcher!.DispatchToActor(99999, 100, messagePacket);
+        var dispatched = _server.PacketDispatcher.DispatchToActor(99999, 100, messagePacket);
 
         // Assert
         dispatched.Should().BeFalse();
@@ -334,12 +241,12 @@ public class ActorLifecycleTests : IAsyncLifetime
     {
         // Arrange - Create stage without joining any actor
         var creationPacket = CreateTestPacket("CreateStage");
-        var (stageContext, _, _) = await _stageFactory!.CreateStageAsync("test-stage", creationPacket);
+        var (stageContext, _, _) = await _server.StageFactory.CreateStageAsync("test-stage", creationPacket);
 
         var messagePacket = CreateTestPacket("TestMessage", stageContext!.StageId);
 
         // Act - Dispatch to non-existent actor
-        var dispatched = _dispatcher!.DispatchToActor(stageContext.StageId, 999, messagePacket);
+        var dispatched = _server.PacketDispatcher.DispatchToActor(stageContext.StageId, 999, messagePacket);
 
         // Wait for processing
         await Task.Delay(100);
@@ -362,7 +269,7 @@ public class ActorLifecycleTests : IAsyncLifetime
 public class TestStage : IStage
 {
     // Static tracking for test verification
-    private static readonly ConcurrentDictionary<string, bool> _callbackTracking = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _callbackTracking = new();
     private static long _lastJoinedAccountId;
     private static string? _lastDispatchedMsgId;
     private static LeaveReason? _lastLeaveReason;
@@ -386,7 +293,7 @@ public class TestStage : IStage
         _lastLeaveReason = null;
     }
 
-    public IStageSender StageSender { get; set; } = null!;
+    public IStageSender StageSender { get; init; } = null!;
 
     public Task<(ushort errorCode, IPacket? reply)> OnCreate(IPacket packet)
     {

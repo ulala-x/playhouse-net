@@ -1,11 +1,14 @@
 namespace PlayHouse.Connector.Protocol;
 
+using System.Buffers.Binary;
+using System.Text;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Connector.Packet;
 
 /// <summary>
-/// Decodes binary packets received from the server.
+/// Decodes binary packets received from the server using PlayHouse protocol format.
+/// Server → Client: Length(4) + ServiceId(2) + MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) + Body
 /// </summary>
 internal sealed class PacketDecoder
 {
@@ -45,8 +48,8 @@ internal sealed class PacketDecoder
                     yield break;
                 }
 
-                // Read size (big-endian, 4 bytes)
-                _expectedPacketSize = (_buffer[0] << 24) | (_buffer[1] << 16) | (_buffer[2] << 8) | _buffer[3];
+                // Read size (little-endian, 4 bytes)
+                _expectedPacketSize = BinaryPrimitives.ReadInt32LittleEndian(_buffer.GetRange(0, 4).ToArray());
 
                 if (_expectedPacketSize <= 0 || _expectedPacketSize > 10 * 1024 * 1024) // Max 10MB
                 {
@@ -70,11 +73,11 @@ internal sealed class PacketDecoder
             _buffer.RemoveRange(0, _expectedPacketSize);
             _expectedPacketSize = -1;
 
-            // Deserialize packet
+            // Deserialize packet using PlayHouse protocol format
             ServerPacket? packet = null;
             try
             {
-                packet = ServerPacket.Parser.ParseFrom(packetData);
+                packet = ParseServerPacket(packetData);
                 _logger?.LogTrace(
                     "Decoded packet: MsgSeq={MsgSeq}, MsgId={MsgId}, ErrorCode={ErrorCode}, PayloadSize={Size}",
                     packet.MsgSeq,
@@ -93,6 +96,74 @@ internal sealed class PacketDecoder
                 yield return packet;
             }
         }
+    }
+
+    private ServerPacket ParseServerPacket(byte[] data)
+    {
+        if (data.Length < 3) // Minimum: ServiceId(2) + MsgIdLen(1)
+        {
+            throw new InvalidDataException("Packet data is too short");
+        }
+
+        int offset = 0;
+
+        // Parse ServiceId (2 bytes) - currently not used but must be read
+        var serviceId = BinaryPrimitives.ReadInt16LittleEndian(data.AsSpan(offset));
+        offset += 2;
+
+        // Parse MsgId
+        var msgIdLen = data[offset++];
+        if (data.Length < offset + msgIdLen)
+        {
+            throw new InvalidDataException("Invalid MsgId length");
+        }
+
+        var msgId = Encoding.UTF8.GetString(data, offset, msgIdLen);
+        offset += msgIdLen;
+
+        // Parse header fields: MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4)
+        if (data.Length < offset + 2 + 8 + 2 + 4)
+        {
+            throw new InvalidDataException("Packet header is incomplete");
+        }
+
+        var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset));
+        offset += 2;
+
+        var stageId = BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(offset)); // Read as Int64 (8 bytes)
+        offset += 8;
+
+        var errorCode = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset));
+        offset += 2;
+
+        var originalSize = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset));
+        offset += 4;
+
+        // Parse body with optional decompression
+        byte[] bodyData;
+        if (originalSize > 0)
+        {
+            // Compressed data - need to decompress
+            bodyData = DecompressLz4(data.AsSpan(offset).ToArray(), originalSize);
+        }
+        else
+        {
+            // Not compressed
+            bodyData = data.AsSpan(offset).ToArray();
+        }
+
+        return new ServerPacket
+        {
+            MsgId = msgId, // Use string MsgId directly
+            MsgSeq = msgSeq,
+            ErrorCode = errorCode,
+            Payload = Google.Protobuf.ByteString.CopyFrom(bodyData)
+        };
+    }
+
+    private byte[] DecompressLz4(byte[] compressed, int originalSize)
+    {
+        return K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressed);
     }
 
     /// <summary>

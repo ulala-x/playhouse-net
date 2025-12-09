@@ -21,13 +21,13 @@ public sealed class PlayHouseOptions : IValidateOptions<PlayHouseOptions>
     /// Server IP address to bind to.
     /// </summary>
     [Required]
-    public required string Ip { get; init; }
+    public string Ip { get; set; } = string.Empty;
 
     /// <summary>
     /// Server port to bind to. Default: 7777.
     /// </summary>
     [Range(1, 65535)]
-    public int Port { get; init; } = 7777;
+    public int Port { get; set; } = 7777;
 
     /// <summary>
     /// Request timeout in milliseconds. Default: 30000 ms (30 seconds).

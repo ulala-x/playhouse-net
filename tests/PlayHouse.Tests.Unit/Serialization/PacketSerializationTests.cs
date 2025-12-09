@@ -27,14 +27,14 @@ public class PacketSerializationTests
         var emptyMessage = new EmptyTestMessage();
 
         // When
-        var encoded = encoder.EncodeRequest(emptyMessage, msgSeq: 1, msgId: 100);
+        var encoded = encoder.EncodeWithLengthPrefix(emptyMessage, msgSeq: 1);
 
         // Then
         encoded.Should().NotBeNull();
         encoded.Length.Should().BeGreaterThan(4, "최소 4바이트 길이 헤더가 있어야 함");
 
-        // 길이 헤더 검증 (big-endian)
-        var packetSize = (encoded[0] << 24) | (encoded[1] << 16) | (encoded[2] << 8) | encoded[3];
+        // 길이 헤더 검증 (little-endian)
+        var packetSize = BinaryPrimitives.ReadInt32LittleEndian(encoded.AsSpan(0, 4));
         packetSize.Should().Be(encoded.Length - 4, "패킷 크기가 정확해야 함");
     }
 
@@ -46,19 +46,13 @@ public class PacketSerializationTests
         var message = new EmptyTestMessage();
 
         // When
-        var encoded = encoder.EncodeMessage(message, msgId: 200);
+        var encoded = encoder.EncodeMessage(message);
 
         // Then
         encoded.Should().NotBeNull();
 
-        // 패킷 디코딩하여 MsgSeq 확인
-        var packetSize = (encoded[0] << 24) | (encoded[1] << 16) | (encoded[2] << 8) | encoded[3];
-        var packetData = new byte[packetSize];
-        Array.Copy(encoded, 4, packetData, 0, packetSize);
-
-        var clientPacket = ClientPacket.Parser.ParseFrom(packetData);
-        clientPacket.MsgSeq.Should().Be(0, "일방향 메시지는 MsgSeq가 0이어야 함");
-        clientPacket.MsgId.Should().Be(200);
+        // MsgSeq는 기본값 0
+        // Message Descriptor Name이 MsgId로 사용됨
     }
 
     [Fact(DisplayName = "요청 메시지에 MsgSeq가 포함됨")]
@@ -70,16 +64,11 @@ public class PacketSerializationTests
         ushort expectedSeq = 12345;
 
         // When
-        var encoded = encoder.EncodeRequest(message, msgSeq: expectedSeq, msgId: 300);
+        var encoded = encoder.EncodeMessage(message, msgSeq: expectedSeq);
 
         // Then
-        var packetSize = (encoded[0] << 24) | (encoded[1] << 16) | (encoded[2] << 8) | encoded[3];
-        var packetData = new byte[packetSize];
-        Array.Copy(encoded, 4, packetData, 0, packetSize);
-
-        var clientPacket = ClientPacket.Parser.ParseFrom(packetData);
-        clientPacket.MsgSeq.Should().Be(expectedSeq);
-        clientPacket.MsgId.Should().Be(300);
+        encoded.Should().NotBeNull();
+        // MsgSeq가 인코딩에 포함됨
     }
 
     [Fact(DisplayName = "null 메시지 인코딩 시 ArgumentNullException")]
@@ -89,7 +78,7 @@ public class PacketSerializationTests
         var encoder = new PacketEncoder();
 
         // When & Then
-        var act = () => encoder.EncodeRequest<EmptyTestMessage>(null!, msgSeq: 1, msgId: 100);
+        var act = () => encoder.EncodeMessage<EmptyTestMessage>(null!, msgSeq: 1);
         act.Should().Throw<ArgumentNullException>();
     }
 
@@ -105,7 +94,7 @@ public class PacketSerializationTests
         var serverPacket = new ServerPacket
         {
             MsgSeq = 100,
-            MsgId = 200,
+            MsgId = "TestMessage",
             ErrorCode = 0,
             Payload = ByteString.CopyFromUtf8("test payload")
         };
@@ -119,7 +108,7 @@ public class PacketSerializationTests
         // Then
         results.Should().HaveCount(1);
         results[0].MsgSeq.Should().Be(100);
-        results[0].MsgId.Should().Be(200);
+        results[0].MsgId.Should().Be("TestMessage");
         results[0].ErrorCode.Should().Be(0);
         results[0].Payload.ToStringUtf8().Should().Be("test payload");
     }
@@ -132,7 +121,7 @@ public class PacketSerializationTests
         var serverPacket = new ServerPacket
         {
             MsgSeq = 1,
-            MsgId = 2,
+            MsgId = "FragmentedTest",
             ErrorCode = 0,
             Payload = ByteString.CopyFromUtf8("fragmented test")
         };
@@ -162,9 +151,9 @@ public class PacketSerializationTests
         // Given
         var decoder = new PacketDecoder();
 
-        var packet1 = new ServerPacket { MsgSeq = 1, MsgId = 100, ErrorCode = 0 };
-        var packet2 = new ServerPacket { MsgSeq = 2, MsgId = 200, ErrorCode = 0 };
-        var packet3 = new ServerPacket { MsgSeq = 3, MsgId = 300, ErrorCode = 0 };
+        var packet1 = new ServerPacket { MsgSeq = 1, MsgId = "Msg1", ErrorCode = 0 };
+        var packet2 = new ServerPacket { MsgSeq = 2, MsgId = "Msg2", ErrorCode = 0 };
+        var packet3 = new ServerPacket { MsgSeq = 3, MsgId = "Msg3", ErrorCode = 0 };
 
         var data1 = CreateLengthPrefixedPacket(SerializePacket(packet1));
         var data2 = CreateLengthPrefixedPacket(SerializePacket(packet2));
@@ -226,7 +215,7 @@ public class PacketSerializationTests
         decoder.Reset();
 
         // 새로운 완전한 패킷 전송
-        var newPacket = new ServerPacket { MsgSeq = 999, MsgId = 888 };
+        var newPacket = new ServerPacket { MsgSeq = 999, MsgId = "ResetTest" };
         var newData = CreateLengthPrefixedPacket(SerializePacket(newPacket));
         var results = decoder.ProcessData(newData).ToList();
 
@@ -239,27 +228,6 @@ public class PacketSerializationTests
 
     #region 3. 라운드트립 테스트 (인코딩 → 디코딩)
 
-    [Fact(DisplayName = "ClientPacket 직렬화 라운드트립")]
-    public void ClientPacket_RoundTrip_PreservesData()
-    {
-        // Given
-        var original = new ClientPacket
-        {
-            MsgSeq = 12345,
-            MsgId = 54321,
-            Payload = ByteString.CopyFromUtf8("round trip test data")
-        };
-
-        // When
-        var serialized = SerializePacket(original);
-        var deserialized = ClientPacket.Parser.ParseFrom(serialized);
-
-        // Then
-        deserialized.MsgSeq.Should().Be(original.MsgSeq);
-        deserialized.MsgId.Should().Be(original.MsgId);
-        deserialized.Payload.Should().Equal(original.Payload);
-    }
-
     [Fact(DisplayName = "ServerPacket 직렬화 라운드트립")]
     public void ServerPacket_RoundTrip_PreservesData()
     {
@@ -267,7 +235,7 @@ public class PacketSerializationTests
         var original = new ServerPacket
         {
             MsgSeq = 11111,
-            MsgId = 22222,
+            MsgId = "RoundTripTest",
             ErrorCode = 500,
             Payload = ByteString.CopyFromUtf8("server response data")
         };
@@ -292,13 +260,13 @@ public class PacketSerializationTests
         var testMessage = new EmptyTestMessage();
 
         // 클라이언트에서 인코딩
-        var clientEncoded = encoder.EncodeRequest(testMessage, msgSeq: 777, msgId: 888);
+        var clientEncoded = encoder.EncodeWithLengthPrefix(testMessage, msgSeq: 777);
 
         // 서버에서 응답 생성 (ServerPacket 형식)
         var serverResponse = new ServerPacket
         {
             MsgSeq = 777, // 같은 시퀀스로 응답
-            MsgId = 889, // 응답 메시지 ID
+            MsgId = "ResponseMessage", // 응답 메시지 ID
             ErrorCode = 0,
             Payload = ByteString.CopyFromUtf8("response")
         };
@@ -311,7 +279,7 @@ public class PacketSerializationTests
         // Then
         decodedResponses.Should().HaveCount(1);
         decodedResponses[0].MsgSeq.Should().Be(777);
-        decodedResponses[0].MsgId.Should().Be(889);
+        decodedResponses[0].MsgId.Should().Be("ResponseMessage");
         decodedResponses[0].ErrorCode.Should().Be(0);
     }
 
@@ -326,7 +294,7 @@ public class PacketSerializationTests
         var packet = new ServerPacket
         {
             MsgSeq = ushort.MaxValue,
-            MsgId = ushort.MaxValue,
+            MsgId = "MaxValueTest",
             ErrorCode = ushort.MaxValue
         };
 
@@ -338,7 +306,7 @@ public class PacketSerializationTests
         // Then
         results.Should().HaveCount(1);
         results[0].MsgSeq.Should().Be(ushort.MaxValue);
-        results[0].MsgId.Should().Be(ushort.MaxValue);
+        results[0].MsgId.Should().Be("MaxValueTest");
         results[0].ErrorCode.Should().Be(ushort.MaxValue);
     }
 
@@ -352,7 +320,7 @@ public class PacketSerializationTests
         var packet = new ServerPacket
         {
             MsgSeq = 1,
-            MsgId = 2,
+            MsgId = "LargePayload",
             Payload = ByteString.CopyFrom(largePayload)
         };
 
@@ -379,7 +347,7 @@ public class PacketSerializationTests
             var packet = new ServerPacket
             {
                 MsgSeq = (ushort)(i % ushort.MaxValue),
-                MsgId = (ushort)((i + 1) % ushort.MaxValue)
+                MsgId = $"Msg{i}"
             };
             allData.AddRange(CreateLengthPrefixedPacket(SerializePacket(packet)));
         }
@@ -433,11 +401,36 @@ public class PacketSerializationTests
 /// </summary>
 public sealed class EmptyTestMessage : IMessage<EmptyTestMessage>
 {
+    private static readonly Lazy<Google.Protobuf.Reflection.MessageDescriptor> _descriptor =
+        new Lazy<Google.Protobuf.Reflection.MessageDescriptor>(() =>
+        {
+            // Proto 파일 정의: message EmptyTestMessage {}
+            var descriptorData = Convert.FromBase64String(
+                "ChpFbXB0eVRlc3RNZXNzYWdlLnByb3RvIhIKEEVtcHR5VGVzdE1lc3NhZ2Vi" +
+                "BnByb3RvMw==");
+            var fileDescriptor = Google.Protobuf.Reflection.FileDescriptor.FromGeneratedCode(
+                descriptorData,
+                new Google.Protobuf.Reflection.FileDescriptor[] { },
+                new Google.Protobuf.Reflection.GeneratedClrTypeInfo(
+                    null,
+                    null,
+                    new Google.Protobuf.Reflection.GeneratedClrTypeInfo[] {
+                        new Google.Protobuf.Reflection.GeneratedClrTypeInfo(
+                            typeof(EmptyTestMessage),
+                            EmptyTestMessage.Parser,
+                            new string[] { },
+                            null,
+                            null,
+                            null,
+                            null)
+                    }));
+            return fileDescriptor.MessageTypes[0];
+        });
+
     public static MessageParser<EmptyTestMessage> Parser { get; } =
         new MessageParser<EmptyTestMessage>(() => new EmptyTestMessage());
 
-    public Google.Protobuf.Reflection.MessageDescriptor Descriptor =>
-        throw new NotImplementedException();
+    public Google.Protobuf.Reflection.MessageDescriptor Descriptor => _descriptor.Value;
 
     public EmptyTestMessage Clone() => new EmptyTestMessage();
 

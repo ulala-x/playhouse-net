@@ -1,80 +1,98 @@
 namespace PlayHouse.Connector.Protocol;
 
-using System.Buffers;
+using System.Buffers.Binary;
+using System.Text;
 using Google.Protobuf;
-using PlayHouse.Connector.Packet;
 
 /// <summary>
-/// Encodes messages into binary packets for transmission.
+/// Encodes messages into binary packets using PlayHouse server protocol format.
+/// Client → Server: ServiceId(2) + MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + Body
+/// Note: Length prefix (4 bytes) is added separately in EncodeWithLengthPrefix
 /// </summary>
 internal sealed class PacketEncoder
 {
     /// <summary>
-    /// Encodes a request message into a binary packet.
+    /// Encodes a request message into binary format matching server protocol.
     /// </summary>
     /// <typeparam name="T">Message type</typeparam>
     /// <param name="message">Message to encode</param>
-    /// <param name="msgSeq">Message sequence number</param>
-    /// <param name="msgId">Message ID (type identifier)</param>
-    /// <returns>Encoded packet bytes</returns>
-    public byte[] EncodeRequest<T>(T message, ushort msgSeq, ushort msgId) where T : IMessage
+    /// <param name="msgSeq">Message sequence number (0 for one-way messages)</param>
+    /// <param name="stageId">Target stage ID (0 if not yet joined)</param>
+    /// <param name="serviceId">Service ID (0 for default service)</param>
+    /// <returns>Encoded packet bytes (without length prefix)</returns>
+    public byte[] EncodeMessage<T>(T message, ushort msgSeq = 0, long stageId = 0, short serviceId = 0) where T : IMessage
     {
         if (message == null)
         {
             throw new ArgumentNullException(nameof(message));
         }
 
-        // Serialize the protobuf message
-        var payload = message.ToByteArray();
+        // Get message ID from protobuf descriptor
+        var msgId = message.Descriptor.Name;
+        var msgIdBytes = Encoding.UTF8.GetBytes(msgId);
 
-        // Create packet header
-        var packet = new ClientPacket
+        if (msgIdBytes.Length > 255)
         {
-            MsgSeq = msgSeq,
-            MsgId = msgId,
-            Payload = Google.Protobuf.ByteString.CopyFrom(payload)
-        };
-
-        // Serialize the packet
-        var packetBytes = packet.ToByteArray();
-
-        // Prepend packet size (4 bytes, big-endian)
-        var totalSize = packetBytes.Length;
-        var buffer = ArrayPool<byte>.Shared.Rent(totalSize + 4);
-
-        try
-        {
-            // Write size header (big-endian)
-            buffer[0] = (byte)(totalSize >> 24);
-            buffer[1] = (byte)(totalSize >> 16);
-            buffer[2] = (byte)(totalSize >> 8);
-            buffer[3] = (byte)totalSize;
-
-            // Write packet data
-            Array.Copy(packetBytes, 0, buffer, 4, packetBytes.Length);
-
-            // Return final packet
-            var result = new byte[totalSize + 4];
-            Array.Copy(buffer, 0, result, 0, totalSize + 4);
-
-            return result;
+            throw new ArgumentException($"Message ID too long: {msgId}");
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        // Serialize protobuf payload
+        var payloadBytes = message.ToByteArray();
+
+        // Calculate total size
+        // Client → Server: ServiceId(2) + MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + Payload
+        var totalSize = 2 + 1 + msgIdBytes.Length + 2 + 8 + payloadBytes.Length;
+        var buffer = new byte[totalSize];
+
+        int offset = 0;
+
+        // ServiceId (2 bytes, little-endian)
+        BinaryPrimitives.WriteInt16LittleEndian(buffer.AsSpan(offset), serviceId);
+        offset += 2;
+
+        // MsgIdLen (1 byte)
+        buffer[offset++] = (byte)msgIdBytes.Length;
+
+        // MsgId (N bytes)
+        msgIdBytes.CopyTo(buffer, offset);
+        offset += msgIdBytes.Length;
+
+        // MsgSeq (2 bytes, little-endian)
+        BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset), msgSeq);
+        offset += 2;
+
+        // StageId (8 bytes, little-endian)
+        BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(offset), stageId);
+        offset += 8;
+
+        // Payload
+        payloadBytes.CopyTo(buffer, offset);
+
+        return buffer;
     }
 
     /// <summary>
-    /// Encodes a one-way message (no response expected).
+    /// Encodes a message and returns it with length prefix (for TCP framing).
+    /// Complete format: Length(4) + ServiceId(2) + MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + Body
     /// </summary>
     /// <typeparam name="T">Message type</typeparam>
     /// <param name="message">Message to encode</param>
-    /// <param name="msgId">Message ID (type identifier)</param>
-    /// <returns>Encoded packet bytes</returns>
-    public byte[] EncodeMessage<T>(T message, ushort msgId) where T : IMessage
+    /// <param name="msgSeq">Message sequence number</param>
+    /// <param name="stageId">Target stage ID</param>
+    /// <param name="serviceId">Service ID (0 for default service)</param>
+    /// <returns>Length-prefixed packet bytes</returns>
+    public byte[] EncodeWithLengthPrefix<T>(T message, ushort msgSeq = 0, long stageId = 0, short serviceId = 0) where T : IMessage
     {
-        // Use MsgSeq = 0 for one-way messages
-        return EncodeRequest(message, msgSeq: 0, msgId);
+        var packetBytes = EncodeMessage(message, msgSeq, stageId, serviceId);
+        var totalLength = 4 + packetBytes.Length;
+        var buffer = new byte[totalLength];
+
+        // Write length prefix (4 bytes, little-endian)
+        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0), packetBytes.Length);
+
+        // Write packet data
+        packetBytes.CopyTo(buffer, 4);
+
+        return buffer;
     }
 }

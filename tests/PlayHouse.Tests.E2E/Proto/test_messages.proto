@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package playhouse.tests.e2e;
+
+option csharp_namespace = "PlayHouse.Tests.E2E.Proto";
+
+// ============================================
+// HTTP API Messages (for Room Creation/Join)
+// ============================================
+
+// HTTP API: 방 생성 요청
+message CreateRoomRequest {
+    string room_type = 1;          // "chat-stage", "game-stage" etc.
+    string nickname = 2;           // User nickname (simplified)
+}
+
+// HTTP API: 방 생성 응답
+message CreateRoomReply {
+    string room_token = 1;         // Token for TCP/WebSocket authentication
+    string endpoint = 2;           // "tcp://localhost:9000" or "ws://localhost:9001"
+    int32 stage_id = 3;            // Server-assigned stage ID
+}
+
+// HTTP API: 방 입장 요청
+message JoinRoomRequest {
+    int32 room_id = 1;             // Room to join (stage_id)
+    string nickname = 2;           // User nickname (simplified)
+}
+
+// HTTP API: 방 입장 응답
+message JoinRoomReply {
+    string room_token = 1;         // Token for TCP/WebSocket authentication
+    string endpoint = 2;           // "tcp://localhost:9000" or "ws://localhost:9001"
+    int32 stage_id = 3;            // Server-assigned stage ID
+}
+
+// ============================================
+// TCP/WebSocket Authentication Messages
+// ============================================
+
+// TCP/WebSocket: 인증 요청 (연결 직후 전송)
+message AuthenticateRequest {
+    string room_token = 1;         // Token from HTTP API
+}
+
+// TCP/WebSocket: 인증 응답
+message AuthenticateReply {
+    int64 account_id = 1;          // Server-assigned account ID
+    int32 stage_id = 2;            // Stage ID
+    bool authenticated = 3;        // Authentication success
+    string error_message = 4;      // Error message if failed
+}
+
+// ============================================
+// Legacy Messages (kept for compatibility)
+// ============================================
+
+// Stage 생성 요청
+message CreateStageRequest {
+    string stage_type = 1;
+    string stage_name = 2;
+    int32 max_actors = 3;
+}
+
+// Stage 생성 응답
+message CreateStageReply {
+    int32 stage_id = 1;
+    string stage_name = 2;
+}
+
+// Actor 입장 요청
+message JoinStageRequest {
+    int64 account_id = 1;
+    string nickname = 2;
+    string auth_token = 3;
+}
+
+// Actor 입장 응답
+message JoinStageReply {
+    int64 account_id = 1;
+    int32 stage_id = 2;
+    int64 joined_at = 3;
+}
+
+// 채팅 메시지
+message ChatMessage {
+    int64 sender_id = 1;
+    string sender_name = 2;
+    string message = 3;
+    int64 timestamp = 4;
+}
+
+// 에코 요청
+message EchoRequest {
+    string content = 1;
+    int32 sequence = 2;
+}
+
+// 에코 응답
+message EchoReply {
+    string content = 1;
+    int32 sequence = 2;
+    int64 processed_at = 3;
+}
+
+// 브로드캐스트 알림
+message BroadcastNotify {
+    string event_type = 1;
+    string data = 2;
+    int64 from_account_id = 3;
+}
+
+// Actor 퇴장 알림
+message ActorLeftNotify {
+    int64 account_id = 1;
+    string nickname = 2;
+    string reason = 3;
+}
+
+// 핑 요청
+message PingRequest {
+    int64 client_time = 1;
+}
+
+// 핑 응답
+message PingReply {
+    int64 client_time = 1;
+    int64 server_time = 2;
+}
+
+// 상태 조회 요청
+message StatusRequest {
+}
+
+// 상태 조회 응답
+message StatusReply {
+    int32 actor_count = 1;
+    int64 uptime_seconds = 2;
+    string stage_type = 3;
+}

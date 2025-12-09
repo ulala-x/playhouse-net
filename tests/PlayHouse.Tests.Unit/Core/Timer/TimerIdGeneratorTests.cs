@@ -103,7 +103,7 @@ public class TimerIdGeneratorTests
     }
 
     [Fact(DisplayName = "동시성 테스트 - 여러 스레드에서 동시 호출 시 모든 ID가 고유함")]
-    public void Generate_ConcurrentCalls_AllIdsAreUnique()
+    public async Task Generate_ConcurrentCalls_AllIdsAreUnique()
     {
         // Given (전제조건)
         TimerIdGenerator.Reset();
@@ -125,7 +125,7 @@ public class TimerIdGeneratorTests
             }));
         }
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         var idList = allIds.ToList();
@@ -136,7 +136,7 @@ public class TimerIdGeneratorTests
     }
 
     [Fact(DisplayName = "동시성 테스트 - Generate와 GetCurrentCount 동시 호출")]
-    public void ConcurrentGenerateAndGetCount_ThreadSafe()
+    public async Task ConcurrentGenerateAndGetCount_ThreadSafe()
     {
         // Given (전제조건)
         TimerIdGenerator.Reset();
@@ -163,7 +163,7 @@ public class TimerIdGeneratorTests
             }
         }));
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         var idList = ids.ToList();
@@ -195,7 +195,7 @@ public class TimerIdGeneratorTests
     }
 
     [Fact(DisplayName = "스레드 안전성 테스트 - Reset과 Generate 동시 호출")]
-    public void ConcurrentResetAndGenerate_ThreadSafe()
+    public async Task ConcurrentResetAndGenerate_ThreadSafe()
     {
         // Given (전제조건)
         const int iterations = 100;
@@ -223,7 +223,7 @@ public class TimerIdGeneratorTests
             }
         }));
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         // Reset이 있어도 데드락이나 예외가 발생하지 않아야 함

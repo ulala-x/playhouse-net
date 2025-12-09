@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
@@ -12,15 +13,20 @@ namespace PlayHouse.Core.Stage;
 /// </summary>
 /// <remarks>
 /// StageContext provides:
-/// 1. A lock-free event loop via BaseStage
+/// 1. A lock-free event loop using CAS operations
 /// 2. Lifecycle management (Create, PostCreate, Destroy)
 /// 3. Actor management via ActorPool
 /// 4. Message routing to actors and stage handlers
 /// </remarks>
-public sealed class StageContext : BaseStage, IAsyncDisposable
+public sealed class StageContext : IAsyncDisposable
 {
     private readonly IStage _userStage;
+    private readonly IStageSender _stageSender;
     private readonly ActorPool _actorPool;
+    private readonly ILogger<StageContext> _logger;
+    private readonly ConcurrentQueue<RoutePacket> _msgQueue = new();
+    private readonly AtomicBoolean _isProcessing = new(false);
+    private readonly Func<long, long, IActor>? _actorFactory;
     private bool _isDisposed;
 
     /// <summary>
@@ -29,13 +35,17 @@ public sealed class StageContext : BaseStage, IAsyncDisposable
     /// <param name="userStage">The user-defined stage implementation.</param>
     /// <param name="stageSender">The sender interface for this stage.</param>
     /// <param name="logger">The logger instance.</param>
+    /// <param name="actorFactory">Optional factory function for creating user actors. Receives (accountId, sessionId).</param>
     public StageContext(
         IStage userStage,
         IStageSender stageSender,
-        ILogger<StageContext> logger)
-        : base(stageSender, logger)
+        ILogger<StageContext> logger,
+        Func<long, long, IActor>? actorFactory = null)
     {
         _userStage = userStage;
+        _stageSender = stageSender;
+        _logger = logger;
+        _actorFactory = actorFactory;
         _actorPool = new ActorPool(logger);
     }
 
@@ -55,11 +65,78 @@ public sealed class StageContext : BaseStage, IAsyncDisposable
     public ActorPool ActorPool => _actorPool;
 
     /// <summary>
+    /// Gets the current queue depth for monitoring purposes.
+    /// </summary>
+    public int QueueDepth => _msgQueue.Count;
+
+    /// <summary>
+    /// Gets a value indicating whether this stage is currently processing messages.
+    /// </summary>
+    public bool IsProcessing => _isProcessing.Value;
+
+    /// <summary>
+    /// Posts a packet to this stage's message queue for processing.
+    /// </summary>
+    /// <param name="routePacket">The route packet to process.</param>
+    public void Post(RoutePacket routePacket)
+    {
+        _msgQueue.Enqueue(routePacket);
+
+        // Only start processing if we're not already processing
+        if (_isProcessing.CompareAndSet(false, true))
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ProcessMessageLoopAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unhandled exception in stage {StageId} message loop", StageId);
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Processes the message queue in a loop until empty.
+    /// </summary>
+    private async Task ProcessMessageLoopAsync()
+    {
+        do
+        {
+            // Process all available messages
+            while (_msgQueue.TryDequeue(out var packet))
+            {
+                try
+                {
+                    using (packet)
+                    {
+                        await DispatchAsync(packet);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Error dispatching packet in stage {StageId}: MsgId={MsgId}, Type={PacketType}",
+                        StageId, packet.MsgId, packet.PacketType);
+                }
+            }
+
+            // Mark that we're done processing
+            _isProcessing.Set(false);
+
+            // Double-check: if new messages arrived, resume processing
+        } while (!_msgQueue.IsEmpty && _isProcessing.CompareAndSet(false, true));
+    }
+
+    /// <summary>
     /// Dispatches a route packet based on its type.
     /// </summary>
     /// <param name="packet">The route packet to dispatch.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    protected override async Task DispatchAsync(RoutePacket packet)
+    private async Task DispatchAsync(RoutePacket packet)
     {
         if (_isDisposed)
         {
@@ -212,7 +289,7 @@ public sealed class StageContext : BaseStage, IAsyncDisposable
                 return (ErrorCode.DuplicateLogin, null, null);
             }
 
-            // Create actor instance using reflection (simplified - user should provide factory)
+            // Create actor instance using factory or default
             var userActor = CreateUserActor(accountId, sessionId);
 
             // Create actor context
@@ -354,23 +431,28 @@ public sealed class StageContext : BaseStage, IAsyncDisposable
     /// <param name="sessionId">The session identifier.</param>
     /// <returns>A new IActor instance.</returns>
     /// <remarks>
-    /// This is a simplified implementation. In production, this should use a proper
-    /// actor factory pattern that allows dependency injection and custom actor types.
+    /// If an actor factory was provided during construction, it will be used to create
+    /// a custom actor type. Otherwise, a default actor implementation will be used.
     /// </remarks>
     private IActor CreateUserActor(long accountId, long sessionId)
     {
-        // Get the stage sender implementation
+        // Use the actor factory if provided
+        if (_actorFactory != null)
+        {
+            return _actorFactory(accountId, sessionId);
+        }
+
+        // Get the stage sender implementation for default actor
         var stageSender = _stageSender as StageSenderImpl;
         if (stageSender == null)
         {
             throw new InvalidOperationException("StageSender is not a StageSenderImpl");
         }
 
-        // Create actor sender
+        // Create actor sender for default actor
         var actorSender = new ActorSenderImpl(accountId, sessionId, stageSender);
 
         // Create a default actor implementation
-        // TODO: This should be provided by user through actor factory
         return new DefaultActor(actorSender);
     }
 

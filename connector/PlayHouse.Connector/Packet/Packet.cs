@@ -66,15 +66,15 @@ namespace PlayHouse.Connector.Packet
 
         /// <summary>Field number for the "msg_id" field.</summary>
         public const int MsgIdFieldNumber = 2;
-        private ushort msgId_;
+        private string msgId_ = string.Empty;
         /// <summary>
         /// Message type identifier
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-        public ushort MsgId
+        public string MsgId
         {
             get { return msgId_; }
-            set { msgId_ = value; }
+            set { msgId_ = value ?? string.Empty; }
         }
 
         /// <summary>Field number for the "payload" field.</summary>
@@ -118,7 +118,7 @@ namespace PlayHouse.Connector.Packet
         {
             int hash = 1;
             if (MsgSeq != 0) hash ^= MsgSeq.GetHashCode();
-            if (MsgId != 0) hash ^= MsgId.GetHashCode();
+            if (MsgId.Length != 0) hash ^= MsgId.GetHashCode();
             if (Payload.Length != 0) hash ^= Payload.GetHashCode();
             if (_unknownFields != null)
             {
@@ -141,10 +141,10 @@ namespace PlayHouse.Connector.Packet
                 output.WriteRawTag(8);
                 output.WriteUInt32(MsgSeq);
             }
-            if (MsgId != 0)
+            if (MsgId.Length != 0)
             {
-                output.WriteRawTag(16);
-                output.WriteUInt32(MsgId);
+                output.WriteRawTag(18);
+                output.WriteString(MsgId);
             }
             if (Payload.Length != 0)
             {
@@ -165,9 +165,9 @@ namespace PlayHouse.Connector.Packet
             {
                 size += 1 + pb::CodedOutputStream.ComputeUInt32Size(MsgSeq);
             }
-            if (MsgId != 0)
+            if (MsgId.Length != 0)
             {
-                size += 1 + pb::CodedOutputStream.ComputeUInt32Size(MsgId);
+                size += 1 + pb::CodedOutputStream.ComputeStringSize(MsgId);
             }
             if (Payload.Length != 0)
             {
@@ -191,7 +191,7 @@ namespace PlayHouse.Connector.Packet
             {
                 MsgSeq = other.MsgSeq;
             }
-            if (other.MsgId != 0)
+            if (other.MsgId.Length != 0)
             {
                 MsgId = other.MsgId;
             }
@@ -218,9 +218,9 @@ namespace PlayHouse.Connector.Packet
                             MsgSeq = (ushort)input.ReadUInt32();
                             break;
                         }
-                    case 16:
+                    case 18:
                         {
-                            MsgId = (ushort)input.ReadUInt32();
+                            MsgId = input.ReadString();
                             break;
                         }
                     case 26:
@@ -289,15 +289,15 @@ namespace PlayHouse.Connector.Packet
 
         /// <summary>Field number for the "msg_id" field.</summary>
         public const int MsgIdFieldNumber = 2;
-        private ushort msgId_;
+        private string msgId_ = string.Empty;
         /// <summary>
         /// Message type identifier
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-        public ushort MsgId
+        public string MsgId
         {
             get { return msgId_; }
-            set { msgId_ = value; }
+            set { msgId_ = value ?? string.Empty; }
         }
 
         /// <summary>Field number for the "error_code" field.</summary>
@@ -355,7 +355,7 @@ namespace PlayHouse.Connector.Packet
         {
             int hash = 1;
             if (MsgSeq != 0) hash ^= MsgSeq.GetHashCode();
-            if (MsgId != 0) hash ^= MsgId.GetHashCode();
+            if (MsgId.Length != 0) hash ^= MsgId.GetHashCode();
             if (ErrorCode != 0) hash ^= ErrorCode.GetHashCode();
             if (Payload.Length != 0) hash ^= Payload.GetHashCode();
             if (_unknownFields != null)
@@ -379,10 +379,10 @@ namespace PlayHouse.Connector.Packet
                 output.WriteRawTag(8);
                 output.WriteUInt32(MsgSeq);
             }
-            if (MsgId != 0)
+            if (MsgId.Length != 0)
             {
-                output.WriteRawTag(16);
-                output.WriteUInt32(MsgId);
+                output.WriteRawTag(18);
+                output.WriteString(MsgId);
             }
             if (ErrorCode != 0)
             {
@@ -408,9 +408,9 @@ namespace PlayHouse.Connector.Packet
             {
                 size += 1 + pb::CodedOutputStream.ComputeUInt32Size(MsgSeq);
             }
-            if (MsgId != 0)
+            if (MsgId.Length != 0)
             {
-                size += 1 + pb::CodedOutputStream.ComputeUInt32Size(MsgId);
+                size += 1 + pb::CodedOutputStream.ComputeStringSize(MsgId);
             }
             if (ErrorCode != 0)
             {
@@ -438,7 +438,7 @@ namespace PlayHouse.Connector.Packet
             {
                 MsgSeq = other.MsgSeq;
             }
-            if (other.MsgId != 0)
+            if (other.MsgId.Length != 0)
             {
                 MsgId = other.MsgId;
             }
@@ -469,9 +469,9 @@ namespace PlayHouse.Connector.Packet
                             MsgSeq = (ushort)input.ReadUInt32();
                             break;
                         }
-                    case 16:
+                    case 18:
                         {
-                            MsgId = (ushort)input.ReadUInt32();
+                            MsgId = input.ReadString();
                             break;
                         }
                     case 24:
