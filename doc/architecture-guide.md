@@ -69,7 +69,7 @@ presentation(또는 api) → domain ← infrastructure
 - **기준**: 외부 의존성 없이 메모리 내에서 즉시 실행되어야 하며, 비즈니스 규칙을 검증한다.
 - **가독성**: 테스트 코드가 **스펙 문서(Specification Document)처럼 읽혀야** 한다. 각 테스트는 시스템이 어떻게 동작해야 하는지를 명확히 서술한다.
 
-#### 통합 테스트 (Integration Test)
+#### 통합/e2e 테스트 (Integration Test)
 
 - **대상**: 유스케이스 흐름, 어댑터, 외부 시스템 연동
 - **기준**: 주요 성공/실패 시나리오를 검증하며, 외부 시스템은 Fake로 대체하되 필요시 계약 테스트(Contract Test)를 병행한다.

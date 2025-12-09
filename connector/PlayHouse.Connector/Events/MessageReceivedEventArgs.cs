@@ -10,7 +10,7 @@ public sealed class MessageReceivedEventArgs : EventArgs
     /// <summary>
     /// Gets the message ID (type identifier).
     /// </summary>
-    public ushort MessageId { get; }
+    public string MessageId { get; }
 
     /// <summary>
     /// Gets the message sequence number (0 for one-way messages).
@@ -38,9 +38,9 @@ public sealed class MessageReceivedEventArgs : EventArgs
     /// <param name="messageId">Message ID</param>
     /// <param name="messageSeq">Message sequence number</param>
     /// <param name="message">Received message</param>
-    public MessageReceivedEventArgs(ushort messageId, ushort messageSeq, IMessage message)
+    public MessageReceivedEventArgs(string messageId, ushort messageSeq, IMessage message)
     {
-        MessageId = messageId;
+        MessageId = messageId ?? throw new ArgumentNullException(nameof(messageId));
         MessageSeq = messageSeq;
         Message = message ?? throw new ArgumentNullException(nameof(message));
         Timestamp = DateTime.UtcNow;

@@ -68,6 +68,12 @@ internal sealed class StageSenderImpl : IStageSender
         _requestContext = context;
     }
 
+    /// <summary>
+    /// Gets the logger instance for this stage sender.
+    /// </summary>
+    /// <returns>The logger instance.</returns>
+    internal ILogger GetLogger() => _logger;
+
     /// <inheritdoc/>
     public void Reply(ushort errorCode)
     {

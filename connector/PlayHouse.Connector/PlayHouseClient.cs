@@ -1,6 +1,7 @@
 namespace PlayHouse.Connector;
 
 using System.Collections.Concurrent;
+using System.Linq;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Connector.Connection;
@@ -141,6 +142,7 @@ public sealed class PlayHouseClient : IPlayHouseClient
             }
 
             // Replace connection if needed (constructor may have set null!)
+            var activeConnection = _connection ?? connection;
             if (_connection == null)
             {
                 typeof(PlayHouseClient)
@@ -150,17 +152,18 @@ public sealed class PlayHouseClient : IPlayHouseClient
             }
 
             // Connect
-            await _connection.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+            await activeConnection.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
 
-            // TODO: Send JoinRoomRequest with roomToken
-            // For now, simulate successful join
-            _stageId = 1; // Will be set from server response
-            _accountId = 12345; // Will be set from server response
+            // TODO: Send JoinStageRequest with roomToken
+            // Note: This should be implemented by the application using proto-generated types
+            // For now, we assume connection is ready after TCP handshake
+            _stageId = 0; // Will be set when app sends JoinStageRequest
+            _accountId = 0; // Will be set when app receives JoinStageReply
 
             UpdateState(ConnectionState.Connected);
             _reconnectAttempts = 0;
 
-            _logger?.LogInformation("Connected to {Endpoint} with StageId={StageId}", endpoint, _stageId);
+            _logger?.LogInformation("Connected to {Endpoint}", endpoint);
 
             return new JoinRoomResult(true, 0, _stageId);
         }
@@ -270,10 +273,9 @@ public sealed class PlayHouseClient : IPlayHouseClient
 
         var effectiveTimeout = timeout ?? _options.RequestTimeout;
         var msgSeq = _requestTracker.GetNextMsgSeq();
-        var msgId = GetMessageId<TRequest>();
 
         _logger?.LogDebug("Sending request: Type={Type}, MsgSeq={MsgSeq}, MsgId={MsgId}",
-            typeof(TRequest).Name, msgSeq, msgId);
+            typeof(TRequest).Name, msgSeq, request.Descriptor.Name);
 
         // Track request
         var responseTask = _requestTracker.TrackRequestAsync<TResponse>(msgSeq, effectiveTimeout, cancellationToken);
@@ -281,7 +283,7 @@ public sealed class PlayHouseClient : IPlayHouseClient
         // Encode and send
         try
         {
-            var packet = _encoder.EncodeRequest(request, msgSeq, msgId);
+            var packet = _encoder.EncodeWithLengthPrefix(request, msgSeq, _stageId);
             await _connection.SendAsync(packet, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -302,11 +304,9 @@ public sealed class PlayHouseClient : IPlayHouseClient
             throw new InvalidOperationException("Not connected.");
         }
 
-        var msgId = GetMessageId<T>();
+        _logger?.LogDebug("Sending message: Type={Type}, MsgId={MsgId}", typeof(T).Name, message.Descriptor.Name);
 
-        _logger?.LogDebug("Sending message: Type={Type}, MsgId={MsgId}", typeof(T).Name, msgId);
-
-        var packet = _encoder.EncodeMessage(message, msgId);
+        var packet = _encoder.EncodeWithLengthPrefix(message, msgSeq: 0, stageId: _stageId);
         await _connection.SendAsync(packet).ConfigureAwait(false);
     }
 
@@ -557,9 +557,20 @@ public sealed class PlayHouseClient : IPlayHouseClient
         return (ushort)Math.Abs(typeName.GetHashCode() % ushort.MaxValue);
     }
 
-    private static Type? GetMessageType(ushort msgId)
+    private static Type? GetMessageType(string msgId)
     {
-        // TODO: Implement reverse lookup from message ID to type
+        // Use reflection to find the type by name in loaded assemblies
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var type = assembly.GetTypes()
+                .FirstOrDefault(t => typeof(IMessage).IsAssignableFrom(t) && t.Name == msgId);
+
+            if (type != null)
+            {
+                return type;
+            }
+        }
+
         return null;
     }
 

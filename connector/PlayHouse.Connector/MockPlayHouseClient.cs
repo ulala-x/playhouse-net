@@ -273,7 +273,8 @@ public sealed class MockPlayHouseClient : IPlayHouseClient
         _receivedMessages.Enqueue(message);
 
         // Raise MessageReceived event
-        MessageReceived?.Invoke(this, new MessageReceivedEventArgs(1, 0, message));
+        var msgId = message.Descriptor?.Name ?? typeof(T).Name;
+        MessageReceived?.Invoke(this, new MessageReceivedEventArgs(msgId, 0, message));
 
         // Invoke registered handlers
         var typeName = typeof(T).FullName!;

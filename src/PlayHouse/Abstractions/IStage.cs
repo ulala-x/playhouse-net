@@ -14,9 +14,18 @@ namespace PlayHouse.Abstractions;
 public interface IStage : IAsyncDisposable
 {
     /// <summary>
-    /// Gets the sender interface for this stage to send packets and manage stage operations.
+    /// Gets or inits the sender interface for this stage to send packets and manage stage operations.
     /// </summary>
-    IStageSender StageSender { get; }
+    /// <remarks>
+    /// This property must be initialized using the required init pattern:
+    /// <code>
+    /// public class MyStage : BaseStage
+    /// {
+    ///     public override required IStageSender StageSender { get; init; }
+    /// }
+    /// </code>
+    /// </remarks>
+    IStageSender StageSender { get; init; }
 
     /// <summary>
     /// Called when the stage is first created.

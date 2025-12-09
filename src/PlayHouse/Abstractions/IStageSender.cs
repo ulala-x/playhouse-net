@@ -50,6 +50,15 @@ public interface IStageSender : ISender
     long AddRepeatTimer(TimeSpan initialDelay, TimeSpan period, Func<Task> callback);
 
     /// <summary>
+    /// Adds a repeating timer that executes periodically with the same delay and period.
+    /// </summary>
+    /// <param name="period">The delay before first execution and period between subsequent executions.</param>
+    /// <param name="callback">The callback to execute on each timer tick.</param>
+    /// <returns>A unique timer identifier that can be used to cancel the timer.</returns>
+    long AddRepeatTimer(TimeSpan period, Func<Task> callback)
+        => AddRepeatTimer(period, period, callback);
+
+    /// <summary>
     /// Adds a count-limited timer that executes a specific number of times.
     /// </summary>
     /// <param name="initialDelay">The delay before the first execution.</param>
@@ -58,6 +67,16 @@ public interface IStageSender : ISender
     /// <param name="callback">The callback to execute on each timer tick.</param>
     /// <returns>A unique timer identifier that can be used to cancel the timer.</returns>
     long AddCountTimer(TimeSpan initialDelay, TimeSpan period, int count, Func<Task> callback);
+
+    /// <summary>
+    /// Adds a count-limited timer that executes a specific number of times with the same delay and period.
+    /// </summary>
+    /// <param name="period">The delay before first execution and period between subsequent executions.</param>
+    /// <param name="count">The number of times to execute the callback.</param>
+    /// <param name="callback">The callback to execute on each timer tick.</param>
+    /// <returns>A unique timer identifier that can be used to cancel the timer.</returns>
+    long AddCountTimer(TimeSpan period, int count, Func<Task> callback)
+        => AddCountTimer(period, period, count, callback);
 
     /// <summary>
     /// Cancels a previously registered timer.

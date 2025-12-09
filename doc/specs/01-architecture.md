@@ -210,8 +210,9 @@ Core Engine → Abstractions ← Infrastructure
 - 메시지 디스패칭 및 큐 관리
 
 **주요 컴포넌트**:
+- **Bootstrap**: 시스템 초기화 및 구성 (PlayHouseBootstrap, Builder, Registry)
 - **Message Pipeline**: Dispatcher, Handler, Message Queue
-- **Stage Management**: Stage Pool, Actor Pool
+- **Stage Management**: Stage Pool, Actor Pool, Stage Factory
 - **Support Services**: Timer Manager, Request Cache, Session Manager
 
 #### Infrastructure Layer
@@ -246,8 +247,15 @@ playhouse-net/
 │       │   └── ErrorCode.cs
 │       │
 │       ├── Core/                  # Core Engine Layer
+│       │   ├── Bootstrap/        # 시스템 초기화
+│       │   │   ├── PlayHouseBootstrap.cs        # 진입점
+│       │   │   ├── PlayHouseBootstrapBuilder.cs # Fluent API
+│       │   │   ├── IPlayHouseHost.cs            # 호스트 인터페이스
+│       │   │   └── PlayHouseHostImpl.cs         # 호스트 구현
 │       │   ├── Stage/
 │       │   │   ├── StagePool.cs
+│       │   │   ├── StageFactory.cs
+│       │   │   ├── StageTypeRegistry.cs         # 타입 레지스트리
 │       │   │   └── ActorPool.cs
 │       │   ├── Messaging/
 │       │   │   ├── Dispatcher.cs
@@ -296,6 +304,13 @@ playhouse-net/
 │       └── PlayHouse.Connector.csproj
 │
 ├── tests/
+│   ├── PlayHouse.Tests.Shared/    # 공유 테스트 인프라
+│   │   ├── Fixtures/
+│   │   │   ├── TestServerFixture.cs  # 테스트 서버 Fixture
+│   │   │   └── TestServer.cs         # 서버 래퍼
+│   │   └── TestImplementations/
+│   │       ├── TestStage.cs          # 공용 테스트 Stage
+│   │       └── TestActor.cs          # 공용 테스트 Actor
 │   ├── PlayHouse.Tests.E2E/       # E2E 테스트 (Connector 사용)
 │   ├── PlayHouse.Tests.Integration/  # 통합 테스트 (우선)
 │   └── PlayHouse.Tests.Unit/      # 유닛 테스트 (통합으로 커버 어려운 부분만)
@@ -309,8 +324,9 @@ playhouse-net/
 |---------|------|--------|
 | PlayHouse | 서버 프레임워크 | 없음 (독립) |
 | PlayHouse.Connector | 클라이언트 라이브러리 | 없음 (독립) |
-| PlayHouse.Tests.E2E | E2E 테스트 | PlayHouse, Connector |
-| PlayHouse.Tests.Integration | 통합 테스트 | PlayHouse |
+| PlayHouse.Tests.Shared | 공유 테스트 인프라 | PlayHouse, Connector |
+| PlayHouse.Tests.E2E | E2E 테스트 | PlayHouse, Connector, Tests.Shared |
+| PlayHouse.Tests.Integration | 통합 테스트 | PlayHouse, Tests.Shared |
 | PlayHouse.Tests.Unit | 유닛 테스트 | PlayHouse |
 
 ### 3.3 레이어 간 의존성 규칙

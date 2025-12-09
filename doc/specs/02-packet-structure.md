@@ -49,10 +49,11 @@ PlayHouse-NET의 패킷 구조는 기존 PlayHouse의 구조를 기반으로 하
 
 | 필드 | 크기 | 타입 | 설명 |
 |------|------|------|------|
+| ServiceId | 2 bytes | short | 서비스 식별자 (현재 0 사용, 향후 확장용) |
 | MsgId Length | 1 byte | byte | MsgId 문자열 길이 (1-255) |
 | MsgId | N bytes | string | 메시지 타입 식별자 (UTF-8) |
 | MsgSeq | 2 bytes | ushort | 메시지 시퀀스 번호 (Request-Reply 매칭) |
-| StageId | 4 bytes | int | 목적지 Stage 식별자 (0 = 없음, 서버 내 로컬 유니크) |
+| StageId | 8 bytes | long | 목적지 Stage 식별자 (0 = 없음, 서버 내 로컬 유니크) |
 | ErrorCode | 2 bytes | ushort | 오류 코드 (0 = 성공) |
 | OriginalSize | 4 bytes | int | 압축 전 원본 크기 (압축 시만 존재) |
 
@@ -61,12 +62,13 @@ PlayHouse-NET의 패킷 구조는 기존 PlayHouse의 구조를 기반으로 하
 ```
 Offset  Size  Field           Description
 ----------------------------------------------
-0       1     MsgIdLen        MsgId 길이
-1       N     MsgId           메시지 식별자 (가변)
-1+N     2     MsgSeq          시퀀스 번호
-3+N     4     StageId         Stage 식별자 (서버 내 로컬 유니크)
-7+N     2     ErrorCode       오류 코드
-9+N     4     OriginalSize    원본 크기 (옵션)
+0       2     ServiceId       서비스 식별자 (현재 0)
+2       1     MsgIdLen        MsgId 길이
+3       N     MsgId           메시지 식별자 (가변)
+3+N     2     MsgSeq          시퀀스 번호
+5+N     8     StageId         Stage 식별자 (서버 내 로컬 유니크)
+13+N    2     ErrorCode       오류 코드
+15+N    4     OriginalSize    원본 크기 (옵션)
 ```
 
 ### 3.3 MsgId 설계
@@ -125,7 +127,7 @@ Request-Reply 패턴 매칭
 
 값의 의미:
 - 0              : Stage 없음 (로그인, 시스템 메시지)
-- 1 ~ 2^31-1     : 유효한 Stage ID
+- 1 ~ 2^63-1     : 유효한 Stage ID
 
 생성 방식:
 - 단순 증가 카운터 (Interlocked.Increment)
@@ -133,14 +135,15 @@ Request-Reply 패턴 매칭
 - 글로벌 식별: Room서버주소(ip:port) + StageId
 
 설계 근거:
-- 단일 Room 서버 구조 → 분산 ID 불필요
-- long(8B) → int(4B)로 패킷 크기 절감
-- Snowflake 복잡도 제거
+- long(8B) 사용으로 프로토콜 호환성 유지
+- 단일 Room 서버 구조에서는 int도 충분하지만,
+  클라이언트와의 프로토콜 일관성을 위해 8바이트 사용
+- Snowflake 같은 분산 ID는 불필요
 
 예시:
-0x00000000  - 시스템 메시지
-0x00000001  - Stage #1
-0x00000002  - Stage #2
+0x0000000000000000  - 시스템 메시지
+0x0000000000000001  - Stage #1
+0x0000000000000002  - Stage #2
 ...
 ```
 
@@ -621,6 +624,9 @@ public byte[] SerializePacket(IPacket packet, bool compress)
     using var buffer = new MemoryStream();
     using var writer = new BinaryWriter(buffer);
 
+    // ServiceId (2 bytes) - 서버 응답은 0
+    writer.Write((short)0);
+
     // MsgId
     var msgIdBytes = Encoding.UTF8.GetBytes(packet.MsgId);
     writer.Write((byte)msgIdBytes.Length);
@@ -629,7 +635,7 @@ public byte[] SerializePacket(IPacket packet, bool compress)
     // MsgSeq
     writer.Write((ushort)packet.MsgSeq);
 
-    // StageId
+    // StageId (8 bytes)
     writer.Write((long)packet.StageId);
 
     // ErrorCode
@@ -664,6 +670,9 @@ public IPacket DeserializePacket(byte[] data)
     using var buffer = new MemoryStream(data);
     using var reader = new BinaryReader(buffer);
 
+    // ServiceId (2 bytes) - 클라이언트는 파싱만 하고 값은 무시
+    var serviceId = reader.ReadInt16();
+
     // MsgId
     var msgIdLen = reader.ReadByte();
     var msgIdBytes = reader.ReadBytes(msgIdLen);
@@ -672,7 +681,7 @@ public IPacket DeserializePacket(byte[] data)
     // MsgSeq
     var msgSeq = reader.ReadUInt16();
 
-    // StageId
+    // StageId (8 bytes)
     var stageId = reader.ReadInt64();
 
     // ErrorCode

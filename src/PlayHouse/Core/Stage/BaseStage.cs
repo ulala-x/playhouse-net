@@ -22,24 +22,38 @@ namespace PlayHouse.Core.Stage;
 /// - Messages are enqueued into a ConcurrentQueue
 /// - A single processing loop runs using CAS to ensure only one Task processes messages
 /// - The loop continues until the queue is empty and no new messages arrive
+///
+/// Usage pattern:
+/// <code>
+/// public class MyStage : BaseStage
+/// {
+///     public override required IStageSender StageSender { get; init; }
+///
+///     public override async Task&lt;(ushort, IPacket?)&gt; OnCreate(IPacket packet)
+///     {
+///         // Initialize stage
+///         return (ErrorCode.Success, null);
+///     }
+/// }
+/// </code>
 /// </remarks>
-public abstract class BaseStage
+public abstract class BaseStage : IStage
 {
     private readonly ConcurrentQueue<RoutePacket> _msgQueue = new();
     private readonly AtomicBoolean _isProcessing = new(false);
-    protected readonly IStageSender _stageSender;
-    protected readonly ILogger _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="BaseStage"/> class.
+    /// Gets the stage sender interface for sending packets and managing stage operations.
+    /// This property must be initialized using the required init pattern.
     /// </summary>
-    /// <param name="stageSender">The sender interface for this stage.</param>
-    /// <param name="logger">The logger instance.</param>
-    protected BaseStage(IStageSender stageSender, ILogger logger)
-    {
-        _stageSender = stageSender;
-        _logger = logger;
-    }
+    public abstract IStageSender StageSender { get; init; }
+
+    /// <summary>
+    /// Gets the logger instance for this stage.
+    /// </summary>
+    protected ILogger Logger => StageSender is StageSenderImpl impl
+        ? impl.GetLogger()
+        : throw new InvalidOperationException("StageSender must be initialized before accessing Logger");
 
     /// <summary>
     /// Posts a packet to this stage's message queue for processing.
@@ -65,7 +79,7 @@ public abstract class BaseStage
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Unhandled exception in stage {StageId} message loop", _stageSender.StageId);
+                    Logger.LogError(ex, "Unhandled exception in stage {StageId} message loop", StageSender.StageId);
                 }
             });
         }
@@ -98,9 +112,9 @@ public abstract class BaseStage
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex,
+                    Logger.LogError(ex,
                         "Error dispatching packet in stage {StageId}: MsgId={MsgId}, Type={PacketType}",
-                        _stageSender.StageId, packet.MsgId, packet.PacketType);
+                        StageSender.StageId, packet.MsgId, packet.PacketType);
                 }
             }
 
@@ -132,4 +146,34 @@ public abstract class BaseStage
     /// Gets a value indicating whether this stage is currently processing messages.
     /// </summary>
     public bool IsProcessing => _isProcessing.Value;
+
+    // IStage interface implementations - to be overridden by derived classes
+
+    /// <inheritdoc/>
+    public abstract Task<(ushort errorCode, IPacket? reply)> OnCreate(IPacket packet);
+
+    /// <inheritdoc/>
+    public virtual Task OnPostCreate() => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public abstract Task<(ushort errorCode, IPacket? reply)> OnJoinRoom(IActor actor, IPacket userInfo);
+
+    /// <inheritdoc/>
+    public virtual Task OnPostJoinRoom(IActor actor) => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public virtual ValueTask OnLeaveRoom(IActor actor, LeaveReason reason) => ValueTask.CompletedTask;
+
+    /// <inheritdoc/>
+    public virtual ValueTask OnActorConnectionChanged(IActor actor, bool isConnected, DisconnectReason? reason) => ValueTask.CompletedTask;
+
+    /// <inheritdoc/>
+    public abstract ValueTask OnDispatch(IActor actor, IPacket packet);
+
+    /// <inheritdoc/>
+    public virtual ValueTask DisposeAsync()
+    {
+        // Base cleanup - derived classes should override to add their own cleanup
+        return ValueTask.CompletedTask;
+    }
 }

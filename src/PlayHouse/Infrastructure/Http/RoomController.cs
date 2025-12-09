@@ -2,7 +2,9 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using PlayHouse.Abstractions;
+using PlayHouse.Core.Session;
 using PlayHouse.Core.Stage;
 
 namespace PlayHouse.Infrastructure.Http;
@@ -19,6 +21,8 @@ public sealed class RoomController : ControllerBase
     private readonly PlayHouseServer _server;
     private readonly StagePool _stagePool;
     private readonly StageFactory _stageFactory;
+    private readonly RoomTokenManager _tokenManager;
+    private readonly PlayHouseOptions _options;
 
     /// <summary>
     /// Initializes a new instance of the RoomController.
@@ -26,16 +30,22 @@ public sealed class RoomController : ControllerBase
     /// <param name="server">The PlayHouse server instance.</param>
     /// <param name="stagePool">The stage pool instance.</param>
     /// <param name="stageFactory">The stage factory instance.</param>
+    /// <param name="tokenManager">The room token manager instance.</param>
+    /// <param name="options">PlayHouse options.</param>
     /// <param name="logger">Logger instance.</param>
     public RoomController(
         PlayHouseServer server,
         StagePool stagePool,
         StageFactory stageFactory,
+        RoomTokenManager tokenManager,
+        IOptions<PlayHouseOptions> options,
         ILogger<RoomController> logger)
     {
         _server = server;
         _stagePool = stagePool;
         _stageFactory = stageFactory;
+        _tokenManager = tokenManager;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -59,6 +69,94 @@ public sealed class RoomController : ControllerBase
         };
 
         return Ok(response);
+    }
+
+    /// <summary>
+    /// Creates a new room and issues a room token for TCP/WebSocket authentication.
+    /// This is the recommended entry point for clients following the PlayHouse spec.
+    /// </summary>
+    /// <param name="request">Room creation request with room type and nickname.</param>
+    /// <returns>Room token, endpoint, and stage ID.</returns>
+    [HttpPost("create")]
+    [ProducesResponseType(typeof(CreateRoomResponse), 201)]
+    [ProducesResponseType(typeof(ErrorResponse), 400)]
+    [ProducesResponseType(typeof(ErrorResponse), 500)]
+    public async Task<IActionResult> CreateRoom([FromBody] CreateRoomRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.RoomType))
+        {
+            return BadRequest(new ErrorResponse
+            {
+                ErrorCode = ErrorCode.MissingParameter,
+                Message = "RoomType is required"
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Nickname))
+        {
+            return BadRequest(new ErrorResponse
+            {
+                ErrorCode = ErrorCode.MissingParameter,
+                Message = "Nickname is required"
+            });
+        }
+
+        try
+        {
+            _logger.LogInformation("Creating room: RoomType={RoomType}, Nickname={Nickname}",
+                request.RoomType, request.Nickname);
+
+            // Create stage
+            var creationPacket = new Infrastructure.Serialization.SimplePacket(
+                "CreateRoom",
+                EmptyPayload.Instance,
+                0,
+                0,
+                0);
+
+            var (stageContext, errorCode, _) = await _stageFactory.CreateStageAsync(
+                request.RoomType,
+                creationPacket);
+
+            if (errorCode != ErrorCode.Success || stageContext == null)
+            {
+                _logger.LogWarning("Failed to create room: RoomType={RoomType}, ErrorCode={ErrorCode}",
+                    request.RoomType, errorCode);
+
+                return StatusCode(500, new ErrorResponse
+                {
+                    ErrorCode = errorCode,
+                    Message = $"Failed to create stage: {GetErrorMessage(errorCode)}"
+                });
+            }
+
+            // Generate room token
+            var roomToken = _tokenManager.GenerateToken(stageContext.StageId, request.Nickname);
+
+            // Build endpoint
+            var endpoint = $"tcp://{_options.Ip}:{_options.Port}";
+
+            var response = new CreateRoomResponse
+            {
+                RoomToken = roomToken,
+                Endpoint = endpoint,
+                StageId = stageContext.StageId
+            };
+
+            _logger.LogInformation("Room created successfully: StageId={StageId}, Token={Token}",
+                stageContext.StageId, roomToken.Substring(0, Math.Min(8, roomToken.Length)) + "...");
+
+            return CreatedAtAction(nameof(GetRoom), new { stageId = stageContext.StageId }, response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating room: RoomType={RoomType}", request.RoomType);
+            return StatusCode(500, new ErrorResponse
+            {
+                ErrorCode = ErrorCode.InternalError,
+                Message = "Internal server error"
+            });
+        }
     }
 
     /// <summary>
@@ -582,6 +680,76 @@ public sealed class RoomInfo
     /// Gets a value indicating whether the stage is processing.
     /// </summary>
     public bool IsProcessing { get; init; }
+}
+
+/// <summary>
+/// Create room request (for token-based authentication flow).
+/// </summary>
+public sealed class CreateRoomRequest
+{
+    /// <summary>
+    /// Gets the room type (stage type name).
+    /// </summary>
+    public required string RoomType { get; init; }
+
+    /// <summary>
+    /// Gets the user nickname.
+    /// </summary>
+    public required string Nickname { get; init; }
+}
+
+/// <summary>
+/// Create room response (for token-based authentication flow).
+/// Matches CreateRoomReply from proto definitions.
+/// </summary>
+public sealed class CreateRoomResponse
+{
+    /// <summary>
+    /// Gets the room token for TCP/WebSocket authentication.
+    /// </summary>
+    public required string RoomToken { get; init; }
+
+    /// <summary>
+    /// Gets the TCP/WebSocket endpoint.
+    /// </summary>
+    public required string Endpoint { get; init; }
+
+    /// <summary>
+    /// Gets the stage identifier.
+    /// </summary>
+    public int StageId { get; init; }
+}
+
+/// <summary>
+/// Create room DTO (for backwards compatibility).
+/// </summary>
+[Obsolete("Use CreateRoomRequest and CreateRoomResponse instead")]
+public sealed class CreateRoomDto
+{
+    /// <summary>
+    /// Gets the room type (stage type name).
+    /// </summary>
+    public required string RoomType { get; init; }
+
+    /// <summary>
+    /// Gets the user nickname.
+    /// </summary>
+    public required string Nickname { get; init; }
+
+    /// <summary>
+    /// Gets the room token for TCP/WebSocket authentication.
+    /// </summary>
+    public string RoomToken { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the TCP/WebSocket endpoint.
+    /// </summary>
+    public string Endpoint { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the stage identifier.
+    /// </summary>
+    public int StageId { get; init; }
 }
 
 /// <summary>

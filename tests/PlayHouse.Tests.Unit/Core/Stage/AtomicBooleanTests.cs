@@ -101,7 +101,7 @@ public class AtomicBooleanTests
     }
 
     [Fact(DisplayName = "동시성 테스트 - 여러 스레드에서 CompareAndSet 호출 시 하나만 성공")]
-    public void CompareAndSet_ConcurrentAccess_OnlyOneThreadSucceeds()
+    public async Task CompareAndSet_ConcurrentAccess_OnlyOneThreadSucceeds()
     {
         // Given (전제조건)
         var atomic = new AtomicBoolean(false);
@@ -122,7 +122,7 @@ public class AtomicBooleanTests
             }));
         }
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         successCount.Should().Be(1, "여러 스레드 중 정확히 하나만 false→true 변경에 성공해야 함");
@@ -130,7 +130,7 @@ public class AtomicBooleanTests
     }
 
     [Fact(DisplayName = "동시성 테스트 - Set과 CompareAndSet 동시 호출")]
-    public void ConcurrentSetAndCompareAndSet_ThreadSafe()
+    public async Task ConcurrentSetAndCompareAndSet_ThreadSafe()
     {
         // Given (전제조건)
         var atomic = new AtomicBoolean(false);
@@ -165,7 +165,7 @@ public class AtomicBooleanTests
             }
         }));
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks);
 
         // Then (결과)
         // 값은 true 또는 false여야 하며, 중간 상태나 손상된 값이 없어야 함
