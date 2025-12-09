@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Connector;
 using PlayHouse.Infrastructure.Http;
+using PlayHouse.Proto;
 using PlayHouse.Tests.E2E.Proto;
 using PlayHouse.Tests.E2E.TestFixtures;
 using PlayHouse.Tests.Shared;

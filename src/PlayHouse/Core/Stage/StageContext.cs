@@ -190,9 +190,25 @@ public sealed class StageContext : IAsyncDisposable
             return;
         }
 
-        // Convert RoutePacket to IPacket for user stage
-        var userPacket = CreateUserPacket(packet);
-        await _userStage.OnDispatch(actorContext.UserActor, userPacket);
+        // Set request context for reply/send operations
+        var stageSenderImpl = _stageSender as StageSenderImpl;
+        if (stageSenderImpl != null)
+        {
+            var requestContext = new RequestContext(actorContext.SessionId, packet.MsgId, packet.MsgSeq);
+            stageSenderImpl.SetRequestContext(requestContext);
+        }
+
+        try
+        {
+            // Convert RoutePacket to IPacket for user stage
+            var userPacket = CreateUserPacket(packet);
+            await _userStage.OnDispatch(actorContext.UserActor, userPacket);
+        }
+        finally
+        {
+            // Clear request context after dispatch
+            stageSenderImpl?.SetRequestContext(null);
+        }
     }
 
     /// <summary>

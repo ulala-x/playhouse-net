@@ -448,6 +448,7 @@ public sealed class PlayHouseClient : IPlayHouseClient
 
         if (!_handlers.TryGetValue(typeName, out var handlers))
         {
+            _logger?.LogTrace("No handlers registered for {Type}", typeName);
             return;
         }
 
@@ -457,17 +458,19 @@ public sealed class PlayHouseClient : IPlayHouseClient
             handlersCopy = new List<Delegate>(handlers);
         }
 
+        _logger?.LogDebug("Invoking {Count} handler(s) for {Type}", handlersCopy.Count, messageType.Name);
+
         foreach (var handler in handlersCopy)
         {
             try
             {
-                if (handler is Action<IMessage> syncHandler)
+                // Use DynamicInvoke to call generic handlers (Action<T> or Func<T, Task>)
+                var result = handler.DynamicInvoke(message);
+
+                // If handler returns a Task, fire and forget
+                if (result is Task task)
                 {
-                    syncHandler(message);
-                }
-                else if (handler is Func<IMessage, Task> asyncHandler)
-                {
-                    _ = asyncHandler(message); // Fire and forget
+                    _ = task;
                 }
             }
             catch (Exception ex)

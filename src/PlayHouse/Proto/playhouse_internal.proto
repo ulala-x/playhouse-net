@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package playhouse.internal;
+
+option csharp_namespace = "PlayHouse.Proto";
+
+// ============================================
+// PlayHouse Internal Protocol Messages
+// These are framework-level messages used for
+// authentication and session management.
+// ============================================
+
+// TCP/WebSocket: Authentication request (sent immediately after connection)
+message AuthenticateRequest {
+    string room_token = 1;         // Token from HTTP API
+}
+
+// TCP/WebSocket: Authentication response
+message AuthenticateReply {
+    int64 account_id = 1;          // Server-assigned account ID
+    int32 stage_id = 2;            // Stage ID
+    bool authenticated = 3;        // Authentication success
+    string error_message = 4;      // Error message if failed
+}
+
+// Stage join request
+message JoinStageRequest {
+    int64 account_id = 1;
+    string nickname = 2;
+    string auth_token = 3;
+}
+
+// Stage join response
+message JoinStageReply {
+    int64 account_id = 1;
+    int32 stage_id = 2;
+    int64 joined_at = 3;
+}
+
+// Ping request for heartbeat
+message PingRequest {
+    int64 client_time = 1;
+}
+
+// Ping response for heartbeat
+message PingReply {
+    int64 client_time = 1;
+    int64 server_time = 2;
+}

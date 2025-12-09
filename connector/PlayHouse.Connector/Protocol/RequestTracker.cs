@@ -125,16 +125,22 @@ internal sealed class RequestTracker : IDisposable
         {
             request.TimeoutCts.Dispose();
 
-            // Deserialize response based on expected type
-            var parser = typeof(MessageParser<>)
-                .MakeGenericType(request.ResponseType)
-                .GetProperty("Parser")
-                ?.GetValue(null);
+            // Get the static Parser property from the message type itself (e.g., AuthenticateReply.Parser)
+            var parserProperty = request.ResponseType.GetProperty("Parser",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
 
+            if (parserProperty == null)
+            {
+                request.Tcs.TrySetException(new InvalidOperationException(
+                    $"Could not find Parser property on type {request.ResponseType.Name}"));
+                return;
+            }
+
+            var parser = parserProperty.GetValue(null);
             if (parser == null)
             {
                 request.Tcs.TrySetException(new InvalidOperationException(
-                    $"Could not find parser for type {request.ResponseType.Name}"));
+                    $"Parser property on type {request.ResponseType.Name} returned null"));
                 return;
             }
 

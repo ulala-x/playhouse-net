@@ -97,7 +97,7 @@ internal sealed class StageSenderImpl : IStageSender
             errorCode,
             EmptyPayload.Instance);
 
-        SendToSession(_requestContext.SessionId, replyPacket);
+        _ = SendToSessionAsync(_requestContext.SessionId, replyPacket);
     }
 
     /// <inheritdoc/>
@@ -115,7 +115,15 @@ internal sealed class StageSenderImpl : IStageSender
             return;
         }
 
-        SendToSession(_requestContext.SessionId, packet);
+        // Wrap the packet with the original MsgSeq from the request
+        var replyPacket = new SimplePacket(
+            packet.MsgId,
+            _requestContext.MsgSeq,
+            _stageId,
+            packet.ErrorCode,
+            packet.Payload);
+
+        _ = SendToSessionAsync(_requestContext.SessionId, replyPacket);
     }
 
     /// <inheritdoc/>
@@ -127,8 +135,7 @@ internal sealed class StageSenderImpl : IStageSender
             return ValueTask.CompletedTask;
         }
 
-        SendToSession(_requestContext.SessionId, packet);
-        return ValueTask.CompletedTask;
+        return SendToSessionAsync(_requestContext.SessionId, packet);
     }
 
     /// <inheritdoc/>
@@ -141,7 +148,7 @@ internal sealed class StageSenderImpl : IStageSender
     }
 
     /// <inheritdoc/>
-    public ValueTask BroadcastAsync(IPacket packet)
+    public async ValueTask BroadcastAsync(IPacket packet)
     {
         var actorPool = _getActorPool();
         var actors = actorPool.GetConnectedActors();
@@ -151,18 +158,16 @@ internal sealed class StageSenderImpl : IStageSender
             var session = _sessionManager.GetSession(actorContext.SessionId);
             if (session != null)
             {
-                SendToSession(session.SessionId, packet);
+                await SendToSessionAsync(session.SessionId, packet);
             }
         }
 
         _logger.LogTrace("Broadcast packet in stage {StageId}: {MsgId} to {Count} actors",
             _stageId, packet.MsgId, actorPool.Count);
-
-        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc/>
-    public ValueTask BroadcastAsync(IPacket packet, Func<IActor, bool> filter)
+    public async ValueTask BroadcastAsync(IPacket packet, Func<IActor, bool> filter)
     {
         var actorPool = _getActorPool();
         var actors = actorPool.GetConnectedActors();
@@ -175,7 +180,7 @@ internal sealed class StageSenderImpl : IStageSender
                 var session = _sessionManager.GetSession(actorContext.SessionId);
                 if (session != null)
                 {
-                    SendToSession(session.SessionId, packet);
+                    await SendToSessionAsync(session.SessionId, packet);
                     count++;
                 }
             }
@@ -183,8 +188,6 @@ internal sealed class StageSenderImpl : IStageSender
 
         _logger.LogTrace("Broadcast packet in stage {StageId}: {MsgId} to {Count} filtered actors",
             _stageId, packet.MsgId, count);
-
-        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc/>
@@ -274,7 +277,7 @@ internal sealed class StageSenderImpl : IStageSender
     /// </summary>
     /// <param name="sessionId">The session identifier.</param>
     /// <param name="packet">The packet to send.</param>
-    private void SendToSession(long sessionId, IPacket packet)
+    private async ValueTask SendToSessionAsync(long sessionId, IPacket packet)
     {
         var session = _sessionManager.GetSession(sessionId);
         if (session == null)
@@ -283,9 +286,27 @@ internal sealed class StageSenderImpl : IStageSender
             return;
         }
 
-        // TODO: Serialize and send packet to session's transport layer
-        // For now, just log the intent
-        _logger.LogTrace("Sending packet to session {SessionId}: {MsgId}", sessionId, packet.MsgId);
+        if (session.SendFunction == null)
+        {
+            _logger.LogWarning("Session {SessionId} has no transport send function", sessionId);
+            return;
+        }
+
+        try
+        {
+            // Serialize packet using PacketSerializer
+            var serializer = new Infrastructure.Serialization.PacketSerializer();
+            var serializedData = serializer.Serialize(packet, compress: false);
+
+            // Send via transport layer
+            await session.SendFunction(serializedData);
+
+            _logger.LogTrace("Sent packet to session {SessionId}: {MsgId}", sessionId, packet.MsgId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending packet to session {SessionId}", sessionId);
+        }
     }
 
     /// <summary>
