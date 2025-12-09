@@ -17,7 +17,7 @@ namespace PlayHouse.Core.Stage;
 /// 3. Actor management via ActorPool
 /// 4. Message routing to actors and stage handlers
 /// </remarks>
-internal sealed class StageContext : BaseStage, IAsyncDisposable
+public sealed class StageContext : BaseStage, IAsyncDisposable
 {
     private readonly IStage _userStage;
     private readonly ActorPool _actorPool;
@@ -184,6 +184,197 @@ internal sealed class StageContext : BaseStage, IAsyncDisposable
     }
 
     /// <summary>
+    /// Joins an actor to this stage.
+    /// </summary>
+    /// <param name="accountId">The account identifier.</param>
+    /// <param name="sessionId">The session identifier.</param>
+    /// <param name="userInfo">User information packet provided during join.</param>
+    /// <returns>
+    /// A tuple containing an error code (0 for success), optional reply packet, and the created actor context.
+    /// </returns>
+    public async Task<(ushort errorCode, IPacket? reply, ActorContext? actorContext)> JoinActorAsync(
+        long accountId,
+        long sessionId,
+        IPacket userInfo)
+    {
+        if (_isDisposed)
+        {
+            _logger.LogWarning("Attempted to join actor to disposed stage {StageId}", StageId);
+            return (ErrorCode.InvalidState, null, null);
+        }
+
+        try
+        {
+            // Check if actor already exists
+            if (_actorPool.HasActor(accountId))
+            {
+                _logger.LogWarning("Actor {AccountId} already exists in stage {StageId}", accountId, StageId);
+                return (ErrorCode.DuplicateLogin, null, null);
+            }
+
+            // Create actor instance using reflection (simplified - user should provide factory)
+            var userActor = CreateUserActor(accountId, sessionId);
+
+            // Create actor context
+            var actorContext = new ActorContext(
+                accountId,
+                sessionId,
+                userActor,
+                _logger);
+
+            // Initialize actor
+            await actorContext.OnCreateAsync();
+
+            // Call stage's OnJoinRoom
+            var (errorCode, reply) = await _userStage.OnJoinRoom(userActor, userInfo);
+
+            if (errorCode != ErrorCode.Success)
+            {
+                _logger.LogWarning("Actor {AccountId} join rejected by stage {StageId} with error {ErrorCode}",
+                    accountId, StageId, errorCode);
+
+                await actorContext.DisposeAsync();
+                return (errorCode, reply, null);
+            }
+
+            // Add actor to pool
+            if (!_actorPool.AddActor(actorContext))
+            {
+                _logger.LogError("Failed to add actor {AccountId} to pool in stage {StageId}", accountId, StageId);
+                await actorContext.DisposeAsync();
+                return (ErrorCode.InternalError, null, null);
+            }
+
+            // Call stage's OnPostJoinRoom
+            await _userStage.OnPostJoinRoom(userActor);
+
+            _logger.LogInformation("Actor {AccountId} joined stage {StageId}", accountId, StageId);
+
+            return (ErrorCode.Success, reply, actorContext);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error joining actor {AccountId} to stage {StageId}", accountId, StageId);
+            return (ErrorCode.InternalError, null, null);
+        }
+    }
+
+    /// <summary>
+    /// Removes an actor from this stage.
+    /// </summary>
+    /// <param name="accountId">The account identifier.</param>
+    /// <param name="reason">The reason for leaving.</param>
+    /// <returns>True if the actor was removed successfully; otherwise, false.</returns>
+    public async Task<bool> LeaveActorAsync(long accountId, LeaveReason reason)
+    {
+        if (_isDisposed)
+        {
+            _logger.LogWarning("Attempted to remove actor from disposed stage {StageId}", StageId);
+            return false;
+        }
+
+        try
+        {
+            var actorContext = _actorPool.RemoveActor(accountId);
+            if (actorContext == null)
+            {
+                _logger.LogWarning("Actor {AccountId} not found in stage {StageId} for removal", accountId, StageId);
+                return false;
+            }
+
+            // Call stage's OnLeaveRoom
+            await _userStage.OnLeaveRoom(actorContext.UserActor, reason);
+
+            // Dispose actor context
+            await actorContext.DisposeAsync();
+
+            _logger.LogInformation("Actor {AccountId} left stage {StageId} (reason: {Reason})",
+                accountId, StageId, reason);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing actor {AccountId} from stage {StageId}", accountId, StageId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Updates the connection state of an actor.
+    /// </summary>
+    /// <param name="accountId">The account identifier.</param>
+    /// <param name="isConnected">True if connected; false if disconnected.</param>
+    /// <param name="reason">The disconnection reason, if applicable.</param>
+    /// <returns>True if the update was successful; otherwise, false.</returns>
+    public async Task<bool> UpdateActorConnectionAsync(
+        long accountId,
+        bool isConnected,
+        DisconnectReason? reason = null)
+    {
+        if (_isDisposed)
+        {
+            _logger.LogWarning("Attempted to update actor connection in disposed stage {StageId}", StageId);
+            return false;
+        }
+
+        try
+        {
+            var actorContext = _actorPool.GetActor(accountId);
+            if (actorContext == null)
+            {
+                _logger.LogWarning("Actor {AccountId} not found in stage {StageId} for connection update",
+                    accountId, StageId);
+                return false;
+            }
+
+            // Update actor connection state
+            actorContext.SetConnectionState(isConnected);
+
+            // Notify stage of connection change
+            await _userStage.OnActorConnectionChanged(actorContext.UserActor, isConnected, reason);
+
+            _logger.LogInformation("Actor {AccountId} connection updated in stage {StageId}: {State}",
+                accountId, StageId, isConnected ? "connected" : "disconnected");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating actor {AccountId} connection in stage {StageId}",
+                accountId, StageId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Creates a user actor instance.
+    /// </summary>
+    /// <param name="accountId">The account identifier.</param>
+    /// <param name="sessionId">The session identifier.</param>
+    /// <returns>A new IActor instance.</returns>
+    /// <remarks>
+    /// This is a simplified implementation. In production, this should use a proper
+    /// actor factory pattern that allows dependency injection and custom actor types.
+    /// </remarks>
+    private IActor CreateUserActor(long accountId, long sessionId)
+    {
+        // Get the stage sender implementation
+        var stageSender = _stageSender as StageSenderImpl;
+        if (stageSender == null)
+        {
+            throw new InvalidOperationException("StageSender is not a StageSenderImpl");
+        }
+
+        // Create actor sender
+        var actorSender = new ActorSenderImpl(accountId, sessionId, stageSender);
+
+        // Create a default actor implementation
+        // TODO: This should be provided by user through actor factory
+        return new DefaultActor(actorSender);
+    }
+
+    /// <summary>
     /// Disposes the stage and all its actors.
     /// </summary>
     public async ValueTask DisposeAsync()
@@ -206,6 +397,25 @@ internal sealed class StageContext : BaseStage, IAsyncDisposable
         {
             _logger.LogError(ex, "Error disposing stage {StageId}", StageId);
         }
+    }
+
+    /// <summary>
+    /// Default actor implementation used when no custom actor is provided.
+    /// </summary>
+    private sealed class DefaultActor : IActor
+    {
+        public IActorSender ActorSender { get; }
+        public bool IsConnected => true;
+
+        public DefaultActor(IActorSender actorSender)
+        {
+            ActorSender = actorSender;
+        }
+
+        public Task OnCreate() => Task.CompletedTask;
+        public Task OnDestroy() => Task.CompletedTask;
+        public Task OnAuthenticate(IPacket? authData) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     /// <summary>

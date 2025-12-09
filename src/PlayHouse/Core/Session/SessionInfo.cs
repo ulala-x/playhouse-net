@@ -12,7 +12,7 @@ namespace PlayHouse.Core.Session;
 /// SessionInfo tracks the relationship between sessions, accounts, and stages,
 /// along with connection state for pause-resume functionality.
 /// </remarks>
-internal sealed class SessionInfo
+public sealed class SessionInfo
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="SessionInfo"/> class.
@@ -124,6 +124,23 @@ internal sealed class SessionInfo
     {
         AccountId = accountId;
         AuthenticatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Marks the session as joined to a stage.
+    /// </summary>
+    /// <param name="stageId">The stage identifier.</param>
+    public void JoinStage(int stageId)
+    {
+        StageId = stageId;
+    }
+
+    /// <summary>
+    /// Marks the session as left from its current stage.
+    /// </summary>
+    public void LeaveStage()
+    {
+        StageId = null;
     }
 
     /// <summary>

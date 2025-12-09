@@ -10,6 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="PlayHouse.Tests.Integration" />
+    <InternalsVisibleTo Include="PlayHouse.Tests.Unit" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.28.*" />
   </ItemGroup>
 

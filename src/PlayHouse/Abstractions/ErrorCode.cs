@@ -77,6 +77,46 @@ public static class ErrorCode
     public const ushort DuplicateLogin = 12;
 
     /// <summary>
+    /// The requested stage type is not registered.
+    /// </summary>
+    public const ushort StageTypeNotFound = 13;
+
+    /// <summary>
+    /// A stage with this identifier already exists.
+    /// </summary>
+    public const ushort StageAlreadyExists = 14;
+
+    /// <summary>
+    /// Failed to create the stage instance.
+    /// </summary>
+    public const ushort StageCreationFailed = 15;
+
+    /// <summary>
+    /// An actor with this identifier already exists in the stage.
+    /// </summary>
+    public const ushort ActorAlreadyExists = 16;
+
+    /// <summary>
+    /// Failed to join the actor to the stage.
+    /// </summary>
+    public const ushort ActorJoinFailed = 17;
+
+    /// <summary>
+    /// The requested resource is invalid or malformed.
+    /// </summary>
+    public const ushort InvalidRequest = 18;
+
+    /// <summary>
+    /// The operation requires parameters that were not provided.
+    /// </summary>
+    public const ushort MissingParameter = 19;
+
+    /// <summary>
+    /// The session has not been authenticated.
+    /// </summary>
+    public const ushort NotAuthenticated = 20;
+
+    /// <summary>
     /// Starting value for user-defined error codes.
     /// All custom error codes should be >= this value.
     /// </summary>

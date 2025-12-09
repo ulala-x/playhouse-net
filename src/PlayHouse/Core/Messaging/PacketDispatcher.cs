@@ -16,7 +16,7 @@ namespace PlayHouse.Core.Messaging;
 /// 2. Posts packets to the correct stage's message queue
 /// 3. Handles routing errors and missing stages
 /// </remarks>
-internal sealed class PacketDispatcher
+public sealed class PacketDispatcher
 {
     private readonly StagePool _stagePool;
     private readonly ILogger<PacketDispatcher> _logger;

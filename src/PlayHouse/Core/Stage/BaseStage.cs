@@ -23,7 +23,7 @@ namespace PlayHouse.Core.Stage;
 /// - A single processing loop runs using CAS to ensure only one Task processes messages
 /// - The loop continues until the queue is empty and no new messages arrive
 /// </remarks>
-internal abstract class BaseStage
+public abstract class BaseStage
 {
     private readonly ConcurrentQueue<RoutePacket> _msgQueue = new();
     private readonly AtomicBoolean _isProcessing = new(false);
