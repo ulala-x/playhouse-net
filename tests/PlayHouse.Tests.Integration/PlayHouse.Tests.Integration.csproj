@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PlayHouse.Tests.Integration</RootNamespace>
+    <AssemblyName>PlayHouse.Tests.Integration</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PlayHouse\PlayHouse.csproj" />
+  </ItemGroup>
+
+</Project>

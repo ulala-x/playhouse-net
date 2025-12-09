@@ -36,6 +36,115 @@ PlayHouse-NET 프레임워크는 다음 기능을 제공합니다:
 - **세션 관리**: 클라이언트 연결 및 인증 상태 관리
 - **HTTP API 통합**: ASP.NET Core 기반 REST API와 소켓 서버 통합
 
+### 1.3 기술 스택
+
+#### 런타임 및 언어
+
+| 구분 | 기술 | 버전 | 용도 |
+|------|------|------|------|
+| Runtime | .NET | 8.0 / 9.0 / 10.0 (멀티 타겟) | 서버 런타임 |
+| Language | C# | 12.0+ | 주 개발 언어 |
+| Language Server | N/A | - | IDE 지원 (Visual Studio, Rider, VSCode) |
+
+#### 프레임워크 및 라이브러리
+
+| 구분 | 기술 | 용도 | 레이어 |
+|------|------|------|--------|
+| Web Framework | ASP.NET Core | HTTP API, WebSocket 호스팅 | Infrastructure |
+| Web Server | Kestrel | 고성능 HTTP/HTTPS 서버 | Infrastructure |
+| DI Container | Microsoft.Extensions.DependencyInjection | 의존성 주입 | 전체 |
+| Configuration | Microsoft.Extensions.Configuration | 설정 관리 | 전체 |
+| Logging | Microsoft.Extensions.Logging | 로깅 추상화 | 전체 |
+| Options | Microsoft.Extensions.Options | 옵션 패턴 | 전체 |
+
+#### 네트워크 및 I/O
+
+| 구분 | 기술 | 용도 | 레이어 |
+|------|------|------|--------|
+| TCP | System.Net.Sockets | TCP 소켓 통신 | Infrastructure |
+| WebSocket | System.Net.WebSockets | WebSocket 통신 | Infrastructure |
+| I/O Pipeline | System.IO.Pipelines | 고성능 I/O 처리, 백프레셔 | Infrastructure |
+| Memory | System.Buffers | ArrayPool, 메모리 효율화 | Infrastructure |
+| TLS/SSL | System.Net.Security | 암호화 통신 | Infrastructure |
+
+#### 직렬화 및 압축
+
+| 구분 | 기술 | 버전 | 용도 | 레이어 |
+|------|------|------|------|--------|
+| Binary Serialization | Google.Protobuf | 3.x | 패킷 직렬화 | Infrastructure |
+| JSON Serialization | System.Text.Json | Built-in | HTTP API 직렬화 | Infrastructure |
+| Compression | K4os.Compression.LZ4 | 1.3.x | 패킷 압축 | Infrastructure |
+
+#### 동시성 및 비동기
+
+| 구분 | 기술 | 용도 | 레이어 |
+|------|------|------|--------|
+| Concurrent Collections | System.Collections.Concurrent | Lock-Free 큐 (ConcurrentQueue) | Core |
+| Threading | System.Threading | Timer, ThreadPool | Core |
+| Async/Await | Task, ValueTask | 비동기 처리 | 전체 |
+| Channels | System.Threading.Channels | 생산자-소비자 패턴 | Core |
+
+#### 관측성 (Observability)
+
+| 구분 | 기술 | 용도 | 레이어 |
+|------|------|------|--------|
+| Metrics | System.Diagnostics.Metrics | 메트릭 수집 (.NET 8+) | Core |
+| Tracing | System.Diagnostics.Activity | 분산 추적 | Core |
+| OpenTelemetry | OpenTelemetry.Extensions.Hosting | 메트릭/추적 내보내기 | Infrastructure |
+| Health Checks | Microsoft.Extensions.Diagnostics.HealthChecks | 헬스 체크 | Infrastructure |
+
+#### 테스트
+
+| 구분 | 기술 | 용도 | 프로젝트 |
+|------|------|------|----------|
+| Test Framework | xUnit | 테스트 프레임워크 | Tests.* |
+| Assertions | FluentAssertions | 가독성 높은 단언문 | Tests.* |
+| Mocking | NSubstitute | Mock/Stub 생성 | Tests.Unit |
+| Test Server | Microsoft.AspNetCore.TestHost | HTTP 통합 테스트 | Tests.Integration |
+| Code Coverage | Coverlet | 커버리지 측정 | Tests.* |
+
+#### 빌드 및 배포
+
+| 구분 | 기술 | 용도 |
+|------|------|------|
+| Build | dotnet CLI | 빌드, 테스트, 패키징 |
+| Package Manager | NuGet | 패키지 관리 |
+| Container | Docker | 컨테이너 배포 |
+| Base Image | mcr.microsoft.com/dotnet/aspnet | 런타임 이미지 |
+| CI/CD | GitHub Actions | 지속적 통합/배포 |
+
+#### 개발 도구
+
+| 구분 | 기술 | 용도 |
+|------|------|------|
+| IDE | Visual Studio 2022 / JetBrains Rider | 개발 환경 |
+| Code Analysis | .NET Analyzers | 정적 분석 |
+| Formatting | dotnet format | 코드 포맷팅 |
+| API Documentation | Swagger/OpenAPI | HTTP API 문서화 |
+
+#### 외부 의존성 요약
+
+```xml
+<!-- PlayHouse.csproj - 주요 패키지 -->
+<PackageReference Include="Google.Protobuf" Version="3.28.*" />
+<PackageReference Include="K4os.Compression.LZ4" Version="1.3.*" />
+<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.*" />
+<PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.9.*-*" />
+
+<!-- PlayHouse.Tests.* - 테스트 패키지 -->
+<PackageReference Include="xunit" Version="2.9.*" />
+<PackageReference Include="FluentAssertions" Version="6.12.*" />
+<PackageReference Include="NSubstitute" Version="5.1.*" />
+<PackageReference Include="coverlet.collector" Version="6.0.*" />
+```
+
+#### 버전 정책
+
+- **.NET LTS 우선**: .NET 8.0 (LTS), .NET 10.0 (LTS 예정) 우선 지원
+- **최신 C# 기능 활용**: required members, file-scoped types, primary constructors
+- **NuGet 패키지**: SemVer 준수, 보안 업데이트 즉시 적용
+- **Breaking Changes**: Major 버전에서만 허용
+
 ## 2. 프레임워크 아키텍처
 
 ### 2.1 Clean Architecture 기반 레이어 구조
