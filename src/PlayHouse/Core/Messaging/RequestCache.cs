@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
+using PlayHouse.Core.Shared;
 
 namespace PlayHouse.Core.Messaging;
 
@@ -17,7 +18,7 @@ namespace PlayHouse.Core.Messaging;
 /// and completes them when the corresponding reply arrives. Each request has a timeout
 /// to prevent indefinite waiting.
 /// </remarks>
-internal sealed class RequestCache
+public sealed class RequestCache
 {
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pending = new();
     private readonly ILogger<RequestCache>? _logger;

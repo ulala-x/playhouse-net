@@ -17,7 +17,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\PlayHouse\PlayHouse.csproj" />
     <ProjectReference Include="..\..\connector\PlayHouse.Connector\PlayHouse.Connector.csproj" />
-    <ProjectReference Include="..\PlayHouse.Tests.Shared\PlayHouse.Tests.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
