@@ -208,11 +208,11 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
     #region Error Handling
 
-    private void SendErrorReply(RuntimeRoutePacket packet, BaseErrorCode errorCode)
+    private void SendErrorReply(RuntimeRoutePacket packet, ushort errorCode)
     {
         if (packet.MsgSeq == 0) return; // Not a request
 
-        var replyPacket = packet.CreateErrorReply((ushort)errorCode);
+        var replyPacket = packet.CreateErrorReply(errorCode);
         _communicator.Send(packet.From, replyPacket);
         replyPacket.Dispose();
     }
@@ -253,58 +253,3 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     }
 }
 
-/// <summary>
-/// Base error codes for PlayHouse framework.
-/// </summary>
-public enum BaseErrorCode : ushort
-{
-    /// <summary>
-    /// Success (no error).
-    /// </summary>
-    Success = 0,
-
-    /// <summary>
-    /// Request timed out.
-    /// </summary>
-    RequestTimeout = 100,
-
-    /// <summary>
-    /// Stage not found.
-    /// </summary>
-    StageNotFound = 200,
-
-    /// <summary>
-    /// Stage already exists.
-    /// </summary>
-    StageAlreadyExists = 201,
-
-    /// <summary>
-    /// Invalid stage type.
-    /// </summary>
-    InvalidStageType = 202,
-
-    /// <summary>
-    /// Stage creation failed.
-    /// </summary>
-    StageCreateFailed = 203,
-
-    /// <summary>
-    /// Authentication failed.
-    /// </summary>
-    AuthenticationFailed = 300,
-
-    /// <summary>
-    /// Join stage failed.
-    /// </summary>
-    JoinStageFailed = 301,
-
-    /// <summary>
-    /// Internal server error.
-    /// </summary>
-    InternalError = 500,
-
-    /// <summary>
-    /// Unchecked content error.
-    /// </summary>
-    UncheckedContentsError = 501
-}

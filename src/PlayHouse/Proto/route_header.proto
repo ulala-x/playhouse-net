@@ -38,6 +38,9 @@ message RouteHeader {
 
     // Session ID (for client session tracking)
     int64 sid = 8;
+
+    // Backend flag (true for server-to-server requests)
+    bool is_backend = 9;
 }
 
 // ============================================
@@ -82,6 +85,25 @@ message JoinStageReq {
 message JoinStageRes {
     string payload_id = 1;
     bytes payload = 2;
+}
+
+// Create and join a stage in one operation
+message CreateJoinStageReq {
+    string stage_type = 1;
+    string create_payload_id = 2;
+    bytes create_payload = 3;
+    string join_payload_id = 4;
+    bytes join_payload = 5;
+    string session_nid = 6;
+    int64 sid = 7;
+}
+
+message CreateJoinStageRes {
+    bool is_created = 1;
+    string create_payload_id = 2;
+    bytes create_payload = 3;
+    string join_payload_id = 4;
+    bytes join_payload = 5;
 }
 
 // Destroy a stage

@@ -77,6 +77,21 @@ public static class BaseErrorCode
     public const ushort HandlerNotFound = 12;
 
     /// <summary>
+    /// Invalid stage type.
+    /// </summary>
+    public const ushort InvalidStageType = 13;
+
+    /// <summary>
+    /// System error.
+    /// </summary>
+    public const ushort SystemError = 14;
+
+    /// <summary>
+    /// Unchecked contents error.
+    /// </summary>
+    public const ushort UncheckedContentsError = 15;
+
+    /// <summary>
     /// Internal server error.
     /// </summary>
     public const ushort InternalError = 99;
