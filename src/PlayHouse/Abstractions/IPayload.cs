@@ -9,7 +9,7 @@ namespace PlayHouse.Abstractions;
 /// Implementations must be thread-safe for read operations and properly handle disposal
 /// to prevent memory leaks. The payload data is immutable once created.
 /// </remarks>
-public interface IPayload : IDisposable, IAsyncDisposable
+public interface IPayload : IDisposable
 {
     /// <summary>
     /// Gets the payload data as a read-only memory segment.
@@ -17,17 +17,7 @@ public interface IPayload : IDisposable, IAsyncDisposable
     ReadOnlyMemory<byte> Data { get; }
 
     /// <summary>
-    /// Gets the length of the payload data in bytes.
+    /// Gets the payload data as a read-only span.
     /// </summary>
-    int Length { get; }
-
-    /// <summary>
-    /// Asynchronously releases resources used by the payload.
-    /// </summary>
-    /// <returns>A task representing the asynchronous dispose operation.</returns>
-    ValueTask IAsyncDisposable.DisposeAsync()
-    {
-        Dispose();
-        return ValueTask.CompletedTask;
-    }
+    ReadOnlySpan<byte> DataSpan => Data.Span;
 }

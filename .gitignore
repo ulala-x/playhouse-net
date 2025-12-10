@@ -56,3 +56,9 @@ nunit-*.xml
 # IDE
 .idea/
 *.DotSettings.user
+
+# Legacy code (moved during refactoring)
+_legacy_code/
+
+# Windows special files
+nul
