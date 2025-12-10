@@ -83,3 +83,47 @@ message JoinStageRes {
     string payload_id = 1;
     bytes payload = 2;
 }
+
+// Destroy a stage
+message DestroyStageReq {
+    int64 stage_id = 1;
+}
+
+// ============================================
+// Timer Messages
+// ============================================
+
+// Timer operation message
+message TimerMsg {
+    enum Type {
+        REPEAT = 0;    // Infinite repeat timer
+        COUNT = 1;     // Limited count timer
+        CANCEL = 2;    // Cancel existing timer
+    }
+
+    Type type = 1;
+    int64 timer_id = 2;
+    int64 stage_id = 3;
+    int64 initial_delay_ms = 4;
+    int64 period_ms = 5;
+    int32 count = 6;       // For COUNT type only
+}
+
+// ============================================
+// Connection State Messages
+// ============================================
+
+// Actor disconnected notification
+message DisconnectNoticeMsg {
+    int64 account_id = 1;
+    string session_nid = 2;
+    int64 sid = 3;
+}
+
+// Actor reconnected notification
+message ReconnectMsg {
+    int64 account_id = 1;
+    string session_nid = 2;
+    int64 sid = 3;
+    string api_nid = 4;
+}
