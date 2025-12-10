@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package playhouse.runtime;
+
+option csharp_namespace = "PlayHouse.Runtime.Proto";
+
+// ============================================
+// Server-to-Server Communication Protocol
+// Used for NetMQ Router-Router messaging
+// ============================================
+
+// Route header for server-to-server messages
+// 3-Frame message structure:
+//   Frame 0: Target NID (UTF-8 string)
+//   Frame 1: RouteHeader (this message, serialized)
+//   Frame 2: Payload (binary)
+message RouteHeader {
+    // Message sequence number for request-reply matching (1-65535)
+    uint32 msg_seq = 1;
+
+    // Service ID of the sender
+    uint32 service_id = 2;
+
+    // Message ID (string identifier)
+    string msg_id = 3;
+
+    // Error code (0 = success)
+    uint32 error_code = 4;
+
+    // Sender NID (for reply routing)
+    string from = 5;
+
+    // Target stage ID
+    int64 stage_id = 6;
+
+    // Account ID (for actor-level routing)
+    int64 account_id = 7;
+
+    // Session ID (for client session tracking)
+    int64 sid = 8;
+}
+
+// ============================================
+// System Commands for Stage Management
+// ============================================
+
+// Create a new stage
+message CreateStageReq {
+    string stage_type = 1;
+    string payload_id = 2;
+    bytes payload = 3;
+}
+
+message CreateStageRes {
+    string payload_id = 1;
+    bytes payload = 2;
+}
+
+// Get or create a stage
+message GetOrCreateStageReq {
+    string stage_type = 1;
+    string create_payload_id = 2;
+    bytes create_payload = 3;
+    string join_payload_id = 4;
+    bytes join_payload = 5;
+}
+
+message GetOrCreateStageRes {
+    bool is_created = 1;
+    string payload_id = 2;
+    bytes payload = 3;
+}
+
+// Join an existing stage
+message JoinStageReq {
+    string session_nid = 1;
+    int64 sid = 2;
+    string payload_id = 3;
+    bytes payload = 4;
+}
+
+message JoinStageRes {
+    string payload_id = 1;
+    bytes payload = 2;
+}
