@@ -1,31 +1,32 @@
+#nullable enable
+
 namespace PlayHouse.Connector.Connection;
 
 using System.Buffers;
 using System.Net.WebSockets;
-using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// WebSocket-based connection implementation.
+/// WebSocket 기반 연결 구현
 /// </summary>
 internal sealed class WebSocketConnection : IConnection
 {
-    private readonly PlayHouseClientOptions _options;
-    private readonly ILogger<WebSocketConnection>? _logger;
+    private readonly ConnectorConfig _config;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private volatile bool _isConnected;
 
+    private const int ReceiveBufferSize = 65536;
+
     public event EventHandler<byte[]>? DataReceived;
     public event EventHandler<Exception?>? Disconnected;
 
     public bool IsConnected => _isConnected;
 
-    public WebSocketConnection(PlayHouseClientOptions options, ILogger<WebSocketConnection>? logger = null)
+    public WebSocketConnection(ConnectorConfig config)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
-        _logger = logger;
+        _config = config ?? throw new ArgumentNullException(nameof(config));
     }
 
     public async Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
@@ -38,20 +39,14 @@ internal sealed class WebSocketConnection : IConnection
         try
         {
             var uri = new Uri($"ws://{host}:{port}");
-            _logger?.LogDebug("Connecting to WebSocket server {Uri}", uri);
 
             _webSocket = new ClientWebSocket();
 
             // Configure options
-            _webSocket.Options.KeepAliveInterval = _options.HeartbeatInterval;
-
-            if (!string.IsNullOrEmpty(_options.WebSocketSubProtocol))
-            {
-                _webSocket.Options.AddSubProtocol(_options.WebSocketSubProtocol);
-            }
+            _webSocket.Options.KeepAliveInterval = TimeSpan.FromMilliseconds(_config.HeartBeatIntervalMs);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(_options.ConnectionTimeout);
+            timeoutCts.CancelAfter(_config.ConnectionIdleTimeoutMs);
 
             await _webSocket.ConnectAsync(uri, timeoutCts.Token).ConfigureAwait(false);
 
@@ -60,12 +55,9 @@ internal sealed class WebSocketConnection : IConnection
             // Start receiving data
             _receiveCts = new CancellationTokenSource();
             _receiveTask = ReceiveLoopAsync(_receiveCts.Token);
-
-            _logger?.LogInformation("Connected to WebSocket server {Uri}", uri);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _logger?.LogError(ex, "Failed to connect to WebSocket server");
             await CleanupAsync().ConfigureAwait(false);
             throw;
         }
@@ -77,8 +69,6 @@ internal sealed class WebSocketConnection : IConnection
         {
             return;
         }
-
-        _logger?.LogDebug("Disconnecting from WebSocket server");
 
         _isConnected = false;
 
@@ -93,9 +83,9 @@ internal sealed class WebSocketConnection : IConnection
                     "Client disconnecting",
                     closeCts.Token).ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger?.LogWarning(ex, "Error during WebSocket graceful close");
+                // Ignore errors during graceful close
             }
         }
 
@@ -113,15 +103,13 @@ internal sealed class WebSocketConnection : IConnection
             {
                 // Expected when canceling
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger?.LogWarning(ex, "Error during receive task completion");
+                // Ignore errors during disconnect
             }
         }
 
         await CleanupAsync().ConfigureAwait(false);
-
-        _logger?.LogInformation("Disconnected from WebSocket server");
     }
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
@@ -139,12 +127,9 @@ internal sealed class WebSocketConnection : IConnection
                 WebSocketMessageType.Binary,
                 endOfMessage: true,
                 cancellationToken).ConfigureAwait(false);
-
-            _logger?.LogTrace("Sent {ByteCount} bytes to WebSocket server", data.Length);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to send data to WebSocket server");
             HandleDisconnection(ex);
             throw;
         }
@@ -156,7 +141,7 @@ internal sealed class WebSocketConnection : IConnection
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
+        var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var messageBuffer = new List<byte>();
 
         try
@@ -176,10 +161,6 @@ internal sealed class WebSocketConnection : IConnection
 
                         if (result.MessageType == WebSocketMessageType.Close)
                         {
-                            _logger?.LogDebug(
-                                "WebSocket closed by server: {Status} - {Description}",
-                                result.CloseStatus,
-                                result.CloseStatusDescription);
                             HandleDisconnection(null);
                             return;
                         }
@@ -193,8 +174,6 @@ internal sealed class WebSocketConnection : IConnection
 
                     if (messageBuffer.Count > 0)
                     {
-                        _logger?.LogTrace("Received {ByteCount} bytes from WebSocket server", messageBuffer.Count);
-
                         var data = messageBuffer.ToArray();
                         DataReceived?.Invoke(this, data);
                     }
@@ -206,13 +185,11 @@ internal sealed class WebSocketConnection : IConnection
                 }
                 catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                 {
-                    _logger?.LogWarning("WebSocket connection closed prematurely");
                     HandleDisconnection(ex);
                     break;
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error receiving data from WebSocket server");
                     HandleDisconnection(ex);
                     break;
                 }
@@ -232,21 +209,18 @@ internal sealed class WebSocketConnection : IConnection
         }
 
         _isConnected = false;
-        _logger?.LogWarning(exception, "WebSocket connection lost");
-
         Disconnected?.Invoke(this, exception);
     }
 
-    private async Task CleanupAsync()
+    private Task CleanupAsync()
     {
         _receiveCts?.Dispose();
         _receiveCts = null;
 
-        if (_webSocket != null)
-        {
-            _webSocket.Dispose();
-            _webSocket = null;
-        }
+        _webSocket?.Dispose();
+        _webSocket = null;
+
+        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
