@@ -1,16 +1,16 @@
+#nullable enable
+
 namespace PlayHouse.Connector.Connection;
 
 using System.Buffers;
 using System.Net.Sockets;
-using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// TCP-based connection implementation.
+/// TCP 기반 연결 구현
 /// </summary>
 internal sealed class TcpConnection : IConnection
 {
-    private readonly PlayHouseClientOptions _options;
-    private readonly ILogger<TcpConnection>? _logger;
+    private readonly ConnectorConfig _config;
     private TcpClient? _client;
     private NetworkStream? _stream;
     private CancellationTokenSource? _receiveCts;
@@ -18,15 +18,17 @@ internal sealed class TcpConnection : IConnection
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private volatile bool _isConnected;
 
+    private const int SendBufferSize = 65536;
+    private const int ReceiveBufferSize = 65536;
+
     public event EventHandler<byte[]>? DataReceived;
     public event EventHandler<Exception?>? Disconnected;
 
     public bool IsConnected => _isConnected;
 
-    public TcpConnection(PlayHouseClientOptions options, ILogger<TcpConnection>? logger = null)
+    public TcpConnection(ConnectorConfig config)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
-        _logger = logger;
+        _config = config ?? throw new ArgumentNullException(nameof(config));
     }
 
     public async Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
@@ -38,23 +40,18 @@ internal sealed class TcpConnection : IConnection
 
         try
         {
-            _logger?.LogDebug("Connecting to TCP server {Host}:{Port}", host, port);
-
             _client = new TcpClient
             {
-                SendBufferSize = _options.SendBufferSize,
-                ReceiveBufferSize = _options.ReceiveBufferSize,
-                NoDelay = _options.TcpNoDelay
+                SendBufferSize = SendBufferSize,
+                ReceiveBufferSize = ReceiveBufferSize,
+                NoDelay = true
             };
 
             // Configure keep-alive
-            if (_options.TcpKeepAlive)
-            {
-                _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-            }
+            _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(_options.ConnectionTimeout);
+            timeoutCts.CancelAfter(_config.ConnectionIdleTimeoutMs);
 
             await _client.ConnectAsync(host, port, timeoutCts.Token).ConfigureAwait(false);
 
@@ -64,12 +61,9 @@ internal sealed class TcpConnection : IConnection
             // Start receiving data
             _receiveCts = new CancellationTokenSource();
             _receiveTask = ReceiveLoopAsync(_receiveCts.Token);
-
-            _logger?.LogInformation("Connected to TCP server {Host}:{Port}", host, port);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _logger?.LogError(ex, "Failed to connect to TCP server {Host}:{Port}", host, port);
             await CleanupAsync().ConfigureAwait(false);
             throw;
         }
@@ -81,8 +75,6 @@ internal sealed class TcpConnection : IConnection
         {
             return;
         }
-
-        _logger?.LogDebug("Disconnecting from TCP server");
 
         _isConnected = false;
 
@@ -100,15 +92,13 @@ internal sealed class TcpConnection : IConnection
             {
                 // Expected when canceling
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger?.LogWarning(ex, "Error during receive task completion");
+                // Ignore errors during disconnect
             }
         }
 
         await CleanupAsync().ConfigureAwait(false);
-
-        _logger?.LogInformation("Disconnected from TCP server");
     }
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
@@ -123,12 +113,9 @@ internal sealed class TcpConnection : IConnection
         {
             await _stream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
             await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-            _logger?.LogTrace("Sent {ByteCount} bytes to TCP server", data.Length);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to send data to TCP server");
             HandleDisconnection(ex);
             throw;
         }
@@ -140,7 +127,7 @@ internal sealed class TcpConnection : IConnection
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize);
+        var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         try
         {
             while (!cancellationToken.IsCancellationRequested && _isConnected && _stream != null)
@@ -151,12 +138,9 @@ internal sealed class TcpConnection : IConnection
 
                     if (bytesRead == 0)
                     {
-                        _logger?.LogDebug("TCP connection closed by server (0 bytes read)");
                         HandleDisconnection(null);
                         break;
                     }
-
-                    _logger?.LogTrace("Received {ByteCount} bytes from TCP server", bytesRead);
 
                     // Copy data to avoid buffer reuse issues
                     var data = new byte[bytesRead];
@@ -171,7 +155,6 @@ internal sealed class TcpConnection : IConnection
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error receiving data from TCP server");
                     HandleDisconnection(ex);
                     break;
                 }
@@ -191,8 +174,6 @@ internal sealed class TcpConnection : IConnection
         }
 
         _isConnected = false;
-        _logger?.LogWarning(exception, "TCP connection lost");
-
         Disconnected?.Invoke(this, exception);
     }
 
