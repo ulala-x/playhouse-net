@@ -24,6 +24,56 @@ public class PlayProducer
 {
     private readonly Dictionary<string, Func<IStageSender, IStage>> _stageFactories = new();
     private readonly Dictionary<string, Func<IActorSender, IActor>> _actorFactories = new();
+    private readonly Type? _defaultActorType;
+
+    /// <summary>
+    /// Default constructor for manual registration.
+    /// </summary>
+    public PlayProducer()
+    {
+    }
+
+    /// <summary>
+    /// Constructor for Bootstrap pattern with Type-based registration.
+    /// </summary>
+    /// <param name="stageTypes">Dictionary of stage type names to Stage implementation types.</param>
+    /// <param name="actorType">Default Actor implementation type.</param>
+    public PlayProducer(Dictionary<string, Type> stageTypes, Type actorType)
+    {
+        _defaultActorType = actorType;
+
+        foreach (var (stageType, type) in stageTypes)
+        {
+            var stageT = type;
+            _stageFactories[stageType] = stageSender =>
+            {
+                var stage = (IStage)Activator.CreateInstance(stageT)!;
+                SetStageSender(stage, stageSender);
+                return stage;
+            };
+
+            _actorFactories[stageType] = actorSender =>
+            {
+                var actor = (IActor)Activator.CreateInstance(_defaultActorType)!;
+                SetActorSender(actor, actorSender);
+                return actor;
+            };
+        }
+    }
+
+    private static void SetStageSender(IStage stage, IStageSender stageSender)
+    {
+        // Use reflection to set the StageSender property
+        var prop = stage.GetType().GetProperty("StageSender");
+        prop?.SetValue(stage, stageSender);
+    }
+
+    private static void SetActorSender(IActor actor, IActorSender actorSender)
+    {
+        // Use reflection to set the ActorSender property
+        var prop = actor.GetType().GetProperty("ActorSender");
+        prop?.SetValue(actor, actorSender);
+    }
 
     /// <summary>
     /// Registers Stage and Actor factories for a given stage type.
