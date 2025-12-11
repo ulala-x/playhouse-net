@@ -11,6 +11,7 @@ namespace PlayHouse.Tests.Unit.Connector;
 /// <summary>
 /// 단위 테스트: Connector 클래스의 기본 기능 검증
 /// 실제 네트워크 연결 없이 테스트 가능한 부분만 검증합니다.
+/// Connect() 시 host, port, stageId를 전달하는 새 API를 사용합니다.
 /// </summary>
 public class ConnectorTests
 {
@@ -21,8 +22,7 @@ public class ConnectorTests
         var connector = new ClientConnector();
         var config = new ConnectorConfig
         {
-            Host = "test.server.com",
-            Port = 8080
+            RequestTimeoutMs = 5000
         };
 
         // When (행동)
@@ -30,8 +30,7 @@ public class ConnectorTests
 
         // Then (결과)
         connector.ConnectorConfig.Should().BeSameAs(config, "설정이 저장되어야 함");
-        connector.ConnectorConfig.Host.Should().Be("test.server.com");
-        connector.ConnectorConfig.Port.Should().Be(8080);
+        connector.ConnectorConfig.RequestTimeoutMs.Should().Be(5000);
     }
 
     [Fact(DisplayName = "Init - null Config는 예외를 발생시킨다")]
@@ -75,18 +74,18 @@ public class ConnectorTests
         isAuthenticated.Should().BeFalse("초기 상태는 인증되지 않음");
     }
 
-    [Fact(DisplayName = "SetAuthenticateMessageId - 인증 메시지 ID 설정")]
-    public void SetAuthenticateMessageId_SetsValue()
+    [Fact(DisplayName = "StageId - 초기 상태는 0")]
+    public void StageId_InitialState_ReturnsZero()
     {
         // Given (전제조건)
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 
         // When (행동)
-        var action = () => connector.SetAuthenticateMessageId("auth.login");
+        var stageId = connector.StageId;
 
         // Then (결과)
-        action.Should().NotThrow("인증 메시지 ID 설정이 성공해야 함");
+        stageId.Should().Be(0, "초기 StageId는 0");
     }
 
     [Fact(DisplayName = "OnConnect 이벤트 - 핸들러 등록 및 해제")]
@@ -300,72 +299,5 @@ public class ConnectorTests
 
         // Then (결과)
         action.Should().NotThrow("ClearCache는 항상 안전하게 호출 가능해야 함");
-    }
-
-    [Fact(DisplayName = "Send with StageId - 연결되지 않은 상태에서 OnError 이벤트 발생")]
-    public void SendWithStageId_NotConnected_TriggersOnError()
-    {
-        // Given (전제조건)
-        var connector = new ClientConnector();
-        connector.Init(new ConnectorConfig());
-
-        long receivedStageId = -1;
-        ushort receivedErrorCode = 0;
-        connector.OnError += (stageId, errorCode, request) =>
-        {
-            receivedStageId = stageId;
-            receivedErrorCode = errorCode;
-        };
-
-        using var packet = Packet.Empty("Test.Message");
-        const long testStageId = 12345L;
-
-        // When (행동)
-        connector.Send(testStageId, packet);
-
-        // Then (결과)
-        receivedStageId.Should().Be(testStageId, "StageId가 에러 이벤트에 전달되어야 함");
-        receivedErrorCode.Should().Be((ushort)ConnectorErrorCode.Disconnected);
-    }
-
-    [Fact(DisplayName = "Request with StageId - 연결되지 않은 상태에서 OnError 이벤트 발생")]
-    public void RequestWithStageId_NotConnected_TriggersOnError()
-    {
-        // Given (전제조건)
-        var connector = new ClientConnector();
-        connector.Init(new ConnectorConfig());
-
-        long receivedStageId = -1;
-        connector.OnError += (stageId, errorCode, request) =>
-        {
-            receivedStageId = stageId;
-        };
-
-        using var packet = Packet.Empty("Test.Request");
-        const long testStageId = 99999L;
-
-        // When (행동)
-        connector.Request(testStageId, packet, response => { });
-
-        // Then (결과)
-        receivedStageId.Should().Be(testStageId, "StageId가 에러 이벤트에 전달되어야 함");
-    }
-
-    [Fact(DisplayName = "RequestAsync with StageId - 연결되지 않은 상태에서 예외 발생")]
-    public async Task RequestAsyncWithStageId_NotConnected_ThrowsException()
-    {
-        // Given (전제조건)
-        var connector = new ClientConnector();
-        connector.Init(new ConnectorConfig());
-
-        using var packet = Packet.Empty("Test.Request");
-        const long testStageId = 77777L;
-
-        // When (행동)
-        var action = async () => await connector.RequestAsync(testStageId, packet);
-
-        // Then (결과)
-        await action.Should().ThrowAsync<ConnectorException>()
-            .Where(ex => ex.StageId == testStageId, "예외에 StageId가 포함되어야 함");
     }
 }

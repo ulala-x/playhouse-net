@@ -38,41 +38,35 @@ public class PlayProducer
     /// </summary>
     /// <param name="stageTypes">Dictionary of stage type names to Stage implementation types.</param>
     /// <param name="actorType">Default Actor implementation type.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when Stage or Actor type doesn't have a constructor accepting the required sender parameter.
+    /// </exception>
     public PlayProducer(Dictionary<string, Type> stageTypes, Type actorType)
     {
         _defaultActorType = actorType;
 
+        // Actor 생성자 검증
+        var actorCtor = _defaultActorType.GetConstructor(new[] { typeof(IActorSender) })
+            ?? throw new InvalidOperationException(
+                $"Actor type '{_defaultActorType.Name}' must have a constructor accepting IActorSender parameter. " +
+                $"Example: public {_defaultActorType.Name}(IActorSender actorSender)");
+
         foreach (var (stageType, type) in stageTypes)
         {
             var stageT = type;
+
+            // Stage 생성자 검증
+            var stageCtor = stageT.GetConstructor(new[] { typeof(IStageSender) })
+                ?? throw new InvalidOperationException(
+                    $"Stage type '{stageT.Name}' must have a constructor accepting IStageSender parameter. " +
+                    $"Example: public {stageT.Name}(IStageSender stageSender)");
+
             _stageFactories[stageType] = stageSender =>
-            {
-                var stage = (IStage)Activator.CreateInstance(stageT)!;
-                SetStageSender(stage, stageSender);
-                return stage;
-            };
+                (IStage)stageCtor.Invoke(new object[] { stageSender });
 
             _actorFactories[stageType] = actorSender =>
-            {
-                var actor = (IActor)Activator.CreateInstance(_defaultActorType)!;
-                SetActorSender(actor, actorSender);
-                return actor;
-            };
+                (IActor)actorCtor.Invoke(new object[] { actorSender });
         }
-    }
-
-    private static void SetStageSender(IStage stage, IStageSender stageSender)
-    {
-        // Use reflection to set the StageSender property
-        var prop = stage.GetType().GetProperty("StageSender");
-        prop?.SetValue(stage, stageSender);
-    }
-
-    private static void SetActorSender(IActor actor, IActorSender actorSender)
-    {
-        // Use reflection to set the ActorSender property
-        var prop = actor.GetType().GetProperty("ActorSender");
-        prop?.SetValue(actor, actorSender);
     }
 
     /// <summary>

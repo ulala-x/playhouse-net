@@ -2,9 +2,9 @@
 
 using PlayHouse.Abstractions;
 using PlayHouse.Core.Messaging;
-using PlayHouse.Runtime;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.Shared;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
 namespace PlayHouse.Core.Shared;

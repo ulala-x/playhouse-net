@@ -3,7 +3,7 @@
 using System.Collections.Concurrent;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Abstractions.System;
 

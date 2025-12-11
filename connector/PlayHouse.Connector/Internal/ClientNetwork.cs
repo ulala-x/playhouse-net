@@ -22,7 +22,6 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private int _msgSeqCounter;
     private bool _isAuthenticated;
     private bool _debugMode;
-    private string _authenticateMessageId = string.Empty;
 
     // 패킷 버퍼
     private readonly List<byte> _receiveBuffer = new();
@@ -40,27 +39,31 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     public bool IsDebugMode() => _debugMode;
 
-    public void SetAuthenticateMessageId(string msgId)
-    {
-        _authenticateMessageId = msgId;
-    }
-
-    public void Connect(bool debugMode = false)
+    public void Connect(string host, int port, bool debugMode = false)
     {
         _debugMode = debugMode;
-        _ = ConnectInternalAsync(debugMode);
+        _ = ConnectInternalAsync(host, port, debugMode);
     }
 
-    public async Task<bool> ConnectAsync(bool debugMode = false)
+    public async Task<bool> ConnectAsync(string host, int port, bool debugMode = false)
     {
         _debugMode = debugMode;
-        return await ConnectInternalAsync(debugMode);
+        return await ConnectInternalAsync(host, port, debugMode);
     }
 
-    private async Task<bool> ConnectInternalAsync(bool debugMode)
+    private async Task<bool> ConnectInternalAsync(string host, int port, bool debugMode)
     {
         try
         {
+            // 기존 연결 정리 (재연결 지원)
+            await CleanupConnectionAsync();
+
+            // 상태 초기화
+            _isAuthenticated = false;
+            _receiveBuffer.Clear();
+            _expectedPacketSize = -1;
+            ClearPendingRequests();
+
             _connection = _config.UseWebsocket
                 ? CreateWebSocketConnection()
                 : CreateTcpConnection();
@@ -68,7 +71,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
             _connection.DataReceived += OnDataReceived;
             _connection.Disconnected += OnDisconnected;
 
-            await _connection.ConnectAsync(_config.Host, _config.Port);
+            await _connection.ConnectAsync(host, port);
 
             _asyncManager.AddJob(() => _callback.ConnectCallback(true));
             return true;
@@ -77,6 +80,17 @@ internal sealed class ClientNetwork : IAsyncDisposable
         {
             _asyncManager.AddJob(() => _callback.ConnectCallback(false));
             return false;
+        }
+    }
+
+    private async Task CleanupConnectionAsync()
+    {
+        if (_connection != null)
+        {
+            _connection.DataReceived -= OnDataReceived;
+            _connection.Disconnected -= OnDisconnected;
+            await _connection.DisposeAsync();
+            _connection = null;
         }
     }
 
@@ -92,13 +106,9 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     public async Task DisconnectAsync()
     {
-        if (_connection != null)
-        {
-            await _connection.DisconnectAsync();
-        }
-
         _isAuthenticated = false;
         ClearPendingRequests();
+        await CleanupConnectionAsync();
     }
 
     public void MainThreadAction()

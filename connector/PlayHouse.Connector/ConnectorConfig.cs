@@ -5,18 +5,12 @@ namespace PlayHouse.Connector;
 /// <summary>
 /// Connector 설정
 /// </summary>
+/// <remarks>
+/// 서버 접속 정보(Host, Port)는 Connect() 호출 시 전달합니다.
+/// Connector 인스턴스는 여러 서버에 접속/해제가 가능하도록 설계되었습니다.
+/// </remarks>
 public sealed class ConnectorConfig
 {
-    /// <summary>
-    /// 서버 호스트 주소
-    /// </summary>
-    public string Host { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 서버 포트
-    /// </summary>
-    public int Port { get; set; }
-
     /// <summary>
     /// WebSocket 사용 여부 (false면 TCP)
     /// </summary>

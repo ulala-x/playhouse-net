@@ -139,11 +139,12 @@ git worktree remove ../playhouse-net-connector
 - **완료된 Phase**:
   - Phase 1: NetMQ 통신 계층 ✅
   - Phase 2: 핵심 인터페이스 ✅
-  - Phase 3: Play 서버 ✅
+  - Phase 3: Play 서버 ⚠️ (BaseStageCmdHandler 미구현 - Stage Command 처리 필요)
   - Phase 4: API 서버 ✅
   - Phase 5: Connector ✅
   - Phase 6: E2E 테스트 인프라 ✅
 - **남은 작업**:
+  - **Phase 3 보완**: BaseStageCmdHandler 실제 구현 (JoinStageCmd, CreateJoinStageCmd, DisconnectNoticeCmd, ReconnectCmd)
   - Phase 7: 통합 및 정리, 레거시 코드 제거, 성능 벤치마크
 
 ---
@@ -862,7 +863,13 @@ IApiSender, IApiController
 - [x] 3.7 BaseStage (Lock-free 이벤트 루프)
 - [x] 3.8 BaseActor
 - [x] 3.9 PlayDispatcher
-- [x] 3.10 BaseStageCmdHandler (Core/Play/Base/BaseStageCmdHandler.cs)
+- [x] **3.10 BaseStageCmdHandler** (Core/Play/Base/BaseStageCmdHandler.cs) - ✅ **구현 완료 (2025-12-11)**
+  - [x] 3.10a JoinStageCmd (10단계 인증 플로우: XActorSender → IActor.OnCreate → OnAuthenticate → OnPostAuthenticate → IStage.OnJoinStage → OnPostJoinStage)
+  - [x] 3.10b CreateJoinStageCmd (Stage 생성 + 입장 동시 처리)
+  - [x] 3.10c GetOrCreateStageCmd (기존 Stage 반환 또는 생성)
+  - [x] 3.10d DisconnectNoticeCmd (연결 끊김 알림 → IStage.OnConnectionChanged)
+  - [x] 3.10e ReconnectCmd (재연결 처리 → IStage.OnConnectionChanged)
+  - [x] 3.10f TimerMsg 처리 (BaseStage.PostTimerCallback으로 이미 구현됨)
 - [x] 3.11 TimerManager
 - [x] 3.12 PlayProducer
 - [x] 3.13 PlayServerBootstrap
@@ -918,618 +925,408 @@ IApiSender, IApiController
 
 | 원칙 | 설명 |
 |------|------|
-| **Fake/Mock 절대 금지** | E2E 테스트에서는 Fake, Mock, Stub 등을 **절대 사용하지 않음** |
-| **실제 서버 사용** | PlayServer, ApiServer를 Bootstrap으로 실제 구동 |
-| **실제 네트워크** | TCP/WebSocket 실제 연결 사용 (localhost) |
-| **실제 메시지** | Proto 메시지로 정의된 실제 메시지 사용 |
-| **사용자 관점** | 실제 사용자가 API를 사용하는 것처럼 테스트 작성 |
+| **사용자가 접근 가능한 것만 검증** | Connector 공개 API, 콜백만 사용 |
+| **서버 내부 상태는 검증 불가** | `SessionManager.SessionCount` 등은 통합테스트로 이동 |
+| **Request 패킷** | 응답 메시지 내용 검증 |
+| **Send 패킷** | 서버에서 Push 응답 → `OnReceive`로 확인 |
+| **서버만 검증 가능한 것** | 통합테스트 목록에 추가, E2E에서는 "→ 통합테스트" 표기 |
 
 ---
 
-#### Proto 메시지 사용
+#### 6.1 Connector 연결/인증
 
-> 모든 E2E 테스트 메시지는 Proto 파일로 정의하고, `IPacket.Parse<T>()` 확장 메서드로 파싱
+##### Connector 공개 API
+- **Properties**: `ConnectorConfig`, `StageId`
+- **Events**: `OnConnect`, `OnReceive`, `OnError`, `OnDisconnect`
+- **Methods**: `Init()`, `Connect()`, `ConnectAsync()`, `Disconnect()`, `IsConnected()`, `IsAuthenticated()`, `Authenticate()`, `AuthenticateAsync()`, `Send()`, `Request()`, `RequestAsync()`
 
-**테스트용 Proto 정의** (`Tests/E2E/Protos/test_messages.proto`):
-```protobuf
-syntax = "proto3";
-package PlayHouse.Tests.E2E;
+##### 6.1.1 연결 테스트
 
-// ============================================
-// Client → Play Server (Connector 직접 통신)
-// ============================================
+| 테스트 | 검증 방법 |
+|--------|----------|
+| TCP 연결 성공 | `IsConnected() == true`, `OnConnect(true)` 콜백 |
+| TCP 연결 실패 (잘못된 host) | `IsConnected() == false`, `OnConnect(false)` 콜백 |
+| ConnectAsync 성공 | `await ConnectAsync() == true`, `IsConnected() == true` |
+| ConnectAsync 실패 | `await ConnectAsync() == false` |
+| Disconnect 호출 | `IsConnected() == false`, `OnDisconnect` 콜백 없음 (클라이언트 주도 해제) |
+| 서버 연결 해제 | `OnDisconnect` 콜백 발생 |
 
-// 인증 요청 (Connector → Play)
-message AuthRequest {
-    string account_id = 1;
-    string token = 2;
-}
+> 서버측 세션 생성/제거 → **통합테스트**
 
-// 인증 응답 (Play → Connector)
-message AuthResponse {
-    bool success = 1;
-    string session_id = 2;
-}
+##### 6.1.2 인증 테스트
 
-// 게임 액션 메시지
-message GameActionRequest {
-    string action = 1;
-    bytes data = 2;
-}
+| 테스트 | 검증 방법 |
+|--------|----------|
+| Authenticate (callback) 성공 | 콜백 호출, 응답 패킷 내용, `IsAuthenticated() == true` |
+| AuthenticateAsync 성공 | 응답 패킷 내용, `IsAuthenticated() == true` |
+| 인증 실패 | `OnDisconnect` 콜백, `IsAuthenticated() == false` |
+| 미인증 상태에서 Send | `OnError(Unauthenticated)` 콜백 |
+| 미인증 상태에서 Request | `OnError(Unauthenticated)` 콜백 |
 
-message GameActionResponse {
-    bool success = 1;
-    string result = 2;
-}
-
-// 채팅 메시지
-message ChatMessage {
-    string sender = 1;
-    string content = 2;
-    int64 timestamp = 3;
-}
-
-// ============================================
-// Client → API Server (HTTP API 호출)
-// ============================================
-
-// 방 생성 API 요청 (HTTP POST /api/rooms/create)
-message ApiCreateRoomRequest {
-    string room_name = 1;
-    int32 max_players = 2;
-    string room_type = 3;  // stage type
-}
-
-// 방 생성 API 응답
-message ApiCreateRoomResponse {
-    int64 room_id = 1;
-    bool success = 2;
-    string play_server_nid = 3;
-}
-
-// 방 참가 API 요청 (HTTP POST /api/rooms/join)
-message ApiJoinRoomRequest {
-    int64 room_id = 1;
-    string account_id = 2;
-}
-
-// 방 참가 API 응답
-message ApiJoinRoomResponse {
-    bool success = 1;
-    string play_server_host = 2;
-    int32 play_server_port = 3;
-}
-
-// 방 목록 조회 API 요청 (HTTP GET /api/rooms)
-message ApiListRoomsRequest {
-    int32 page = 1;
-    int32 page_size = 2;
-}
-
-message ApiListRoomsResponse {
-    repeated RoomInfo rooms = 1;
-    int32 total_count = 2;
-}
-
-message RoomInfo {
-    int64 room_id = 1;
-    string room_name = 2;
-    int32 current_players = 3;
-    int32 max_players = 4;
-}
-
-// ============================================
-// API Server → Play Server (내부 통신)
-// ============================================
-
-// Stage 생성 패킷 (API → Play, IApiSender.CreateStage)
-message CreateStagePacket {
-    string room_name = 1;
-    int32 max_players = 2;
-    map<string, string> metadata = 3;
-}
-
-// Stage 생성 응답 (Play → API)
-message CreateStageResponsePacket {
-    bool success = 1;
-    int64 stage_id = 2;
-}
-
-// Stage 조회/요청 패킷 (API → Play, IApiSender.RequestToStage)
-message StageQueryPacket {
-    string query_type = 1;
-    bytes query_data = 2;
-}
-
-message StageQueryResponsePacket {
-    bool success = 1;
-    bytes response_data = 2;
-}
-
-// ============================================
-// Play Server → API Server (내부 통신)
-// ============================================
-
-// 이벤트 알림 (Play → API, ISender.SendToApi)
-message GameEventNotification {
-    int64 stage_id = 1;
-    string event_type = 2;
-    bytes event_data = 3;
-}
-
-// 데이터 조회 요청 (Play → API, ISender.RequestToApi)
-message DataQueryRequest {
-    string account_id = 1;
-    string data_type = 2;
-}
-
-message DataQueryResponse {
-    bool found = 1;
-    bytes data = 2;
-}
-
-// ============================================
-// Server ↔ Server (Play-Play, API-API)
-// ============================================
-
-// 서버 간 메시지
-message ServerToServerMessage {
-    string source_nid = 1;
-    string message_type = 2;
-    bytes payload = 3;
-}
-
-message ServerToServerResponse {
-    bool success = 1;
-    bytes response_payload = 2;
-}
-```
-
-**Proto 메시지 파싱 사용법**:
-```csharp
-// IPacket.Parse<T>() 확장 메서드 사용
-// 위치: PlayHouse.Abstractions.PacketExtensions
-
-// Stage에서 메시지 수신 시
-public Task OnDispatch(IPacket packet, IStageSender sender)
-{
-    // Parse<T>() 확장 메서드로 Proto 메시지 파싱
-    var message = packet.Parse<GameMessage>();
-
-    // 응답 전송
-    var response = new GameResponse { Success = true };
-    sender.Reply(CPacket.Of(response));
-    return Task.CompletedTask;
-}
-
-// Connector에서 응답 수신 시
-var response = await connector.RequestAsync(stageId, CPacket.Of(request));
-var result = response.Parse<CreateRoomResponse>();
-Assert.True(result.Success);
-```
-
-**TryParse 사용법** (안전한 파싱):
-```csharp
-if (packet.TryParse<GameMessage>(out var message))
-{
-    // 파싱 성공
-    ProcessMessage(message);
-}
-else
-{
-    // 파싱 실패 처리
-    sender.Reply(BaseErrorCode.InvalidMessage);
-}
-```
+> 서버 IActor.OnAuthenticate 콜백 → **통합테스트**
 
 ---
 
-#### 6.1 테스트 환경 구성 (서버 인프라)
+#### 6.2 Connector 메시지 송수신
 
-> ⚠️ **선행 조건**: API ↔ Play 서버 연결을 위해 `ISystemController` 구현 필수
+##### 6.2.1 Send (Fire-and-Forget)
 
-| 순서 | 항목 | 구현 내용 |
-|-----|------|----------|
-| 6.1.1 | **InMemorySystemController** | `ISystemController` 테스트용 구현 (서버 주소 수집/반환) |
-| 6.1.2 | 서버 디스커버리 검증 | `UpdateServerInfoAsync()` → 서버 목록 반환 확인 |
-| 6.1.3 | API ↔ Play 연결 확인 | NetMQ Router-Router 연결 성공 확인 |
-| 6.1.4 | E2E 테스트 픽스처 | PlayServer + ApiServer Bootstrap 구동 |
-| 6.1.5 | 테스트용 Stage | TestGameStage (IStage) 구현 |
-| 6.1.6 | 테스트용 Actor | TestPlayerActor (IActor) 구현 |
-| 6.1.7 | 테스트용 Proto | 테스트 메시지 정의 |
-| 6.1.8 | 테스트용 ApiController | IApiController 구현 |
+| 테스트 | 검증 방법 |
+|--------|----------|
+| Send 후 연결 유지 | `IsConnected() == true` |
+| Send 메시지 도착 확인 | 서버에서 에코 Push → `OnReceive(stageId, packet)` 확인 |
 
-```csharp
-// InMemorySystemController 예시
-public class InMemorySystemController : ISystemController
-{
-    private static readonly ConcurrentDictionary<string, IServerInfo> _servers = new();
+> 서버 IStage.OnDispatch 호출 → **통합테스트**
 
-    public Task<IReadOnlyList<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)
-    {
-        _servers[serverInfo.GetNid()] = serverInfo;
-        return Task.FromResult<IReadOnlyList<IServerInfo>>(_servers.Values.ToList());
-    }
-}
-```
+##### 6.2.2 Request (Callback)
 
----
+| 테스트 | 검증 방법 |
+|--------|----------|
+| Request 성공 | 콜백 호출, 응답 패킷 내용 검증 |
+| Request 에러 응답 | `OnError(stageId, errorCode, request)` 콜백 |
 
-#### 6.2 연결 및 인증 (Connection & Authentication)
+##### 6.2.3 RequestAsync
 
-| 테스트 | Connector 메소드 | 확인 사항 |
-|--------|-----------------|----------|
-| 6.2.1 TCP 연결 성공 | `Connect()`, `ConnectAsync()` | `IsConnected() = true` |
-| 6.2.2 TCP 연결 실패 | `ConnectAsync()` | `OnConnect(false)` 콜백 |
-| 6.2.3 WebSocket 연결 | `ConnectAsync()` | `IsConnected() = true` |
-| 6.2.4 인증 성공 | `AuthenticateAsync(IPacket)` | `IsAuthenticated() = true` |
-| 6.2.5 인증 실패 | `Authenticate(IPacket, callback)` | 연결 종료, `OnDisconnect` |
-| 6.2.6 미인증 Send | `Send(IPacket)` | `OnError(ConnectorErrorCode.Unauthenticated)` |
+| 테스트 | 검증 방법 |
+|--------|----------|
+| RequestAsync 성공 | 응답 패킷 내용 검증 |
+| RequestAsync 타임아웃 | `ConnectorException` 발생, `ErrorCode == RequestTimeout` |
+| RequestAsync 에러 응답 | `ConnectorException` 발생, `ErrorCode` 확인 |
+
+##### 6.2.4 OnReceive 이벤트
+
+| 테스트 | 검증 방법 |
+|--------|----------|
+| Push 메시지 수신 | `OnReceive(stageId, packet)` 콜백, stageId/packet 내용 검증 |
+| 여러 Push 수신 | 모든 `OnReceive` 콜백 순서대로 호출 |
 
 ---
 
-#### 6.3 Connector 콜백 검증 (Callback Verification)
+#### 6.3 ISender 메서드
 
-| 테스트 | 트리거 | 확인할 콜백 |
-|--------|--------|------------|
-| 6.3.1 연결 콜백 | `ConnectAsync()` | `OnConnect(bool success)` |
-| 6.3.2 연결 끊김 콜백 | `Disconnect()` / 서버 종료 | `OnDisconnect()` |
-| 6.3.3 메시지 수신 콜백 | 서버 Push 메시지 | `OnReceive(long stageId, IPacket packet)` |
-| 6.3.4 에러 콜백 | 서버 에러 응답 | `OnError(long stageId, ushort errorCode, IPacket request)` |
+> **트리거 방식**: Client Request → Stage/API 핸들러에서 ISender 메서드 호출 → 결과를 Client에게 Reply
 
----
+##### 6.3.1 SendToApi
 
-#### 6.4 Client → Play 메시지 (Connector → Play Server)
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| SendToApi 호출 | Client Request("TriggerSendToApi") → Stage에서 SendToApi 호출 후 Reply | Client Request 응답 수신 확인 |
 
-| 테스트 | Connector 메소드 | Stage 콜백 | 확인 사항 |
-|--------|-----------------|-----------|----------|
-| 6.4.1 Send (단방향, stageId=0) | `Send(IPacket)` | `IStage.OnDispatch(IActor, IPacket)` | 메시지 도달 확인 |
-| 6.4.2 Send (단방향, stageId>0) | `Send(long stageId, IPacket)` | `IStage.OnDispatch(IActor, IPacket)` | StageId 라우팅 |
-| 6.4.3 Request async | `RequestAsync(IPacket)` | `IStage.OnDispatch` → `IStageSender.Reply(IPacket)` | 응답 수신 |
-| 6.4.4 Request callback | `Request(IPacket, Action<IPacket>)` | `IStage.OnDispatch` → `IStageSender.Reply` | 콜백 호출 |
-| 6.4.5 Request + stageId | `RequestAsync(long, IPacket)` | `OnDispatch` → `Reply` | StageId 포함 라우팅 |
+> API 서버 메시지 수신 → **통합테스트**
 
----
+##### 6.3.2 RequestToApi (callback)
 
-#### 6.5 Play → Client 메시지 (Play Server → Connector)
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| RequestToApi 콜백 | Client Request → Stage에서 RequestToApi(callback) → callback에서 Reply | Client Reply에 API 응답 데이터 포함 |
 
-| 테스트 | Play Server 메소드 | Connector 콜백 | 확인 사항 |
-|--------|-------------------|---------------|----------|
-| 6.5.1 Push 메시지 | `IActorSender.SendToClient(IPacket)` | `OnReceive(stageId, packet)` | 클라이언트 수신 |
-| 6.5.2 Reply 응답 | `IStageSender.Reply(IPacket)` | `RequestAsync` 반환값 | 응답 매칭 |
-| 6.5.3 Reply + ErrorCode | `IStageSender.Reply(ushort errorCode)` | `OnError` 콜백 | 에러코드 전파 |
-| 6.5.4 Stage Push | `IStageSender.SendToClient(nid, sid, IPacket)` | `OnReceive` | 특정 클라이언트 |
+##### 6.3.3 RequestToApi (async)
 
----
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| await RequestToApi | Client Request → Stage에서 await RequestToApi → Reply | Client Reply에 API 응답 데이터 포함 |
 
-#### 6.6 API → Play 메시지 (Client → API → Play 전체 흐름)
+##### 6.3.4 SendToStage
 
-> ⚠️ **중요**: API → Play 메시지 테스트는 반드시 **Client → API → Play** 전체 흐름으로 테스트해야 합니다.
-> API 서버는 Stateless이므로, 클라이언트의 HTTP 요청을 받아 Play 서버로 전달하는 구조입니다.
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| SendToStage 호출 | HTTP API → API에서 SendToStage 호출 | HTTP 응답 성공 |
 
-**테스트 흐름**:
-```
-┌──────────┐     HTTP      ┌──────────┐     NetMQ      ┌──────────┐
-│  Client  │ ──────────→  │   API    │ ──────────→   │   Play   │
-│ (HTTP)   │ ←────────── │  Server  │ ←────────────  │  Server  │
-└──────────┘   Response   └──────────┘    Reply      └──────────┘
-```
+> Stage 메시지 수신 → **통합테스트**
 
-**테스트 코드 예시**:
-```csharp
-[Fact]
-public async Task CreateRoom_ClientToApiToPlay_StageCreated()
-{
-    // Given: API Server + Play Server 구동 상태
-    // HTTP 클라이언트로 API 서버 호출
-    var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+##### 6.3.5 RequestToStage (callback)
 
-    // When: Client → API (HTTP POST)
-    var request = new ApiCreateRoomRequest
-    {
-        RoomName = "TestRoom",
-        MaxPlayers = 4,
-        RoomType = "GameRoom"
-    };
-    var response = await httpClient.PostAsJsonAsync("/api/rooms/create", request);
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| RequestToStage 콜백 | HTTP API → API에서 RequestToStage(callback) | HTTP 응답에 Stage 데이터 포함 |
 
-    // Then: API → Play (내부 NetMQ 통신)으로 Stage 생성됨
-    var result = await response.Content.ReadFromJsonAsync<ApiCreateRoomResponse>();
-    Assert.True(result.Success);
-    Assert.True(result.RoomId > 0);
+##### 6.3.6 RequestToStage (async)
 
-    // Play Server의 IStage.OnCreate, OnPostCreate 콜백 호출 확인
-}
-```
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| await RequestToStage | HTTP API → API에서 await RequestToStage | HTTP 응답에 Stage 데이터 포함 |
 
-**API Controller 구현 예시**:
-```csharp
-// IApiController 구현 - API Server에서 HTTP 요청을 받아 Play Server로 전달
-public class RoomApiController : IApiController
-{
-    public void Handles(IHandlerRegister register)
-    {
-        register.Add<ApiCreateRoomRequest>(OnCreateRoom);
-        register.Add<ApiJoinRoomRequest>(OnJoinRoom);
-    }
+##### 6.3.7 Reply
 
-    private async Task OnCreateRoom(IPacket packet, IApiSender sender)
-    {
-        var request = packet.Parse<ApiCreateRoomRequest>();
-
-        // API → Play: CreateStage 호출
-        var stagePacket = CPacket.Of(new CreateStagePacket
-        {
-            RoomName = request.RoomName,
-            MaxPlayers = request.MaxPlayers
-        });
-        var result = await sender.CreateStage(playNid, request.RoomType, 0, stagePacket);
-
-        // Client에게 응답
-        sender.Reply(CPacket.Of(new ApiCreateRoomResponse
-        {
-            Success = result.ErrorCode == 0,
-            RoomId = result.StageId
-        }));
-    }
-}
-```
-
-| 테스트 | 클라이언트 호출 | IApiSender 메소드 | Stage 콜백 | 확인 사항 |
-|--------|---------------|------------------|-----------|----------|
-| 6.6.1 CreateStage | `POST /api/rooms/create` | `CreateStage(playNid, stageType, stageId, IPacket)` | `IStage.OnCreate` → `OnPostCreate` | `CreateStageResult` |
-| 6.6.2 GetOrCreateStage | `POST /api/rooms/get-or-create` | `GetOrCreateStage(...)` | `OnCreate` (신규) or 없음 (기존) | `GetOrCreateStageResult.IsCreated` |
-| 6.6.3 JoinStage | `POST /api/rooms/join` | `JoinStage(playNid, stageId, IPacket)` | `IStage.OnJoinStage` → `OnPostJoinStage` | `JoinStageResult` |
-| 6.6.4 CreateJoinStage | `POST /api/rooms/create-join` | `CreateJoinStage(...)` | `OnCreate` → `OnJoinStage` | `CreateJoinStageResult` |
-| 6.6.5 SendToStage | `POST /api/rooms/{id}/send` | `SendToStage(playNid, stageId, IPacket)` | `IStage.OnDispatch(IPacket)` | 단방향 전달 |
-| 6.6.6 RequestToStage async | `POST /api/rooms/{id}/request` | `RequestToStage(playNid, stageId, IPacket)` | `OnDispatch` → `Reply` | 응답 반환 |
-| 6.6.7 RequestToStage callback | (내부 테스트) | `RequestToStage(..., ReplyCallback)` | `OnDispatch` → `Reply` | 콜백 호출 |
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| Reply(errorCode) | Client Request → Stage에서 Reply(500) | `OnError(stageId, 500, request)` 또는 `ConnectorException` |
+| Reply(packet) | Client Request → Stage에서 Reply(packet) | RequestAsync 응답 또는 콜백에서 packet 내용 검증 |
 
 ---
 
-#### 6.7 Play → API 메시지 (Client 트리거 → Play → API)
+#### 6.4 IStageSender 메서드
 
-> ⚠️ **중요**: Play → API 통신도 **Client에서 트리거**되어야 합니다.
-> 클라이언트 액션 → Play Server 처리 → API Server로 요청/알림 흐름
+##### 6.4.1 타이머 메서드
 
-**테스트 흐름**:
-```
-┌──────────┐   Connector    ┌──────────┐     NetMQ      ┌──────────┐
-│  Client  │ ──────────→   │   Play   │ ──────────→   │   API    │
-│(Connector)│ ←────────── │  Server  │ ←────────────  │  Server  │
-└──────────┘    Push       └──────────┘    Reply      └──────────┘
-```
+> 타이머는 서버 내부 동작 → **통합테스트**로 이동
 
-**시나리오 예시**:
-- 클라이언트가 게임 액션 전송 → Play Server가 결과를 API Server에 기록 요청
-- 클라이언트가 아이템 사용 → Play Server가 API Server에 인벤토리 업데이트 요청
+| 메서드 | 통합테스트 검증 |
+|--------|---------------|
+| AddRepeatTimer | 콜백 반복 호출 확인 |
+| AddCountTimer | 지정 횟수만큼 콜백 호출 확인 |
+| CancelTimer | 콜백 중지 확인 |
+| HasTimer | 타이머 존재 여부 확인 |
 
-**테스트 코드 예시**:
-```csharp
-[Fact]
-public async Task GameAction_ClientTriggersPlayToApiCommunication()
-{
-    // Given: Client가 Play Server에 연결/인증된 상태
-    var connector = CreateConnector();
-    await connector.ConnectAsync();
-    await connector.AuthenticateAsync(CPacket.Of(new AuthRequest { AccountId = "user1" }));
+##### 6.4.2 AsyncBlock
 
-    // When: Client → Play (게임 액션 전송)
-    var request = new GameActionRequest { Action = "use_item", Data = itemData };
-    var response = await connector.RequestAsync(stageId, CPacket.Of(request));
+> AsyncBlock은 서버 내부 동작 → **통합테스트**로 이동
 
-    // Then: Play → API (내부 통신) 발생 확인
-    // Play Server의 OnDispatch에서 ISender.RequestToApi 호출됨
-    var result = response.Parse<GameActionResponse>();
-    Assert.True(result.Success);
+| 메서드 | 통합테스트 검증 |
+|--------|---------------|
+| AsyncBlock(pre, post) | preCallback ThreadPool 실행, postCallback EventLoop 실행 |
 
-    // API Server의 핸들러가 호출되었는지 확인 (로그/콜백 검증)
-}
-```
+##### 6.4.3 SendToClient
 
-**Play Server Stage 구현 (Play → API 호출)**:
-```csharp
-public class GameStage : IStage
-{
-    public async Task OnDispatch(IPacket packet, IStageSender sender)
-    {
-        var action = packet.Parse<GameActionRequest>();
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| Stage에서 클라이언트로 Push | Client Send → Stage.OnDispatch에서 SendToClient 호출 | `OnReceive(stageId, packet)` 콜백, packet 내용 검증 |
 
-        if (action.Action == "use_item")
-        {
-            // Play → API: 데이터 조회/저장 요청
-            var queryPacket = CPacket.Of(new DataQueryRequest
-            {
-                AccountId = sender.AccountId,
-                DataType = "inventory"
-            });
-            var apiResponse = await sender.RequestToApi(apiNid, queryPacket);
-            var data = apiResponse.Parse<DataQueryResponse>();
+##### 6.4.4 CloseStage
 
-            // 클라이언트에게 응답
-            sender.Reply(CPacket.Of(new GameActionResponse { Success = data.Found }));
-        }
-    }
-}
-```
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| Stage 종료 후 요청 | Stage에서 CloseStage() 호출 → Client Request | 에러 응답 수신 |
 
-| 테스트 | Client 트리거 | Play 내부 호출 | API 콜백 | 확인 사항 |
-|--------|-------------|---------------|---------|----------|
-| 6.7.1 SendToApi | `Connector.Send(GameAction)` | `ISender.SendToApi(apiNid, IPacket)` | `IApiController` 핸들러 | 단방향 전달 |
-| 6.7.2 RequestToApi async | `Connector.RequestAsync(GameAction)` | `ISender.RequestToApi(apiNid, IPacket)` | 핸들러 → `Reply` | 응답 반환 |
-| 6.7.3 RequestToApi callback | `Connector.Request(GameAction, cb)` | `ISender.RequestToApi(..., ReplyCallback)` | 핸들러 → `Reply` | 콜백 호출 |
+> IStage.OnDestroy 콜백 → **통합테스트**
 
 ---
 
-#### 6.8 API ↔ API 메시지 (Client → API #1 → API #2)
+#### 6.5 IActorSender 메서드
 
-> ⚠️ **중요**: API ↔ API 통신도 **Client HTTP 요청에서 트리거**됩니다.
-> Client → API #1 (HTTP) → API #2 (NetMQ) 흐름
+##### 6.5.1 AccountId
 
-**테스트 흐름**:
-```
-┌──────────┐     HTTP      ┌──────────┐     NetMQ      ┌──────────┐
-│  Client  │ ──────────→  │  API #1  │ ──────────→   │  API #2  │
-│ (HTTP)   │ ←────────── │  Server  │ ←────────────  │  Server  │
-└──────────┘   Response   └──────────┘    Reply      └──────────┘
-```
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| AccountId 설정 | 인증 시 AccountId 설정 | 이후 Request에서 AccountId 기반 처리 확인 (Reply에 AccountId 포함) |
 
-**시나리오 예시**:
-- 클라이언트가 유저 프로필 조회 → API #1이 API #2 (유저 서비스)에 데이터 요청
-- 클라이언트가 결제 요청 → API #1이 API #2 (결제 서비스)에 처리 요청
+> IActor.OnAuthenticate에서 설정 → **통합테스트**
 
-**테스트 코드 예시**:
-```csharp
-[Fact]
-public async Task GetUserProfile_ClientToApi1ToApi2()
-{
-    // Given: API Server #1, #2 구동 상태
-    var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+##### 6.5.2 SendToClient
 
-    // When: Client → API #1 (HTTP)
-    var response = await httpClient.GetAsync("/api/users/profile?userId=123");
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| Actor에서 클라이언트로 Push | Client Request → Actor에서 SendToClient 호출 | `OnReceive(stageId, packet)` 콜백 |
 
-    // Then: API #1 → API #2 (내부 NetMQ 통신) 발생
-    var result = await response.Content.ReadFromJsonAsync<UserProfileResponse>();
-    Assert.NotNull(result);
-    Assert.Equal("123", result.UserId);
-}
-```
+##### 6.5.3 LeaveStage
 
-| 테스트 | Client 트리거 | API #1 내부 호출 | API #2 수신 | 확인 사항 |
-|--------|-------------|-----------------|------------|----------|
-| 6.8.1 SendToApi | `GET /api/events/broadcast` | `IApiSender.SendToApi(api2Nid, IPacket)` | `IApiController` 핸들러 | 단방향 전달 |
-| 6.8.2 RequestToApi async | `GET /api/users/profile` | `IApiSender.RequestToApi(api2Nid, IPacket)` | 핸들러 → `Reply` | 응답 반환 |
-| 6.8.3 RequestToApi callback | `POST /api/payments/process` | `IApiSender.RequestToApi(..., ReplyCallback)` | 핸들러 → `Reply` | 콜백 호출 |
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| Actor 퇴장 | Client Request → Actor에서 LeaveStage() 호출 → 재요청 | 새 Actor 생성 확인 (다른 AccountId 또는 상태 초기화) |
+
+> IActor.OnDestroy 콜백 → **통합테스트**
 
 ---
 
-#### 6.9 Play ↔ Play 메시지 (Client → Play #1 → Play #2)
+#### 6.6 IApiSender 메서드
 
-> ⚠️ **중요**: Play ↔ Play 통신도 **Client Connector에서 트리거**됩니다.
-> Client → Play #1 (TCP/WebSocket) → Play #2 (NetMQ) 흐름
+> **트리거 방식**: HTTP Client → API 서버 → IApiSender 메서드 호출 → HTTP 응답
 
-**테스트 흐름**:
+##### 6.6.1 CreateStage
+
+| 테스트 | E2E 검증 |
+|--------|----------|
+| CreateStage 성공 | `CreateStageResult.ErrorCode == 0`, `CreateStageRes` 내용 검증 |
+| CreateStage 실패 (중복 StageId) | `CreateStageResult.ErrorCode != 0` |
+
+> IStage.OnCreate 콜백 → **통합테스트**
+
+##### 6.6.2 JoinStage
+
+| 테스트 | E2E 검증 |
+|--------|----------|
+| JoinStage 성공 | `JoinStageResult.ErrorCode == 0`, `JoinStageRes` 내용 검증 |
+| JoinStage 실패 (미존재 Stage) | `JoinStageResult.ErrorCode != 0` |
+
+> IActor 콜백들 → **통합테스트**
+
+##### 6.6.3 GetOrCreateStage
+
+| 테스트 | E2E 검증 |
+|--------|----------|
+| 새 Stage 생성 | `ErrorCode == 0`, `IsCreated == true` |
+| 기존 Stage 사용 | `ErrorCode == 0`, `IsCreated == false` |
+
+##### 6.6.4 CreateJoinStage
+
+| 테스트 | E2E 검증 |
+|--------|----------|
+| CreateJoin 성공 | `ErrorCode == 0`, `CreateStageRes`, `JoinStageRes` 내용 검증 |
+
+##### 6.6.5 SendToClient
+
+| 테스트 | 트리거 | E2E 검증 |
+|--------|--------|----------|
+| API에서 클라이언트로 Push | HTTP API → SendToClient 호출 | Connector `OnReceive` 콜백 |
+| 특정 세션에 Push | HTTP API → SendToClient(sessionNid, sid, packet) | 해당 클라이언트 `OnReceive` 콜백 |
+
+---
+
+### 6.15 Integration 테스트 (E2E 검증 불가 항목)
+
+> 공개 API로 검증 불가능한 **서버 내부 콜백**은 통합 테스트에서 Fake 구현체로 검증
+>
+> **검증 방식**: Fake 구현체가 콜백 호출을 기록하고, 테스트에서 기록을 검증
+
+---
+
+#### 세션 관리
+
+| 항목 | Fake/Mock 검증 방법 |
+|------|------------------|
+| 세션 생성 | `SessionManager.SessionCount` 증가 |
+| 세션 제거 | `SessionManager.SessionCount` 감소 |
+
+---
+
+#### IActor 콜백
+
+| 콜백 | Fake 검증 방법 |
+|------|---------------|
+| OnCreate | `FakeActor.OnCreateCalled == true` |
+| OnAuthenticate | `FakeActor.OnAuthenticateCalled == true`, authPacket 내용 |
+| OnPostAuthenticate | `FakeActor.OnPostAuthenticateCalled == true` |
+| OnDestroy | `FakeActor.OnDestroyCalled == true` |
+
+---
+
+#### IStage 콜백
+
+| 콜백 | Fake 검증 방법 |
+|------|---------------|
+| OnCreate | `FakeStage.OnCreateCalled == true`, createPacket 내용 |
+| OnPostCreate | `FakeStage.OnPostCreateCalled == true` |
+| OnJoinStage | `FakeStage.JoinedActors` 목록, actor 정보 |
+| OnPostJoinStage | `FakeStage.PostJoinedActors` 목록 |
+| OnConnectionChanged | `FakeStage.ConnectionChanges` 목록, isConnected 값 |
+| OnDispatch (Client) | `FakeStage.ReceivedClientPackets` 목록, actor/packet 정보 |
+| OnDispatch (Server) | `FakeStage.ReceivedServerPackets` 목록, packet 정보 |
+| OnDestroy | `FakeStage.OnDestroyCalled == true` |
+
+---
+
+#### IStageSender 내부 기능
+
+| 기능 | 검증 방법 |
+|------|----------|
+| AddRepeatTimer | `FakeTimerCallback.CallCount` 시간 경과 후 증가 |
+| AddCountTimer | `FakeTimerCallback.CallCount == count` |
+| CancelTimer | 콜백 호출 중지 확인 |
+| HasTimer | `true/false` 반환값 |
+| AsyncBlock | preCallback ThreadId ≠ postCallback ThreadId |
+
+---
+
+### 6.16 Unit 테스트 (단위 테스트)
+
+> 개별 컴포넌트 단위 검증
+
+---
+
+#### 6.16.1 RequestCache - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| MsgSeq 순환 | 1~65535 순환, 0 미사용 |
+| Put/Get | 저장 후 조회 |
+| 타임아웃 | 만료된 요청 정리 |
+| OnReply 매칭 | MsgSeq로 ReplyObject 찾기 |
+
+---
+
+#### 6.16.2 TimerManager - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| 타이머 등록 | timerId 반환, ActiveTimerCount 증가 |
+| 타이머 취소 | 콜백 중지, ActiveTimerCount 감소 |
+| Stage별 취소 | CancelAllForStage(stageId) |
+
+---
+
+#### 6.16.3 AtomicBoolean - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| CompareAndSet | true/false 반환값 |
+| Get/Set | 현재 값 조회/설정 |
+| 스레드 안전성 | 동시 접근 시 정확성 |
+
+---
+
+#### 6.16.4 Packet/Payload - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| Packet 생성 | MsgId, Payload 설정 |
+| Protobuf 직렬화 | `Packet(IMessage)` 생성자 |
+| Payload 종류 | BytePayload, ProtoPayload, EmptyPayload |
+| Dispose | 리소스 해제 |
+
+---
+
+#### 6.16.5 RuntimeRoutePacket - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| 팩토리 메서드 | `Of()`, `FromFrames()`, `Empty()` |
+| Reply 생성 | `CreateReply()`, `CreateErrorReply()` |
+| Header 접근 | MsgId, MsgSeq, StageId, AccountId 등 |
+| 직렬화 | `SerializeHeader()`, `GetPayloadBytes()` |
+
+---
+
+#### 6.16.6 ApiDispatcher - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| 핸들러 등록 | `Register(msgId, handler)` |
+| 디스패치 | MsgId로 핸들러 찾아 실행 |
+| 미등록 메시지 | 에러 처리 |
+
+---
+
+#### 6.16.7 PlayDispatcher - Unit
+
+| 테스트 | 검증 항목 |
+|--------|----------|
+| Stage 라우팅 | StageId로 Stage 찾기 |
+| Stage 생성 | CreateStageReq 처리 |
+| Stage 미존재 | 에러 응답 |
+| StageCount | 활성 Stage 수 |
+
+---
+
+### 테스트 파일 구조
+
 ```
-┌──────────┐   Connector    ┌──────────┐     NetMQ      ┌──────────┐
-│  Client  │ ──────────→   │  Play #1 │ ──────────→   │  Play #2 │
-│(Connector)│ ←────────── │  Server  │ ←────────────  │  Server  │
-└──────────┘    Push       └──────────┘    Reply      └──────────┘
+tests/
+├── PlayHouse.Tests.E2E/
+│   ├── ConnectorTests/
+│   │   ├── ConnectionTests.cs          # 6.1
+│   │   └── MessagingTests.cs           # 6.2
+│   ├── SenderTests/
+│   │   ├── ISenderTests.cs             # 6.3
+│   │   ├── IStageSenderTests.cs        # 6.4
+│   │   ├── IActorSenderTests.cs        # 6.5
+│   │   └── IApiSenderTests.cs          # 6.6
+│   └── Infrastructure/
+│       ├── TestPlayServer.cs
+│       ├── TestApiServer.cs
+│       └── TestStageImpl.cs            # E2E용 Stage (에코, Push 응답)
+│
+└── PlayHouse.Tests.Integration/
+    ├── StageLifecycleTests.cs          # Stage 콜백 테스트
+    ├── ActorLifecycleTests.cs          # Actor 콜백 테스트
+    ├── MessageDispatchTests.cs         # 메시지 디스패치 테스트
+    ├── ConnectionStateTests.cs         # 연결 상태 변경 테스트
+    ├── TimerTests.cs                   # IStageSender 타이머
+    ├── AsyncBlockTests.cs              # AsyncBlock
+    └── Fakes/
+        ├── FakeStage.cs
+        ├── FakeActor.cs
+        └── TestPlayProducer.cs
 ```
-
-**시나리오 예시**:
-- 클라이언트가 다른 서버의 방에 메시지 전송 (크로스 서버 채팅)
-- 클라이언트가 다른 서버의 Stage 정보 조회 (매치메이킹)
-- 클라이언트가 다른 서버의 Actor에게 아이템 전송
-
-**테스트 코드 예시**:
-```csharp
-[Fact]
-public async Task CrossServerChat_ClientToPlay1ToPlay2()
-{
-    // Given: Client가 Play #1 Server에 연결된 상태
-    //        Play #2 Server에 다른 Stage가 존재
-    var connector = CreateConnector(play1Host, play1Port);
-    await connector.ConnectAsync();
-    await connector.AuthenticateAsync(CPacket.Of(new AuthRequest { AccountId = "user1" }));
-
-    // When: Client → Play #1 (크로스 서버 채팅 요청)
-    var chatRequest = new ServerToServerMessage
-    {
-        SourceNid = play1Nid,
-        MessageType = "chat",
-        Payload = ByteString.CopyFrom(chatData)
-    };
-    var response = await connector.RequestAsync(stageId, CPacket.Of(chatRequest));
-
-    // Then: Play #1 → Play #2 (내부 NetMQ 통신) 발생
-    var result = response.Parse<ServerToServerResponse>();
-    Assert.True(result.Success);
-}
-```
-
-**Play Server Stage 구현 (Play → Play 호출)**:
-```csharp
-public class LobbyStage : IStage
-{
-    public async Task OnDispatch(IPacket packet, IStageSender sender)
-    {
-        var msg = packet.Parse<ServerToServerMessage>();
-
-        if (msg.MessageType == "chat")
-        {
-            // Play #1 → Play #2: 다른 서버의 Stage로 메시지 전송
-            var targetStageId = GetTargetStageId(msg);
-            var crossPacket = CPacket.Of(new ChatMessage { Content = "Hello" });
-            var response = await sender.RequestToStage(play2Nid, targetStageId, crossPacket);
-
-            // 클라이언트에게 응답
-            sender.Reply(CPacket.Of(new ServerToServerResponse { Success = true }));
-        }
-    }
-}
-```
-
-| 테스트 | Client 트리거 | Play #1 내부 호출 | Play #2 수신 | 확인 사항 |
-|--------|-------------|-----------------|-------------|----------|
-| 6.9.1 SendToStage | `Connector.Send(CrossServerMsg)` | `IStageSender.SendToStage(play2Nid, stageId, IPacket)` | `IStage.OnDispatch(IPacket)` | 단방향 전달 |
-| 6.9.2 RequestToStage async | `Connector.RequestAsync(CrossServerMsg)` | `IStageSender.RequestToStage(play2Nid, stageId, IPacket)` | `OnDispatch` → `Reply` | 응답 반환 |
-| 6.9.3 RequestToStage callback | `Connector.Request(CrossServerMsg, cb)` | `IStageSender.RequestToStage(..., ReplyCallback)` | `OnDispatch` → `Reply` | 콜백 호출 |
-| 6.9.4 Cross-Server Actor | `Connector.Send(ActorAction)` | `IActorSender.SendToStage(...)` | `IStage.OnDispatch` | Actor에서 다른 서버로 |
-
----
-
-#### 6.10 Stage/Actor 생명주기 (Lifecycle Callbacks)
-
-| 테스트 | 트리거 | 확인할 콜백 순서 |
-|--------|--------|----------------|
-| 6.10.1 Stage 생성 | `IApiSender.CreateStage()` | `IStage.OnCreate(IPacket)` → `OnPostCreate()` |
-| 6.10.2 Actor 생성/인증 | 클라이언트 인증 | `IActor.OnCreate()` → `OnAuthenticate(IPacket)` → `OnPostAuthenticate()` |
-| 6.10.3 Stage 입장 | 인증 후 자동 | `IStage.OnJoinStage(IActor)` → `OnPostJoinStage(IActor)` |
-| 6.10.4 연결 상태 변경 | 클라이언트 연결/끊김 | `IStage.OnConnectionChanged(IActor, bool isConnected)` |
-| 6.10.5 Actor 퇴장 | `IActorSender.LeaveStage()` | `IActor.OnDestroy()` |
-| 6.10.6 Stage 종료 | `IStageSender.CloseStage()` | `IStage.OnDestroy()` |
-
----
-
-#### 6.11 타이머 및 AsyncBlock (IStageSender 기능)
-
-| 테스트 | IStageSender 메소드 | 확인 사항 |
-|--------|-------------------|----------|
-| 6.11.1 반복 타이머 | `AddRepeatTimer(delay, period, TimerCallback)` | 주기적 콜백 호출 |
-| 6.11.2 횟수 제한 타이머 | `AddCountTimer(delay, period, count, callback)` | count회 후 자동 종료 |
-| 6.11.3 타이머 취소 | `CancelTimer(timerId)` | 콜백 중지, `HasTimer() = false` |
-| 6.11.4 AsyncBlock | `AsyncBlock(preCallback, postCallback)` | pre→post 순서, Stage 스레드에서 post 실행 |
-
----
-
-#### 6.12 에러 및 예외 처리 (Error Handling)
-
-| 테스트 | 조건 | 확인 사항 |
-|--------|------|----------|
-| 6.12.1 Request 타임아웃 | 30초 내 응답 없음 | `ConnectorException` / `OnError(RequestTimeout)` |
-| 6.12.2 존재하지 않는 Stage | `SendToStage(잘못된 stageId)` | 에러 응답 |
-| 6.12.3 인증 실패 | `OnAuthenticate() = false` | 연결 종료 |
-| 6.12.4 AccountId 미설정 | `OnAuthenticate()` 후 AccountId = "" | 연결 종료 |
-| 6.12.5 서버 에러 코드 | `Reply(ushort errorCode)` | 클라이언트 `OnError` |
-
----
-
-#### 6.13 재연결 시나리오 (Reconnection)
-
-| 테스트 | 시나리오 | 확인할 콜백 |
-|--------|---------|------------|
-| 6.13.1 연결 끊김 감지 | 서버 강제 종료 | `OnDisconnect()` |
-| 6.13.2 재연결 | `ConnectAsync()` 재호출 | `OnConnect(true)` |
-| 6.13.3 재인증 | 동일 AccountId로 `AuthenticateAsync()` | `IsAuthenticated() = true` |
-| 6.13.4 연결 상태 알림 | 재연결 시 | `IStage.OnConnectionChanged(actor, false)` → `OnConnectionChanged(actor, true)` |
-| 6.13.5 상태 유지 | Stage 상태 | 기존 Actor 정보 유지 확인 |
-
----
-
-#### 6.14 통합 테스트 재분류 (기존 테스트)
-- [x] 6.14.1 ConnectorE2ETests.cs → Integration 테스트로 이동
-- [x] 6.14.2 BootstrapServerE2ETests.cs → Integration 테스트로 이동
 
 ### Phase 7: 통합 및 정리
 - [ ] 7.1 Session 코드 제거

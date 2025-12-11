@@ -38,9 +38,6 @@ message RouteHeader {
 
     // Session ID (for client session tracking)
     int64 sid = 8;
-
-    // Backend flag (true for server-to-server requests)
-    bool is_backend = 9;
 }
 
 // ============================================

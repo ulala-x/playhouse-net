@@ -5,9 +5,9 @@ using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Api;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Bootstrap;
 

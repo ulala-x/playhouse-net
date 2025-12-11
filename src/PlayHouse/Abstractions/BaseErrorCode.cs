@@ -97,6 +97,16 @@ public static class BaseErrorCode
     public const ushort InternalError = 99;
 
     /// <summary>
+    /// Invalid account ID (not set after authentication).
+    /// </summary>
+    public const ushort InvalidAccountId = 16;
+
+    /// <summary>
+    /// Join stage rejected by stage.
+    /// </summary>
+    public const ushort JoinStageRejected = 17;
+
+    /// <summary>
     /// First available code for application use.
     /// </summary>
     public const ushort ApplicationBase = 1000;

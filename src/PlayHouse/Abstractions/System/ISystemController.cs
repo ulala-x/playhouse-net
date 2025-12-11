@@ -1,6 +1,6 @@
 #nullable enable
 
-using PlayHouse.Runtime.Discovery;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 
 namespace PlayHouse.Abstractions.System;
 

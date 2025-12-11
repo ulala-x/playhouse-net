@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Google.Protobuf;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using Xunit;
 

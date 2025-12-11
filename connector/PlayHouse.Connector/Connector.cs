@@ -10,17 +10,23 @@ namespace PlayHouse.Connector;
 /// </summary>
 /// <remarks>
 /// 클라이언트가 Play Server에 연결하여 실시간 통신을 수행하는 메인 클래스입니다.
-/// serviceId 파라미터가 제거되어 하나의 연결에 하나의 서비스만 사용합니다.
+/// Connect() 호출 시 지정한 stageId가 모든 Send/Request에서 사용됩니다.
 /// </remarks>
 public sealed class Connector : IConnectorCallback
 {
     private ClientNetwork? _clientNetwork;
     private bool _disconnectFromClient;
+    private long _stageId;
 
     /// <summary>
     /// Connector 설정
     /// </summary>
     public ConnectorConfig ConnectorConfig { get; private set; } = new();
+
+    /// <summary>
+    /// 현재 연결의 Stage ID
+    /// </summary>
+    public long StageId => _stageId;
 
     #region Events
 
@@ -31,7 +37,6 @@ public sealed class Connector : IConnectorCallback
 
     /// <summary>
     /// 메시지 수신 이벤트 (stageId, packet)
-    /// stageId가 0이면 Stage 없는 메시지
     /// </summary>
     public event Action<long, IPacket>? OnReceive;
 
@@ -95,22 +100,30 @@ public sealed class Connector : IConnectorCallback
     /// <summary>
     /// 서버에 연결 (비동기로 OnConnect 이벤트 발생)
     /// </summary>
+    /// <param name="host">서버 호스트 주소</param>
+    /// <param name="port">서버 포트</param>
+    /// <param name="stageId">Stage ID (모든 Send/Request에서 사용)</param>
     /// <param name="debugMode">디버그 모드</param>
-    public void Connect(bool debugMode = false)
+    public void Connect(string host, int port, long stageId, bool debugMode = false)
     {
         _disconnectFromClient = false;
-        _clientNetwork!.Connect(debugMode);
+        _stageId = stageId;
+        _clientNetwork!.Connect(host, port, debugMode);
     }
 
     /// <summary>
     /// 서버에 비동기 연결
     /// </summary>
+    /// <param name="host">서버 호스트 주소</param>
+    /// <param name="port">서버 포트</param>
+    /// <param name="stageId">Stage ID (모든 Send/Request에서 사용)</param>
     /// <param name="debugMode">디버그 모드</param>
     /// <returns>연결 성공 여부</returns>
-    public async Task<bool> ConnectAsync(bool debugMode = false)
+    public async Task<bool> ConnectAsync(string host, int port, long stageId, bool debugMode = false)
     {
         _disconnectFromClient = false;
-        return await _clientNetwork!.ConnectAsync(debugMode);
+        _stageId = stageId;
+        return await _clientNetwork!.ConnectAsync(host, port, debugMode);
     }
 
     /// <summary>
@@ -143,16 +156,6 @@ public sealed class Connector : IConnectorCallback
     #region Authentication
 
     /// <summary>
-    /// 인증 메시지 ID 설정
-    /// 등록된 메시지만 인증 전에 전송 가능
-    /// </summary>
-    /// <param name="msgId">인증 메시지 ID</param>
-    public void SetAuthenticateMessageId(string msgId)
-    {
-        _clientNetwork?.SetAuthenticateMessageId(msgId);
-    }
-
-    /// <summary>
     /// 인증 요청 (콜백 방식)
     /// </summary>
     /// <param name="request">인증 요청 패킷</param>
@@ -161,11 +164,11 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            OnError?.Invoke(0, (ushort)ConnectorErrorCode.Disconnected, request);
+            OnError?.Invoke(_stageId, (ushort)ConnectorErrorCode.Disconnected, request);
             return;
         }
 
-        _clientNetwork!.Request(request, callback, 0, isAuthenticate: true);
+        _clientNetwork!.Request(request, callback, _stageId, isAuthenticate: true);
     }
 
     /// <summary>
@@ -177,39 +180,33 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            throw new ConnectorException(0, (ushort)ConnectorErrorCode.Disconnected, request, 0);
+            throw new ConnectorException(_stageId, (ushort)ConnectorErrorCode.Disconnected, request, 0);
         }
 
-        return await _clientNetwork!.RequestAsync(request, 0, isAuthenticate: true);
+        return await _clientNetwork!.RequestAsync(request, _stageId, isAuthenticate: true);
     }
 
     #endregion
 
-    #region Send/Request (No Stage)
+    #region Send/Request
 
     /// <summary>
-    /// 메시지 전송 (Stage 없음, 응답 없음)
+    /// 메시지 전송 (응답 없음)
     /// </summary>
     /// <param name="packet">전송할 패킷</param>
     public void Send(IPacket packet)
     {
         if (!IsConnected())
         {
-            OnError?.Invoke(0, (ushort)ConnectorErrorCode.Disconnected, packet);
+            OnError?.Invoke(_stageId, (ushort)ConnectorErrorCode.Disconnected, packet);
             return;
         }
 
-        if (!IsAuthenticated())
-        {
-            OnError?.Invoke(0, (ushort)ConnectorErrorCode.Unauthenticated, packet);
-            return;
-        }
-
-        _clientNetwork!.Send(packet, 0);
+        _clientNetwork!.Send(packet, _stageId);
     }
 
     /// <summary>
-    /// 요청 전송 (Stage 없음, 콜백 방식)
+    /// 요청 전송 (콜백 방식)
     /// </summary>
     /// <param name="request">요청 패킷</param>
     /// <param name="callback">응답 콜백</param>
@@ -217,15 +214,15 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            OnError?.Invoke(0, (ushort)ConnectorErrorCode.Disconnected, request);
+            OnError?.Invoke(_stageId, (ushort)ConnectorErrorCode.Disconnected, request);
             return;
         }
 
-        _clientNetwork!.Request(request, callback, 0);
+        _clientNetwork!.Request(request, callback, _stageId);
     }
 
     /// <summary>
-    /// 요청 전송 (Stage 없음, async/await 방식)
+    /// 요청 전송 (async/await 방식)
     /// </summary>
     /// <param name="request">요청 패킷</param>
     /// <returns>응답 패킷</returns>
@@ -233,63 +230,10 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            throw new ConnectorException(0, (ushort)ConnectorErrorCode.Disconnected, request, 0);
+            throw new ConnectorException(_stageId, (ushort)ConnectorErrorCode.Disconnected, request, 0);
         }
 
-        return await _clientNetwork!.RequestAsync(request, 0);
-    }
-
-    #endregion
-
-    #region Send/Request (With Stage)
-
-    /// <summary>
-    /// 메시지 전송 (Stage 지정, 응답 없음)
-    /// </summary>
-    /// <param name="stageId">Stage ID</param>
-    /// <param name="packet">전송할 패킷</param>
-    public void Send(long stageId, IPacket packet)
-    {
-        if (!IsConnected())
-        {
-            OnError?.Invoke(stageId, (ushort)ConnectorErrorCode.Disconnected, packet);
-            return;
-        }
-
-        _clientNetwork!.Send(packet, stageId);
-    }
-
-    /// <summary>
-    /// 요청 전송 (Stage 지정, 콜백 방식)
-    /// </summary>
-    /// <param name="stageId">Stage ID</param>
-    /// <param name="request">요청 패킷</param>
-    /// <param name="callback">응답 콜백</param>
-    public void Request(long stageId, IPacket request, Action<IPacket> callback)
-    {
-        if (!IsConnected())
-        {
-            OnError?.Invoke(stageId, (ushort)ConnectorErrorCode.Disconnected, request);
-            return;
-        }
-
-        _clientNetwork!.Request(request, callback, stageId);
-    }
-
-    /// <summary>
-    /// 요청 전송 (Stage 지정, async/await 방식)
-    /// </summary>
-    /// <param name="stageId">Stage ID</param>
-    /// <param name="request">요청 패킷</param>
-    /// <returns>응답 패킷</returns>
-    public async Task<IPacket> RequestAsync(long stageId, IPacket request)
-    {
-        if (!IsConnected())
-        {
-            throw new ConnectorException(stageId, (ushort)ConnectorErrorCode.Disconnected, request, 0);
-        }
-
-        return await _clientNetwork!.RequestAsync(request, stageId);
+        return await _clientNetwork!.RequestAsync(request, _stageId);
     }
 
     #endregion

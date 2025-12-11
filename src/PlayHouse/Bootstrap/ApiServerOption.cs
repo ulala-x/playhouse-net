@@ -1,5 +1,7 @@
 #nullable enable
 
+using PlayHouse.Abstractions;
+
 namespace PlayHouse.Bootstrap;
 
 /// <summary>
@@ -8,9 +10,14 @@ namespace PlayHouse.Bootstrap;
 public sealed class ApiServerOption
 {
     /// <summary>
-    /// 서비스 식별자 (기본값: 2).
+    /// 서비스 타입 (기본값: ServiceType.Api).
     /// </summary>
-    public ushort ServiceId { get; set; } = 2;
+    public ServiceType ServiceType { get; set; } = ServiceType.Api;
+
+    /// <summary>
+    /// 서비스 식별자 (ServiceType의 ushort 값).
+    /// </summary>
+    public ushort ServiceId => (ushort)ServiceType;
 
     /// <summary>
     /// 서버 인스턴스 ID.
@@ -38,8 +45,8 @@ public sealed class ApiServerOption
     /// </summary>
     public void Validate()
     {
-        if (ServiceId == 0)
-            throw new InvalidOperationException("ServiceId must be greater than 0");
+        if (ServiceType == 0)
+            throw new InvalidOperationException("ServiceType must be set");
 
         if (ServerId == 0)
             throw new InvalidOperationException("ServerId must be greater than 0");

@@ -4,8 +4,8 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
@@ -35,6 +35,11 @@ internal sealed class XStageSender : XSender, IStageSender
 
     /// <inheritdoc/>
     public string StageType { get; private set; } = "";
+
+    /// <summary>
+    /// Gets the NID of this stage sender.
+    /// </summary>
+    public new string Nid => base.Nid;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="XStageSender"/> class.
@@ -211,6 +216,21 @@ internal sealed class XStageSender : XSender, IStageSender
         var routePacket = RuntimeRoutePacket.Of(header, packet.Payload.Data.ToArray());
         _communicator.Send(sessionNid, routePacket);
         routePacket.Dispose();
+    }
+
+    #endregion
+
+    #region Reply Methods
+
+    /// <summary>
+    /// Sends a reply packet to the target server.
+    /// </summary>
+    /// <param name="targetNid">Target server NID.</param>
+    /// <param name="replyPacket">Reply packet to send.</param>
+    internal void SendReply(string targetNid, RuntimeRoutePacket replyPacket)
+    {
+        _communicator.Send(targetNid, replyPacket);
+        replyPacket.Dispose();
     }
 
     #endregion

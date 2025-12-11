@@ -45,38 +45,15 @@ public class ApiReflectionTests
         }
     }
 
-    private class TestBackendController : IApiBackendController
-    {
-        public bool HandlerCalled { get; private set; }
-
-        public void Handles(IHandlerRegister register)
-        {
-            register.Add("BackendMessage", HandleBackendMessage);
-        }
-
-        private Task HandleBackendMessage(IPacket packet, IApiSender sender)
-        {
-            HandlerCalled = true;
-            return Task.CompletedTask;
-        }
-    }
-
     #endregion
 
-    private IServiceProvider CreateServiceProvider(
-        IApiController? controller = null,
-        IApiBackendController? backendController = null)
+    private IServiceProvider CreateServiceProvider(IApiController? controller = null)
     {
         var services = new ServiceCollection();
 
         if (controller != null)
         {
             services.AddSingleton(controller);
-        }
-
-        if (backendController != null)
-        {
-            services.AddSingleton(backendController);
         }
 
         return services.BuildServiceProvider();
@@ -94,20 +71,6 @@ public class ApiReflectionTests
 
         // Then (결과)
         reflection.HandlerCount.Should().Be(2, "TestApiController에서 2개의 핸들러가 등록되어야 함");
-    }
-
-    [Fact(DisplayName = "생성자 - 백엔드 컨트롤러에서 핸들러를 등록한다")]
-    public void Constructor_RegistersBackendHandlers()
-    {
-        // Given (전제조건)
-        var controller = new TestBackendController();
-        var serviceProvider = CreateServiceProvider(backendController: controller);
-
-        // When (행동)
-        var reflection = new ApiReflection(serviceProvider);
-
-        // Then (결과)
-        reflection.BackendHandlerCount.Should().Be(1, "TestBackendController에서 1개의 핸들러가 등록되어야 함");
     }
 
     [Fact(DisplayName = "CallMethodAsync - 등록된 핸들러를 호출한다")]
@@ -147,43 +110,6 @@ public class ApiReflectionTests
         // Then (결과)
         await action.Should().ThrowAsync<ServiceException.NotRegisterMethod>()
             .WithMessage("*UnknownMessage*");
-    }
-
-    [Fact(DisplayName = "CallBackendMethodAsync - 백엔드 핸들러를 호출한다")]
-    public async Task CallBackendMethodAsync_RegisteredHandler_CallsHandler()
-    {
-        // Given (전제조건)
-        var controller = new TestBackendController();
-        var serviceProvider = CreateServiceProvider(backendController: controller);
-        var reflection = new ApiReflection(serviceProvider);
-
-        var packet = CPacket.Empty("BackendMessage");
-        var sender = Substitute.For<IApiSender>();
-
-        // When (행동)
-        await reflection.CallBackendMethodAsync(packet, sender);
-
-        // Then (결과)
-        controller.HandlerCalled.Should().BeTrue("백엔드 핸들러가 호출되어야 함");
-    }
-
-    [Fact(DisplayName = "CallBackendMethodAsync - 등록되지 않은 백엔드 핸들러는 예외를 발생한다")]
-    public async Task CallBackendMethodAsync_UnregisteredHandler_ThrowsException()
-    {
-        // Given (전제조건)
-        var controller = new TestBackendController();
-        var serviceProvider = CreateServiceProvider(backendController: controller);
-        var reflection = new ApiReflection(serviceProvider);
-
-        var packet = CPacket.Empty("UnknownBackendMessage");
-        var sender = Substitute.For<IApiSender>();
-
-        // When (행동)
-        var action = () => reflection.CallBackendMethodAsync(packet, sender);
-
-        // Then (결과)
-        await action.Should().ThrowAsync<ServiceException.NotRegisterMethod>()
-            .WithMessage("*UnknownBackendMessage*");
     }
 
     [Fact(DisplayName = "HasHandler - 등록된 핸들러가 있으면 true를 반환한다")]

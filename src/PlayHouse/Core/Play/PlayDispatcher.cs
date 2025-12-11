@@ -7,8 +7,8 @@ using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
@@ -184,7 +184,13 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         stageSender.SetStageType(stageType);
 
         var stage = _producer.GetStage(stageType, stageSender);
-        return new BaseStage(stage, stageSender, _logger);
+        var baseStage = new BaseStage(stage, stageSender, _logger);
+
+        // Create and set command handler for system messages
+        var cmdHandler = new BaseStageCmdHandler(baseStage, _producer, this, _logger);
+        baseStage.SetCmdHandler(cmdHandler);
+
+        return baseStage;
     }
 
     #endregion
