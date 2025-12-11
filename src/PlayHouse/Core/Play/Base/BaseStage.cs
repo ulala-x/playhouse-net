@@ -5,8 +5,8 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.Shared;
+using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
@@ -34,6 +34,7 @@ internal sealed class BaseStage
     private readonly AtomicBoolean _isProcessing = new(false);
     private readonly Dictionary<long, BaseActor> _actors = new();
     private readonly ILogger? _logger;
+    private BaseStageCmdHandler? _cmdHandler;
 
     /// <summary>
     /// Gets the content-implemented Stage.
@@ -71,6 +72,15 @@ internal sealed class BaseStage
         Stage = stage;
         StageSender = stageSender;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Sets the command handler for system messages.
+    /// </summary>
+    /// <param name="cmdHandler">The command handler.</param>
+    internal void SetCmdHandler(BaseStageCmdHandler cmdHandler)
+    {
+        _cmdHandler = cmdHandler;
     }
 
     #region Event Loop
@@ -212,10 +222,18 @@ internal sealed class BaseStage
 
     private async Task HandleSystemMessageAsync(string msgId, RuntimeRoutePacket packet)
     {
-        // System message handling will be implemented by BaseStageCmdHandler
-        // For now, log unhandled system messages
-        _logger?.LogWarning("Unhandled system message: {MsgId}", msgId);
-        await Task.CompletedTask;
+        if (_cmdHandler == null)
+        {
+            _logger?.LogWarning("CmdHandler not set for Stage {StageId}, cannot handle system message: {MsgId}",
+                StageId, msgId);
+            return;
+        }
+
+        var handled = await _cmdHandler.HandleAsync(msgId, packet);
+        if (!handled)
+        {
+            _logger?.LogWarning("Unhandled system message: {MsgId} for Stage {StageId}", msgId, StageId);
+        }
     }
 
     private async Task HandleDestroyAsync()

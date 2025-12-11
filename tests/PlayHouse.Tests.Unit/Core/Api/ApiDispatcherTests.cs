@@ -7,8 +7,8 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Api;
 using PlayHouse.Core.Messaging;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using Xunit;
 
@@ -43,29 +43,11 @@ public class ApiDispatcherTests : IDisposable
         }
     }
 
-    private class TestBackendController : IApiBackendController
-    {
-        private int _callCount;
-        public int CallCount => _callCount;
-
-        public void Handles(IHandlerRegister register)
-        {
-            register.Add("BackendMessage", HandleBackendMessage);
-        }
-
-        private Task HandleBackendMessage(IPacket packet, IApiSender sender)
-        {
-            Interlocked.Increment(ref _callCount);
-            return Task.CompletedTask;
-        }
-    }
-
     #endregion
 
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly TestApiController _apiController;
-    private readonly TestBackendController _backendController;
     private readonly ApiDispatcher _dispatcher;
 
     public ApiDispatcherTests()
@@ -73,11 +55,9 @@ public class ApiDispatcherTests : IDisposable
         _communicator = Substitute.For<IClientCommunicator>();
         _requestCache = new RequestCache();
         _apiController = new TestApiController();
-        _backendController = new TestBackendController();
 
         var services = new ServiceCollection();
         services.AddSingleton<IApiController>(_apiController);
-        services.AddSingleton<IApiBackendController>(_backendController);
         var serviceProvider = services.BuildServiceProvider();
 
         _dispatcher = new ApiDispatcher(
@@ -104,17 +84,6 @@ public class ApiDispatcherTests : IDisposable
         count.Should().Be(1, "TestApiController에서 1개의 핸들러가 등록되어야 함");
     }
 
-    [Fact(DisplayName = "BackendHandlerCount - 등록된 백엔드 핸들러 수를 반환한다")]
-    public void BackendHandlerCount_ReturnsRegisteredCount()
-    {
-        // Given (전제조건)
-        // When (행동)
-        var count = _dispatcher.BackendHandlerCount;
-
-        // Then (결과)
-        count.Should().Be(1, "TestBackendController에서 1개의 핸들러가 등록되어야 함");
-    }
-
     [Fact(DisplayName = "Post - 등록된 핸들러로 메시지를 디스패치한다")]
     public async Task Post_RegisteredMessage_DispatchesToHandler()
     {
@@ -123,8 +92,7 @@ public class ApiDispatcherTests : IDisposable
         {
             ServiceId = 1,
             MsgId = "TestMessage",
-            From = "test:1",
-            IsBackend = false
+            From = "test:1"
         };
         var packet = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
 
@@ -136,27 +104,6 @@ public class ApiDispatcherTests : IDisposable
         _apiController.CallCount.Should().Be(1, "핸들러가 호출되어야 함");
     }
 
-    [Fact(DisplayName = "Post - 백엔드 메시지는 백엔드 핸들러로 디스패치한다")]
-    public async Task Post_BackendMessage_DispatchesToBackendHandler()
-    {
-        // Given (전제조건)
-        var header = new RouteHeader
-        {
-            ServiceId = 1,
-            MsgId = "BackendMessage",
-            From = "test:1",
-            IsBackend = true
-        };
-        var packet = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
-
-        // When (행동)
-        _dispatcher.Post(packet);
-        await Task.Delay(100); // 비동기 처리 대기
-
-        // Then (결과)
-        _backendController.CallCount.Should().Be(1, "백엔드 핸들러가 호출되어야 함");
-    }
-
     [Fact(DisplayName = "Post - 등록되지 않은 메시지는 에러 응답을 보낸다")]
     public async Task Post_UnregisteredMessage_SendsErrorReply()
     {
@@ -166,8 +113,7 @@ public class ApiDispatcherTests : IDisposable
             ServiceId = 1,
             MsgId = "UnknownMessage",
             MsgSeq = 1, // Request (expects reply)
-            From = "test:1",
-            IsBackend = false
+            From = "test:1"
         };
         var packet = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
 
@@ -205,8 +151,7 @@ public class ApiDispatcherTests : IDisposable
                 {
                     ServiceId = 1,
                     MsgId = "TestMessage",
-                    From = "test:1",
-                    IsBackend = false
+                    From = "test:1"
                 },
                 Array.Empty<byte>()))
             .ToList();

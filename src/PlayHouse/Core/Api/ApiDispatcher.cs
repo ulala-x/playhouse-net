@@ -5,8 +5,8 @@ using PlayHouse.Abstractions;
 using PlayHouse.Core.Api.Reflection;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Core.Api;
 
@@ -92,15 +92,7 @@ internal sealed class ApiDispatcher : IDisposable
             try
             {
                 var contentsPacket = CreateContentsPacket(packet);
-
-                if (header.IsBackend)
-                {
-                    await _apiReflection.CallBackendMethodAsync(contentsPacket, apiSender);
-                }
-                else
-                {
-                    await _apiReflection.CallMethodAsync(contentsPacket, apiSender);
-                }
+                await _apiReflection.CallMethodAsync(contentsPacket, apiSender);
             }
             catch (ServiceException.NotRegisterMethod e)
             {
@@ -150,11 +142,6 @@ internal sealed class ApiDispatcher : IDisposable
     /// Gets the number of registered handlers.
     /// </summary>
     public int HandlerCount => _apiReflection.HandlerCount;
-
-    /// <summary>
-    /// Gets the number of registered backend handlers.
-    /// </summary>
-    public int BackendHandlerCount => _apiReflection.BackendHandlerCount;
 
     #endregion
 

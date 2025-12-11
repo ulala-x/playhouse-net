@@ -1,6 +1,6 @@
 #nullable enable
 
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Core.Play;
 

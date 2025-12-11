@@ -70,30 +70,3 @@ public interface IApiController
     void Handles(IHandlerRegister register);
 }
 
-/// <summary>
-/// Interface for backend API controllers.
-/// </summary>
-/// <remarks>
-/// Backend controllers handle server-to-server communication.
-/// These handlers are invoked when messages arrive from other servers
-/// (identified by the IsBackend flag in the route header).
-///
-/// Example usage:
-/// <code>
-/// public class BackendController : IApiBackendController
-/// {
-///     public void Handles(IHandlerRegister register)
-///     {
-///         register.Add("InternalSync", HandleSync);
-///     }
-/// }
-/// </code>
-/// </remarks>
-public interface IApiBackendController
-{
-    /// <summary>
-    /// Registers all handlers for this backend controller.
-    /// </summary>
-    /// <param name="register">The handler register to add handlers to.</param>
-    void Handles(IHandlerRegister register);
-}

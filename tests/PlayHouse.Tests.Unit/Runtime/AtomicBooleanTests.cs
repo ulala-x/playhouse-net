@@ -1,7 +1,8 @@
 #nullable enable
 
 using FluentAssertions;
-using PlayHouse.Runtime;
+using PlayHouse.Runtime.ServerMesh;
+using PlayHouse.Runtime.Shared;
 using Xunit;
 
 namespace PlayHouse.Tests.Unit.Runtime;

@@ -1,38 +1,36 @@
 #nullable enable
 
-using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play;
-using PlayHouse.Core.Session;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime;
-using PlayHouse.Runtime.Communicator;
-using PlayHouse.Runtime.Message;
+using PlayHouse.Runtime.ServerMesh;
+using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Message;
+using PlayHouse.Runtime.ClientTransport;
+using PlayHouse.Runtime.ClientTransport.Tcp;
+using PlayHouse.Runtime.ClientTransport.WebSocket;
 
 namespace PlayHouse.Bootstrap;
 
 /// <summary>
 /// Play Server 인스턴스.
 /// Stage와 Actor를 관리하고 클라이언트와 실시간 통신을 담당합니다.
+/// TCP, WebSocket, SSL/TLS를 지원하며 동시에 여러 Transport를 사용할 수 있습니다.
 /// </summary>
 public sealed class PlayServer : IAsyncDisposable
 {
     private readonly PlayServerOption _options;
     private readonly PlayProducer _producer;
     private readonly ServerConfig _serverConfig;
+    private readonly ILogger? _logger;
 
     private PlayCommunicator? _communicator;
     private PlayDispatcher? _dispatcher;
     private RequestCache? _requestCache;
-    private TcpListener? _tcpListener;
+    private ITransportServer? _transportServer;
     private CancellationTokenSource? _cts;
-    private Task? _acceptTask;
-    private readonly List<Task> _clientTasks = new();
-    private readonly ConcurrentDictionary<long, ClientSession> _sessions = new();
-    private long _sessionIdCounter;
 
     private bool _isRunning;
     private bool _disposed;
@@ -41,7 +39,7 @@ public sealed class PlayServer : IAsyncDisposable
     /// 클라이언트 메시지 핸들러.
     /// 테스트나 커스텀 메시지 처리를 위해 설정합니다.
     /// </summary>
-    internal Func<ClientSession, string, ushort, long, byte[], Task>? MessageHandler { get; set; }
+    internal Func<ITransportSession, string, ushort, long, ReadOnlyMemory<byte>, Task>? MessageHandler { get; set; }
 
     /// <summary>
     /// 서버가 실행 중인지 여부.
@@ -54,14 +52,40 @@ public sealed class PlayServer : IAsyncDisposable
     public string Nid => _options.Nid;
 
     /// <summary>
-    /// 클라이언트 연결 포트.
+    /// TCP 클라이언트 연결 포트 (설정값).
+    /// 실제 바인딩된 포트를 확인하려면 ActualTcpPort를 사용하세요.
+    /// null이면 TCP가 비활성화되어 있습니다.
     /// </summary>
-    public int ClientPort { get; private set; }
+    public int? TcpPort => _options.TcpPort;
 
-    internal PlayServer(PlayServerOption options, PlayProducer producer)
+    /// <summary>
+    /// 실제 바인딩된 TCP 포트.
+    /// TcpPort가 0인 경우 (자동 할당) 서버 시작 후 실제 포트를 반환합니다.
+    /// </summary>
+    public int ActualTcpPort => GetActualTcpPort();
+
+    /// <summary>
+    /// 클라이언트 연결 포트 (레거시 호환).
+    /// ActualTcpPort를 사용하세요.
+    /// </summary>
+    [Obsolete("Use ActualTcpPort instead")]
+    public int ClientPort => ActualTcpPort;
+
+    /// <summary>
+    /// WebSocket 경로 (활성화된 경우).
+    /// </summary>
+    public string? WebSocketPath => _options.WebSocketPath;
+
+    /// <summary>
+    /// Transport 서버 인스턴스 (WebSocket 미들웨어 등록에 사용).
+    /// </summary>
+    public ITransportServer? TransportServer => _transportServer;
+
+    internal PlayServer(PlayServerOption options, PlayProducer producer, ILogger? logger = null)
     {
         _options = options;
         _producer = producer;
+        _logger = logger;
 
         _serverConfig = new ServerConfig(
             options.ServiceId,
@@ -95,20 +119,59 @@ public sealed class PlayServer : IAsyncDisposable
             _options.ServiceId,
             _options.Nid);
 
-        // TCP 서버 시작
-        var uri = new Uri(_options.ClientEndpoint.Replace("tcp://", "http://"));
-        var port = uri.Port;
-        var host = uri.Host == "0.0.0.0" ? IPAddress.Any : IPAddress.Parse(uri.Host);
+        // Transport 서버 빌드 및 시작
+        _transportServer = BuildTransportServer();
+        await _transportServer.StartAsync(_cts.Token);
 
-        _tcpListener = new TcpListener(host, port);
-        _tcpListener.Start();
-
-        ClientPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
-
-        _acceptTask = AcceptClientsAsync(_cts.Token);
         _isRunning = true;
+        _logger?.LogInformation("PlayServer started: Nid={Nid}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
+            Nid, _options.IsTcpEnabled, _options.IsWebSocketEnabled);
 
         await Task.Delay(50); // 서버 초기화 대기
+    }
+
+    /// <summary>
+    /// Transport 서버를 옵션에 따라 빌드합니다.
+    /// </summary>
+    private ITransportServer BuildTransportServer()
+    {
+        var builder = new TransportServerBuilder(
+            OnClientMessage,
+            OnClientDisconnect,
+            _logger);
+
+        builder.WithOptions(opts =>
+        {
+            opts.ReceiveBufferSize = _options.TransportOptions.ReceiveBufferSize;
+            opts.SendBufferSize = _options.TransportOptions.SendBufferSize;
+            opts.MaxPacketSize = _options.TransportOptions.MaxPacketSize;
+            opts.HeartbeatTimeout = _options.TransportOptions.HeartbeatTimeout;
+        });
+
+        // TCP 추가
+        if (_options.IsTcpEnabled)
+        {
+            var tcpPort = _options.TcpPort!.Value;
+            if (_options.IsTcpSslEnabled)
+            {
+                builder.AddTcpWithSsl(tcpPort, _options.TcpSslCertificate!, _options.TcpBindAddress);
+                _logger?.LogInformation("TCP+SSL enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
+            }
+            else
+            {
+                builder.AddTcp(tcpPort, _options.TcpBindAddress);
+                _logger?.LogInformation("TCP enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
+            }
+        }
+
+        // WebSocket 추가
+        if (_options.IsWebSocketEnabled)
+        {
+            builder.AddWebSocket(_options.WebSocketPath!);
+            _logger?.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
+        }
+
+        return builder.Build();
     }
 
     /// <summary>
@@ -121,18 +184,10 @@ public sealed class PlayServer : IAsyncDisposable
         _isRunning = false;
         _cts?.Cancel();
 
-        _tcpListener?.Stop();
-
-        if (_acceptTask != null)
+        if (_transportServer != null)
         {
-            try
-            {
-                await _acceptTask.WaitAsync(TimeSpan.FromSeconds(3));
-            }
-            catch (TimeoutException) { }
+            await _transportServer.StopAsync();
         }
-
-        await Task.WhenAll(_clientTasks.Where(t => !t.IsCompleted));
 
         _communicator?.Stop();
         _dispatcher?.Dispose();
@@ -140,6 +195,8 @@ public sealed class PlayServer : IAsyncDisposable
 
         _cts?.Dispose();
         _cts = null;
+
+        _logger?.LogInformation("PlayServer stopped: Nid={Nid}", Nid);
     }
 
     private void HandleReceivedMessage(string senderNid, RuntimeRoutePacket packet)
@@ -159,45 +216,29 @@ public sealed class PlayServer : IAsyncDisposable
         _dispatcher?.Post(packet);
     }
 
-    private async Task AcceptClientsAsync(CancellationToken ct)
+    /// <summary>
+    /// Transport에서 클라이언트 메시지 수신 시 호출됩니다.
+    /// </summary>
+    private void OnClientMessage(
+        ITransportSession session,
+        string msgId,
+        ushort msgSeq,
+        long stageId,
+        ReadOnlyMemory<byte> payload)
     {
-        while (!ct.IsCancellationRequested)
+        // 미인증 클라이언트 체크
+        if (!session.IsAuthenticated)
         {
-            try
+            // 인증 메시지가 아니면 연결 끊기
+            if (msgId != _options.AuthenticateMessageId)
             {
-                var client = await _tcpListener!.AcceptTcpClientAsync(ct);
-                var task = HandleClientAsync(client, ct);
-                _clientTasks.Add(task);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (SocketException)
-            {
-                break;
+                _logger?.LogWarning("Unauthenticated session {SessionId} sent non-auth message: {MsgId}",
+                    session.SessionId, msgId);
+                _ = session.DisconnectAsync();
+                return;
             }
         }
-    }
 
-    private async Task HandleClientAsync(TcpClient client, CancellationToken ct)
-    {
-        var sessionId = Interlocked.Increment(ref _sessionIdCounter);
-
-        var session = new ClientSession(
-            client,
-            OnClientMessage,
-            OnClientDisconnect,
-            ct);
-
-        session.SessionId = sessionId;
-        _sessions[sessionId] = session;
-
-        await session.StartAsync();
-    }
-
-    private void OnClientMessage(ClientSession session, string msgId, ushort msgSeq, long stageId, byte[] payload)
-    {
         // 커스텀 핸들러가 있으면 사용
         if (MessageHandler != null)
         {
@@ -210,33 +251,39 @@ public sealed class PlayServer : IAsyncDisposable
     }
 
     private async Task HandleDefaultMessageAsync(
-        ClientSession session,
+        ITransportSession session,
         string msgId,
         ushort msgSeq,
         long stageId,
-        byte[] payload)
+        ReadOnlyMemory<byte> payload)
     {
-        // 인증 요청 처리
-        if (msgId.Contains("Authenticate") || msgId.Contains("Auth"))
+        // 인증 요청 처리 (설정된 인증 메시지 ID와 일치하는 경우)
+        if (msgId == _options.AuthenticateMessageId)
         {
             session.IsAuthenticated = true;
-            await session.SendSuccessAsync(msgId.Replace("Request", "Reply"), msgSeq, stageId, Array.Empty<byte>());
+            var response = TcpTransportSession.CreateResponsePacket(
+                msgId.Replace("Request", "Response"), msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
+            await session.SendAsync(response);
+            _logger?.LogDebug("Session {SessionId} authenticated", session.SessionId);
             return;
         }
 
         // 에코 요청 처리
         if (msgId.Contains("Echo"))
         {
-            // 에코 응답: 동일한 payload를 반환
             var replyMsgId = msgId.Replace("Request", "Reply");
-            await session.SendSuccessAsync(replyMsgId, msgSeq, stageId, payload);
+            var response = TcpTransportSession.CreateResponsePacket(
+                replyMsgId, msgSeq, stageId, 0, payload.Span);
+            await session.SendAsync(response);
             return;
         }
 
         // 실패 요청 시뮬레이션
         if (msgId.Contains("Fail"))
         {
-            await session.SendErrorAsync(msgId.Replace("Request", "Reply"), msgSeq, stageId, 500);
+            var response = TcpTransportSession.CreateResponsePacket(
+                msgId.Replace("Request", "Reply"), msgSeq, stageId, 500, ReadOnlySpan<byte>.Empty);
+            await session.SendAsync(response);
             return;
         }
 
@@ -249,13 +296,39 @@ public sealed class PlayServer : IAsyncDisposable
         // 기본: 성공 응답
         if (msgSeq > 0)
         {
-            await session.SendSuccessAsync(msgId + "Reply", msgSeq, stageId, Array.Empty<byte>());
+            var response = TcpTransportSession.CreateResponsePacket(
+                msgId + "Reply", msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
+            await session.SendAsync(response);
         }
     }
 
-    private void OnClientDisconnect(ClientSession session)
+    /// <summary>
+    /// Transport에서 클라이언트 연결 해제 시 호출됩니다.
+    /// </summary>
+    private void OnClientDisconnect(ITransportSession session, Exception? ex)
     {
-        _sessions.TryRemove(session.SessionId, out _);
+        if (ex != null)
+        {
+            _logger?.LogWarning(ex, "Session {SessionId} disconnected with error", session.SessionId);
+        }
+        else
+        {
+            _logger?.LogDebug("Session {SessionId} disconnected", session.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// 특정 세션에 Push 메시지를 전송합니다.
+    /// </summary>
+    public async ValueTask SendPushAsync(long sessionId, string msgId, long stageId, ReadOnlyMemory<byte> payload)
+    {
+        var session = _transportServer?.GetSession(sessionId);
+        if (session?.IsConnected == true)
+        {
+            var response = TcpTransportSession.CreateResponsePacket(
+                msgId, 0, stageId, 0, payload.Span);
+            await session.SendAsync(response);
+        }
     }
 
     /// <summary>
@@ -263,16 +336,77 @@ public sealed class PlayServer : IAsyncDisposable
     /// </summary>
     public async Task BroadcastAsync(string msgId, long stageId, byte[] payload)
     {
-        foreach (var session in _sessions.Values.Where(s => s.IsConnected))
+        if (_transportServer == null) return;
+
+        var responsePacket = TcpTransportSession.CreateResponsePacket(
+            msgId, 0, stageId, 0, payload);
+
+        var sessions = _transportServer.GetAllSessions().Where(s => s.IsConnected).ToList();
+        var tasks = sessions.Select(s => s.SendAsync(responsePacket).AsTask());
+        await Task.WhenAll(tasks);
+    }
+
+    /// <summary>
+    /// 특정 세션을 연결 해제합니다.
+    /// </summary>
+    public async ValueTask DisconnectSessionAsync(long sessionId)
+    {
+        if (_transportServer != null)
         {
-            await session.SendPushAsync(msgId, stageId, payload);
+            await _transportServer.DisconnectSessionAsync(sessionId);
         }
+    }
+
+    /// <summary>
+    /// 특정 세션을 조회합니다.
+    /// </summary>
+    public ITransportSession? GetSession(long sessionId)
+    {
+        return _transportServer?.GetSession(sessionId);
     }
 
     /// <summary>
     /// 연결된 클라이언트 수를 반환합니다.
     /// </summary>
-    public int ConnectedClientCount => _sessions.Count(s => s.Value.IsConnected);
+    public int ConnectedClientCount => _transportServer?.SessionCount ?? 0;
+
+    /// <summary>
+    /// 실제 바인딩된 TCP 포트를 가져옵니다.
+    /// TCP가 비활성화된 경우 0을 반환합니다.
+    /// </summary>
+    private int GetActualTcpPort()
+    {
+        if (_transportServer is CompositeTransportServer composite)
+        {
+            var tcpServer = composite.TcpServers.FirstOrDefault();
+            return tcpServer?.ActualPort ?? _options.TcpPort ?? 0;
+        }
+
+        if (_transportServer is TcpTransportServer tcp)
+        {
+            return tcp.ActualPort;
+        }
+
+        return _options.TcpPort ?? 0;
+    }
+
+    /// <summary>
+    /// WebSocket 서버 목록을 반환합니다 (ASP.NET Core 미들웨어 등록용).
+    /// </summary>
+    public IEnumerable<WebSocketTransportServer> GetWebSocketServers()
+    {
+        if (_transportServer is CompositeTransportServer composite)
+        {
+            return composite.WebSocketServers;
+        }
+
+        if (_transportServer is WebSocketTransportServer wsServer)
+        {
+            return new[] { wsServer };
+        }
+
+        return Enumerable.Empty<WebSocketTransportServer>();
+    }
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
@@ -281,6 +415,11 @@ public sealed class PlayServer : IAsyncDisposable
         _disposed = true;
 
         await StopAsync();
+
+        if (_transportServer != null)
+        {
+            await _transportServer.DisposeAsync();
+        }
     }
 
     /// <summary>
