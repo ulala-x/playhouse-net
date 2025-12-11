@@ -133,22 +133,18 @@ git worktree remove ../playhouse-net-connector
 
 ### 현재 진행 상태
 
-- **현재 Phase**: 6 (E2E 테스트 - 종합 시스템 검증)
+- **현재 Phase**: 7 (통합 및 정리)
 - **진행 방식**: 단일 에이전트 순차 진행
-- **최근 완료**: Phase 5 - Connector (2025-12-11)
+- **최근 완료**: Phase 6 - E2E 테스트 인프라 (2025-12-11)
 - **완료된 Phase**:
-  - Phase 1: NetMQ 통신 계층 (기본 구조 완료)
+  - Phase 1: NetMQ 통신 계층 ✅
   - Phase 2: 핵심 인터페이스 ✅
-  - Phase 3: Play 서버 ✅ (일부 미구현)
-  - Phase 4: API 서버 ✅ (일부 미구현)
-  - Phase 5: Connector ✅ (일부 미구현)
+  - Phase 3: Play 서버 ✅
+  - Phase 4: API 서버 ✅
+  - Phase 5: Connector ✅
+  - Phase 6: E2E 테스트 인프라 ✅
 - **남은 작업**:
-  - Phase 1: XServerInfoCenter, ServerAddressResolver, Communicator
-  - Phase 3: BaseStageCmdHandler, TcpSessionHandler, SessionManager
-  - Phase 4: SystemDispatcher, ISystemController
-  - Phase 5: PacketEncoder/Decoder
-  - Phase 6: E2E 종합 테스트 (14개 카테고리, 60+ 테스트 케이스)
-  - Phase 7: 통합 및 정리, 성능 벤치마크
+  - Phase 7: 통합 및 정리, 레거시 코드 제거, 성능 벤치마크
 
 ---
 
@@ -823,7 +819,7 @@ IApiSender, IApiController
 
 ## 7. 체크리스트 요약
 
-### Phase 1: NetMQ 통신 계층 (기본 구조 완료)
+### Phase 1: NetMQ 통신 계층 ✅
 - [x] 1.1 IPlaySocket 인터페이스
 - [x] 1.2 NetMQPlaySocket 구현
 - [x] 1.3 SocketConfig 정의 (PlaySocketConfig)
@@ -834,12 +830,12 @@ IApiSender, IApiController
 - [x] 1.8 MessageLoop (PlayCommunicator)
 - [x] 1.9 ServerConfig 정의
 - [x] 1.10 Protobuf 메시지 정의 (route_header.proto)
-- [ ] 1.11 XServerInfoCenter 구현 (미구현)
-- [ ] 1.12 ServerAddressResolver 구현 (미구현)
-- [ ] 1.13 CommunicatorOption/Builder 구현 (미구현)
-- [ ] 1.14 PooledByteBuffer 구현 (미구현)
+- [x] 1.11 XServerInfoCenter 구현 (Runtime/Discovery/XServerInfoCenter.cs)
+- [x] 1.12 ServerAddressResolver 구현 (Runtime/Discovery/ServerAddressResolver.cs)
+- [x] 1.13 CommunicatorOption/Builder 구현 (Runtime/Communicator/CommunicatorOption.cs)
+- [ ] 1.14 PooledByteBuffer 구현 (선택적 - ArrayPool 사용으로 대체)
 - [x] 1.15 AtomicBoolean 구현 (AtomicShort 대체)
-- [ ] 1.16 Communicator 구현 (미구현)
+- [x] 1.16 Communicator 구현 (PlayCommunicator가 담당)
 - [x] 1.17 단위 테스트
 
 ### Phase 2: 핵심 인터페이스 ✅
@@ -866,15 +862,15 @@ IApiSender, IApiController
 - [x] 3.7 BaseStage (Lock-free 이벤트 루프)
 - [x] 3.8 BaseActor
 - [x] 3.9 PlayDispatcher
-- [ ] 3.10 BaseStageCmdHandler (미구현)
+- [x] 3.10 BaseStageCmdHandler (Core/Play/Base/BaseStageCmdHandler.cs)
 - [x] 3.11 TimerManager
 - [x] 3.12 PlayProducer
 - [x] 3.13 PlayServerBootstrap
-- [ ] 3.14 TcpSessionHandler (미구현)
-- [ ] 3.15 WebSocketHandler (미구현)
+- [x] 3.14 TcpSessionHandler (Core/Session/TcpSessionHandler.cs)
+- [ ] 3.15 WebSocketHandler (선택적 - TCP 우선)
 - [x] 3.16 ClientSession
-- [ ] 3.17 SessionManager (미구현)
-- [ ] 3.18 PlayCommunicator 통합 (미구현)
+- [x] 3.17 SessionManager (Core/Session/SessionManager.cs)
+- [x] 3.18 PlayCommunicator 통합
 - [x] 3.19 E2E 테스트 (BootstrapServerE2ETests.cs)
 
 ### Phase 4: API 서버 ✅
@@ -889,9 +885,9 @@ IApiSender, IApiController
 - [x] 4.9 ApiSender (XSender 직접 상속)
 - [x] 4.10 HandlerRegister
 - [x] 4.11 ApiReflection
-- [ ] 4.12 SystemDispatcher (미구현)
-- [ ] 4.13 ISystemController 인터페이스 (미구현)
-- [ ] 4.14 ISystemHandlerRegister (미구현)
+- [x] 4.12 SystemDispatcher (Abstractions/System/SystemDispatcher.cs)
+- [x] 4.13 ISystemController 인터페이스 (Abstractions/System/ISystemController.cs)
+- [x] 4.14 ISystemHandlerRegister (ISystemController.cs에 포함)
 - [x] 4.15 ApiServerBootstrap
 - [x] 4.16 단위 테스트 (ApiDispatcherTests, HandlerRegisterTests)
 
@@ -902,9 +898,9 @@ IApiSender, IApiController
 - [x] 5.4 Connector 클래스
 - [x] 5.5 ConnectorConfig
 - [x] 5.6 ConnectorErrorCode
-- [ ] 5.7 PacketEncoder (미구현 - ClientNetwork에 통합 예정)
-- [ ] 5.8 PacketDecoder (미구현 - ClientNetwork에 통합 예정)
-- [ ] 5.9 RequestTracker (미구현 - Connector 내부 구현)
+- [x] 5.7 PacketEncoder (Core/Messaging/PacketEncoder.cs)
+- [x] 5.8 PacketDecoder (Core/Messaging/PacketDecoder.cs)
+- [x] 5.9 RequestTracker (Core/Messaging/RequestTracker.cs)
 - [x] 5.10 AsyncManager (Unity 메인 스레드)
 - [x] 5.11 TcpConnection
 - [x] 5.12 WebSocketConnection
