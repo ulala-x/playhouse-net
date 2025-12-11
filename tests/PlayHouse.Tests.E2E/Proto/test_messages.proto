@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package playhouse.tests.e2e;
+
+option csharp_namespace = "PlayHouse.Tests.E2E.Proto";
+
+// ============================================
+// E2E Test-specific Messages
+// ============================================
+
+// 에코 요청
+message EchoRequest {
+    string content = 1;
+    int32 sequence = 2;
+}
+
+// 에코 응답
+message EchoReply {
+    string content = 1;
+    int32 sequence = 2;
+    int64 processed_at = 3;
+}
+
+// 브로드캐스트 알림 (Push 메시지)
+message BroadcastNotify {
+    string event_type = 1;
+    string data = 2;
+    int64 from_account_id = 3;
+}
+
+// 상태 조회 요청
+message StatusRequest {
+}
+
+// 상태 조회 응답
+message StatusReply {
+    int32 actor_count = 1;
+    int64 uptime_seconds = 2;
+    string stage_type = 3;
+}
+
+// Actor 퇴장 알림
+message ActorLeftNotify {
+    int64 account_id = 1;
+    string nickname = 2;
+    string reason = 3;
+}
+
+// 채팅 메시지
+message ChatMessage {
+    int64 sender_id = 1;
+    string sender_name = 2;
+    string message = 3;
+    int64 timestamp = 4;
+}
