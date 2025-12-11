@@ -95,24 +95,12 @@ internal class ApiSender : XSender, IApiSender
         };
 
         var routePacket = CPacket.Of(nameof(CreateStageReq), req.ToByteArray());
+        var reply = await RequestToStage(playNid, stageId, routePacket);
+        var res = CreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 
-        try
-        {
-            var reply = await RequestToStage(playNid, stageId, routePacket);
-            var res = CreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-            return new CreateStageResult(
-                BaseErrorCode.Success,
-                CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
-        }
-        catch (TimeoutException)
-        {
-            return new CreateStageResult(BaseErrorCode.RequestTimeout, CPacket.Empty("Error"));
-        }
-        catch (Exception)
-        {
-            return new CreateStageResult(BaseErrorCode.SystemError, CPacket.Empty("Error"));
-        }
+        return new CreateStageResult(
+            res.Result,
+            CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
     }
 
     /// <inheritdoc/>
@@ -133,25 +121,17 @@ internal class ApiSender : XSender, IApiSender
         };
 
         var routePacket = CPacket.Of(nameof(GetOrCreateStageReq), req.ToByteArray());
+        var reply = await RequestToStage(playNid, stageId, routePacket);
+        var res = GetOrCreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 
-        try
-        {
-            var reply = await RequestToStage(playNid, stageId, routePacket);
-            var res = GetOrCreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-            return new GetOrCreateStageResult(
-                BaseErrorCode.Success,
-                res.IsCreated,
-                CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
-        }
-        catch (TimeoutException)
-        {
-            return new GetOrCreateStageResult(BaseErrorCode.RequestTimeout, false, CPacket.Empty("Error"));
-        }
-        catch (Exception)
-        {
-            return new GetOrCreateStageResult(BaseErrorCode.SystemError, false, CPacket.Empty("Error"));
-        }
+        // Result/IsCreated combinations:
+        // - Result=true, IsCreated=false: Stage already existed
+        // - Result=true, IsCreated=true: New stage created successfully
+        // - Result=false, IsCreated=false: Creation failed
+        return new GetOrCreateStageResult(
+            res.Result,
+            res.IsCreated,
+            CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
     }
 
     /// <inheritdoc/>
@@ -169,24 +149,12 @@ internal class ApiSender : XSender, IApiSender
         };
 
         var routePacket = CPacket.Of(nameof(JoinStageReq), req.ToByteArray());
+        var reply = await RequestToStage(playNid, stageId, routePacket);
+        var res = JoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 
-        try
-        {
-            var reply = await RequestToStage(playNid, stageId, routePacket);
-            var res = JoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-            return new JoinStageResult(
-                BaseErrorCode.Success,
-                CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
-        }
-        catch (TimeoutException)
-        {
-            return new JoinStageResult(BaseErrorCode.RequestTimeout, CPacket.Empty("Error"));
-        }
-        catch (Exception)
-        {
-            return new JoinStageResult(BaseErrorCode.SystemError, CPacket.Empty("Error"));
-        }
+        return new JoinStageResult(
+            res.Result,
+            CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
     }
 
     /// <inheritdoc/>
@@ -209,34 +177,14 @@ internal class ApiSender : XSender, IApiSender
         };
 
         var routePacket = CPacket.Of(nameof(CreateJoinStageReq), req.ToByteArray());
+        var reply = await RequestToStage(playNid, stageId, routePacket);
+        var res = CreateJoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 
-        try
-        {
-            var reply = await RequestToStage(playNid, stageId, routePacket);
-            var res = CreateJoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-            return new CreateJoinStageResult(
-                BaseErrorCode.Success,
-                res.IsCreated,
-                CPacket.Of(res.CreatePayloadId, res.CreatePayload.ToByteArray()),
-                CPacket.Of(res.JoinPayloadId, res.JoinPayload.ToByteArray()));
-        }
-        catch (TimeoutException)
-        {
-            return new CreateJoinStageResult(
-                BaseErrorCode.RequestTimeout,
-                false,
-                CPacket.Empty("Error"),
-                CPacket.Empty("Error"));
-        }
-        catch (Exception)
-        {
-            return new CreateJoinStageResult(
-                BaseErrorCode.SystemError,
-                false,
-                CPacket.Empty("Error"),
-                CPacket.Empty("Error"));
-        }
+        return new CreateJoinStageResult(
+            res.Result,
+            res.IsCreated,
+            CPacket.Of(res.CreatePayloadId, res.CreatePayload.ToByteArray()),
+            CPacket.Of(res.JoinPayloadId, res.JoinPayload.ToByteArray()));
     }
 
     #endregion

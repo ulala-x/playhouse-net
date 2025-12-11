@@ -8,28 +8,31 @@ namespace PlayHouse.Abstractions.Api;
 public class StageResult
 {
     /// <summary>
-    /// Gets the error code from the operation (0 = success).
+    /// Gets whether the operation was successful.
     /// </summary>
-    public ushort ErrorCode { get; }
+    /// <remarks>
+    /// This corresponds to the bool result from IStage.OnCreate() and similar methods.
+    /// </remarks>
+    public bool Result { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StageResult"/> class.
     /// </summary>
-    /// <param name="errorCode">The error code.</param>
-    public StageResult(ushort errorCode)
+    /// <param name="result">Whether the operation was successful.</param>
+    public StageResult(bool result)
     {
-        ErrorCode = errorCode;
+        Result = result;
     }
-
-    /// <summary>
-    /// Gets whether the operation was successful.
-    /// </summary>
-    public bool IsSuccess => ErrorCode == 0;
 }
 
 /// <summary>
 /// Result of a CreateStage operation.
 /// </summary>
+/// <remarks>
+/// Contains the result from IStage.OnCreate().
+/// - Result=true: Stage creation succeeded
+/// - Result=false: Stage creation failed
+/// </remarks>
 public class CreateStageResult : StageResult
 {
     /// <summary>
@@ -40,10 +43,10 @@ public class CreateStageResult : StageResult
     /// <summary>
     /// Initializes a new instance of the <see cref="CreateStageResult"/> class.
     /// </summary>
-    /// <param name="errorCode">The error code.</param>
+    /// <param name="result">Whether the creation was successful.</param>
     /// <param name="createStageRes">The create stage response packet.</param>
-    public CreateStageResult(ushort errorCode, IPacket createStageRes)
-        : base(errorCode)
+    public CreateStageResult(bool result, IPacket createStageRes)
+        : base(result)
     {
         CreateStageRes = createStageRes;
     }
@@ -52,6 +55,11 @@ public class CreateStageResult : StageResult
 /// <summary>
 /// Result of a JoinStage operation.
 /// </summary>
+/// <remarks>
+/// Contains the result from Actor join operation.
+/// - Result=true: Join succeeded
+/// - Result=false: Join failed
+/// </remarks>
 public class JoinStageResult : StageResult
 {
     /// <summary>
@@ -62,10 +70,10 @@ public class JoinStageResult : StageResult
     /// <summary>
     /// Initializes a new instance of the <see cref="JoinStageResult"/> class.
     /// </summary>
-    /// <param name="errorCode">The error code.</param>
+    /// <param name="result">Whether the join was successful.</param>
     /// <param name="joinStageRes">The join stage response packet.</param>
-    public JoinStageResult(ushort errorCode, IPacket joinStageRes)
-        : base(errorCode)
+    public JoinStageResult(bool result, IPacket joinStageRes)
+        : base(result)
     {
         JoinStageRes = joinStageRes;
     }
@@ -74,11 +82,21 @@ public class JoinStageResult : StageResult
 /// <summary>
 /// Result of a GetOrCreateStage operation.
 /// </summary>
+/// <remarks>
+/// Result/IsCreated combinations:
+/// - Result=true, IsCreated=false: Stage already existed (found existing)
+/// - Result=true, IsCreated=true: New stage created successfully
+/// - Result=false, IsCreated=false: New stage creation failed
+/// </remarks>
 public class GetOrCreateStageResult : StageResult
 {
     /// <summary>
     /// Gets whether the stage was newly created.
     /// </summary>
+    /// <remarks>
+    /// - true: A new stage was created
+    /// - false: Stage already existed OR creation failed (check Result)
+    /// </remarks>
     public bool IsCreated { get; }
 
     /// <summary>
@@ -89,11 +107,11 @@ public class GetOrCreateStageResult : StageResult
     /// <summary>
     /// Initializes a new instance of the <see cref="GetOrCreateStageResult"/> class.
     /// </summary>
-    /// <param name="errorCode">The error code.</param>
+    /// <param name="result">Whether the operation was successful.</param>
     /// <param name="isCreated">Whether the stage was newly created.</param>
     /// <param name="payload">The response payload.</param>
-    public GetOrCreateStageResult(ushort errorCode, bool isCreated, IPacket payload)
-        : base(errorCode)
+    public GetOrCreateStageResult(bool result, bool isCreated, IPacket payload)
+        : base(result)
     {
         IsCreated = isCreated;
         Payload = payload;
@@ -103,6 +121,12 @@ public class GetOrCreateStageResult : StageResult
 /// <summary>
 /// Result of a CreateJoinStage operation (create + join in one call).
 /// </summary>
+/// <remarks>
+/// Result/IsCreated combinations:
+/// - Result=true, IsCreated=true: New stage created and joined successfully
+/// - Result=true, IsCreated=false: Existing stage found and joined successfully
+/// - Result=false, IsCreated=false: Operation failed
+/// </remarks>
 public class CreateJoinStageResult : StageResult
 {
     /// <summary>
@@ -123,16 +147,16 @@ public class CreateJoinStageResult : StageResult
     /// <summary>
     /// Initializes a new instance of the <see cref="CreateJoinStageResult"/> class.
     /// </summary>
-    /// <param name="errorCode">The error code.</param>
+    /// <param name="result">Whether the operation was successful.</param>
     /// <param name="isCreated">Whether the stage was newly created.</param>
     /// <param name="createStageRes">The create stage response packet.</param>
     /// <param name="joinStageRes">The join stage response packet.</param>
     public CreateJoinStageResult(
-        ushort errorCode,
+        bool result,
         bool isCreated,
         IPacket createStageRes,
         IPacket joinStageRes)
-        : base(errorCode)
+        : base(result)
     {
         IsCreated = isCreated;
         CreateStageRes = createStageRes;

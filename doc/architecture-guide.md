@@ -109,3 +109,516 @@ presentation(또는 api) → domain ← infrastructure
 - **컨텍스트 포함**: 모든 예외는 에이전트가 발생 원인을 추론할 수 있도록 충분한 디버깅 정보(변수 값, 상태 등)를 메시지에 포함해야 한다.
 - **경계에서 래핑**: Adapter 계층에서 발생하는 기술적 예외는 도메인 에러 코드로 변환하여 전파한다.
 - **중앙화된 처리**: 비즈니스 로직 내부에서 예외를 삼키지(Catch & Ignore) 않고, 최상위 진입점에서 에러 코드 기반으로 일괄 처리하여 사용자 응답으로 변환한다.
+
+---
+
+# PlayHouse E2E 테스트 가이드
+
+## 7. PlayHouse 시스템 아키텍처
+
+```
+                    ┌─────────────────────────────────────┐
+                    │          External Clients           │
+                    │        (Web, Mobile, Game)          │
+                    └──────────┬──────────────┬───────────┘
+                               │              │
+              HTTP/REST        │              │  TCP/WebSocket
+          (정보 요청)          │              │  (실시간 통신)
+                               │              │
+           ┌───────────────────┘              └───────────────────┐
+           │                                                      │
+           ▼                                                      ▼
+┌─────────────────────────────────┐          ┌─────────────────────────────────┐
+│          Web Server             │          │          Play Server            │
+│     (ASP.NET Core 등)           │          │        (독립 프로세스)           │
+│                                 │          │                                 │
+│  ┌───────────────────────────┐  │          │  - Stage 관리                   │
+│  │    API Server 모듈        │  │  NetMQ   │  - Actor 실행                   │
+│  │  (PlayHouse.Api 라이브러리)│──┼─────────►│  - Client 연결 (TCP/WS)         │
+│  │                           │  │ Router   │                                 │
+│  │  - IApiSender (DI 주입)   │◄─┼──────────┤                                 │
+│  │  - Stage 생성 요청        │  │          │                                 │
+│  └───────────────────────────┘  │          └─────────────────────────────────┘
+│                                 │                        ▲
+└─────────────────────────────────┘                        │ NetMQ
+                                              ┌────────────┴────────────┐
+                                              │                         │
+                                              ▼                         ▼
+                                   ┌─────────────────┐       ┌─────────────────┐
+                                   │  Play Server 2  │◄─────►│  Play Server N  │
+                                   └─────────────────┘ NetMQ └─────────────────┘
+```
+
+## 8. PlayHouse API 사용 가이드
+
+### 8.1 Play Server 부트스트랩
+
+Play Server는 Stage와 Actor를 관리하고, 클라이언트와 실시간 통신을 담당합니다.
+
+```csharp
+// Play Server 시작
+var playServer = new PlayServerBootstrap()
+    .Configure(options =>
+    {
+        options.ServiceId = 1;                          // 서비스 식별자
+        options.ServerId = 1;                           // 서버 인스턴스 ID
+        options.BindEndpoint = "tcp://0.0.0.0:5000";    // NetMQ 서버 간 통신
+        options.ClientEndpoint = "tcp://0.0.0.0:6000";  // 클라이언트 TCP
+    })
+    .UseStage<GameRoomStage>("GameRoom")  // Stage 타입 등록
+    .UseActor<PlayerActor>()              // Actor 타입 등록
+    .Build();
+
+await playServer.StartAsync();
+```
+
+### 8.2 API Server 부트스트랩
+
+API Server는 웹서버에 통합되어 Play Server와 NetMQ로 통신합니다.
+
+```csharp
+// API Server 시작 (웹서버에 통합)
+var apiServer = new ApiServerBootstrap()
+    .Configure(options =>
+    {
+        options.ServiceId = 2;
+        options.ServerId = 1;
+        options.BindEndpoint = "tcp://0.0.0.0:5100";
+    })
+    .UseController<GameApiController>()
+    .Build();
+
+// ASP.NET Core DI에 등록
+builder.Services.AddSingleton<IApiSender>(apiServer.ApiSender);
+await apiServer.StartAsync();
+```
+
+### 8.3 Stage 구현
+
+Stage는 게임 룸/방/매치를 표현하며, 여러 Actor가 모여 상호작용하는 공간입니다.
+
+```csharp
+public class GameRoomStage : IStage
+{
+    public IStageSender StageSender { get; private set; } = null!;
+    private readonly List<IActor> _actors = new();
+
+    // Stage 생성 시 호출 (API 서버의 CreateStage 요청)
+    public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
+    {
+        var request = packet.Parse<CreateRoomRequest>();
+        return Task.FromResult((true, Packet.Of(new CreateRoomResponse
+        {
+            StageId = StageSender.StageId
+        })));
+    }
+
+    public Task OnPostCreate() => Task.CompletedTask;
+    public Task OnDestroy() => Task.CompletedTask;
+
+    // Actor가 Stage에 입장할 때
+    public Task<bool> OnJoinStage(IActor actor)
+    {
+        _actors.Add(actor);
+        return Task.FromResult(true);
+    }
+
+    public Task OnPostJoinStage(IActor actor)
+    {
+        // 다른 플레이어들에게 입장 알림
+        foreach (var other in _actors.Where(a => a != actor))
+        {
+            other.ActorSender.SendToClient(Packet.Of(new PlayerJoinedNotice
+            {
+                PlayerId = actor.ActorSender.AccountId
+            }));
+        }
+        return Task.CompletedTask;
+    }
+
+    public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
+        => ValueTask.CompletedTask;
+
+    // 클라이언트 메시지 처리
+    public Task OnDispatch(IActor actor, IPacket packet)
+    {
+        switch (packet.MsgId)
+        {
+            case "EchoRequest":
+                var echoReq = packet.Parse<EchoRequest>();
+                StageSender.Reply(Packet.Of(new EchoReply
+                {
+                    Content = echoReq.Content,
+                    Sequence = echoReq.Sequence
+                }));
+                break;
+        }
+        return Task.CompletedTask;
+    }
+
+    // 서버 간 메시지 처리
+    public Task OnDispatch(IPacket packet) => Task.CompletedTask;
+}
+```
+
+### 8.4 Actor 구현
+
+Actor는 클라이언트와 1:1로 매핑되는 플레이어 표현입니다.
+
+```csharp
+public class PlayerActor : IActor
+{
+    public IActorSender ActorSender { get; private set; } = null!;
+
+    public Task OnCreate() => Task.CompletedTask;
+    public Task OnDestroy() => Task.CompletedTask;
+
+    // 인증 처리 (클라이언트가 Authenticate 요청 시)
+    public Task<bool> OnAuthenticate(IPacket authPacket)
+    {
+        var request = authPacket.Parse<AuthenticateRequest>();
+
+        // 인증 검증 로직
+        if (IsValidToken(request.Token))
+        {
+            ActorSender.AccountId = request.UserId;  // 필수: AccountId 설정
+            return Task.FromResult(true);
+        }
+        return Task.FromResult(false);  // false → 연결 종료
+    }
+
+    // 인증 성공 후 호출 (API 서버에서 정보 로드)
+    public Task OnPostAuthenticate()
+    {
+        return Task.CompletedTask;
+    }
+
+    private bool IsValidToken(string token) => token == "valid-token";
+}
+```
+
+### 8.5 Connector (클라이언트) 사용
+
+Connector는 클라이언트에서 Play Server에 연결하는 라이브러리입니다.
+
+```csharp
+// 1. Connector 초기화
+var connector = new Connector();
+connector.Init(new ConnectorConfig
+{
+    Host = "localhost",
+    Port = 6000,
+    ConnectionType = ConnectionType.Tcp
+});
+
+// 2. 이벤트 핸들러 등록
+connector.OnConnect += (success) => Console.WriteLine($"Connected: {success}");
+connector.OnReceive += (stageId, packet) => HandleMessage(stageId, packet);
+connector.OnError += (stageId, errorCode, request) => HandleError(errorCode);
+connector.OnDisconnect += () => Console.WriteLine("Disconnected");
+
+// 3. 연결 및 인증
+await connector.ConnectAsync();
+var authResponse = await connector.AuthenticateAsync(
+    Packet.Of(new AuthenticateRequest { UserId = "player1", Token = "valid-token" })
+);
+
+// 4. 메시지 전송
+// Stage 없는 경우 (stageId = 0)
+await connector.RequestAsync(Packet.Of(new EchoRequest { Content = "Hello" }));
+
+// Stage 있는 경우
+long stageId = 1001;
+await connector.RequestAsync(stageId, Packet.Of(new GameActionRequest { Action = "move" }));
+```
+
+## 9. E2E 테스트 패턴
+
+E2E 테스트는 **API 사용 가이드처럼 읽혀야** 합니다. 테스트 코드가 곧 사용 예제입니다.
+
+### 9.1 테스트 픽스처 설정
+
+```csharp
+public class PlayHouseE2ETests : IAsyncLifetime
+{
+    private PlayServer _playServer = null!;
+    private ApiServer _apiServer = null!;
+
+    public async Task InitializeAsync()
+    {
+        // Play Server 시작
+        _playServer = new PlayServerBootstrap()
+            .Configure(options =>
+            {
+                options.ServiceId = 1;
+                options.ServerId = 1;
+                options.BindEndpoint = "tcp://127.0.0.1:15000";
+                options.ClientEndpoint = "tcp://127.0.0.1:16000";
+            })
+            .UseStage<TestGameStage>("TestGame")
+            .UseActor<TestPlayerActor>()
+            .Build();
+
+        await _playServer.StartAsync();
+
+        // API Server 시작
+        _apiServer = new ApiServerBootstrap()
+            .Configure(options =>
+            {
+                options.ServiceId = 2;
+                options.ServerId = 1;
+                options.BindEndpoint = "tcp://127.0.0.1:15100";
+            })
+            .Build();
+
+        await _apiServer.StartAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _apiServer.StopAsync();
+        await _playServer.StopAsync();
+    }
+}
+```
+
+### 9.2 연결 및 인증 테스트
+
+```csharp
+[Fact(DisplayName = "클라이언트가 서버에 연결하고 인증할 수 있다")]
+public async Task Client_Should_Connect_And_Authenticate()
+{
+    // Given: Connector 설정
+    var connector = new Connector();
+    connector.Init(new ConnectorConfig
+    {
+        Host = "127.0.0.1",
+        Port = 16000,
+        ConnectionType = ConnectionType.Tcp
+    });
+
+    // When: 연결
+    var connected = await connector.ConnectAsync();
+
+    // Then: 연결 성공
+    connected.Should().BeTrue();
+    connector.IsConnected().Should().BeTrue();
+
+    // When: 인증
+    var authResponse = await connector.AuthenticateAsync(
+        Packet.Of(new AuthenticateRequest { UserId = "player1", Token = "valid-token" })
+    );
+
+    // Then: 인증 성공
+    connector.IsAuthenticated().Should().BeTrue();
+    authResponse.MsgId.Should().Be("AuthenticateResponse");
+}
+```
+
+### 9.3 메시지 송수신 테스트
+
+```csharp
+[Fact(DisplayName = "클라이언트가 에코 요청을 보내면 동일한 내용으로 응답받는다")]
+public async Task Client_Should_Send_And_Receive_Echo_Messages()
+{
+    // Given: 인증된 Connector
+    var connector = await CreateAuthenticatedConnector();
+
+    // When: 에코 요청 전송
+    var echoRequest = Packet.Of(new EchoRequest
+    {
+        Content = "Hello, PlayHouse!",
+        Sequence = 1
+    });
+    var response = await connector.RequestAsync(echoRequest);
+
+    // Then: 동일한 내용으로 응답
+    var echoReply = response.Parse<EchoReply>();
+    echoReply.Content.Should().Be("Hello, PlayHouse!");
+    echoReply.Sequence.Should().Be(1);
+}
+```
+
+### 9.4 Stage 생성 및 입장 테스트
+
+```csharp
+[Fact(DisplayName = "API로 Stage를 생성하고 클라이언트가 입장할 수 있다")]
+public async Task Api_Creates_Stage_And_Client_Joins()
+{
+    // Given: API Sender와 인증된 Connector
+    var apiSender = _apiServer.ApiSender;
+    var connector = await CreateAuthenticatedConnector();
+
+    // When: API로 Stage 생성
+    var createResult = await apiSender.CreateStage(
+        playNid: "1:1",
+        stageType: "TestGame",
+        stageId: 0,  // 0 = 자동 생성
+        packet: Packet.Of(new CreateRoomRequest { RoomName = "Test Room" })
+    );
+
+    // Then: Stage 생성 성공
+    createResult.ErrorCode.Should().Be(0);
+    var stageId = createResult.StageId;
+    stageId.Should().BeGreaterThan(0);
+
+    // When: Stage에 메시지 전송
+    var response = await connector.RequestAsync(stageId,
+        Packet.Of(new GameActionRequest { Action = "ready" })
+    );
+
+    // Then: 게임 액션 응답 확인
+    response.MsgId.Should().Be("GameActionResponse");
+}
+```
+
+### 9.5 서버 Push 메시지 테스트
+
+```csharp
+[Fact(DisplayName = "서버가 클라이언트에게 Push 메시지를 전송할 수 있다")]
+public async Task Server_Should_Push_Messages_To_Client()
+{
+    // Given: 두 클라이언트가 같은 Stage에 입장
+    var connector1 = await CreateAuthenticatedConnector("player1");
+    var connector2 = await CreateAuthenticatedConnector("player2");
+
+    var pushMessages = new ConcurrentQueue<IPacket>();
+    connector1.OnReceive += (stageId, packet) =>
+    {
+        if (packet.MsgId == "PlayerJoinedNotice")
+            pushMessages.Enqueue(packet);
+    };
+
+    var stageId = await CreateStageAndJoin(connector1);
+
+    // When: 두 번째 플레이어 입장
+    await JoinStage(connector2, stageId);
+
+    // Then: 첫 번째 플레이어가 입장 알림 수신
+    await Task.Delay(100);
+    pushMessages.Should().NotBeEmpty();
+    var notice = pushMessages.First().Parse<PlayerJoinedNotice>();
+    notice.PlayerId.Should().Be("player2");
+}
+```
+
+### 9.6 재연결 테스트
+
+```csharp
+[Fact(DisplayName = "연결이 끊긴 후 재연결하여 게임을 계속할 수 있다")]
+public async Task Client_Should_Reconnect_After_Disconnect()
+{
+    // Given: Stage에 입장한 클라이언트
+    var connector = await CreateAuthenticatedConnector();
+    var stageId = await CreateStageAndJoin(connector);
+
+    // When: 연결 끊김
+    connector.Disconnect();
+    await Task.Delay(100);
+    connector.IsConnected().Should().BeFalse();
+
+    // When: 재연결
+    await connector.ConnectAsync();
+    await connector.AuthenticateAsync(
+        Packet.Of(new AuthenticateRequest { UserId = "player1", Token = "valid-token" })
+    );
+
+    // Then: 재연결 후 Stage에 메시지 전송 가능
+    var response = await connector.RequestAsync(stageId,
+        Packet.Of(new GameActionRequest { Action = "ping" })
+    );
+    response.Should().NotBeNull();
+}
+```
+
+### 9.7 타임아웃 테스트
+
+```csharp
+[Fact(DisplayName = "서버가 응답하지 않으면 타임아웃 예외가 발생한다")]
+public async Task Request_Should_Timeout_When_Server_Not_Responding()
+{
+    // Given: 짧은 타임아웃 설정
+    var connector = new Connector();
+    connector.Init(new ConnectorConfig
+    {
+        Host = "127.0.0.1",
+        Port = 16000,
+        ConnectionType = ConnectionType.Tcp,
+        RequestTimeout = TimeSpan.FromMilliseconds(500)
+    });
+
+    await connector.ConnectAsync();
+    await connector.AuthenticateAsync(
+        Packet.Of(new AuthenticateRequest { UserId = "player1", Token = "valid-token" })
+    );
+
+    // When & Then: 느린 요청에 대해 타임아웃 예외 발생
+    await Assert.ThrowsAsync<ConnectorException>(async () =>
+    {
+        await connector.RequestAsync(
+            Packet.Of(new SlowRequest { DelayMs = 2000 })
+        );
+    });
+}
+```
+
+## 10. 테스트 Proto 정의
+
+```protobuf
+syntax = "proto3";
+package PlayHouse.Tests.E2E.Proto;
+
+message AuthenticateRequest {
+    string user_id = 1;
+    string token = 2;
+}
+
+message AuthenticateResponse {
+    bool success = 1;
+    string account_id = 2;
+}
+
+message CreateRoomRequest {
+    string room_name = 1;
+}
+
+message CreateRoomResponse {
+    int64 stage_id = 1;
+}
+
+message EchoRequest {
+    string content = 1;
+    int32 sequence = 2;
+}
+
+message EchoReply {
+    string content = 1;
+    int32 sequence = 2;
+}
+
+message GameActionRequest {
+    string action = 1;
+}
+
+message GameActionResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message PlayerJoinedNotice {
+    string player_id = 1;
+}
+```
+
+## 11. 테스트 실행
+
+```bash
+# 전체 E2E 테스트 실행
+dotnet test tests/PlayHouse.Tests.E2E --verbosity normal
+
+# 특정 테스트만 실행
+dotnet test tests/PlayHouse.Tests.E2E --filter "DisplayName~연결"
+
+# 상세 로그
+dotnet test tests/PlayHouse.Tests.E2E --verbosity detailed
+```
