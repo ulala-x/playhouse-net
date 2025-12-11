@@ -4,8 +4,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Net.Security;
-using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace PlayHouse.Runtime.ClientTransport.Tcp;
@@ -223,11 +221,8 @@ internal sealed class TcpTransportSession : ITransportSession
 
     /// <summary>
     /// Parses a message from the buffer.
+    /// TCP adds a 4-byte length prefix for stream framing.
     /// </summary>
-    /// <remarks>
-    /// Client Request Format:
-    /// [Length:4] + [MsgIdLen:1][MsgId:N][MsgSeq:2][StageId:8][Payload]
-    /// </remarks>
     private bool TryParseMessage(
         ref ReadOnlySequence<byte> buffer,
         out string msgId,
@@ -257,26 +252,16 @@ internal sealed class TcpTransportSession : ITransportSession
         // Check if we have the complete packet
         if (buffer.Length < 4 + packetLength) return false;
 
-        // Extract packet data
+        // Extract packet data and parse using shared codec
         var packetBuffer = buffer.Slice(4, packetLength);
         var packetData = packetBuffer.ToArray();
-        int offset = 0;
 
-        // MsgIdLen (1 byte)
-        var msgIdLen = packetData[offset++];
-        msgId = Encoding.UTF8.GetString(packetData, offset, msgIdLen);
-        offset += msgIdLen;
+        if (!MessageCodec.TryParseMessage(packetData, out msgId, out msgSeq, out stageId, out var payloadOffset))
+        {
+            throw new InvalidDataException("Invalid message format");
+        }
 
-        // MsgSeq (2 bytes)
-        msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(packetData.AsSpan(offset));
-        offset += 2;
-
-        // StageId (8 bytes)
-        stageId = BinaryPrimitives.ReadInt64LittleEndian(packetData.AsSpan(offset));
-        offset += 8;
-
-        // Payload
-        payload = packetData.AsMemory(offset);
+        payload = packetData.AsMemory(payloadOffset);
 
         // Advance buffer
         buffer = buffer.Slice(4 + packetLength);
@@ -285,57 +270,13 @@ internal sealed class TcpTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Creates a response packet to send to the client.
+    /// Creates a response packet (TCP: with 4-byte length prefix).
     /// </summary>
-    /// <remarks>
-    /// Server Response Format:
-    /// [Length:4] + [MsgIdLen:1][MsgId:N][MsgSeq:2][StageId:8][ErrorCode:2][OriginalSize:4][Payload]
-    /// </remarks>
     internal static byte[] CreateResponsePacket(
         string msgId,
         ushort msgSeq,
         long stageId,
         ushort errorCode,
         ReadOnlySpan<byte> payload)
-    {
-        var msgIdBytes = Encoding.UTF8.GetBytes(msgId);
-
-        // Calculate content size: MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) + Payload
-        var contentSize = 1 + msgIdBytes.Length + 2 + 8 + 2 + 4 + payload.Length;
-        var buffer = new byte[4 + contentSize];
-
-        int offset = 0;
-
-        // Length (4 bytes)
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset), contentSize);
-        offset += 4;
-
-        // MsgIdLen (1 byte)
-        buffer[offset++] = (byte)msgIdBytes.Length;
-
-        // MsgId
-        msgIdBytes.CopyTo(buffer.AsSpan(offset));
-        offset += msgIdBytes.Length;
-
-        // MsgSeq (2 bytes)
-        BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset), msgSeq);
-        offset += 2;
-
-        // StageId (8 bytes)
-        BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(offset), stageId);
-        offset += 8;
-
-        // ErrorCode (2 bytes)
-        BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset), errorCode);
-        offset += 2;
-
-        // OriginalSize (4 bytes) - 0 = no compression
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset), 0);
-        offset += 4;
-
-        // Payload
-        payload.CopyTo(buffer.AsSpan(offset));
-
-        return buffer;
-    }
+        => MessageCodec.CreateTcpResponsePacket(msgId, msgSeq, stageId, errorCode, payload);
 }

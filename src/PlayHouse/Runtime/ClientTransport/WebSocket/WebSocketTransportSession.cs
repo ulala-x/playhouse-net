@@ -1,9 +1,7 @@
 #nullable enable
 
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Net.WebSockets;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using WS = System.Net.WebSockets.WebSocket;
 
@@ -191,93 +189,28 @@ internal sealed class WebSocketTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Parses a message from the WebSocket frame data.
+    /// Parses a message from the WebSocket frame data using shared codec.
+    /// WebSocket doesn't need length prefix (frames are self-delimiting).
     /// </summary>
-    /// <remarks>
-    /// WebSocket Message Format (no length prefix needed):
-    /// [MsgIdLen:1][MsgId:N][MsgSeq:2][StageId:8][Payload]
-    /// </remarks>
     private void ParseAndDispatch(byte[] data)
     {
-        if (data.Length < 11) // Minimum: 1 + 0 + 2 + 8
-        {
-            throw new InvalidDataException($"Message too short: {data.Length}");
-        }
-
-        int offset = 0;
-
-        // MsgIdLen (1 byte)
-        var msgIdLen = data[offset++];
-        if (offset + msgIdLen + 10 > data.Length)
+        if (!MessageCodec.TryParseMessage(data, out var msgId, out var msgSeq, out var stageId, out var payloadOffset))
         {
             throw new InvalidDataException("Invalid message format");
         }
 
-        var msgId = Encoding.UTF8.GetString(data, offset, msgIdLen);
-        offset += msgIdLen;
-
-        // MsgSeq (2 bytes)
-        var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset));
-        offset += 2;
-
-        // StageId (8 bytes)
-        var stageId = BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(offset));
-        offset += 8;
-
-        // Payload
-        var payload = data.AsMemory(offset);
-
+        var payload = data.AsMemory(payloadOffset);
         _onMessage(this, msgId, msgSeq, stageId, payload);
     }
 
     /// <summary>
-    /// Creates a response packet to send to the client.
+    /// Creates a response packet (WebSocket: no length prefix).
     /// </summary>
-    /// <remarks>
-    /// WebSocket Response Format (no length prefix):
-    /// [MsgIdLen:1][MsgId:N][MsgSeq:2][StageId:8][ErrorCode:2][OriginalSize:4][Payload]
-    /// </remarks>
     internal static byte[] CreateResponsePacket(
         string msgId,
         ushort msgSeq,
         long stageId,
         ushort errorCode,
         ReadOnlySpan<byte> payload)
-    {
-        var msgIdBytes = Encoding.UTF8.GetBytes(msgId);
-
-        // Size: MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) + Payload
-        var size = 1 + msgIdBytes.Length + 2 + 8 + 2 + 4 + payload.Length;
-        var buffer = new byte[size];
-
-        int offset = 0;
-
-        // MsgIdLen (1 byte)
-        buffer[offset++] = (byte)msgIdBytes.Length;
-
-        // MsgId
-        msgIdBytes.CopyTo(buffer.AsSpan(offset));
-        offset += msgIdBytes.Length;
-
-        // MsgSeq (2 bytes)
-        BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset), msgSeq);
-        offset += 2;
-
-        // StageId (8 bytes)
-        BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(offset), stageId);
-        offset += 8;
-
-        // ErrorCode (2 bytes)
-        BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset), errorCode);
-        offset += 2;
-
-        // OriginalSize (4 bytes) - 0 = no compression
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset), 0);
-        offset += 4;
-
-        // Payload
-        payload.CopyTo(buffer.AsSpan(offset));
-
-        return buffer;
-    }
+        => MessageCodec.CreateWebSocketResponsePacket(msgId, msgSeq, stageId, errorCode, payload);
 }

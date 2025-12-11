@@ -67,7 +67,7 @@ PlayHouse-NET 프레임워크는 다음 기능을 제공합니다:
 | Memory | System.Buffers | ArrayPool, 메모리 효율화 | Infrastructure |
 | TLS/SSL | System.Net.Security | 암호화 통신 | Infrastructure |
 
-#### 직렬화 및 압축
+#### 직렬화 및 압축[11-connector-refactoring-plan.md](../specs2/11-connector-refactoring-plan.md)
 
 | 구분 | 기술 | 버전 | 용도 | 레이어 |
 |------|------|------|------|--------|
