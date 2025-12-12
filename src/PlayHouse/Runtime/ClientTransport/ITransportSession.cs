@@ -28,6 +28,12 @@ public interface ITransportSession : IAsyncDisposable
     bool IsAuthenticated { get; set; }
 
     /// <summary>
+    /// Gets or sets the stage ID associated with this session.
+    /// Set after successful authentication.
+    /// </summary>
+    long StageId { get; set; }
+
+    /// <summary>
     /// Gets whether the session is currently connected.
     /// </summary>
     bool IsConnected { get; }

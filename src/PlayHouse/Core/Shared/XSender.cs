@@ -27,7 +27,7 @@ public abstract class XSender : ISender
     /// <summary>
     /// Gets the current RouteHeader for reply routing.
     /// </summary>
-    protected RouteHeader? CurrentHeader { get; private set; }
+    public RouteHeader? CurrentHeader { get; private set; }
 
     /// <inheritdoc/>
     public ushort ServiceId { get; }

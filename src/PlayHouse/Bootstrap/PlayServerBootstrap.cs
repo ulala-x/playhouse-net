@@ -157,11 +157,15 @@ public sealed class PlayServerBootstrap
     {
         _options.Validate();
 
-        if (_stageTypes.Count == 0)
-            throw new InvalidOperationException("At least one Stage type must be registered. Use UseStage<T>().");
+        // DefaultStageType이 설정된 경우에만 Stage와 Actor 필수
+        if (!string.IsNullOrEmpty(_options.DefaultStageType))
+        {
+            if (_stageTypes.Count == 0)
+                throw new InvalidOperationException("At least one Stage type must be registered when using DefaultStageType. Use UseStage<T>().");
 
-        if (_actorType == null)
-            throw new InvalidOperationException("Actor type must be registered. Use UseActor<T>().");
+            if (_actorType == null)
+                throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseActor<T>().");
+        }
 
         var producer = new PlayProducer(_stageTypes, _actorType);
         return new PlayServer(_options, producer, _logger);

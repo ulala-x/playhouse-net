@@ -176,3 +176,55 @@ internal sealed class ClientRouteMessage : PlayMessage
         Payload = payload;
     }
 }
+
+/// <summary>
+/// Message notifying Stage that an authenticated Actor is ready to join.
+/// </summary>
+internal sealed class JoinActorMessage : PlayMessage
+{
+    /// <summary>
+    /// Gets the authenticated BaseActor ready to join the Stage.
+    /// </summary>
+    public Base.BaseActor Actor { get; }
+
+    /// <summary>
+    /// Gets the optional TaskCompletionSource to signal completion of the join operation.
+    /// Used during authentication to ensure actor is joined before client receives auth reply.
+    /// </summary>
+    public TaskCompletionSource<bool>? CompletionSource { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="JoinActorMessage"/> class.
+    /// </summary>
+    /// <param name="stageId">Target stage ID.</param>
+    /// <param name="actor">The authenticated actor.</param>
+    /// <param name="completionSource">Optional TaskCompletionSource to signal completion.</param>
+    public JoinActorMessage(long stageId, Base.BaseActor actor, TaskCompletionSource<bool>? completionSource = null)
+        : base(stageId)
+    {
+        Actor = actor;
+        CompletionSource = completionSource;
+    }
+}
+
+/// <summary>
+/// Message notifying Stage that a client disconnected.
+/// </summary>
+internal sealed class DisconnectMessage : PlayMessage
+{
+    /// <summary>
+    /// Gets the account ID of the disconnected client.
+    /// </summary>
+    public string AccountId { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DisconnectMessage"/> class.
+    /// </summary>
+    /// <param name="stageId">Target stage ID.</param>
+    /// <param name="accountId">Account ID of disconnected client.</param>
+    public DisconnectMessage(long stageId, string accountId)
+        : base(stageId)
+    {
+        AccountId = accountId;
+    }
+}

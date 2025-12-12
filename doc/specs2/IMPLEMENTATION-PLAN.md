@@ -1026,29 +1026,29 @@ testStage.ReceivedMsgIds.Should().Contain("EchoRequest");
 
 ##### IActor 콜백 (4개)
 
-| 콜백 | 테스트 유형 | 상태 | 트리거 | 검증 방법 |
+| 콜백 | 테스트 유형 | 상태   | 트리거 | 검증 방법 |
 |------|------------|------|--------|----------|
-| `OnCreate()` | **E2E** | ✅ 완료 | JoinStage 요청 | 응답: `JoinStageResult.ErrorCode == 0`<br>콜백: `TestActorImpl.Instances.Any(a => a.OnCreateCalled)` |
-| `OnAuthenticate(IPacket)` | **E2E** | ✅ 완료 | Connector.Authenticate 호출 | 응답: `IsAuthenticated() == true`<br>콜백: `TestActorImpl.OnAuthenticateCallCount > 0`, `TestActorImpl.AuthenticatedAccountIds.Contains(...)` |
-| `OnPostAuthenticate()` | **E2E** | ✅ 완료 | OnAuthenticate 성공 후 자동 | 응답: JoinStage 성공<br>콜백: `TestActorImpl.Instances.Any(a => a.OnPostAuthenticateCalled)` |
-| `OnDestroy()` | **통합** | - | LeaveStage, 인증 실패, Stage 종료 | 콜백: `TestActorImpl.Instances.Any(a => a.OnDestroyCalled)` |
+| `OnCreate()` | **E2E** | 미완료  | JoinStage 요청 | 응답: `JoinStageResult.ErrorCode == 0`<br>콜백: `TestActorImpl.Instances.Any(a => a.OnCreateCalled)` |
+| `OnAuthenticate(IPacket)` | **E2E** | 미완료 | Connector.Authenticate 호출 | 응답: `IsAuthenticated() == true`<br>콜백: `TestActorImpl.OnAuthenticateCallCount > 0`, `TestActorImpl.AuthenticatedAccountIds.Contains(...)` |
+| `OnPostAuthenticate()` | **E2E** | 미완료 | OnAuthenticate 성공 후 자동 | 응답: JoinStage 성공<br>콜백: `TestActorImpl.Instances.Any(a => a.OnPostAuthenticateCalled)` |
+| `OnDestroy()` | **통합** | -    | LeaveStage, 인증 실패, Stage 종료 | 콜백: `TestActorImpl.Instances.Any(a => a.OnDestroyCalled)` |
 
 ##### IStage 콜백 (8개)
 
-| 콜백 | 테스트 유형 | 상태 | 트리거 | 검증 방법 |
-|------|------------|------|--------|----------|
-| `OnCreate(IPacket)` | **E2E** | ✅ 완료 | CreateStage API 호출 | 응답: `CreateStageResult.ErrorCode == 0`<br>콜백: `TestStageImpl.Instances.Any(s => s.OnCreateCalled)` |
-| `OnPostCreate()` | **E2E** | ✅ 완료 | OnCreate 성공 후 자동 | 응답: CreateStage 성공<br>콜백: (OnCreate와 함께 검증) |
-| `OnDestroy()` | **통합** | - | CloseStage 호출 | 콜백: `TestStageImpl.Instances.Any(s => s.OnDestroyCalled)` |
-| `OnJoinStage(IActor)` | **E2E** | ✅ 완료 | JoinStage API 호출 | 응답: `JoinStageResult.ErrorCode == 0`<br>콜백: `TestStageImpl.Instances.Any(s => s.JoinedActors.Count > 0)` |
-| `OnPostJoinStage(IActor)` | **E2E** | ✅ 완료 | OnJoinStage 성공 후 자동 | 응답: JoinStage 성공<br>콜백: (OnJoinStage와 함께 검증) |
-| `OnConnectionChanged(IActor, bool)` | **E2E** | ✅ 완료 | 클라이언트 연결/해제 | 응답: 연결 상태 변경 후 메시지 처리<br>콜백: `TestStageImpl.Instances.Any(s => s.ConnectionChanges.Count > 0)` |
-| `OnDispatch(IActor, IPacket)` | **E2E** | ✅ 완료 | 클라이언트 메시지 수신 | 응답: Reply 패킷 내용<br>콜백: `TestStageImpl.OnDispatchCallCount > 0`, `TestStageImpl.AllReceivedMsgIds.Contains(...)` |
-| `OnDispatch(IPacket)` | **통합** | - | 서버간 메시지 수신 | 콜백: `TestStageImpl.Instances.Any(s => s.ReceivedMsgIds.Contains(...))` |
+| 콜백 | 테스트 유형 | 상태 | 트리거 | 검증 방법                                                                                                           |
+|------|------------|------|--------|-----------------------------------------------------------------------------------------------------------------|
+| `OnCreate(IPacket)` | **E2E** | 미완료 | CreateStage API 호출 | 응답: `CreateStageResult.ErrorCode == 0`<br>콜백: `TestStageImpl.Instances.Any(s => s.OnCreateCalled)`              |
+| `OnPostCreate()` | **E2E** | 미완료 | OnCreate 성공 후 자동 | 응답: CreateStage 성공<br>콜백: (OnCreate와 함께 검증)                                                                     |
+| `OnDestroy()` | **E2E** | 미완료 | CloseStage 호출 | 콜백:  stage sender 에서 closeState() 호출된후에 OnDstory 콜백 호출                                                          |                                                                                                         |
+| `OnJoinStage(IActor)` | **E2E** | 미완료 | JoinStage API 호출 | 응답: `JoinStageResult.ErrorCode == 0`<br>콜백: `TestStageImpl.Instances.Any(s => s.JoinedActors.Count > 0)`        |
+| `OnPostJoinStage(IActor)` | **E2E** | 미완료 | OnJoinStage 성공 후 자동 | 응답: JoinStage 성공<br>콜백: (OnJoinStage와 함께 검증)                                                                    |
+| `OnConnectionChanged(IActor, bool)` | **E2E** | 미완료 | 클라이언트 연결/해제 | 응답: 연결 상태 변경 후 메시지 처리<br>콜백: `TestStageImpl.Instances.Any(s => s.ConnectionChanges.Count > 0)`                  |
+| `OnDispatch(IActor, IPacket)` | **E2E** | 미완료 | 클라이언트 메시지 수신 | 응답: Reply 패킷 내용<br>콜백: `TestStageImpl.OnDispatchCallCount > 0`, `TestStageImpl.AllReceivedMsgIds.Contains(...)` |
+| `OnDispatch(IPacket)` | **통합** | - | 서버간 메시지 수신 | 콜백: `TestStageImpl.Instances.Any(s => s.ReceivedMsgIds.Contains(...))`                                          |
 
 ##### IStageSender 콜백 (타이머/AsyncBlock)
 
-> **기능 구현**: ✅ 완료 (`XStageSender.cs`)
+> **기능 구현**: 미완료 (`XStageSender.cs`)
 > **E2E 검증 가능**: Timer 콜백에서 SendToClient → Client OnReceive / AsyncBlock 결과를 Reply로 전송
 
 | 콜백 | 테스트 유형 | 트리거 | 검증 방법 |

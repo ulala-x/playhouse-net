@@ -130,6 +130,41 @@ internal sealed class BaseStage
         TryStartProcessing();
     }
 
+    /// <summary>
+    /// Posts an authenticated Actor join to the Stage event loop.
+    /// This completes the authentication flow by calling Stage callbacks.
+    /// </summary>
+    /// <param name="actor">The authenticated BaseActor.</param>
+    internal void PostJoinActor(BaseActor actor)
+    {
+        _messageQueue.Enqueue(new StageMessage.JoinActorMessage(actor, null));
+        TryStartProcessing();
+    }
+
+    /// <summary>
+    /// Posts an authenticated Actor join to the Stage event loop and waits for completion.
+    /// This is used during authentication to ensure the actor is fully joined before the client receives auth reply.
+    /// </summary>
+    /// <param name="actor">The authenticated BaseActor.</param>
+    /// <returns>Task that completes when the actor has been joined to the stage.</returns>
+    internal Task PostJoinActorAsync(BaseActor actor)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _messageQueue.Enqueue(new StageMessage.JoinActorMessage(actor, tcs));
+        TryStartProcessing();
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// Posts a client disconnect notification to the Stage event loop.
+    /// </summary>
+    /// <param name="accountId">Account ID of disconnected client.</param>
+    internal void PostDisconnect(string accountId)
+    {
+        _messageQueue.Enqueue(new StageMessage.DisconnectMessage(accountId));
+        TryStartProcessing();
+    }
+
     private void TryStartProcessing()
     {
         // CAS: Only one thread can enter the processing loop
@@ -188,6 +223,15 @@ internal sealed class BaseStage
                     clientRouteMessage.MsgSeq, clientRouteMessage.Sid, clientRouteMessage.Payload);
                 break;
 
+            case StageMessage.JoinActorMessage joinActorMessage:
+                await ProcessJoinActorAsync(joinActorMessage.Actor);
+                joinActorMessage.CompletionSource?.TrySetResult(true);
+                break;
+
+            case StageMessage.DisconnectMessage disconnectMessage:
+                await ProcessDisconnectAsync(disconnectMessage.AccountId);
+                break;
+
             case StageMessage.DestroyMessage:
                 await HandleDestroyAsync();
                 break;
@@ -232,7 +276,6 @@ internal sealed class BaseStage
     {
         return msgId.StartsWith("PlayHouse.Runtime.Proto.") ||
                msgId == nameof(CreateStageReq) ||
-               msgId == nameof(JoinStageReq) ||
                msgId == nameof(GetOrCreateStageReq) ||
                msgId == nameof(DestroyStageReq) ||
                msgId == nameof(DisconnectNoticeMsg) ||
@@ -294,12 +337,129 @@ internal sealed class BaseStage
     {
         if (_actors.TryGetValue(accountId, out var baseActor))
         {
-            var packet = CPacket.Of(msgId, payload.ToArray());
-            await Stage.OnDispatch(baseActor.Actor, packet);
+            // Create RouteHeader for client message reply routing
+            var header = new Runtime.Proto.RouteHeader
+            {
+                MsgSeq = msgSeq,
+                ServiceId = 1, // TODO: Get from config
+                MsgId = msgId,
+                From = "client", // From client transport
+                StageId = StageId,
+                AccountId = 0, // Will be set by ActorSender
+                Sid = sid // Session ID for reply routing
+            };
+
+            // Set current header on StageSender for reply routing
+            StageSender.SetCurrentHeader(header);
+
+            try
+            {
+                var packet = CPacket.Of(msgId, payload.ToArray());
+                await Stage.OnDispatch(baseActor.Actor, packet);
+            }
+            finally
+            {
+                // Clear current header after dispatch
+                StageSender.ClearCurrentHeader();
+            }
         }
         else
         {
             _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
+        }
+    }
+
+    /// <summary>
+    /// Processes actor join by checking for existing actor (reconnection) or new join.
+    /// </summary>
+    private async Task ProcessJoinActorAsync(BaseActor actor)
+    {
+        var accountId = actor.AccountId;
+
+        // Check if actor already exists (reconnection)
+        if (_actors.TryGetValue(accountId, out var existingActor))
+        {
+            _logger?.LogInformation("Actor {AccountId} reconnecting to stage {StageId}", accountId, StageId);
+
+            // Destroy the new actor instance
+            try
+            {
+                await actor.Actor.OnDestroy();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error destroying new actor instance during reconnection for {AccountId}", accountId);
+            }
+
+            // Update existing actor's session information
+            existingActor.ActorSender.Update(
+                actor.ActorSender.SessionNid,
+                actor.ActorSender.Sid,
+                actor.ActorSender.ApiNid);
+
+            // Notify reconnection
+            try
+            {
+                await Stage.OnConnectionChanged(existingActor.Actor, true);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error in OnConnectionChanged(true) for actor {AccountId}", accountId);
+            }
+
+            return;
+        }
+
+        // New actor join (existing logic)
+        var joinResult = await Stage.OnJoinStage(actor.Actor);
+        if (!joinResult)
+        {
+            _logger?.LogWarning("Stage {StageId} rejected actor {AccountId}", StageId, accountId);
+            try
+            {
+                await actor.Actor.OnDestroy();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error destroying rejected actor {AccountId}", accountId);
+            }
+            return;
+        }
+
+        // Add actor to stage
+        AddActor(actor);
+
+        // Call Stage.OnPostJoinStage
+        try
+        {
+            await Stage.OnPostJoinStage(actor.Actor);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error in OnPostJoinStage for actor {AccountId}", accountId);
+        }
+    }
+
+    /// <summary>
+    /// Processes client disconnect by calling OnConnectionChanged(false).
+    /// Does not remove or destroy the Actor.
+    /// </summary>
+    private async Task ProcessDisconnectAsync(string accountId)
+    {
+        if (_actors.TryGetValue(accountId, out var baseActor))
+        {
+            try
+            {
+                await Stage.OnConnectionChanged(baseActor.Actor, false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error in OnConnectionChanged(false) for actor {AccountId}", accountId);
+            }
+        }
+        else
+        {
+            _logger?.LogWarning("Actor {AccountId} not found for disconnect notification", accountId);
         }
     }
 
@@ -584,6 +744,34 @@ internal abstract class StageMessage : IDisposable
             MsgSeq = msgSeq;
             Sid = sid;
             Payload = payload;
+        }
+    }
+
+    /// <summary>
+    /// Message for authenticated actor joining stage.
+    /// </summary>
+    public sealed class JoinActorMessage : StageMessage
+    {
+        public BaseActor Actor { get; }
+        public TaskCompletionSource<bool>? CompletionSource { get; }
+
+        public JoinActorMessage(BaseActor actor, TaskCompletionSource<bool>? completionSource = null)
+        {
+            Actor = actor;
+            CompletionSource = completionSource;
+        }
+    }
+
+    /// <summary>
+    /// Message for client disconnection notification.
+    /// </summary>
+    public sealed class DisconnectMessage : StageMessage
+    {
+        public string AccountId { get; }
+
+        public DisconnectMessage(string accountId)
+        {
+            AccountId = accountId;
         }
     }
 }

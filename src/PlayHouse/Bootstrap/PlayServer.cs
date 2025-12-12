@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play;
+using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh;
 using PlayHouse.Runtime.ServerMesh.Communicator;
@@ -21,7 +22,7 @@ namespace PlayHouse.Bootstrap;
 /// Stage와 Actor를 관리하고 클라이언트와 실시간 통신을 담당합니다.
 /// TCP, WebSocket, SSL/TLS를 지원하며 동시에 여러 Transport를 사용할 수 있습니다.
 /// </summary>
-public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
+public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClientReplyHandler
 {
     private readonly PlayServerOption _options;
     private readonly PlayProducer _producer;
@@ -119,7 +120,9 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
             new CommunicatorAdapter(_communicator),
             _requestCache,
             _options.ServiceId,
-            _options.Nid);
+            _options.Nid,
+            this, // client reply handler
+            _logger);
 
         // Transport 서버 빌드 및 시작
         _transportServer = BuildTransportServer();
@@ -302,83 +305,177 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
         long stageId,
         ReadOnlyMemory<byte> payload)
     {
-        // JoinStageReq 생성
-        var joinStageReq = new Runtime.Proto.JoinStageReq
+        try
         {
-            SessionNid = _options.Nid,
-            Sid = session.SessionId,
-            PayloadId = _options.AuthenticateMessageId,
-            Payload = Google.Protobuf.ByteString.CopyFrom(payload.Span)
-        };
+            // DefaultStageType이 설정되지 않은 경우: 인증만 처리
+            if (string.IsNullOrEmpty(_options.DefaultStageType))
+            {
+                // 간단한 인증 플로우: Stage 없이 인증만 처리
+                session.IsAuthenticated = true;
+                session.AccountId = GenerateAccountId(); // 임시 AccountId 생성
+                await SendAuthReplyAsync(session, msgSeq, 0, BaseErrorCode.Success, session.AccountId);
+                return;
+            }
 
-        // RuntimeRoutePacket 생성
-        var header = new Runtime.Proto.RouteHeader
-        {
-            MsgSeq = msgSeq,
-            ServiceId = _options.ServiceId,
-            MsgId = nameof(Runtime.Proto.JoinStageReq),
-            ErrorCode = 0,
-            From = _options.Nid,
-            StageId = stageId,
-            AccountId = 0,
-            Sid = session.SessionId
-        };
+            // 기존 로직: DefaultStageType이 있는 경우 Stage 생성 및 Actor 참가
+            // 1. Stage 조회/생성 (DefaultStageType 사용)
+            var targetStageId = stageId != 0 ? stageId : GenerateStageId();
+            var baseStage = _dispatcher?.GetOrCreateStage(targetStageId, _options.DefaultStageType);
 
-        var routePacket = RuntimeRoutePacket.Of(header, joinStageReq.ToByteArray());
+            if (baseStage == null)
+            {
+                _logger?.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.StageCreationFailed);
+                return;
+            }
 
-        // 응답을 기다리기 위한 TaskCompletionSource 설정
-        if (_requestCache != null && _dispatcher != null)
-        {
-            var tcs = new TaskCompletionSource<IPacket>();
-            _requestCache.Register(msgSeq, tcs, TimeSpan.FromSeconds(30));
+            // 2. Stage 초기화 (OnCreate 호출) - 처음 생성된 경우에만
+            if (!baseStage.IsCreated)
+            {
+                var createPacket = CPacket.Empty("CreateStage");
+                var (createSuccess, _) = await baseStage.CreateStage(_options.DefaultStageType, createPacket);
 
-            // Dispatcher에 전달
-            _dispatcher.OnPost(new RouteMessage(routePacket));
+                if (!createSuccess)
+                {
+                    _logger?.LogError("Failed to initialize stage {StageId}", targetStageId);
+                    await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.StageCreationFailed);
+                    return;
+                }
+            }
+
+            // 3. 별도 Task에서 Actor 콜백 호출
+            var (success, errorCode, actor) = await Task.Run(async () =>
+            {
+                try
+                {
+                    // XActorSender 생성
+                    var actorSender = new XActorSender(_options.Nid, session.SessionId, _options.Nid, baseStage);
+
+                    // IActor 생성
+                    BaseActor actor;
+                    try
+                    {
+                        IActor iActor = _producer.GetActor(_options.DefaultStageType, actorSender);
+                        actor = new BaseActor(iActor, actorSender);
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                        _logger?.LogError("Actor factory not found for stage type: {StageType}", _options.DefaultStageType);
+                        return (false, BaseErrorCode.InvalidStageType, null);
+                    }
+
+                    // 4. Actor 콜백 순차 호출
+                    await actor.Actor.OnCreate();
+
+                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, payload.ToArray());
+                    var authResult = await actor.Actor.OnAuthenticate(authPacket);
+
+                    if (!authResult)
+                    {
+                        _logger?.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
+                        await actor.Actor.OnDestroy();
+                        return (false, BaseErrorCode.AuthenticationFailed, null);
+                    }
+
+                    // 5. AccountId 검증
+                    if (string.IsNullOrEmpty(actorSender.AccountId))
+                    {
+                        _logger?.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
+                        await actor.Actor.OnDestroy();
+                        return (false, BaseErrorCode.InvalidAccountId, null);
+                    }
+
+                    // 6. 세션에 인증 정보 설정
+                    session.AccountId = actorSender.AccountId;
+                    session.IsAuthenticated = true;
+                    session.StageId = targetStageId;
+                    await actor.Actor.OnPostAuthenticate();
+
+                    return (true, BaseErrorCode.Success, actor);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error during actor authentication callbacks");
+                    return (false, BaseErrorCode.InternalError, null);
+                }
+            });
+
+            if (!success || actor == null)
+            {
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, errorCode);
+                return;
+            }
+
+            // 7. Stage Queue에 JoinActorMessage 전달하고 완료 대기
+            // 이렇게 하면 클라이언트가 인증 응답을 받기 전에 Actor가 Stage에 완전히 조인됨
+            var joinCompletionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _dispatcher?.OnPost(new JoinActorMessage(targetStageId, actor, joinCompletionSource));
 
             try
             {
-                // 응답 대기
-                var reply = await tcs.Task;
-
-                // JoinStageRes 파싱
-                var joinStageRes = Runtime.Proto.JoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-                if (joinStageRes.Result)
-                {
-                    // 인증 성공: AccountId 설정
-                    session.AccountId = joinStageRes.AccountId;
-                    session.IsAuthenticated = true;
-
-                    _logger?.LogInformation("Session {SessionId} authenticated: AccountId={AccountId}",
-                        session.SessionId, session.AccountId);
-
-                    // 클라이언트에 성공 응답 전송
-                    var response = TcpTransportSession.CreateResponsePacket(
-                        _options.AuthenticateMessageId.Replace("Request", "Reply"),
-                        msgSeq, stageId, 0, joinStageRes.Payload.Span);
-                    await session.SendAsync(response);
-                }
-                else
-                {
-                    // 인증 실패
-                    _logger?.LogWarning("Authentication failed for session {SessionId}", session.SessionId);
-                    var response = TcpTransportSession.CreateResponsePacket(
-                        _options.AuthenticateMessageId.Replace("Request", "Reply"),
-                        msgSeq, stageId, BaseErrorCode.AuthenticationFailed, ReadOnlySpan<byte>.Empty);
-                    await session.SendAsync(response);
-                    await session.DisconnectAsync();
-                }
+                // 최대 5초 대기 (타임아웃)
+                using var cts = new CancellationTokenSource(5000);
+                await joinCompletionSource.Task.WaitAsync(cts.Token);
             }
             catch (TimeoutException)
             {
-                _logger?.LogWarning("Authentication timeout for session {SessionId}", session.SessionId);
-                var response = TcpTransportSession.CreateResponsePacket(
-                    _options.AuthenticateMessageId.Replace("Request", "Reply"),
-                    msgSeq, stageId, BaseErrorCode.RequestTimeout, ReadOnlySpan<byte>.Empty);
-                await session.SendAsync(response);
-                await session.DisconnectAsync();
+                _logger?.LogError("Join actor timeout for session {SessionId}, accountId {AccountId}",
+                    session.SessionId, actor.ActorSender.AccountId);
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.InternalError);
+                return;
             }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to join actor for session {SessionId}", session.SessionId);
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.InternalError);
+                return;
+            }
+
+            // 8. Actor가 완전히 조인된 후 클라이언트에 응답
+            await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.Success, actor.ActorSender.AccountId);
         }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Authentication failed for session {SessionId}", session.SessionId);
+            await SendAuthReplyAsync(session, msgSeq, stageId, BaseErrorCode.InternalError);
+        }
+    }
+
+    private async Task SendAuthReplyAsync(
+        ITransportSession session,
+        ushort msgSeq,
+        long stageId,
+        ushort errorCode,
+        string? accountId = null)
+    {
+        var reply = new Proto.AuthenticateReply
+        {
+            Authenticated = errorCode == BaseErrorCode.Success,
+            StageId = (int)stageId,
+            AccountId = long.TryParse(accountId, out var id) ? id : 0,
+            ErrorMessage = errorCode == BaseErrorCode.Success ? "" : $"Error code: {errorCode}"
+        };
+
+        var response = TcpTransportSession.CreateResponsePacket(
+            _options.AuthenticateMessageId.Replace("Request", "Reply"),
+            msgSeq,
+            stageId,
+            errorCode,
+            reply.ToByteArray());
+
+        await session.SendAsync(response);
+    }
+
+    private long GenerateStageId()
+    {
+        // Simple stage ID generation (timestamp-based)
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    }
+
+    private string GenerateAccountId()
+    {
+        // Simple account ID generation (timestamp-based)
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
     }
 
     /// <summary>
@@ -393,6 +490,12 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
         else
         {
             _logger?.LogDebug("Session {SessionId} disconnected", session.SessionId);
+        }
+
+        // 인증된 세션인 경우 DisconnectMessage 전달
+        if (session.IsAuthenticated && !string.IsNullOrEmpty(session.AccountId) && session.StageId != 0)
+        {
+            _dispatcher?.OnPost(new DisconnectMessage(session.StageId, session.AccountId));
         }
     }
 
@@ -485,6 +588,22 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
         }
 
         return Enumerable.Empty<WebSocketTransportServer>();
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask SendClientReplyAsync(long sessionId, string msgId, ushort msgSeq, long stageId, ushort errorCode, ReadOnlyMemory<byte> payload)
+    {
+        var session = _transportServer?.GetSession(sessionId);
+        if (session?.IsConnected == true)
+        {
+            var response = TcpTransportSession.CreateResponsePacket(
+                msgId, msgSeq, stageId, errorCode, payload.Span);
+            await session.SendAsync(response);
+        }
+        else
+        {
+            _logger?.LogWarning("Cannot send client reply: session {SessionId} not found or disconnected", sessionId);
+        }
     }
 
     /// <inheritdoc/>

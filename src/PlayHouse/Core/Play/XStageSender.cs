@@ -27,6 +27,7 @@ internal sealed class XStageSender : XSender, IStageSender
 {
     private readonly IPlayDispatcher _dispatcher;
     private readonly IClientCommunicator _communicator;
+    private readonly IClientReplyHandler? _clientReplyHandler;
     private readonly HashSet<long> _timerIds = new();
     private long _timerIdCounter;
 
@@ -51,12 +52,14 @@ internal sealed class XStageSender : XSender, IStageSender
         string nid,
         long stageId,
         IPlayDispatcher dispatcher,
+        IClientReplyHandler? clientReplyHandler = null,
         int requestTimeoutMs = 30000)
         : base(communicator, requestCache, serviceId, nid, requestTimeoutMs)
     {
         StageId = stageId;
         _dispatcher = dispatcher;
         _communicator = communicator;
+        _clientReplyHandler = clientReplyHandler;
     }
 
     /// <summary>
@@ -216,6 +219,56 @@ internal sealed class XStageSender : XSender, IStageSender
         var routePacket = RuntimeRoutePacket.Of(header, packet.Payload.Data.ToArray());
         _communicator.Send(sessionNid, routePacket);
         routePacket.Dispose();
+    }
+
+    #endregion
+
+    #region Client Reply Override
+
+    /// <summary>
+    /// Overrides Reply to detect client requests and route through transport.
+    /// </summary>
+    public new void Reply(ushort errorCode)
+    {
+        if (CurrentHeader?.Sid > 0 && _clientReplyHandler != null)
+        {
+            // Client request - route through transport
+            _ = _clientReplyHandler.SendClientReplyAsync(
+                CurrentHeader.Sid,
+                CurrentHeader.MsgId,
+                (ushort)CurrentHeader.MsgSeq,
+                StageId,
+                errorCode,
+                ReadOnlyMemory<byte>.Empty);
+        }
+        else
+        {
+            // Server-to-server request - use base implementation
+            base.Reply(errorCode);
+        }
+    }
+
+    /// <summary>
+    /// Overrides Reply to detect client requests and route through transport.
+    /// </summary>
+    public new void Reply(IPacket reply)
+    {
+        if (CurrentHeader?.Sid > 0 && _clientReplyHandler != null)
+        {
+            // Client request - route through transport
+            _ = _clientReplyHandler.SendClientReplyAsync(
+                CurrentHeader.Sid,
+                reply.MsgId,
+                (ushort)CurrentHeader.MsgSeq,
+                StageId,
+                0,
+                reply.Payload.Data);
+        }
+        else
+        {
+            // Server-to-server request - use base implementation
+            base.Reply(reply);
+        }
     }
 
     #endregion

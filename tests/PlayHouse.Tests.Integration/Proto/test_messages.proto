@@ -6,7 +6,7 @@ option csharp_namespace = "PlayHouse.Tests.Integration.Proto";
 
 // ============================================
 // Test-specific Messages
-// Note: Framework messages (AuthenticateRequest/Reply, JoinStageRequest/Reply, etc.)
+// Note: Framework messages (AuthenticateRequest/Reply, etc.)
 // are defined in PlayHouse.Proto namespace (src/PlayHouse/Proto/playhouse_internal.proto)
 // ============================================
 
