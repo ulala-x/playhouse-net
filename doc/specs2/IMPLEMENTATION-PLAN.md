@@ -135,19 +135,23 @@ git worktree remove ../playhouse-net-connector
 
 - **현재 Phase**: 7 (통합 및 정리)
 - **진행 방식**: 단일 에이전트 순차 진행
-- **최근 완료**: Phase 1-6 전체 구현 완료 (2025-12-11)
+- **최근 검증**: Phase 1-6 실제 구현 상태 검증 완료 (2025-12-12)
 - **완료된 Phase**:
-  - Phase 1: NetMQ 통신 계층 ✅
-  - Phase 2: 핵심 인터페이스 ✅
-  - Phase 3: Play 서버 ✅ (BaseStageCmdHandler 구현 완료)
-  - Phase 4: API 서버 ✅
-  - Phase 5: Connector ✅
-  - Phase 6: E2E 테스트 인프라 ✅
+  - Phase 1: NetMQ 통신 계층 ✅ (100% - 실제 구현 검증됨)
+  - Phase 2: 핵심 인터페이스 ✅ (100% - 실제 구현 검증됨)
+  - Phase 3: Play 서버 ✅ (95% - Transport 레이어로 아키텍처 변경됨)
+  - Phase 4: API 서버 ✅ (100% - 실제 구현 검증됨)
+  - Phase 5: Connector ✅ (100% - HeartBeat/IdleTimeout 포함)
+  - Phase 6: E2E 테스트 ⚠️ (기본 시나리오 20개 완료, 서버 기능 E2E 미구현)
 - **남은 작업**:
-  - E2E 테스트 확장: ISender, IStageSender, IActorSender, IApiSender 메서드별 테스트 추가
-  - Phase 7: 통합 및 정리, 레거시 코드 제거, 성능 벤치마크
+  - E2E 테스트 확장 (우선순위):
+    1. IStageSender: Timer, AsyncBlock, CloseStage 테스트
+    2. IActorSender: LeaveStage 테스트
+    3. ISender: SendToApi, RequestToApi, SendToStage, RequestToStage 테스트
+    4. IApiSender: CreateStage, GetOrCreateStage E2E 테스트
+  - Phase 7: 레거시 코드 제거, 성능 벤치마크, 문서화
 
-> **Note**: 모든 핵심 기능 구현 완료됨. E2E 테스트만 추가 필요.
+> **Note**: 모든 핵심 기능 구현 완료됨 (더미 코드 없음). E2E 테스트 확장만 필요.
 
 ---
 
@@ -831,96 +835,110 @@ IApiSender, IApiController
 ## 7. 체크리스트 요약
 
 ### Phase 1: NetMQ 통신 계층 ✅
-- [x] 1.1 IPlaySocket 인터페이스
-- [x] 1.2 NetMQPlaySocket 구현
-- [x] 1.3 SocketConfig 정의 (PlaySocketConfig)
-- [x] 1.4 Payload 클래스 (RuntimePayload)
-- [x] 1.5 RoutePacket 구현 (RuntimeRoutePacket)
-- [x] 1.6 XServerCommunicator
-- [x] 1.7 XClientCommunicator
-- [x] 1.8 MessageLoop (PlayCommunicator)
-- [x] 1.9 ServerConfig 정의
-- [x] 1.10 Protobuf 메시지 정의 (route_header.proto)
-- [x] 1.11 XServerInfoCenter 구현 (Runtime/Discovery/XServerInfoCenter.cs)
-- [x] 1.12 ServerAddressResolver 구현 (Runtime/Discovery/ServerAddressResolver.cs)
-- [x] 1.13 CommunicatorOption/Builder 구현 (Runtime/Communicator/CommunicatorOption.cs)
-- [ ] 1.14 PooledByteBuffer 구현 (선택적 - ArrayPool 사용으로 대체)
-- [x] 1.15 AtomicBoolean 구현 (AtomicShort 대체)
-- [x] 1.16 Communicator 구현 (PlayCommunicator가 담당)
+> **프로젝트 경로**: `src/PlayHouse/Runtime/ServerMesh/`
+
+- [x] 1.1 IPlaySocket 인터페이스 (Runtime/ServerMesh/PlaySocket/IPlaySocket.cs)
+- [x] 1.2 NetMQPlaySocket 구현 (Runtime/ServerMesh/PlaySocket/NetMQPlaySocket.cs)
+- [x] 1.3 PlaySocketConfig 정의 (IPlaySocket.cs에 포함)
+- [x] 1.4 RuntimePayload 클래스 (Runtime/ServerMesh/Message/RuntimePayload.cs)
+- [x] 1.5 RuntimeRoutePacket 구현 (Runtime/ServerMesh/Message/RuntimeRoutePacket.cs)
+- [x] 1.6 XServerCommunicator (Runtime/ServerMesh/Communicator/XServerCommunicator.cs)
+- [x] 1.7 XClientCommunicator (Runtime/ServerMesh/Communicator/XClientCommunicator.cs)
+- [x] 1.8 PlayCommunicator (Runtime/ServerMesh/Communicator/PlayCommunicator.cs)
+- [x] 1.9 ServerConfig 정의 (Runtime/ServerMesh/ServerConfig.cs)
+- [x] 1.10 Protobuf 메시지 정의 (Proto/route_header.proto)
+- [x] 1.11 XServerInfoCenter (Runtime/ServerMesh/Discovery/XServerInfoCenter.cs)
+- [x] 1.12 ServerAddressResolver (Runtime/ServerMesh/Discovery/ServerAddressResolver.cs)
+- [x] 1.13 CommunicatorOption/Builder (Runtime/ServerMesh/Communicator/CommunicatorOption.cs)
+- [x] 1.14 ICommunicator 인터페이스 (Runtime/ServerMesh/Communicator/ICommunicator.cs)
+- [x] 1.15 IServerInfo/XServerInfo (Runtime/ServerMesh/Discovery/IServerInfo.cs)
+- [x] 1.16 Communicator 구현 (PlayCommunicator가 ICommunicator 구현)
 - [x] 1.17 단위 테스트
 
 ### Phase 2: 핵심 인터페이스 ✅
-- [x] 2.1 IPayload 인터페이스
-- [x] 2.2 IPacket 인터페이스
-- [x] 2.3 CPacket 구현
-- [x] 2.4 Header 클래스 구현 (PacketHeader.cs)
-- [x] 2.5 RouteHeader 확장 (Proto/RouteHeader)
-- [x] 2.6 ISender 인터페이스
-- [x] 2.7 ReplyCallback 델리게이트 (ReplyObject에 포함)
-- [x] 2.8 RequestCache
-- [x] 2.9 ReplyObject (콜백 + TCS 동시 지원)
-- [x] 2.10 XSender
-- [x] 2.11 BaseErrorCode 정의
+> **프로젝트 경로**: `src/PlayHouse/Abstractions/`, `src/PlayHouse/Core/`
+
+- [x] 2.1 IPayload 인터페이스 (Abstractions/IPayload.cs)
+- [x] 2.2 IPacket 인터페이스 (Abstractions/IPacket.cs)
+- [x] 2.3 CPacket 구현 (Core/Shared/CPacket.cs)
+- [x] 2.4 PacketHeader 구현 (Abstractions/PacketHeader.cs - record struct)
+- [x] 2.5 RouteHeader Protobuf (Proto/route_header.proto)
+- [x] 2.6 ISender 인터페이스 (Abstractions/ISender.cs)
+- [x] 2.7 ReplyCallback 델리게이트 (ISender.cs에 정의)
+- [x] 2.8 RequestCache (Core/Messaging/RequestCache.cs - 타임아웃 처리 완전 구현)
+- [x] 2.9 ReplyObject (Core/Shared/ReplyObject.cs - 콜백 + TCS 동시 지원)
+- [x] 2.10 XSender (Core/Shared/XSender.cs - ISender 완전 구현)
+- [x] 2.11 BaseErrorCode 정의 (Abstractions/BaseErrorCode.cs)
 - [x] 2.12 단위 테스트
 
 ### Phase 3: Play 서버 ✅
-- [x] 3.1 IActor 확장
-- [x] 3.2 IActorSender
-- [x] 3.3 XActorSender
-- [x] 3.4 IStage 확장
-- [x] 3.5 IStageSender
-- [x] 3.6 XStageSender
-- [x] 3.7 BaseStage (Lock-free 이벤트 루프)
-- [x] 3.8 BaseActor
-- [x] 3.9 PlayDispatcher
-- [x] **3.10 BaseStageCmdHandler** (Core/Play/Base/BaseStageCmdHandler.cs) - ✅ **구현 완료 (2025-12-11)**
-  - [x] 3.10a JoinStageCmd (10단계 인증 플로우: XActorSender → IActor.OnCreate → OnAuthenticate → OnPostAuthenticate → IStage.OnJoinStage → OnPostJoinStage)
+> **프로젝트 경로**: `src/PlayHouse/Core/Play/`, `src/PlayHouse/Abstractions/Play/`
+
+- [x] 3.1 IActor 확장 (Abstractions/Play/IActor.cs)
+- [x] 3.2 IActorSender (Abstractions/Play/IActorSender.cs)
+- [x] 3.3 XActorSender (Core/Play/XActorSender.cs)
+- [x] 3.4 IStage 확장 (Abstractions/Play/IStage.cs)
+- [x] 3.5 IStageSender (Abstractions/Play/IStageSender.cs)
+- [x] 3.6 XStageSender (Core/Play/XStageSender.cs - TimerManager 통합)
+- [x] 3.7 BaseStage (Core/Play/Base/BaseStage.cs - Lock-free CAS 이벤트 루프)
+- [x] 3.8 BaseActor (Core/Play/Base/BaseActor.cs)
+- [x] 3.9 PlayDispatcher (Core/Play/PlayDispatcher.cs)
+- [x] **3.10 BaseStageCmdHandler** (Core/Play/Base/BaseStageCmdHandler.cs)
+  - [x] 3.10a JoinStageCmd (10단계 인증 플로우 완전 구현)
   - [x] 3.10b CreateJoinStageCmd (Stage 생성 + 입장 동시 처리)
   - [x] 3.10c GetOrCreateStageCmd (기존 Stage 반환 또는 생성)
-  - [x] 3.10d DisconnectNoticeCmd (연결 끊김 알림 → IStage.OnConnectionChanged)
-  - [x] 3.10e ReconnectCmd (재연결 처리 → IStage.OnConnectionChanged)
-  - [x] 3.10f TimerMsg 처리 (BaseStage.PostTimerCallback으로 이미 구현됨)
-- [x] 3.11 TimerManager
-- [x] 3.12 PlayProducer
-- [x] 3.13 PlayServerBootstrap
-- [x] 3.14 TcpSessionHandler (Core/Session/TcpSessionHandler.cs)
-- [ ] 3.15 WebSocketHandler (선택적 - TCP 우선)
-- [x] 3.16 ClientSession
-- [x] 3.17 SessionManager (Core/Session/SessionManager.cs)
+  - [x] 3.10d DisconnectNoticeCmd (IStage.OnConnectionChanged(actor, false))
+  - [x] 3.10e ReconnectCmd (IStage.OnConnectionChanged(actor, true))
+  - [x] 3.10f TimerMsg 처리 (BaseStage.PostTimerCallback)
+- [x] 3.11 TimerManager (Core/Play/TimerManager.cs)
+- [x] 3.12 PlayProducer (Abstractions/Play/PlayProducer.cs)
+- [x] 3.13 PlayServerBootstrap (Bootstrap/PlayServerBootstrap.cs)
+- [x] 3.14 Transport 레이어 (TcpTransportSession, WebSocketTransportSession - ITransportSession 인터페이스)
+  - **아키텍처 변경**: 기존 TcpSessionHandler → ITransportSession으로 통합
+- [x] 3.15 WebSocketTransport (Runtime/ClientTransport/WebSocketTransportSession.cs)
+- [x] 3.16 ITransportSession 인터페이스 (기존 ClientSession 대체)
+- [x] 3.17 CompositeTransportServer (기존 SessionManager 역할 - PlayServer가 직접 관리)
 - [x] 3.18 PlayCommunicator 통합
-- [x] 3.19 E2E 테스트 (BootstrapServerE2ETests.cs)
+- [x] 3.19 E2E 테스트 (Tests/PlayHouse.Tests.E2E/)
 
 ### Phase 4: API 서버 ✅
-- [x] 4.1 IApiSender
-- [x] 4.2 IApiController
-- [x] 4.3 IHandlerRegister (HandlerRegister에 포함)
-- [x] 4.4 ApiHandler 델리게이트
-- [x] 4.5 StageResult 기본 클래스
-- [x] 4.6 CreateStageResult (StageResult에 포함)
-- [x] 4.7 GetOrCreateStageResult (StageResult에 포함)
-- [x] 4.8 ApiDispatcher
-- [x] 4.9 ApiSender (XSender 직접 상속)
-- [x] 4.10 HandlerRegister
-- [x] 4.11 ApiReflection
+> **프로젝트 경로**: `src/PlayHouse/Core/Api/`, `src/PlayHouse/Abstractions/Api/`
+
+- [x] 4.1 IApiSender (Abstractions/Api/IApiSender.cs - CreateStage, GetOrCreateStage 등)
+- [x] 4.2 IApiController (Abstractions/Api/IApiController.cs)
+- [x] 4.3 IHandlerRegister (Abstractions/Api/IApiController.cs에 포함)
+- [x] 4.4 ApiHandler 델리게이트 (Abstractions/Api/IApiController.cs에 정의)
+- [x] 4.5 StageResult 기본 클래스 (Abstractions/Api/StageResult.cs)
+- [x] 4.6 CreateStageResult (StageResult.cs에 포함)
+- [x] 4.7 GetOrCreateStageResult, JoinStageResult, CreateJoinStageResult (StageResult.cs에 포함)
+- [x] 4.8 ApiDispatcher (Core/Api/ApiDispatcher.cs)
+- [x] 4.9 ApiSender (Core/Api/ApiSender.cs - XSender 상속, NetMQ 통신 구현)
+- [x] 4.10 HandlerRegister (Core/Api/Reflection/HandlerRegister.cs)
+- [x] 4.11 ApiReflection (Core/Api/Reflection/ApiReflection.cs)
 - [x] 4.12 SystemDispatcher (Abstractions/System/SystemDispatcher.cs)
-- [x] 4.13 ISystemController 인터페이스 (Abstractions/System/ISystemController.cs)
+- [x] 4.13 ISystemController (Abstractions/System/ISystemController.cs - InMemorySystemController 포함)
 - [x] 4.14 ISystemHandlerRegister (ISystemController.cs에 포함)
-- [x] 4.15 ApiServerBootstrap
-- [x] 4.16 단위 테스트 (ApiDispatcherTests, HandlerRegisterTests)
+- [x] 4.15 ApiServerBootstrap (Bootstrap/ApiServerBootstrap.cs)
+- [x] 4.16 ApiServer (Bootstrap/ApiServer.cs)
+- [x] 4.17 단위 테스트
 
 ### Phase 5: Connector ✅
-- [x] 5.1 IPayload/IPacket
+> **프로젝트 경로**: `connector/PlayHouse.Connector/`
+> **Target Framework**: netstandard2.1 (Unity 호환)
+
+- [x] 5.1 IPayload/IPacket (connector/PlayHouse.Connector/Protocol/)
 - [x] 5.2 Payload 구현 (ProtoPayload, BytePayload, EmptyPayload)
 - [x] 5.3 Packet 구현
-- [x] 5.4 Connector 클래스
-- [x] 5.5 ConnectorConfig
-- [x] 5.6 ConnectorErrorCode
-- [x] 5.7 PacketEncoder (Core/Messaging/PacketEncoder.cs)
-- [x] 5.8 PacketDecoder (Core/Messaging/PacketDecoder.cs)
-- [x] 5.9 RequestTracker (Core/Messaging/RequestTracker.cs)
-- [x] 5.10 AsyncManager (Unity 메인 스레드)
-- [x] 5.11 TcpConnection
+- [x] 5.4 Connector 클래스 (267줄, Connect/Authenticate/Send/Request 완전 구현)
+- [x] 5.5 ConnectorConfig (HeartBeat, IdleTimeout, RequestTimeout 설정)
+- [x] 5.6 ConnectorErrorCode (Disconnected, RequestTimeout, Unauthenticated)
+- [x] 5.7 PacketEncoder (connector/PlayHouse.Connector/Internal/ClientNetwork.cs)
+- [x] 5.8 PacketDecoder (LZ4 압축 해제 포함)
+- [x] 5.9 RequestTracker (PendingRequest 클래스)
+- [x] 5.10 AsyncManager (Unity 메인 스레드 콜백)
+- [x] 5.11 TcpConnection (connector/PlayHouse.Connector/Network/)
 - [x] 5.12 WebSocketConnection
+- [x] 5.13 E2E 테스트 (Tests/PlayHouse.Tests.E2E/ConnectorTests/ - 20개 테스트)
 
 ### Phase 6: E2E 테스트 (종합 시스템 검증)
 
@@ -929,9 +947,15 @@ IApiSender, IApiController
 > - Given-When-Then 구조, 명시적 셋업
 > - 테스트 목록만 출력해도 **기능 명세서처럼** 읽혀야 함
 
+**📁 테스트 파일 위치**:
+- `tests/PlayHouse.Tests.E2E/ConnectorTests/ConnectionTests.cs` (연결/인증 - 9개)
+- `tests/PlayHouse.Tests.E2E/ConnectorTests/MessagingTests.cs` (메시지 - 11개)
+- `tests/PlayHouse.Tests.E2E/Infrastructure/TestStageImpl.cs` (테스트용 Stage)
+- `tests/PlayHouse.Tests.E2E/Infrastructure/TestActorImpl.cs` (테스트용 Actor)
+
 #### 📊 E2E 테스트 구현 현황 (Phase 6)
 
-> **모든 기능 구현 완료** - E2E 테스트만 추가 필요
+> **모든 기능 구현 완료** - E2E 테스트만 추가 필요 (검증일: 2025-12-12)
 
 | 섹션 | 항목 | 기능 | E2E 테스트 | 비고 |
 |------|------|------|------------|------|
