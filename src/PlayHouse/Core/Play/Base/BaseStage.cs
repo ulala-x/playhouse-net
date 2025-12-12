@@ -229,7 +229,7 @@ internal sealed class BaseStage
             return;
         }
 
-        var handled = await _cmdHandler.HandleAsync(msgId, packet);
+        var handled = await _cmdHandler.HandleAsync(msgId, packet, this);
         if (!handled)
         {
             _logger?.LogWarning("Unhandled system message: {MsgId} for Stage {StageId}", msgId, StageId);
@@ -329,6 +329,127 @@ internal sealed class BaseStage
 
             // Note: Connection is NOT closed here - actor can join another stage
         }
+    }
+
+    #endregion
+
+    #region Reply
+
+    /// <summary>
+    /// Sends an error reply to the current request.
+    /// </summary>
+    public void Reply(ushort errorCode) => StageSender.Reply(errorCode);
+
+    /// <summary>
+    /// Sends a reply packet to the current request.
+    /// </summary>
+    public void Reply(IPacket packet) => StageSender.Reply(packet);
+
+    #endregion
+
+    #region Stage Lifecycle Helpers
+
+    /// <summary>
+    /// Creates the stage by calling IStage.OnCreate.
+    /// </summary>
+    /// <param name="stageType">Stage type identifier.</param>
+    /// <param name="packet">Content packet for OnCreate.</param>
+    /// <returns>Error code and optional reply packet.</returns>
+    public async Task<(bool success, IPacket? reply)> CreateStage(string stageType, IPacket packet)
+    {
+        StageSender.SetStageType(stageType);
+        var (result, replyPacket) = await Stage.OnCreate(packet);
+
+        if (result)
+        {
+            MarkAsCreated();
+        }
+
+        return (result, replyPacket);
+    }
+
+    /// <summary>
+    /// Handles actor join flow (10-step authentication).
+    /// </summary>
+    /// <param name="routeAccountId">Route account ID from packet.</param>
+    /// <param name="sessionNid">Session server NID.</param>
+    /// <param name="sid">Session ID.</param>
+    /// <param name="apiNid">API server NID.</param>
+    /// <param name="authPacket">Authentication packet.</param>
+    /// <param name="producer">Play producer for actor creation.</param>
+    /// <returns>Tuple of (success, errorCode, actor).</returns>
+    public async Task<(bool success, ushort errorCode, BaseActor? actor)> JoinActor(
+        long routeAccountId,
+        string sessionNid,
+        long sid,
+        string apiNid,
+        IPacket authPacket,
+        PlayProducer producer)
+    {
+        // 1. Create XActorSender
+        var actorSender = new XActorSender(
+            routeAccountId,
+            sessionNid,
+            sid,
+            apiNid,
+            this);
+
+        // 2. Create IActor
+        IActor actor;
+        try
+        {
+            actor = producer.GetActor(StageType, actorSender);
+        }
+        catch (KeyNotFoundException)
+        {
+            return (false, BaseErrorCode.InvalidStageType, null);
+        }
+
+        // 3. OnCreate
+        await actor.OnCreate();
+
+        // 4. OnAuthenticate
+        var authResult = await actor.OnAuthenticate(authPacket);
+        if (!authResult)
+        {
+            await actor.OnDestroy();
+            return (false, BaseErrorCode.AuthenticationFailed, null);
+        }
+
+        // 5. Validate AccountId
+        if (string.IsNullOrEmpty(actorSender.AccountId))
+        {
+            await actor.OnDestroy();
+            return (false, BaseErrorCode.InvalidAccountId, null);
+        }
+
+        // 6. OnPostAuthenticate
+        await actor.OnPostAuthenticate();
+
+        // 7. OnJoinStage
+        var joinResult = await Stage.OnJoinStage(actor);
+        if (!joinResult)
+        {
+            await actor.OnDestroy();
+            return (false, BaseErrorCode.JoinStageRejected, null);
+        }
+
+        // 8. Add actor
+        var baseActor = new BaseActor(actor, actorSender);
+        AddActor(baseActor);
+
+        // 9. OnPostJoinStage
+        await Stage.OnPostJoinStage(actor);
+
+        return (true, BaseErrorCode.Success, baseActor);
+    }
+
+    /// <summary>
+    /// Calls OnPostCreate on the stage.
+    /// </summary>
+    public async Task OnPostCreate()
+    {
+        await Stage.OnPostCreate();
     }
 
     #endregion

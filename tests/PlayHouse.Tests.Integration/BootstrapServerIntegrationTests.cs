@@ -520,14 +520,9 @@ public class BootstrapServerE2ETests : IAsyncLifetime
 /// 테스트용 Stage 구현.
 /// E2E 테스트에서 사용됩니다.
 /// </summary>
-public class TestStage : IStage
+public class TestStage(IStageSender stageSender) : IStage
 {
-    public IStageSender StageSender { get; }
-
-    public TestStage(IStageSender stageSender)
-    {
-        StageSender = stageSender;
-    }
+    public IStageSender StageSender { get; } = stageSender;
 
     public Task<(bool result, ServerPacket reply)> OnCreate(ServerPacket packet)
     {

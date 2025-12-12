@@ -220,21 +220,6 @@ internal sealed class XStageSender : XSender, IStageSender
 
     #endregion
 
-    #region Reply Methods
-
-    /// <summary>
-    /// Sends a reply packet to the target server.
-    /// </summary>
-    /// <param name="targetNid">Target server NID.</param>
-    /// <param name="replyPacket">Reply packet to send.</param>
-    internal void SendReply(string targetNid, RuntimeRoutePacket replyPacket)
-    {
-        _communicator.Send(targetNid, replyPacket);
-        replyPacket.Dispose();
-    }
-
-    #endregion
-
     /// <summary>
     /// Called when a timer is removed externally (e.g., timer expired).
     /// </summary>

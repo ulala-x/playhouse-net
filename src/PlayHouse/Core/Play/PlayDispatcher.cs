@@ -6,6 +6,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play.Base;
+using PlayHouse.Core.Play.Base.Command;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
@@ -187,10 +188,24 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         var baseStage = new BaseStage(stage, stageSender, _logger);
 
         // Create and set command handler for system messages
-        var cmdHandler = new BaseStageCmdHandler(baseStage, _producer, this, _logger);
+        var cmdHandler = new BaseStageCmdHandler(_logger);
+        RegisterCommands(cmdHandler);
         baseStage.SetCmdHandler(cmdHandler);
 
         return baseStage;
+    }
+
+    /// <summary>
+    /// Registers all system message commands to the handler.
+    /// </summary>
+    private void RegisterCommands(BaseStageCmdHandler cmdHandler)
+    {
+        cmdHandler.Register(nameof(CreateStageReq), new CreateStageCmd(this, _logger));
+        cmdHandler.Register(nameof(JoinStageReq), new JoinStageCmd(_producer, _logger));
+        cmdHandler.Register(nameof(CreateJoinStageReq), new CreateJoinStageCmd(_producer, this, _logger));
+        cmdHandler.Register(nameof(GetOrCreateStageReq), new GetOrCreateStageCmd(_logger));
+        cmdHandler.Register(nameof(DisconnectNoticeMsg), new DisconnectNoticeCmd(_logger));
+        cmdHandler.Register(nameof(ReconnectMsg), new ReconnectCmd(_logger));
     }
 
     #endregion
