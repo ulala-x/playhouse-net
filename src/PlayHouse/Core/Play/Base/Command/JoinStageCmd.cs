@@ -54,7 +54,8 @@ internal sealed class JoinStageCmd : IBaseStageCmd
         {
             Result = true,
             PayloadId = "",
-            Payload = ByteString.Empty
+            Payload = ByteString.Empty,
+            AccountId = actor?.AccountId ?? ""
         };
         baseStage.Reply(CPacket.Of(successRes));
 

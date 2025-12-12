@@ -28,6 +28,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
     private bool _disposed;
 
     public long SessionId { get; }
+    public string AccountId { get; set; } = string.Empty;
     public bool IsAuthenticated { get; set; }
     public bool IsConnected => !_disposed && _webSocket.State == WebSocketState.Open;
 

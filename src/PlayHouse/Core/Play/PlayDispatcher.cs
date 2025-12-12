@@ -86,6 +86,10 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
                 ProcessRoute(routeMsg.RoutePacket);
                 break;
 
+            case ClientRouteMessage clientRouteMsg:
+                ProcessClientRoute(clientRouteMsg);
+                break;
+
             default:
                 _logger?.LogWarning("Unknown message type: {Type}", message.GetType().Name);
                 message.Dispose();
@@ -140,6 +144,18 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         {
             _timerManager.CancelAllForStage(stageId);
             baseStage.PostDestroy();
+        }
+    }
+
+    private void ProcessClientRoute(ClientRouteMessage message)
+    {
+        if (_stages.TryGetValue(message.StageId, out var baseStage))
+        {
+            baseStage.PostClientRoute(message.AccountId, message.MsgId, message.MsgSeq, message.Sid, message.Payload);
+        }
+        else
+        {
+            _logger?.LogWarning("Stage {StageId} not found for client message {MsgId}", message.StageId, message.MsgId);
         }
     }
 

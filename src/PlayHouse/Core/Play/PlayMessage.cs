@@ -120,3 +120,59 @@ internal sealed class DestroyMessage : PlayMessage
     {
     }
 }
+
+/// <summary>
+/// Message routing client messages to Actor via AccountId.
+/// </summary>
+internal sealed class ClientRouteMessage : PlayMessage
+{
+    /// <summary>
+    /// Gets the account ID for actor routing.
+    /// </summary>
+    public string AccountId { get; }
+
+    /// <summary>
+    /// Gets the message ID.
+    /// </summary>
+    public string MsgId { get; }
+
+    /// <summary>
+    /// Gets the message sequence number.
+    /// </summary>
+    public ushort MsgSeq { get; }
+
+    /// <summary>
+    /// Gets the session ID.
+    /// </summary>
+    public long Sid { get; }
+
+    /// <summary>
+    /// Gets the message payload.
+    /// </summary>
+    public ReadOnlyMemory<byte> Payload { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ClientRouteMessage"/> class.
+    /// </summary>
+    /// <param name="stageId">Target stage ID.</param>
+    /// <param name="accountId">Account ID for actor routing.</param>
+    /// <param name="msgId">Message ID.</param>
+    /// <param name="msgSeq">Message sequence number.</param>
+    /// <param name="sid">Session ID.</param>
+    /// <param name="payload">Message payload.</param>
+    public ClientRouteMessage(
+        long stageId,
+        string accountId,
+        string msgId,
+        ushort msgSeq,
+        long sid,
+        ReadOnlyMemory<byte> payload)
+        : base(stageId)
+    {
+        AccountId = accountId;
+        MsgId = msgId;
+        MsgSeq = msgSeq;
+        Sid = sid;
+        Payload = payload;
+    }
+}
