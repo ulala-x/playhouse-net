@@ -510,6 +510,64 @@ public class CallbackTests : IAsyncLifetime
 
     #endregion
 
+    #region IActorSender 테스트 (2개)
+
+    /// <summary>
+    /// IActorSender.AccountId E2E 테스트
+    /// Reply에 AccountId가 포함되는지 검증합니다.
+    /// </summary>
+    [Fact(DisplayName = "AccountId - Reply에 AccountId 포함 확인")]
+    public async Task AccountId_InReply_Verified()
+    {
+        // Given - 인증된 상태
+        await ConnectToServerAsync();
+
+        // When - GetAccountIdRequest 전송
+        var request = new GetAccountIdRequest();
+        using var packet = new Packet(request);
+        var response = await _connector.RequestAsync(packet);
+
+        // Then - E2E 검증: 응답 검증
+        response.MsgId.Should().EndWith("GetAccountIdReply", "응답 메시지 ID가 GetAccountIdReply로 끝나야 함");
+        var reply = GetAccountIdReply.Parser.ParseFrom(response.Payload.Data.Span);
+        reply.AccountId.Should().NotBeNullOrEmpty("AccountId가 설정되어야 함");
+
+        // Then - E2E 검증: 콜백 검증
+        TestActorImpl.AuthenticatedAccountIds.Should().Contain(reply.AccountId,
+            "Reply의 AccountId가 인증된 AccountId 목록에 있어야 함");
+    }
+
+    /// <summary>
+    /// IActorSender.LeaveStage E2E 테스트
+    /// Actor가 Stage를 떠날 때 OnDestroy 콜백이 호출되는지 검증합니다.
+    /// </summary>
+    [Fact(DisplayName = "LeaveStage - OnDestroy 콜백 호출")]
+    public async Task LeaveStage_OnDestroy_Called()
+    {
+        // Given - 인증된 상태
+        await ConnectToServerAsync();
+        var initialInstanceCount = TestActorImpl.Instances.Count;
+
+        // When - LeaveStageRequest 전송
+        var request = new LeaveStageRequest { Reason = "Test leave" };
+        using var packet = new Packet(request);
+        var response = await _connector.RequestAsync(packet);
+
+        // 비동기 처리 대기
+        await Task.Delay(200);
+
+        // Then - E2E 검증: 응답 검증
+        response.MsgId.Should().EndWith("LeaveStageReply", "응답 메시지 ID가 LeaveStageReply로 끝나야 함");
+        var reply = LeaveStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        reply.Success.Should().BeTrue("LeaveStage가 성공해야 함");
+
+        // Then - E2E 검증: 콜백 검증
+        TestActorImpl.Instances.Should().Contain(a => a.OnDestroyCalled,
+            "OnDestroy 콜백이 호출되어야 함");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     /// <summary>

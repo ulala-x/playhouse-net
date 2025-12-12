@@ -136,3 +136,21 @@ message ConnectionChangedNotify {
     string account_id = 1;
     bool is_connected = 2;
 }
+
+// ============================================
+// IActorSender 테스트용 메시지
+// ============================================
+
+// AccountId 조회
+message GetAccountIdRequest {}
+message GetAccountIdReply {
+    string account_id = 1;
+}
+
+// LeaveStage 요청
+message LeaveStageRequest {
+    string reason = 1;
+}
+message LeaveStageReply {
+    bool success = 1;
+}
