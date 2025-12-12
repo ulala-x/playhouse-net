@@ -31,11 +31,14 @@ public class TestStageImpl : IStage
     public static int TimerCallbackCount => _timerCallbackCount;
     public static int AsyncPreCallbackCount => _asyncPreCallbackCount;
     public static int AsyncPostCallbackCount => _asyncPostCallbackCount;
+    public static ConcurrentBag<string> InterStageReceivedMsgIds { get; } = new();
+    public static int InterStageMessageCount => _interStageMessageCount;
 
     private static int _onDispatchCallCount;
     private static int _timerCallbackCount;
     private static int _asyncPreCallbackCount;
     private static int _asyncPostCallbackCount;
+    private static int _interStageMessageCount;
 
     // 테스트 검증용 데이터
     public List<string> ReceivedMsgIds { get; } = new();
@@ -51,10 +54,12 @@ public class TestStageImpl : IStage
     {
         while (Instances.TryTake(out _)) { }
         while (AllReceivedMsgIds.TryTake(out _)) { }
+        while (InterStageReceivedMsgIds.TryTake(out _)) { }
         Interlocked.Exchange(ref _onDispatchCallCount, 0);
         Interlocked.Exchange(ref _timerCallbackCount, 0);
         Interlocked.Exchange(ref _asyncPreCallbackCount, 0);
         Interlocked.Exchange(ref _asyncPostCallbackCount, 0);
+        Interlocked.Exchange(ref _interStageMessageCount, 0);
     }
 
     public TestStageImpl(IStageSender stageSender)
@@ -162,6 +167,14 @@ public class TestStageImpl : IStage
                 HandleLeaveStage(actor, packet);
                 break;
 
+            case "TriggerSendToStageRequest":
+                HandleTriggerSendToStage(actor, packet);
+                break;
+
+            case "TriggerRequestToStageRequest":
+                await HandleTriggerRequestToStage(actor, packet);
+                break;
+
             default:
                 // 기본 성공 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -175,6 +188,18 @@ public class TestStageImpl : IStage
     public Task OnDispatch(IPacket packet)
     {
         ReceivedMsgIds.Add(packet.MsgId);
+
+        // Stage간 메시지 처리
+        if (packet.MsgId == "InterStageMessage")
+        {
+            Interlocked.Increment(ref _interStageMessageCount);
+            InterStageReceivedMsgIds.Add(packet.MsgId);
+
+            var request = InterStageMessage.Parser.ParseFrom(packet.Payload.Data.Span);
+            // InterStageReply로 응답 (RequestToStage인 경우)
+            StageSender.Reply(CPacket.Of(new InterStageReply { Response = $"Echo: {request.Content}" }));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -348,5 +373,46 @@ public class TestStageImpl : IStage
         // 먼저 Reply를 보낸 후 LeaveStage 호출 (순서 중요)
         actor.ActorSender.Reply(CPacket.Of(new LeaveStageReply { Success = true }));
         actor.ActorSender.LeaveStage();
+    }
+
+    private void HandleTriggerSendToStage(IActor actor, IPacket packet)
+    {
+        var request = TriggerSendToStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // 같은 Play 서버 내의 다른 Stage로 메시지 전송
+        var interStageMsg = new InterStageMessage
+        {
+            FromStageId = StageSender.StageId,
+            Content = request.Message
+        };
+
+        // PlayServer의 Nid는 "ServiceId:ServerId" 형식 (기본값: ServiceType.Play=1, ServerId=1 → "1:1")
+        const string playServerNid = "1:1";
+        StageSender.SendToStage(playServerNid, request.TargetStageId, CPacket.Of(interStageMsg));
+
+        // 성공 응답
+        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToStageReply { Success = true }));
+    }
+
+    private async Task HandleTriggerRequestToStage(IActor actor, IPacket packet)
+    {
+        var request = TriggerRequestToStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        var interStageMsg = new InterStageMessage
+        {
+            FromStageId = StageSender.StageId,
+            Content = request.Query
+        };
+
+        // PlayServer의 Nid는 "ServiceId:ServerId" 형식 (기본값: ServiceType.Play=1, ServerId=1 → "1:1")
+        const string playServerNid = "1:1";
+        var response = await StageSender.RequestToStage(
+            playServerNid,
+            request.TargetStageId,
+            CPacket.Of(interStageMsg));
+
+        // Stage B의 응답을 클라이언트에 전달
+        var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToStageReply { Response = interStageReply.Response }));
     }
 }
