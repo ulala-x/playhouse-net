@@ -154,6 +154,14 @@ public class TestStageImpl : IStage
                 HandleCloseStage(actor, packet);
                 break;
 
+            case "GetAccountIdRequest":
+                HandleGetAccountId(actor);
+                break;
+
+            case "LeaveStageRequest":
+                HandleLeaveStage(actor, packet);
+                break;
+
             default:
                 // 기본 성공 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -323,5 +331,22 @@ public class TestStageImpl : IStage
         var request = CloseStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
         actor.ActorSender.Reply(CPacket.Of(new CloseStageReply { Success = true }));
         StageSender.CloseStage();
+    }
+
+    private void HandleGetAccountId(IActor actor)
+    {
+        var reply = new GetAccountIdReply
+        {
+            AccountId = actor.ActorSender.AccountId
+        };
+        actor.ActorSender.Reply(CPacket.Of(reply));
+    }
+
+    private void HandleLeaveStage(IActor actor, IPacket packet)
+    {
+        var request = LeaveStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        // 먼저 Reply를 보낸 후 LeaveStage 호출 (순서 중요)
+        actor.ActorSender.Reply(CPacket.Of(new LeaveStageReply { Success = true }));
+        actor.ActorSender.LeaveStage();
     }
 }
