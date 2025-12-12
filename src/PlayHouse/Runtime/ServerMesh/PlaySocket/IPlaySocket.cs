@@ -1,5 +1,7 @@
 #nullable enable
 
+using PlayHouse.Runtime.ServerMesh.Message;
+
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 
 /// <summary>
@@ -12,7 +14,7 @@ namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 /// - Frame 1: RouteHeader (Protobuf serialized)
 /// - Frame 2: Payload (binary)
 /// </remarks>
-public interface IPlaySocket : IDisposable
+internal interface IPlaySocket : IDisposable
 {
     /// <summary>
     /// Gets the Node ID of this socket.
@@ -20,55 +22,49 @@ public interface IPlaySocket : IDisposable
     string Nid { get; }
 
     /// <summary>
-    /// Gets whether the socket is bound or connected.
+    /// Gets the bind endpoint address.
     /// </summary>
-    bool IsActive { get; }
+    string EndPoint { get; }
 
     /// <summary>
-    /// Binds the socket to the specified address for receiving messages.
+    /// Binds the socket to the configured endpoint for receiving messages.
     /// </summary>
-    /// <param name="address">Bind address (e.g., "tcp://*:5555").</param>
-    void Bind(string address);
+    /// <remarks>
+    /// Uses the endpoint specified in constructor. No address parameter needed (Kairos pattern).
+    /// </remarks>
+    void Bind();
 
     /// <summary>
     /// Connects to a remote socket.
     /// </summary>
-    /// <param name="address">Connect address (e.g., "tcp://localhost:5555").</param>
-    void Connect(string address);
+    /// <param name="endpoint">Connect address (e.g., "tcp://localhost:5555").</param>
+    void Connect(string endpoint);
 
     /// <summary>
     /// Disconnects from a remote socket.
     /// </summary>
-    /// <param name="address">Address to disconnect from.</param>
-    void Disconnect(string address);
+    /// <param name="endpoint">Address to disconnect from.</param>
+    void Disconnect(string endpoint);
 
     /// <summary>
-    /// Sends a message to the specified target.
+    /// Sends a RuntimeRoutePacket to the specified target.
     /// </summary>
-    /// <param name="targetNid">Target node ID.</param>
-    /// <param name="headerBytes">RouteHeader serialized bytes.</param>
-    /// <param name="payload">Payload bytes.</param>
-    /// <returns>True if sent successfully, false otherwise.</returns>
-    bool Send(string targetNid, ReadOnlySpan<byte> headerBytes, ReadOnlySpan<byte> payload);
+    /// <param name="nid">Target node ID.</param>
+    /// <param name="packet">Route packet to send.</param>
+    /// <remarks>
+    /// Packet will be disposed after sending. Sends as 3-frame multipart message.
+    /// </remarks>
+    void Send(string nid, RuntimeRoutePacket packet);
 
     /// <summary>
-    /// Tries to receive a message (non-blocking).
+    /// Receives a RuntimeRoutePacket (blocking with 1-second timeout).
     /// </summary>
-    /// <param name="senderNid">Sender's node ID.</param>
-    /// <param name="headerBytes">RouteHeader bytes.</param>
-    /// <param name="payload">Payload bytes.</param>
-    /// <returns>True if a message was received, false otherwise.</returns>
-    bool TryReceive(out string senderNid, out byte[] headerBytes, out byte[] payload);
-
-    /// <summary>
-    /// Receives a message (blocking with timeout).
-    /// </summary>
-    /// <param name="timeoutMs">Timeout in milliseconds (-1 for infinite).</param>
-    /// <param name="senderNid">Sender's node ID.</param>
-    /// <param name="headerBytes">RouteHeader bytes.</param>
-    /// <param name="payload">Payload bytes.</param>
-    /// <returns>True if a message was received, false if timed out.</returns>
-    bool Receive(int timeoutMs, out string senderNid, out byte[] headerBytes, out byte[] payload);
+    /// <returns>RuntimeRoutePacket if received, null if timed out.</returns>
+    /// <remarks>
+    /// Uses TryReceiveMultipartMessage internally (Kairos pattern).
+    /// Timeout is fixed at 1 second for consistency.
+    /// </remarks>
+    RuntimeRoutePacket? Receive();
 }
 
 /// <summary>

@@ -15,7 +15,7 @@ namespace PlayHouse.Bootstrap;
 /// API Server 인스턴스.
 /// Play Server와 NetMQ로 통신하며 Stateless 요청 처리를 담당합니다.
 /// </summary>
-public sealed class ApiServer : IAsyncDisposable
+public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 {
     private readonly ApiServerOption _options;
     private readonly List<Type> _controllerTypes;
@@ -80,7 +80,7 @@ public sealed class ApiServer : IAsyncDisposable
         // NetMQ Communicator 시작
         _communicator = PlayCommunicator.Create(_serverConfig);
         _communicator.Bind(_options.BindEndpoint);
-        _communicator.OnReceive(HandleReceivedMessage);
+        _communicator.Bind(this);
         _communicator.Start();
 
         // ApiDispatcher 생성
@@ -134,7 +134,8 @@ public sealed class ApiServer : IAsyncDisposable
         _communicator?.Connect(playNid, address);
     }
 
-    private void HandleReceivedMessage(string senderNid, RuntimeRoutePacket packet)
+    /// <inheritdoc/>
+    public void OnReceive(RuntimeRoutePacket packet)
     {
         // 응답 패킷인 경우 RequestCache에서 처리
         if (packet.MsgSeq > 0)
@@ -184,9 +185,19 @@ public sealed class ApiServer : IAsyncDisposable
             _communicator.Connect(targetNid, address);
         }
 
-        public void Disconnect(string targetNid)
+        public void Disconnect(string targetNid, string endpoint)
         {
-            _communicator.Disconnect(targetNid);
+            _communicator.Disconnect(targetNid, endpoint);
+        }
+
+        public void Communicate()
+        {
+            _communicator.Communicate();
+        }
+
+        public void Stop()
+        {
+            _communicator.Stop();
         }
     }
 }

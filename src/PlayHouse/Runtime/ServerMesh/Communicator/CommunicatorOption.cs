@@ -185,8 +185,8 @@ public sealed class CommunicatorBuilder
     /// <summary>
     /// PlayCommunicator를 빌드합니다.
     /// </summary>
-    /// <returns>PlayCommunicator 인스턴스.</returns>
-    public PlayCommunicator Build()
+    /// <returns>ICommunicator 인스턴스.</returns>
+    public ICommunicator Build()
     {
         _option.Validate();
         var config = _option.ToServerConfig();
