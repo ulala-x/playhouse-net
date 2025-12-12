@@ -55,6 +55,7 @@ nunit-*.xml
 
 # IDE
 .idea/
+.vs/
 *.DotSettings.user
 
 # Legacy code (moved during refactoring)
