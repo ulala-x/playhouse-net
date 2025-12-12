@@ -175,6 +175,14 @@ public class TestStageImpl : IStage
                 await HandleTriggerRequestToStage(actor, packet);
                 break;
 
+            case "TriggerSendToApiRequest":
+                HandleTriggerSendToApi(actor, packet);
+                break;
+
+            case "TriggerRequestToApiRequest":
+                await HandleTriggerRequestToApi(actor, packet);
+                break;
+
             default:
                 // 기본 성공 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -414,5 +422,29 @@ public class TestStageImpl : IStage
         // Stage B의 응답을 클라이언트에 전달
         var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.Data.Span);
         actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToStageReply { Response = interStageReply.Response }));
+    }
+
+    private void HandleTriggerSendToApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerSendToApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // API Server NID는 "2:1" (ServiceId=2, ServerId=1)
+        const string apiNid = "2:1";
+        var apiMsg = new ApiEchoRequest { Content = request.Message };
+        StageSender.SendToApi(apiNid, CPacket.Of(apiMsg));
+
+        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToApiReply { Success = true }));
+    }
+
+    private async Task HandleTriggerRequestToApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerRequestToApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        const string apiNid = "2:1";
+        var apiMsg = new ApiEchoRequest { Content = request.Query };
+        var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
+
+        var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.Data.Span);
+        actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToApiReply { ApiResponse = apiReply.Content }));
     }
 }

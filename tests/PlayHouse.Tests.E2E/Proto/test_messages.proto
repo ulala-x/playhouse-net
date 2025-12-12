@@ -185,3 +185,56 @@ message InterStageMessage {
 message InterStageReply {
     string response = 1;
 }
+
+// ============================================
+// IApiSender 테스트용 메시지
+// ============================================
+
+// API 에코 (API 서버에서 처리)
+message ApiEchoRequest {
+    string content = 1;
+}
+message ApiEchoReply {
+    string content = 1;
+}
+
+// SendToApi 트리거 (Stage → API)
+message TriggerSendToApiRequest {
+    string message = 1;
+}
+message TriggerSendToApiReply {
+    bool success = 1;
+}
+
+// RequestToApi 트리거 (Stage → API)
+message TriggerRequestToApiRequest {
+    string query = 1;
+}
+message TriggerRequestToApiReply {
+    string api_response = 1;
+}
+
+// CreateStage 트리거 (API → PlayServer)
+message TriggerCreateStageRequest {
+    string stage_type = 1;
+    int64 stage_id = 2;
+}
+message TriggerCreateStageReply {
+    bool success = 1;
+}
+
+// GetOrCreateStage 트리거
+message TriggerGetOrCreateStageRequest {
+    string stage_type = 1;
+    int64 stage_id = 2;
+}
+message TriggerGetOrCreateStageReply {
+    bool is_created = 1;
+    bool success = 2;
+}
+
+// API → Client Push
+message ApiPushNotify {
+    string message = 1;
+    int64 timestamp = 2;
+}
