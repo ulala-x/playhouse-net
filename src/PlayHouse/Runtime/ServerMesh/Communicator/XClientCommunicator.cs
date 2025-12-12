@@ -8,16 +8,13 @@ namespace PlayHouse.Runtime.ServerMesh.Communicator;
 
 /// <summary>
 /// Client-side communicator for sending messages to servers.
-/// Uses a dedicated thread for sending to avoid blocking.
+/// Thread-safe queue-based implementation managed by MessageLoop.
 /// </summary>
-public sealed class XClientCommunicator : IClientCommunicator, IDisposable
+internal sealed class XClientCommunicator : IClientCommunicator
 {
     private readonly IPlaySocket _socket;
-    private readonly BlockingCollection<SendItem> _sendQueue;
-    private readonly ConcurrentDictionary<string, string> _connections = new();
-    private readonly Thread _sendThread;
-    private readonly CancellationTokenSource _cts;
-    private bool _disposed;
+    private readonly BlockingCollection<Action> _queue = new();
+    private readonly HashSet<string> _connected = new();
 
     /// <inheritdoc/>
     public string Nid => _socket.Nid;
@@ -26,120 +23,94 @@ public sealed class XClientCommunicator : IClientCommunicator, IDisposable
     /// Initializes a new instance of the <see cref="XClientCommunicator"/> class.
     /// </summary>
     /// <param name="socket">The underlying socket.</param>
-    /// <param name="queueSize">Maximum queue size for pending sends.</param>
-    public XClientCommunicator(IPlaySocket socket, int queueSize = 10000)
+    public XClientCommunicator(IPlaySocket socket)
     {
         _socket = socket;
-        _sendQueue = new BlockingCollection<SendItem>(queueSize);
-        _cts = new CancellationTokenSource();
-
-        _sendThread = new Thread(SendLoop)
-        {
-            Name = $"PlayHouse-Send-{Nid}",
-            IsBackground = true
-        };
-        _sendThread.Start();
     }
 
     /// <inheritdoc/>
     public void Send(string targetNid, RuntimeRoutePacket packet)
     {
-        if (_disposed) return;
-
-        var item = new SendItem(targetNid, packet.SerializeHeader(), packet.GetPayloadBytes());
-        if (!_sendQueue.TryAdd(item, TimeSpan.FromMilliseconds(100)))
+        _queue.Add(() =>
         {
-            // Queue full - log warning or handle backpressure
-            item.Dispose();
-        }
+            try
+            {
+                // Send using new IPlaySocket.Send(nid, packet) signature
+                // Packet will be disposed inside IPlaySocket.Send
+                _socket.Send(targetNid, packet);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[XClientCommunicator] Send error to {targetNid}: {ex.Message}");
+            }
+        });
     }
 
     /// <inheritdoc/>
     public void Connect(string targetNid, string address)
     {
-        if (_disposed) return;
-
-        if (_connections.TryAdd(targetNid, address))
+        if (!_connected.Add(address))
         {
-            _socket.Connect(address);
+            return;
         }
+
+        _queue.Add(() =>
+        {
+            try
+            {
+                _socket.Connect(address);
+                Console.WriteLine($"[XClientCommunicator] Connected - nid:{targetNid}, endpoint:{address}");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[XClientCommunicator] Connect error - nid:{targetNid}, endpoint:{address}, error:{ex.Message}");
+            }
+        });
     }
 
     /// <inheritdoc/>
-    public void Disconnect(string targetNid)
+    public void Disconnect(string targetNid, string address)
     {
-        if (_disposed) return;
-
-        if (_connections.TryRemove(targetNid, out var address))
+        if (!_connected.Contains(address))
         {
-            _socket.Disconnect(address);
+            return;
         }
-    }
 
-    private void SendLoop()
-    {
         try
         {
-            foreach (var item in _sendQueue.GetConsumingEnumerable(_cts.Token))
+            _socket.Disconnect(address);
+            _connected.Remove(address);
+            Console.WriteLine($"[XClientCommunicator] Disconnected - nid:{targetNid}, endpoint:{address}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[XClientCommunicator] Disconnect error - nid:{targetNid}, endpoint:{address}, error:{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Processes queued actions. Called by MessageLoop thread.
+    /// </summary>
+    public void Communicate()
+    {
+        foreach (var action in _queue.GetConsumingEnumerable())
+        {
+            try
             {
-                try
-                {
-                    _socket.Send(item.TargetNid, item.HeaderBytes, item.PayloadBytes);
-                }
-                finally
-                {
-                    item.Dispose();
-                }
+                action.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[XClientCommunicator] Error during communication - {ex.Message}");
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Normal shutdown
-        }
     }
 
-    /// <inheritdoc/>
-    public void Dispose()
+    /// <summary>
+    /// Stops accepting new actions and signals completion.
+    /// </summary>
+    public void Stop()
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        _cts.Cancel();
-        _sendQueue.CompleteAdding();
-
-        // Wait for send thread to finish
-        if (_sendThread.IsAlive)
-        {
-            _sendThread.Join(TimeSpan.FromSeconds(3));
-        }
-
-        // Drain remaining items
-        while (_sendQueue.TryTake(out var item))
-        {
-            item.Dispose();
-        }
-
-        _sendQueue.Dispose();
-        _cts.Dispose();
-        _socket.Dispose();
-    }
-
-    private sealed class SendItem : IDisposable
-    {
-        public string TargetNid { get; }
-        public byte[] HeaderBytes { get; }
-        public byte[] PayloadBytes { get; }
-
-        public SendItem(string targetNid, byte[] headerBytes, byte[] payloadBytes)
-        {
-            TargetNid = targetNid;
-            HeaderBytes = headerBytes;
-            PayloadBytes = payloadBytes;
-        }
-
-        public void Dispose()
-        {
-            // Could implement pooling here for high-performance scenarios
-        }
+        _queue.CompleteAdding();
     }
 }

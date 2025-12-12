@@ -19,7 +19,7 @@ namespace PlayHouse.Bootstrap;
 /// Stage와 Actor를 관리하고 클라이언트와 실시간 통신을 담당합니다.
 /// TCP, WebSocket, SSL/TLS를 지원하며 동시에 여러 Transport를 사용할 수 있습니다.
 /// </summary>
-public sealed class PlayServer : IAsyncDisposable
+public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
 {
     private readonly PlayServerOption _options;
     private readonly PlayProducer _producer;
@@ -108,7 +108,7 @@ public sealed class PlayServer : IAsyncDisposable
         // NetMQ Communicator 시작
         _communicator = PlayCommunicator.Create(_serverConfig);
         _communicator.Bind(_options.BindEndpoint);
-        _communicator.OnReceive(HandleReceivedMessage);
+        _communicator.Bind(this);
         _communicator.Start();
 
         // PlayDispatcher 생성
@@ -199,7 +199,8 @@ public sealed class PlayServer : IAsyncDisposable
         _logger?.LogInformation("PlayServer stopped: Nid={Nid}", Nid);
     }
 
-    private void HandleReceivedMessage(string senderNid, RuntimeRoutePacket packet)
+    /// <inheritdoc/>
+    public void OnReceive(RuntimeRoutePacket packet)
     {
         // 응답 패킷인 경우 RequestCache에서 처리
         if (packet.MsgSeq > 0)
@@ -455,9 +456,19 @@ public sealed class PlayServer : IAsyncDisposable
             _communicator.Connect(targetNid, address);
         }
 
-        public void Disconnect(string targetNid)
+        public void Disconnect(string targetNid, string endpoint)
         {
-            _communicator.Disconnect(targetNid);
+            _communicator.Disconnect(targetNid, endpoint);
+        }
+
+        public void Communicate()
+        {
+            _communicator.Communicate();
+        }
+
+        public void Stop()
+        {
+            _communicator.Stop();
         }
     }
 }

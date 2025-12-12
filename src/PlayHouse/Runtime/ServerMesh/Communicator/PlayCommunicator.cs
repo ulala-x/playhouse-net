@@ -1,24 +1,20 @@
 #nullable enable
 
-using System.Collections.Concurrent;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.ServerMesh.PlaySocket;
 
 namespace PlayHouse.Runtime.ServerMesh.Communicator;
 
 /// <summary>
-/// Combined communicator for bidirectional server-to-server communication.
-/// Manages both send and receive operations with dedicated threads.
+/// Facade for bidirectional server-to-server communication.
+/// Internally uses XClientCommunicator + XServerCommunicator + MessageLoop.
 /// </summary>
-public sealed class PlayCommunicator : ICommunicator
+internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
 {
     private readonly IPlaySocket _socket;
-    private readonly BlockingCollection<SendItem> _sendQueue;
-    private readonly ConcurrentDictionary<string, string> _connections = new();
-
-    private Thread? _sendThread;
-    private Thread? _receiveThread;
-    private CancellationTokenSource? _cts;
+    private readonly XClientCommunicator _client;
+    private readonly XServerCommunicator _server;
+    private readonly MessageLoop _messageLoop;
     private Action<string, RuntimeRoutePacket>? _handler;
     private bool _disposed;
 
@@ -32,11 +28,12 @@ public sealed class PlayCommunicator : ICommunicator
     /// Initializes a new instance of the <see cref="PlayCommunicator"/> class.
     /// </summary>
     /// <param name="socket">The underlying socket.</param>
-    /// <param name="sendQueueSize">Maximum queue size for pending sends.</param>
-    public PlayCommunicator(IPlaySocket socket, int sendQueueSize = 10000)
+    public PlayCommunicator(IPlaySocket socket)
     {
         _socket = socket;
-        _sendQueue = new BlockingCollection<SendItem>(sendQueueSize);
+        _server = new XServerCommunicator(socket);
+        _client = new XClientCommunicator(socket);
+        _messageLoop = new MessageLoop(_server, _client);
     }
 
     /// <summary>
@@ -51,50 +48,47 @@ public sealed class PlayCommunicator : ICommunicator
     }
 
     /// <inheritdoc/>
+    public void OnReceive(RuntimeRoutePacket packet)
+    {
+        _handler?.Invoke(packet.From, packet);
+    }
+
+    /// <inheritdoc/>
     public void Bind(string address)
     {
-        _socket.Bind(address);
+        // Socket binding is handled internally by XServerCommunicator
+        // Address configuration should be done via ServerConfig/socket constructor
     }
 
     /// <inheritdoc/>
-    public void Connect(string targetNid, string address)
+    public void Bind(ICommunicateListener listener)
     {
-        if (_disposed) return;
-
-        if (_connections.TryAdd(targetNid, address))
-        {
-            _socket.Connect(address);
-        }
+        _handler = (senderNid, packet) => listener.OnReceive(packet);
     }
 
-    /// <inheritdoc/>
-    public void Disconnect(string targetNid)
-    {
-        if (_disposed) return;
-
-        if (_connections.TryRemove(targetNid, out var address))
-        {
-            _socket.Disconnect(address);
-        }
-    }
-
-    /// <inheritdoc/>
-    public void Send(string targetNid, RuntimeRoutePacket packet)
-    {
-        if (_disposed || !IsRunning) return;
-
-        var item = new SendItem(targetNid, packet.SerializeHeader(), packet.GetPayloadBytes());
-        if (!_sendQueue.TryAdd(item, TimeSpan.FromMilliseconds(100)))
-        {
-            item.Dispose();
-            // Could log warning about queue overflow
-        }
-    }
-
-    /// <inheritdoc/>
+    /// <summary>
+    /// Legacy method for backward compatibility.
+    /// </summary>
+    [Obsolete("Use Bind(ICommunicateListener) instead")]
     public void OnReceive(Action<string, RuntimeRoutePacket> handler)
     {
         _handler = handler;
+    }
+
+    /// <inheritdoc/>
+    public void Send(string targetNid, RuntimeRoutePacket packet) => _client.Send(targetNid, packet);
+
+    /// <inheritdoc/>
+    public void Connect(string targetNid, string address) => _client.Connect(targetNid, address);
+
+    /// <inheritdoc/>
+    public void Disconnect(string targetNid, string endpoint) => _client.Disconnect(targetNid, endpoint);
+
+    /// <inheritdoc/>
+    public void Communicate()
+    {
+        // MessageLoop manages threads internally
+        // This method is a no-op for ICommunicator interface compatibility
     }
 
     /// <inheritdoc/>
@@ -102,22 +96,9 @@ public sealed class PlayCommunicator : ICommunicator
     {
         if (IsRunning) return;
 
-        _cts = new CancellationTokenSource();
+        _server.Bind(this);
+        _messageLoop.Start();
         IsRunning = true;
-
-        _sendThread = new Thread(SendLoop)
-        {
-            Name = $"PlayHouse-Send-{Nid}",
-            IsBackground = true
-        };
-        _sendThread.Start();
-
-        _receiveThread = new Thread(ReceiveLoop)
-        {
-            Name = $"PlayHouse-Recv-{Nid}",
-            IsBackground = true
-        };
-        _receiveThread.Start();
     }
 
     /// <inheritdoc/>
@@ -126,55 +107,7 @@ public sealed class PlayCommunicator : ICommunicator
         if (!IsRunning) return;
 
         IsRunning = false;
-        _cts?.Cancel();
-        _sendQueue.CompleteAdding();
-
-        // Wait for threads to finish
-        _sendThread?.Join(TimeSpan.FromSeconds(3));
-        _receiveThread?.Join(TimeSpan.FromSeconds(3));
-    }
-
-    private void SendLoop()
-    {
-        try
-        {
-            foreach (var item in _sendQueue.GetConsumingEnumerable(_cts!.Token))
-            {
-                try
-                {
-                    _socket.Send(item.TargetNid, item.HeaderBytes, item.PayloadBytes);
-                }
-                finally
-                {
-                    item.Dispose();
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal shutdown
-        }
-    }
-
-    private void ReceiveLoop()
-    {
-        const int TimeoutMs = 100;
-
-        while (IsRunning && !_cts!.IsCancellationRequested)
-        {
-            try
-            {
-                if (_socket.Receive(TimeoutMs, out var senderNid, out var headerBytes, out var payload))
-                {
-                    var packet = RuntimeRoutePacket.FromFrames(headerBytes, payload);
-                    _handler?.Invoke(senderNid, packet);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Console.Error.WriteLine($"[PlayCommunicator] Receive error: {ex.Message}");
-            }
-        }
+        _messageLoop.Stop();
     }
 
     /// <inheritdoc/>
@@ -184,34 +117,7 @@ public sealed class PlayCommunicator : ICommunicator
         _disposed = true;
 
         Stop();
-
-        // Drain remaining items
-        while (_sendQueue.TryTake(out var item))
-        {
-            item.Dispose();
-        }
-
-        _sendQueue.Dispose();
-        _cts?.Dispose();
+        _messageLoop.AwaitTermination();
         _socket.Dispose();
-    }
-
-    private sealed class SendItem : IDisposable
-    {
-        public string TargetNid { get; }
-        public byte[] HeaderBytes { get; }
-        public byte[] PayloadBytes { get; }
-
-        public SendItem(string targetNid, byte[] headerBytes, byte[] payloadBytes)
-        {
-            TargetNid = targetNid;
-            HeaderBytes = headerBytes;
-            PayloadBytes = payloadBytes;
-        }
-
-        public void Dispose()
-        {
-            // Could implement pooling here
-        }
     }
 }

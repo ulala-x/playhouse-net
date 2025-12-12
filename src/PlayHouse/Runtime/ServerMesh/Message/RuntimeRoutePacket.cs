@@ -41,10 +41,18 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// </summary>
     /// <param name="headerBytes">RouteHeader bytes from Frame 1.</param>
     /// <param name="payloadBytes">Payload bytes from Frame 2.</param>
+    /// <param name="senderNid">Sender NID from Frame 0 (optional, sets Header.From).</param>
     /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RuntimeRoutePacket FromFrames(byte[] headerBytes, byte[] payloadBytes)
+    public static RuntimeRoutePacket FromFrames(byte[] headerBytes, byte[] payloadBytes, string? senderNid = null)
     {
         var header = RouteHeader.Parser.ParseFrom(headerBytes);
+
+        // Set sender NID if provided (Kairos pattern)
+        if (senderNid != null)
+        {
+            header.From = senderNid;
+        }
+
         var payload = new FramePayload(payloadBytes);
         return new RuntimeRoutePacket(header, payload);
     }

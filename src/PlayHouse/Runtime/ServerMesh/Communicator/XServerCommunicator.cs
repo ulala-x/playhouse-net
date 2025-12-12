@@ -7,16 +7,13 @@ namespace PlayHouse.Runtime.ServerMesh.Communicator;
 
 /// <summary>
 /// Server-side communicator for receiving messages from clients/servers.
-/// Uses a dedicated thread for receiving.
+/// Thread management handled by MessageLoop.
 /// </summary>
-public sealed class XServerCommunicator : IServerCommunicator, IDisposable
+internal sealed class XServerCommunicator : IServerCommunicator
 {
     private readonly IPlaySocket _socket;
-    private readonly Thread _receiveThread;
-    private readonly CancellationTokenSource _cts;
-    private Action<string, RuntimeRoutePacket>? _handler;
-    private volatile bool _running;
-    private bool _disposed;
+    private ICommunicateListener? _listener;
+    private volatile bool _running = true;
 
     /// <inheritdoc/>
     public string Nid => _socket.Nid;
@@ -28,83 +25,49 @@ public sealed class XServerCommunicator : IServerCommunicator, IDisposable
     public XServerCommunicator(IPlaySocket socket)
     {
         _socket = socket;
-        _cts = new CancellationTokenSource();
-
-        _receiveThread = new Thread(ReceiveLoop)
-        {
-            Name = $"PlayHouse-Recv-{Nid}",
-            IsBackground = true
-        };
     }
 
     /// <summary>
-    /// Binds the socket to an address.
+    /// Binds the socket and registers message listener.
     /// </summary>
-    /// <param name="address">Bind address.</param>
-    public void Bind(string address)
+    /// <param name="listener">Message listener to handle received packets.</param>
+    public void Bind(ICommunicateListener listener)
     {
-        _socket.Bind(address);
+        _listener = listener;
+        // Note: Bind address should be configured in socket constructor or separately
+        // For now, assuming socket has default bind configuration
     }
 
-    /// <inheritdoc/>
-    public void OnReceive(Action<string, RuntimeRoutePacket> handler)
+    /// <summary>
+    /// Processes incoming messages. Called by MessageLoop thread.
+    /// </summary>
+    public void Communicate()
     {
-        _handler = handler;
-    }
-
-    /// <inheritdoc/>
-    public void Start()
-    {
-        if (_running) return;
-
-        _running = true;
-        _receiveThread.Start();
-    }
-
-    /// <inheritdoc/>
-    public void Stop()
-    {
-        if (!_running) return;
-
-        _running = false;
-        _cts.Cancel();
-
-        if (_receiveThread.IsAlive)
-        {
-            _receiveThread.Join(TimeSpan.FromSeconds(3));
-        }
-    }
-
-    private void ReceiveLoop()
-    {
-        const int timeoutMs = 100;
-
-        while (_running && !_cts.IsCancellationRequested)
+        while (_running)
         {
             try
             {
-                if (_socket.Receive(timeoutMs, out var senderNid, out var headerBytes, out var payload))
+                // Receive with 1-second timeout (Kairos pattern)
+                var packet = _socket.Receive();
+                if (packet != null)
                 {
-                    var packet = RuntimeRoutePacket.FromFrames(headerBytes, payload);
-                    _handler?.Invoke(senderNid, packet);
+                    _listener?.OnReceive(packet);
                 }
             }
             catch (Exception ex)
             {
-                // Log error but continue receiving
                 Console.Error.WriteLine($"[XServerCommunicator] Receive error: {ex.Message}");
             }
+
+            Thread.Sleep(1);
         }
     }
 
-    /// <inheritdoc/>
-    public void Dispose()
+    /// <summary>
+    /// Stops the receive loop.
+    /// </summary>
+    public void Stop()
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        Stop();
-        _cts.Dispose();
-        _socket.Dispose();
+        _running = false;
     }
 }

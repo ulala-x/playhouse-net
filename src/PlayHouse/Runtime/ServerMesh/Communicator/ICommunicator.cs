@@ -10,11 +10,6 @@ namespace PlayHouse.Runtime.ServerMesh.Communicator;
 public interface IClientCommunicator
 {
     /// <summary>
-    /// Gets the NID of this communicator.
-    /// </summary>
-    string Nid { get; }
-
-    /// <summary>
     /// Sends a packet to the specified target.
     /// </summary>
     /// <param name="targetNid">Target node ID.</param>
@@ -29,10 +24,21 @@ public interface IClientCommunicator
     void Connect(string targetNid, string address);
 
     /// <summary>
+    /// Communicates with remote servers. Called from external thread.
+    /// </summary>
+    void Communicate();
+
+    /// <summary>
     /// Disconnects from a remote server.
     /// </summary>
     /// <param name="targetNid">Target node ID.</param>
-    void Disconnect(string targetNid);
+    /// <param name="endpoint">Connection endpoint.</param>
+    void Disconnect(string targetNid, string endpoint);
+
+    /// <summary>
+    /// Stops the communicator.
+    /// </summary>
+    void Stop();
 }
 
 /// <summary>
@@ -41,32 +47,33 @@ public interface IClientCommunicator
 public interface IServerCommunicator
 {
     /// <summary>
-    /// Gets the NID of this communicator.
+    /// Binds a listener to receive incoming packets.
     /// </summary>
-    string Nid { get; }
+    /// <param name="listener">Listener to handle incoming packets.</param>
+    void Bind(ICommunicateListener listener);
 
     /// <summary>
-    /// Registers a message handler for incoming packets.
+    /// Communicates with remote servers. Called from external thread.
     /// </summary>
-    /// <param name="handler">Handler to process received packets.</param>
-    void OnReceive(Action<string, RuntimeRoutePacket> handler);
+    void Communicate();
 
     /// <summary>
-    /// Starts the receive loop.
-    /// </summary>
-    void Start();
-
-    /// <summary>
-    /// Stops the receive loop.
+    /// Stops the communicator.
     /// </summary>
     void Stop();
 }
 
 /// <summary>
 /// Combined interface for bidirectional communication.
+/// Provides both client and server communication capabilities.
 /// </summary>
 public interface ICommunicator : IClientCommunicator, IServerCommunicator, IDisposable
 {
+    /// <summary>
+    /// Gets the NID of this communicator.
+    /// </summary>
+    string Nid { get; }
+
     /// <summary>
     /// Gets whether the communicator is running.
     /// </summary>

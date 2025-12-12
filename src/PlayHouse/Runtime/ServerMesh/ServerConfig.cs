@@ -32,6 +32,11 @@ public sealed class ServerConfig
     public string BindAddress { get; }
 
     /// <summary>
+    /// Gets the bind endpoint for NetMQ socket (alias for BindAddress).
+    /// </summary>
+    public string BindEndpoint => BindAddress;
+
+    /// <summary>
     /// Gets the request timeout in milliseconds (default: 30000ms).
     /// </summary>
     public int RequestTimeoutMs { get; }

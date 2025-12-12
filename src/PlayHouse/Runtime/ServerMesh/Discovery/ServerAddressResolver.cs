@@ -175,18 +175,18 @@ public sealed class ServerAddressResolver : IDisposable
                     // 상태가 Disabled로 변경되면 연결 해제
                     if (change.Server.State == ServerState.Disabled)
                     {
-                        _communicator!.Disconnect(change.Server.Nid);
+                        _communicator!.Disconnect(change.Server.Nid, change.Server.Address);
                     }
                     else
                     {
                         // 주소가 변경되었을 수 있으므로 재연결
-                        _communicator!.Disconnect(change.Server.Nid);
+                        _communicator!.Disconnect(change.Server.Nid, change.Server.Address);
                         _communicator.Connect(change.Server.Nid, change.Server.Address);
                     }
                     break;
 
                 case ChangeType.Removed:
-                    _communicator!.Disconnect(change.Server.Nid);
+                    _communicator!.Disconnect(change.Server.Nid, change.Server.Address);
                     break;
             }
         }

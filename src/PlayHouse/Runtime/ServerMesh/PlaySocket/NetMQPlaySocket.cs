@@ -1,8 +1,11 @@
 #nullable enable
 
 using System.Text;
+using Google.Protobuf;
 using NetMQ;
 using NetMQ.Sockets;
+using PlayHouse.Runtime.Proto;
+using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 
@@ -12,27 +15,30 @@ namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 /// <remarks>
 /// Uses Router-Router pattern for bidirectional messaging.
 /// The socket identity is set to the NID for routing purposes.
+/// Follows Kairos pattern with multipart message handling.
 /// </remarks>
-public sealed class NetMqPlaySocket : IPlaySocket
+internal sealed class NetMqPlaySocket : IPlaySocket
 {
+    private readonly string _bindEndpoint;
     private readonly RouterSocket _socket;
-    private readonly object _sendLock = new();
     private bool _disposed;
 
     /// <inheritdoc/>
     public string Nid { get; }
 
     /// <inheritdoc/>
-    public bool IsActive { get; private set; }
+    public string EndPoint => _bindEndpoint;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NetMqPlaySocket"/> class.
     /// </summary>
     /// <param name="nid">Node ID for this socket.</param>
+    /// <param name="bindEndpoint">Bind endpoint address (e.g., "tcp://*:5555").</param>
     /// <param name="config">Socket configuration.</param>
-    public NetMqPlaySocket(string nid, PlaySocketConfig? config = null)
+    public NetMqPlaySocket(string nid, string bindEndpoint, PlaySocketConfig? config = null)
     {
         Nid = nid;
+        _bindEndpoint = bindEndpoint;
         config ??= PlaySocketConfig.Default;
 
         _socket = new RouterSocket();
@@ -41,6 +47,7 @@ public sealed class NetMqPlaySocket : IPlaySocket
         _socket.Options.Identity = Encoding.UTF8.GetBytes(nid);
 
         // Router options
+        _socket.Options.DelayAttachOnConnect = true; // immediate
         _socket.Options.RouterHandover = true;
         _socket.Options.RouterMandatory = true;
 
@@ -66,105 +73,89 @@ public sealed class NetMqPlaySocket : IPlaySocket
     /// <returns>A new NetMQPlaySocket instance.</returns>
     public static NetMqPlaySocket Create(ServerConfig config)
     {
-        return new NetMqPlaySocket(config.Nid, PlaySocketConfig.FromServerConfig(config));
+        var socketConfig = PlaySocketConfig.FromServerConfig(config);
+        return new NetMqPlaySocket(config.Nid, config.BindEndpoint, socketConfig);
     }
 
     /// <inheritdoc/>
-    public void Bind(string address)
+    public void Bind()
     {
         ThrowIfDisposed();
-        _socket.Bind(address);
-        IsActive = true;
+        _socket.Bind(_bindEndpoint);
     }
 
     /// <inheritdoc/>
-    public void Connect(string address)
+    public void Connect(string endpoint)
     {
         ThrowIfDisposed();
-        _socket.Connect(address);
-        IsActive = true;
+        _socket.Connect(endpoint);
     }
 
     /// <inheritdoc/>
-    public void Disconnect(string address)
+    public void Disconnect(string endpoint)
     {
         ThrowIfDisposed();
-        _socket.Disconnect(address);
+        _socket.Disconnect(endpoint);
     }
 
     /// <inheritdoc/>
-    public bool Send(string targetNid, ReadOnlySpan<byte> headerBytes, ReadOnlySpan<byte> payload)
+    public void Send(string nid, RuntimeRoutePacket packet)
     {
         ThrowIfDisposed();
 
-        lock (_sendLock)
+        // Note: No lock needed - Action queue in XClientCommunicator provides serialization
+        using (packet)
         {
-            try
+            var message = new NetMQMessage();
+
+            // Frame 0: Target NID
+            message.Append(new NetMQFrame(Encoding.UTF8.GetBytes(nid)));
+
+            // Frame 1: RouteHeader
+            var headerBytes = packet.SerializeHeader();
+            message.Append(new NetMQFrame(headerBytes));
+
+            // Frame 2: Payload
+            var payloadBytes = packet.GetPayloadBytes();
+            message.Append(new NetMQFrame(payloadBytes));
+
+            if (!_socket.TrySendMultipartMessage(message))
             {
-                // Frame 0: Target NID (routing identity)
-                _socket.SendMoreFrame(Encoding.UTF8.GetBytes(targetNid));
-                // Frame 1: RouteHeader
-                _socket.SendMoreFrame(headerBytes.ToArray());
-                // Frame 2: Payload
-                _socket.SendFrame(payload.ToArray());
-                return true;
+                // RouterMandatory causes send to fail if target not connected
+                // Log error or throw depending on requirements
+                Console.Error.WriteLine($"[NetMqPlaySocket] Failed to send to {nid}, MsgId: {packet.MsgId}");
             }
-            catch (HostUnreachableException)
+        }
+    }
+
+    /// <inheritdoc/>
+    public RuntimeRoutePacket? Receive()
+    {
+        ThrowIfDisposed();
+
+        var message = new NetMQMessage();
+        if (_socket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(1), ref message))
+        {
+            if (message.FrameCount < 3)
             {
-                // Target not connected yet - RouterMandatory throws this
-                return false;
+                Console.Error.WriteLine($"[NetMqPlaySocket] Invalid message frame count: {message.FrameCount}");
+                return null;
             }
-        }
-    }
 
-    /// <inheritdoc/>
-    public bool TryReceive(out string senderNid, out byte[] headerBytes, out byte[] payload)
-    {
-        ThrowIfDisposed();
+            // Frame 0: Sender NID
+            var senderNid = Encoding.UTF8.GetString(message[0].Buffer);
 
-        senderNid = string.Empty;
-        headerBytes = Array.Empty<byte>();
-        payload = Array.Empty<byte>();
+            // Frame 1: RouteHeader
+            var headerBytes = message[1].ToByteArray();
 
-        if (!_socket.TryReceiveFrameString(out senderNid!))
-        {
-            return false;
+            // Frame 2: Payload
+            var payloadBytes = message[2].ToByteArray();
+
+            // Create packet with sender NID set in header (Kairos pattern)
+            return RuntimeRoutePacket.FromFrames(headerBytes, payloadBytes, senderNid);
         }
 
-        if (!_socket.TryReceiveFrameBytes(out headerBytes!))
-        {
-            return false;
-        }
-
-        if (!_socket.TryReceiveFrameBytes(out payload!))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    /// <inheritdoc/>
-    public bool Receive(int timeoutMs, out string senderNid, out byte[] headerBytes, out byte[] payload)
-    {
-        ThrowIfDisposed();
-
-        senderNid = string.Empty;
-        headerBytes = Array.Empty<byte>();
-        payload = Array.Empty<byte>();
-
-        var timeout = timeoutMs < 0 ? TimeSpan.MaxValue : TimeSpan.FromMilliseconds(timeoutMs);
-
-        if (!_socket.TryReceiveFrameString(timeout, out senderNid!))
-        {
-            return false;
-        }
-
-        // Once we get the first frame, get the rest without timeout
-        headerBytes = _socket.ReceiveFrameBytes();
-        payload = _socket.ReceiveFrameBytes();
-
-        return true;
+        return null;
     }
 
     private void ThrowIfDisposed()
@@ -180,7 +171,6 @@ public sealed class NetMqPlaySocket : IPlaySocket
     {
         if (_disposed) return;
         _disposed = true;
-        IsActive = false;
         _socket.Dispose();
     }
 }
