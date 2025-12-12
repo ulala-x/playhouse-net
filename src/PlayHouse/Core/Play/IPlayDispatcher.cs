@@ -14,26 +14,8 @@ namespace PlayHouse.Core.Play;
 internal interface IPlayDispatcher
 {
     /// <summary>
-    /// Posts a message to be dispatched to a Stage.
+    /// Kairos 패턴: 모든 메시지가 이 단일 진입점으로 전달됩니다.
     /// </summary>
-    /// <param name="packet">The packet to dispatch.</param>
-    void Post(RuntimeRoutePacket packet);
-
-    /// <summary>
-    /// Posts a timer operation packet.
-    /// </summary>
-    /// <param name="timerPacket">Timer packet.</param>
-    void PostTimer(TimerPacket timerPacket);
-
-    /// <summary>
-    /// Posts an AsyncBlock result packet.
-    /// </summary>
-    /// <param name="asyncPacket">AsyncBlock packet.</param>
-    void PostAsyncBlock(AsyncBlockPacket asyncPacket);
-
-    /// <summary>
-    /// Posts a stage destroy request.
-    /// </summary>
-    /// <param name="stageId">Stage ID to destroy.</param>
-    void PostDestroy(long stageId);
+    /// <param name="message">전달할 메시지 (RouteMessage, TimerMessage, AsyncMessage, DestroyMessage)</param>
+    void OnPost(PlayMessage message);
 }

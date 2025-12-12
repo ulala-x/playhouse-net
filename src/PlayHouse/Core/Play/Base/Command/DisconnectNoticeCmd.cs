@@ -23,7 +23,7 @@ internal sealed class DisconnectNoticeCmd : IBaseStageCmd
         var msg = DisconnectNoticeMsg.Parser.ParseFrom(packet.Payload.DataSpan);
         _logger?.LogDebug("DisconnectNoticeMsg: AccountId={AccountId}, Sid={Sid}", msg.AccountId, msg.Sid);
 
-        var baseActor = baseStage.GetActor(msg.AccountId);
+        var baseActor = baseStage.GetActor(msg.AccountId.ToString());
         if (baseActor == null)
         {
             _logger?.LogWarning("Actor not found for disconnect: AccountId={AccountId}", msg.AccountId);

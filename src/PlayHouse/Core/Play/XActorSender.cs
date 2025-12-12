@@ -16,7 +16,6 @@ namespace PlayHouse.Core.Play;
 internal sealed class XActorSender : IActorSender
 {
     private readonly BaseStage _baseStage;
-    private readonly long _routeAccountId;
 
     private string _sessionNid;
     private long _sid;
@@ -31,29 +30,21 @@ internal sealed class XActorSender : IActorSender
     /// <summary>
     /// Initializes a new instance of the <see cref="XActorSender"/> class.
     /// </summary>
-    /// <param name="routeAccountId">Internal routing account ID (from RouteHeader).</param>
     /// <param name="sessionNid">Session server NID.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="apiNid">API server NID.</param>
     /// <param name="baseStage">Parent BaseStage.</param>
     public XActorSender(
-        long routeAccountId,
         string sessionNid,
         long sid,
         string apiNid,
         BaseStage baseStage)
     {
-        _routeAccountId = routeAccountId;
         _sessionNid = sessionNid;
         _sid = sid;
         _apiNid = apiNid;
         _baseStage = baseStage;
     }
-
-    /// <summary>
-    /// Gets the internal routing account ID.
-    /// </summary>
-    internal long RouteAccountId => _routeAccountId;
 
     /// <summary>
     /// Gets the session server NID.
@@ -75,7 +66,7 @@ internal sealed class XActorSender : IActorSender
     /// <inheritdoc/>
     public void LeaveStage()
     {
-        _baseStage.LeaveStage(_routeAccountId, _sessionNid, _sid);
+        _baseStage.LeaveStage(AccountId, _sessionNid, _sid);
     }
 
     /// <inheritdoc/>

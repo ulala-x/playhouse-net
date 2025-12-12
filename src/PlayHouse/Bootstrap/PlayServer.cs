@@ -214,7 +214,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
         }
 
         // Stage로 라우팅
-        _dispatcher?.Post(packet);
+        _dispatcher?.OnPost(new RouteMessage(packet));
     }
 
     /// <summary>

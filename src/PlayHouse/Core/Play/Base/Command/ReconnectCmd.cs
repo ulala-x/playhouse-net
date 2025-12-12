@@ -25,7 +25,7 @@ internal sealed class ReconnectCmd : IBaseStageCmd
         _logger?.LogDebug("ReconnectMsg: AccountId={AccountId}, Sid={Sid}, SessionNid={SessionNid}",
             msg.AccountId, msg.Sid, msg.SessionNid);
 
-        var baseActor = baseStage.GetActor(msg.AccountId);
+        var baseActor = baseStage.GetActor(msg.AccountId.ToString());
         if (baseActor == null)
         {
             _logger?.LogWarning("Actor not found for reconnect: AccountId={AccountId}", msg.AccountId);

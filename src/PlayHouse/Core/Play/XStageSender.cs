@@ -82,7 +82,7 @@ internal sealed class XStageSender : XSender, IStageSender
             0,
             callback);
 
-        _dispatcher.PostTimer(timerPacket);
+        _dispatcher.OnPost(new TimerMessage(timerPacket));
         _timerIds.Add(timerId);
         return timerId;
     }
@@ -99,7 +99,7 @@ internal sealed class XStageSender : XSender, IStageSender
             count,
             callback);
 
-        _dispatcher.PostTimer(timerPacket);
+        _dispatcher.OnPost(new TimerMessage(timerPacket));
         _timerIds.Add(timerId);
         return timerId;
     }
@@ -117,7 +117,7 @@ internal sealed class XStageSender : XSender, IStageSender
             0,
             () => Task.CompletedTask);
 
-        _dispatcher.PostTimer(timerPacket);
+        _dispatcher.OnPost(new TimerMessage(timerPacket));
         _timerIds.Remove(timerId);
     }
 
@@ -165,7 +165,7 @@ internal sealed class XStageSender : XSender, IStageSender
         _timerIds.Clear();
 
         // Post stage destroy request
-        _dispatcher.PostDestroy(StageId);
+        _dispatcher.OnPost(new DestroyMessage(StageId));
     }
 
     #endregion
@@ -186,7 +186,7 @@ internal sealed class XStageSender : XSender, IStageSender
                 {
                     // Post result back to Stage event loop
                     var asyncPacket = new AsyncBlockPacket(StageId, postCallback, result);
-                    _dispatcher.PostAsyncBlock(asyncPacket);
+                    _dispatcher.OnPost(new AsyncMessage(asyncPacket));
                 }
             }
             catch (Exception ex)

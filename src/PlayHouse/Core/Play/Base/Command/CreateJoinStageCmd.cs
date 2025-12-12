@@ -13,23 +13,15 @@ namespace PlayHouse.Core.Play.Base.Command;
 /// <summary>
 /// CreateJoinStageReq 처리 명령 (Stage 생성 + 입장 동시 처리).
 /// </summary>
-internal sealed class CreateJoinStageCmd : IBaseStageCmd
+internal sealed class CreateJoinStageCmd(PlayProducer producer, IPlayDispatcher dispatcher, ILogger? logger = null)
+    : IBaseStageCmd
 {
-    private readonly PlayProducer _producer;
-    private readonly IPlayDispatcher _dispatcher;
-    private readonly ILogger? _logger;
-
-    public CreateJoinStageCmd(PlayProducer producer, IPlayDispatcher dispatcher, ILogger? logger = null)
-    {
-        _producer = producer;
-        _dispatcher = dispatcher;
-        _logger = logger;
-    }
+    private readonly IPlayDispatcher _dispatcher = dispatcher;
 
     public async Task Execute(BaseStage baseStage, RuntimeRoutePacket packet)
     {
         var req = CreateJoinStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
-        _logger?.LogDebug("CreateJoinStageReq: StageType={StageType}", req.StageType);
+        logger?.LogDebug("CreateJoinStageReq: StageType={StageType}", req.StageType);
 
         bool isCreated = false;
 
@@ -41,7 +33,7 @@ internal sealed class CreateJoinStageCmd : IBaseStageCmd
 
             if (!createSuccess)
             {
-                _logger?.LogWarning("Stage.OnCreate failed in CreateJoinStage");
+                logger?.LogWarning("Stage.OnCreate failed in CreateJoinStage");
                 var failRes = new CreateJoinStageRes
                 {
                     Result = false,
@@ -64,12 +56,11 @@ internal sealed class CreateJoinStageCmd : IBaseStageCmd
         // Join 처리
         var authPacket = CPacket.Of(req.JoinPayloadId, req.JoinPayload.ToByteArray());
         var (joinSuccess, errorCode, actor) = await baseStage.JoinActor(
-            packet.AccountId,
             req.SessionNid,
             req.Sid,
             packet.From,
             authPacket,
-            _producer);
+            producer);
 
         if (!joinSuccess)
         {
@@ -97,7 +88,7 @@ internal sealed class CreateJoinStageCmd : IBaseStageCmd
         };
         baseStage.Reply(CPacket.Of(successRes));
 
-        _logger?.LogInformation("CreateJoinStage success: StageId={StageId}, IsCreated={IsCreated}, AccountId={AccountId}",
+        logger?.LogInformation("CreateJoinStage success: StageId={StageId}, IsCreated={IsCreated}, AccountId={AccountId}",
             baseStage.StageId, isCreated, actor?.AccountId);
     }
 }

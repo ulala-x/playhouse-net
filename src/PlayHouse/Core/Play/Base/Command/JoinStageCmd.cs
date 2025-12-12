@@ -37,7 +37,6 @@ internal sealed class JoinStageCmd : IBaseStageCmd
 
         var authPacket = CPacket.Of(req.PayloadId, req.Payload.ToByteArray());
         var (success, errorCode, actor) = await baseStage.JoinActor(
-            packet.AccountId,
             req.SessionNid,
             req.Sid,
             packet.From,

@@ -32,7 +32,7 @@ internal sealed class BaseStage
 {
     private readonly ConcurrentQueue<StageMessage> _messageQueue = new();
     private readonly AtomicBoolean _isProcessing = new(false);
-    private readonly Dictionary<long, BaseActor> _actors = new();
+    private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ILogger? _logger;
     private BaseStageCmdHandler? _cmdHandler;
 
@@ -183,14 +183,14 @@ internal sealed class BaseStage
         try
         {
             var msgId = packet.MsgId;
-            var accountId = packet.AccountId;
+            var accountIdString = packet.AccountId.ToString();
 
             // Check if this is a system message
             if (IsSystemMessage(msgId))
             {
                 await HandleSystemMessageAsync(msgId, packet);
             }
-            else if (accountId != 0 && _actors.TryGetValue(accountId, out var baseActor))
+            else if (packet.AccountId != 0 && _actors.TryGetValue(accountIdString, out var baseActor))
             {
                 // Client message (Actor exists)
                 var contentPacket = CreateContentPacket(packet);
@@ -278,25 +278,25 @@ internal sealed class BaseStage
     /// <param name="baseActor">The actor to add.</param>
     public void AddActor(BaseActor baseActor)
     {
-        _actors[baseActor.RouteAccountId] = baseActor;
+        _actors[baseActor.AccountId] = baseActor;
     }
 
     /// <summary>
     /// Removes an Actor from this Stage.
     /// </summary>
-    /// <param name="accountId">Route account ID of the actor.</param>
+    /// <param name="accountId">Account ID of the actor.</param>
     /// <returns>true if removed, false if not found.</returns>
-    public bool RemoveActor(long accountId)
+    public bool RemoveActor(string accountId)
     {
         return _actors.Remove(accountId);
     }
 
     /// <summary>
-    /// Gets an Actor by route account ID.
+    /// Gets an Actor by account ID.
     /// </summary>
-    /// <param name="accountId">Route account ID.</param>
+    /// <param name="accountId">Account ID.</param>
     /// <returns>BaseActor if found, null otherwise.</returns>
-    public BaseActor? GetActor(long accountId)
+    public BaseActor? GetActor(string accountId)
     {
         return _actors.GetValueOrDefault(accountId);
     }
@@ -309,10 +309,10 @@ internal sealed class BaseStage
     /// <summary>
     /// Handles an Actor leaving the Stage.
     /// </summary>
-    /// <param name="accountId">Route account ID.</param>
+    /// <param name="accountId">Account ID.</param>
     /// <param name="sessionNid">Session server NID.</param>
     /// <param name="sid">Session ID.</param>
-    public async void LeaveStage(long accountId, string sessionNid, long sid)
+    public async void LeaveStage(string accountId, string sessionNid, long sid)
     {
         if (_actors.TryGetValue(accountId, out var baseActor))
         {
@@ -371,7 +371,6 @@ internal sealed class BaseStage
     /// <summary>
     /// Handles actor join flow (10-step authentication).
     /// </summary>
-    /// <param name="routeAccountId">Route account ID from packet.</param>
     /// <param name="sessionNid">Session server NID.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="apiNid">API server NID.</param>
@@ -379,7 +378,6 @@ internal sealed class BaseStage
     /// <param name="producer">Play producer for actor creation.</param>
     /// <returns>Tuple of (success, errorCode, actor).</returns>
     public async Task<(bool success, ushort errorCode, BaseActor? actor)> JoinActor(
-        long routeAccountId,
         string sessionNid,
         long sid,
         string apiNid,
@@ -388,7 +386,6 @@ internal sealed class BaseStage
     {
         // 1. Create XActorSender
         var actorSender = new XActorSender(
-            routeAccountId,
             sessionNid,
             sid,
             apiNid,
