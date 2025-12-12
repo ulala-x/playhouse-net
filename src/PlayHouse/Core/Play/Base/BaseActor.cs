@@ -29,11 +29,6 @@ internal sealed class BaseActor
     public string AccountId => ActorSender.AccountId;
 
     /// <summary>
-    /// Gets the route account ID (internal routing).
-    /// </summary>
-    public long RouteAccountId => ActorSender.RouteAccountId;
-
-    /// <summary>
     /// Initializes a new instance of the <see cref="BaseActor"/> class.
     /// </summary>
     /// <param name="actor">Content-implemented Actor.</param>

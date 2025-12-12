@@ -66,7 +66,38 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     #region IPlayDispatcher Implementation
 
     /// <inheritdoc/>
-    public void Post(RuntimeRoutePacket packet)
+    public void OnPost(PlayMessage message)
+    {
+        switch (message)
+        {
+            case TimerMessage timerMsg:
+                _timerManager.ProcessTimer(timerMsg.TimerPacket);
+                break;
+
+            case AsyncMessage asyncMsg:
+                ProcessAsyncBlock(asyncMsg.AsyncBlockPacket);
+                break;
+
+            case DestroyMessage destroyMsg:
+                ProcessDestroy(destroyMsg.StageId);
+                break;
+
+            case RouteMessage routeMsg:
+                ProcessRoute(routeMsg.RoutePacket);
+                break;
+
+            default:
+                _logger?.LogWarning("Unknown message type: {Type}", message.GetType().Name);
+                message.Dispose();
+                break;
+        }
+    }
+
+    #endregion
+
+    #region Message Processing
+
+    private void ProcessRoute(RuntimeRoutePacket packet)
     {
         var stageId = packet.StageId;
         var msgId = packet.MsgId;
@@ -91,14 +122,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
     }
 
-    /// <inheritdoc/>
-    public void PostTimer(TimerPacket timerPacket)
-    {
-        _timerManager.ProcessTimer(timerPacket);
-    }
-
-    /// <inheritdoc/>
-    public void PostAsyncBlock(AsyncBlockPacket asyncPacket)
+    private void ProcessAsyncBlock(AsyncBlockPacket asyncPacket)
     {
         if (_stages.TryGetValue(asyncPacket.StageId, out var baseStage))
         {
@@ -110,8 +134,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
     }
 
-    /// <inheritdoc/>
-    public void PostDestroy(long stageId)
+    private void ProcessDestroy(long stageId)
     {
         if (_stages.TryRemove(stageId, out var baseStage))
         {
@@ -269,7 +292,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
         foreach (var stageId in _stages.Keys.ToList())
         {
-            PostDestroy(stageId);
+            ProcessDestroy(stageId);
         }
     }
 }

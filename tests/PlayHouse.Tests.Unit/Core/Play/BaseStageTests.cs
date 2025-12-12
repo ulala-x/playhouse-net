@@ -187,7 +187,7 @@ public class BaseStageTests
         var (baseStage, _, _) = CreateTestStage();
         var actorSender = Substitute.For<IActorSender>();
         var fakeActor = new FakeActor(actorSender);
-        var baseActor = CreateBaseActor(1001, fakeActor, baseStage);
+        var baseActor = CreateBaseActor("1001", fakeActor, baseStage);
 
         // When (행동)
         baseStage.AddActor(baseActor);
@@ -203,7 +203,7 @@ public class BaseStageTests
         var (baseStage, _, _) = CreateTestStage();
         var actorSender = Substitute.For<IActorSender>();
         var fakeActor = new FakeActor(actorSender);
-        const long accountId = 1001;
+        const string accountId = "1001";
         var baseActor = CreateBaseActor(accountId, fakeActor, baseStage);
         baseStage.AddActor(baseActor);
 
@@ -222,7 +222,7 @@ public class BaseStageTests
         var (baseStage, _, _) = CreateTestStage();
 
         // When (행동)
-        var actor = baseStage.GetActor(9999);
+        var actor = baseStage.GetActor("9999");
 
         // Then (결과)
         actor.Should().BeNull("존재하지 않는 Actor는 null을 반환해야 함");
@@ -235,7 +235,7 @@ public class BaseStageTests
         var (baseStage, _, _) = CreateTestStage();
         var actorSender = Substitute.For<IActorSender>();
         var fakeActor = new FakeActor(actorSender);
-        const long accountId = 1001;
+        const string accountId = "1001";
         var baseActor = CreateBaseActor(accountId, fakeActor, baseStage);
         baseStage.AddActor(baseActor);
 
@@ -254,7 +254,7 @@ public class BaseStageTests
         var (baseStage, _, _) = CreateTestStage();
 
         // When (행동)
-        var result = baseStage.RemoveActor(9999);
+        var result = baseStage.RemoveActor("9999");
 
         // Then (결과)
         result.Should().BeFalse("존재하지 않는 Actor 제거는 실패해야 함");
@@ -272,7 +272,7 @@ public class BaseStageTests
         {
             var actorSender = Substitute.For<IActorSender>();
             var fakeActor = new FakeActor(actorSender);
-            var baseActor = CreateBaseActor(1000 + i, fakeActor, baseStage);
+            var baseActor = CreateBaseActor((1000 + i).ToString(), fakeActor, baseStage);
             baseStage.AddActor(baseActor);
         }
 
@@ -306,7 +306,7 @@ public class BaseStageTests
             var actorSender = Substitute.For<IActorSender>();
             var fakeActor = new FakeActor(actorSender);
             actors.Add(fakeActor);
-            var baseActor = CreateBaseActor(1000 + i, fakeActor, baseStage);
+            var baseActor = CreateBaseActor((1000 + i).ToString(), fakeActor, baseStage);
             baseStage.AddActor(baseActor);
         }
 
@@ -371,14 +371,16 @@ public class BaseStageTests
 
     #region Helper Methods
 
-    private static BaseActor CreateBaseActor(long routeAccountId, FakeActor fakeActor, BaseStage baseStage)
+    private static BaseActor CreateBaseActor(string accountId, FakeActor fakeActor, BaseStage baseStage)
     {
         var xActorSender = new XActorSender(
-            routeAccountId,
             sessionNid: "session:1",
             sid: 1,
             apiNid: "api:1",
             baseStage);
+
+        // AccountId는 인증 시 설정되므로 여기서는 직접 설정
+        xActorSender.AccountId = accountId;
 
         return new BaseActor(fakeActor, xActorSender);
     }

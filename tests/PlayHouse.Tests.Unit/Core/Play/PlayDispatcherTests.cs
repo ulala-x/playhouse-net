@@ -153,7 +153,7 @@ public class PlayDispatcherTests : IDisposable
         var packet = CreateCreateStagePacket(stageId, "test_stage");
 
         // When (행동)
-        _dispatcher.Post(packet);
+        _dispatcher.OnPost(new RouteMessage(packet));
         await Task.Delay(100); // 이벤트 루프 처리 대기
 
         // Then (결과)
@@ -168,11 +168,11 @@ public class PlayDispatcherTests : IDisposable
         var packet1 = CreateCreateStagePacket(stageId, "test_stage");
         var packet2 = CreateCreateStagePacket(stageId, "test_stage");
 
-        _dispatcher.Post(packet1);
+        _dispatcher.OnPost(new RouteMessage(packet1));
         await Task.Delay(100);
 
         // When (행동)
-        _dispatcher.Post(packet2);
+        _dispatcher.OnPost(new RouteMessage(packet2));
         await Task.Delay(100);
 
         // Then (결과)
@@ -187,7 +187,7 @@ public class PlayDispatcherTests : IDisposable
         var packet = CreateCreateStagePacket(stageId, "invalid_type");
 
         // When (행동)
-        _dispatcher.Post(packet);
+        _dispatcher.OnPost(new RouteMessage(packet));
         await Task.Delay(100);
 
         // Then (결과)
@@ -202,7 +202,7 @@ public class PlayDispatcherTests : IDisposable
         var packet = CreateTestPacket(stageId, "TestMsg", msgSeq: 1);
 
         // When (행동)
-        _dispatcher.Post(packet);
+        _dispatcher.OnPost(new RouteMessage(packet));
 
         // Then (결과)
         // 에러 응답이 전송되어야 함 (communicator.Send가 호출됨)
@@ -215,13 +215,13 @@ public class PlayDispatcherTests : IDisposable
         // Given (전제조건)
         const long stageId = 100;
         var createPacket = CreateCreateStagePacket(stageId, "test_stage");
-        _dispatcher.Post(createPacket);
+        _dispatcher.OnPost(new RouteMessage(createPacket));
         await Task.Delay(100);
 
         _dispatcher.StageCount.Should().Be(1);
 
         // When (행동)
-        _dispatcher.PostDestroy(stageId);
+        _dispatcher.OnPost(new DestroyMessage(stageId));
         await Task.Delay(100);
 
         // Then (결과)
@@ -242,7 +242,7 @@ public class PlayDispatcherTests : IDisposable
             callback: () => Task.CompletedTask);
 
         // When (행동)
-        _dispatcher.PostTimer(timerPacket);
+        _dispatcher.OnPost(new TimerMessage(timerPacket));
 
         // Then (결과)
         _dispatcher.ActiveTimerCount.Should().Be(1, "타이머가 추가되어야 함");
@@ -262,8 +262,8 @@ public class PlayDispatcherTests : IDisposable
         var packet1 = CreateCreateStagePacket(100, "test_stage");
         var packet2 = CreateCreateStagePacket(101, "test_stage");
 
-        dispatcher.Post(packet1);
-        dispatcher.Post(packet2);
+        dispatcher.OnPost(new RouteMessage(packet1));
+        dispatcher.OnPost(new RouteMessage(packet2));
         await Task.Delay(100);
 
         dispatcher.StageCount.Should().Be(2);
@@ -286,7 +286,7 @@ public class PlayDispatcherTests : IDisposable
         for (int i = 0; i < stageCount; i++)
         {
             var packet = CreateCreateStagePacket(100 + i, "test_stage");
-            _dispatcher.Post(packet);
+            _dispatcher.OnPost(new RouteMessage(packet));
         }
         await Task.Delay(200);
 
