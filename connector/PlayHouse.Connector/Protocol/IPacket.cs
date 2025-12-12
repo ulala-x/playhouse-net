@@ -1,5 +1,7 @@
 #nullable enable
 
+using System;
+
 namespace PlayHouse.Connector.Protocol;
 
 /// <summary>

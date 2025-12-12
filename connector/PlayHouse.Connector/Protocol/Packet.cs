@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using Google.Protobuf;
 
 namespace PlayHouse.Connector.Protocol;

@@ -126,17 +126,17 @@ public sealed class NetMqPlaySocket : IPlaySocket
         headerBytes = Array.Empty<byte>();
         payload = Array.Empty<byte>();
 
-        if (!_socket.TryReceiveFrameString(out senderNid))
+        if (!_socket.TryReceiveFrameString(out senderNid!))
         {
             return false;
         }
 
-        if (!_socket.TryReceiveFrameBytes(out headerBytes))
+        if (!_socket.TryReceiveFrameBytes(out headerBytes!))
         {
             return false;
         }
 
-        if (!_socket.TryReceiveFrameBytes(out payload))
+        if (!_socket.TryReceiveFrameBytes(out payload!))
         {
             return false;
         }

@@ -278,6 +278,15 @@ public sealed class PlayServer : IAsyncDisposable
             return;
         }
 
+        // HeartBeat 요청 처리
+        if (msgId == "@Heart@Beat@")
+        {
+            var response = TcpTransportSession.CreateResponsePacket(
+                msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
+            await session.SendAsync(response);
+            return;
+        }
+
         // 실패 요청 시뮬레이션
         if (msgId.Contains("Fail"))
         {

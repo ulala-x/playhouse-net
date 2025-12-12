@@ -17,6 +17,11 @@ public sealed class ConnectorConfig
     public bool UseWebsocket { get; set; }
 
     /// <summary>
+    /// SSL/TLS 사용 여부 (TCP의 경우 TLS, WebSocket의 경우 wss://)
+    /// </summary>
+    public bool UseSsl { get; set; }
+
+    /// <summary>
     /// 연결 유휴 타임아웃 (밀리초, 기본값 30000)
     /// </summary>
     public int ConnectionIdleTimeoutMs { get; set; } = 30000;

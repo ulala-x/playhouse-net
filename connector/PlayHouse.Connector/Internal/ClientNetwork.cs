@@ -1,9 +1,14 @@
 #nullable enable
 
+using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
-using PlayHouse.Connector.Connection;
+using System.Threading;
+using System.Threading.Tasks;
+using PlayHouse.Connector.Network;
 using PlayHouse.Connector.Protocol;
 
 namespace PlayHouse.Connector.Internal;
@@ -26,6 +31,10 @@ internal sealed class ClientNetwork : IAsyncDisposable
     // 패킷 버퍼
     private readonly List<byte> _receiveBuffer = new();
     private int _expectedPacketSize = -1;
+
+    // HeartBeat & IdleTimeout
+    private readonly Stopwatch _lastReceivedTime = new();
+    private readonly Stopwatch _lastSendHeartBeatTime = new();
 
     public ClientNetwork(ConnectorConfig config, IConnectorCallback callback)
     {
@@ -71,7 +80,11 @@ internal sealed class ClientNetwork : IAsyncDisposable
             _connection.DataReceived += OnDataReceived;
             _connection.Disconnected += OnDisconnected;
 
-            await _connection.ConnectAsync(host, port);
+            await _connection.ConnectAsync(host, port, _config.UseSsl);
+
+            // 타이머 시작
+            _lastReceivedTime.Restart();
+            _lastSendHeartBeatTime.Restart();
 
             _asyncManager.AddJob(() => _callback.ConnectCallback(true));
             return true;
@@ -113,6 +126,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     public void MainThreadAction()
     {
+        UpdateClientConnection();
         _asyncManager.MainThreadAction();
     }
 
@@ -120,6 +134,47 @@ internal sealed class ClientNetwork : IAsyncDisposable
     {
         _receiveBuffer.Clear();
         _expectedPacketSize = -1;
+    }
+
+    private void UpdateClientConnection()
+    {
+        if (IsConnect())
+        {
+            if (!_debugMode)
+            {
+                SendHeartBeat();
+
+                if (IsIdleState())
+                {
+                    _ = DisconnectAsync();
+                }
+            }
+        }
+    }
+
+    private void SendHeartBeat()
+    {
+        if (_config.HeartBeatIntervalMs == 0)
+        {
+            return;
+        }
+
+        if (_lastSendHeartBeatTime.ElapsedMilliseconds > _config.HeartBeatIntervalMs)
+        {
+            var packet = Packet.Empty(PacketConst.HeartBeat);
+            Send(packet, 0);
+            _lastSendHeartBeatTime.Restart();
+        }
+    }
+
+    private bool IsIdleState()
+    {
+        if (!_isAuthenticated || _config.ConnectionIdleTimeoutMs == 0)
+        {
+            return false;
+        }
+
+        return _lastReceivedTime.ElapsedMilliseconds > _config.ConnectionIdleTimeoutMs;
     }
 
     #region Send/Request
@@ -261,6 +316,9 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     private void OnDataReceived(object? sender, byte[] data)
     {
+        // 데이터 수신 시 타이머 리셋
+        _lastReceivedTime.Restart();
+
         _receiveBuffer.AddRange(data);
         ProcessReceiveBuffer();
     }
@@ -358,6 +416,12 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     private void HandleReceivedPacket(ParsedPacket parsed)
     {
+        // HeartBeat 메시지는 무시
+        if (parsed.MsgId == PacketConst.HeartBeat)
+        {
+            return;
+        }
+
         var packet = new Packet(parsed.MsgId, parsed.Payload);
 
         // Response 처리 (MsgSeq > 0)

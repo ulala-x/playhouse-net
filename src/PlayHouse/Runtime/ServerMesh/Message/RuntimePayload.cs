@@ -31,7 +31,6 @@ public interface IRuntimePayload : IDisposable
 public sealed class ByteArrayPayload : IRuntimePayload
 {
     private readonly byte[] _data;
-    private bool _disposed;
 
     public ByteArrayPayload(byte[] data)
     {
@@ -49,7 +48,7 @@ public sealed class ByteArrayPayload : IRuntimePayload
 
     public void Dispose()
     {
-        _disposed = true;
+        // Nothing to dispose for byte arrays
     }
 }
 
@@ -59,7 +58,6 @@ public sealed class ByteArrayPayload : IRuntimePayload
 public sealed class ByteStringPayload : IRuntimePayload
 {
     private readonly ByteString _data;
-    private bool _disposed;
 
     public ByteStringPayload(ByteString data)
     {
@@ -72,7 +70,7 @@ public sealed class ByteStringPayload : IRuntimePayload
 
     public void Dispose()
     {
-        _disposed = true;
+        // Nothing to dispose for ByteString
     }
 }
 
@@ -98,7 +96,6 @@ public sealed class EmptyRuntimePayload : IRuntimePayload
 public sealed class FramePayload : IRuntimePayload
 {
     private readonly byte[] _data;
-    private bool _disposed;
 
     public FramePayload(byte[] frameData)
     {
@@ -111,6 +108,6 @@ public sealed class FramePayload : IRuntimePayload
 
     public void Dispose()
     {
-        _disposed = true;
+        // Nothing to dispose for frame data
     }
 }
