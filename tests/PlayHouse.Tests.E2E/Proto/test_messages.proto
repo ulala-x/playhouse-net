@@ -53,3 +53,86 @@ message ChatMessage {
     string message = 3;
     int64 timestamp = 4;
 }
+
+// ============================================
+// 인증 관련 메시지
+// ============================================
+
+// 인증 요청
+message AuthenticateRequest {
+    string user_id = 1;
+    string token = 2;
+}
+
+// 인증 응답
+message AuthenticateReply {
+    string account_id = 1;
+    bool success = 2;
+}
+
+// ============================================
+// Timer 테스트용 메시지
+// ============================================
+
+// 반복 타이머 시작 요청
+message StartRepeatTimerRequest {
+    int32 interval_ms = 1;
+    int32 initial_delay_ms = 2;
+}
+
+// 카운트 타이머 시작 요청
+message StartCountTimerRequest {
+    int32 interval_ms = 1;
+    int32 count = 2;
+    int32 initial_delay_ms = 3;
+}
+
+// 타이머 콜백 알림 (Push)
+message TimerTickNotify {
+    int32 tick_number = 1;
+    int64 timestamp = 2;
+    string timer_type = 3;
+}
+
+// 타이머 시작 응답
+message StartTimerReply {
+    int64 timer_id = 1;
+}
+
+// ============================================
+// AsyncBlock 테스트용 메시지
+// ============================================
+
+// AsyncBlock 실행 요청
+message AsyncBlockRequest {
+    string operation = 1;
+    int32 delay_ms = 2;
+}
+
+// AsyncBlock 결과 응답
+message AsyncBlockReply {
+    string pre_result = 1;
+    string post_result = 2;
+    int64 pre_thread_id = 3;
+    int64 post_thread_id = 4;
+}
+
+// ============================================
+// Stage 관리 메시지
+// ============================================
+
+// Stage 종료 요청
+message CloseStageRequest {
+    string reason = 1;
+}
+
+// Stage 종료 응답
+message CloseStageReply {
+    bool success = 1;
+}
+
+// 연결 상태 변경 알림 (Push)
+message ConnectionChangedNotify {
+    string account_id = 1;
+    bool is_connected = 2;
+}

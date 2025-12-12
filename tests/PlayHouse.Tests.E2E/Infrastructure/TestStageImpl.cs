@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Collections.Concurrent;
 using Google.Protobuf;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
@@ -23,17 +24,43 @@ public class TestStageImpl : IStage
 {
     public IStageSender StageSender { get; }
 
+    // Static 필드
+    public static ConcurrentBag<TestStageImpl> Instances { get; } = new();
+    public static ConcurrentBag<string> AllReceivedMsgIds { get; } = new();
+    public static int OnDispatchCallCount => _onDispatchCallCount;
+    public static int TimerCallbackCount => _timerCallbackCount;
+    public static int AsyncPreCallbackCount => _asyncPreCallbackCount;
+    public static int AsyncPostCallbackCount => _asyncPostCallbackCount;
+
+    private static int _onDispatchCallCount;
+    private static int _timerCallbackCount;
+    private static int _asyncPreCallbackCount;
+    private static int _asyncPostCallbackCount;
+
     // 테스트 검증용 데이터
     public List<string> ReceivedMsgIds { get; } = new();
     public List<IActor> JoinedActors { get; } = new();
     public List<(IActor actor, bool isConnected)> ConnectionChanges { get; } = new();
     public bool OnCreateCalled { get; private set; }
     public bool OnDestroyCalled { get; private set; }
+    public bool OnPostCreateCalled { get; private set; }
+    public bool OnPostJoinStageCalled { get; private set; }
     public IPacket? LastCreatePacket { get; private set; }
+
+    public static void ResetAll()
+    {
+        while (Instances.TryTake(out _)) { }
+        while (AllReceivedMsgIds.TryTake(out _)) { }
+        Interlocked.Exchange(ref _onDispatchCallCount, 0);
+        Interlocked.Exchange(ref _timerCallbackCount, 0);
+        Interlocked.Exchange(ref _asyncPreCallbackCount, 0);
+        Interlocked.Exchange(ref _asyncPostCallbackCount, 0);
+    }
 
     public TestStageImpl(IStageSender stageSender)
     {
         StageSender = stageSender;
+        Instances.Add(this);
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -45,6 +72,7 @@ public class TestStageImpl : IStage
 
     public Task OnPostCreate()
     {
+        OnPostCreateCalled = true;
         return Task.CompletedTask;
     }
 
@@ -62,6 +90,7 @@ public class TestStageImpl : IStage
 
     public Task OnPostJoinStage(IActor actor)
     {
+        OnPostJoinStageCalled = true;
         return Task.CompletedTask;
     }
 
@@ -77,6 +106,8 @@ public class TestStageImpl : IStage
     public async Task OnDispatch(IActor actor, IPacket packet)
     {
         ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+        AllReceivedMsgIds.Add(packet.MsgId);
 
         switch (packet.MsgId)
         {
@@ -105,6 +136,22 @@ public class TestStageImpl : IStage
             case "TriggerSendToClient":
                 // IStageSender.SendToClient 트리거
                 await HandleSendToClientTrigger(actor, packet);
+                break;
+
+            case "StartRepeatTimerRequest":
+                await HandleStartRepeatTimer(actor, packet);
+                break;
+
+            case "StartCountTimerRequest":
+                await HandleStartCountTimer(actor, packet);
+                break;
+
+            case "AsyncBlockRequest":
+                HandleAsyncBlock(actor, packet);
+                break;
+
+            case "CloseStageRequest":
+                HandleCloseStage(actor, packet);
                 break;
 
             default:
@@ -182,5 +229,99 @@ public class TestStageImpl : IStage
         actor.ActorSender.SendToClient(CPacket.Of(pushNotify));
         actor.ActorSender.Reply(CPacket.Empty("TriggerSendToClientReply"));
         return Task.CompletedTask;
+    }
+
+    private Task HandleStartRepeatTimer(IActor actor, IPacket packet)
+    {
+        var request = StartRepeatTimerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var tickNumber = 0;
+
+        var timerId = StageSender.AddRepeatTimer(
+            TimeSpan.FromMilliseconds(request.InitialDelayMs),
+            TimeSpan.FromMilliseconds(request.IntervalMs),
+            async () =>
+            {
+                Interlocked.Increment(ref _timerCallbackCount);
+                tickNumber++;
+                var notify = new TimerTickNotify
+                {
+                    TickNumber = tickNumber,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    TimerType = "repeat"
+                };
+                actor.ActorSender.SendToClient(CPacket.Of(notify));
+            });
+
+        actor.ActorSender.Reply(CPacket.Of(new StartTimerReply { TimerId = timerId }));
+        return Task.CompletedTask;
+    }
+
+    private Task HandleStartCountTimer(IActor actor, IPacket packet)
+    {
+        var request = StartCountTimerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var tickNumber = 0;
+
+        var timerId = StageSender.AddCountTimer(
+            TimeSpan.FromMilliseconds(request.InitialDelayMs),
+            TimeSpan.FromMilliseconds(request.IntervalMs),
+            request.Count,
+            async () =>
+            {
+                Interlocked.Increment(ref _timerCallbackCount);
+                tickNumber++;
+                var notify = new TimerTickNotify
+                {
+                    TickNumber = tickNumber,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    TimerType = "count"
+                };
+                actor.ActorSender.SendToClient(CPacket.Of(notify));
+            });
+
+        actor.ActorSender.Reply(CPacket.Of(new StartTimerReply { TimerId = timerId }));
+        return Task.CompletedTask;
+    }
+
+    private void HandleAsyncBlock(IActor actor, IPacket packet)
+    {
+        var request = AsyncBlockRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        long preThreadId = 0;
+        string preResult = "";
+
+        StageSender.AsyncBlock(
+            async () =>
+            {
+                Interlocked.Increment(ref _asyncPreCallbackCount);
+                preThreadId = Environment.CurrentManagedThreadId;
+
+                // 외부 I/O 시뮬레이션
+                await Task.Delay(request.DelayMs);
+                preResult = $"pre_completed_{request.Operation}";
+
+                return preResult;
+            },
+            async (result) =>
+            {
+                Interlocked.Increment(ref _asyncPostCallbackCount);
+                var postThreadId = Environment.CurrentManagedThreadId;
+                var postResult = $"post_completed_{result}";
+
+                var reply = new AsyncBlockReply
+                {
+                    PreResult = preResult,
+                    PostResult = postResult,
+                    PreThreadId = preThreadId,
+                    PostThreadId = postThreadId
+                };
+
+                actor.ActorSender.Reply(CPacket.Of(reply));
+            });
+    }
+
+    private void HandleCloseStage(IActor actor, IPacket packet)
+    {
+        var request = CloseStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        actor.ActorSender.Reply(CPacket.Of(new CloseStageReply { Success = true }));
+        StageSender.CloseStage();
     }
 }

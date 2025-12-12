@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Collections.Concurrent;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 
@@ -13,6 +14,12 @@ public class TestActorImpl : IActor
 {
     private static long _accountIdCounter;
 
+    // Static 필드 - E2E 테스트 검증용
+    public static ConcurrentBag<TestActorImpl> Instances { get; } = new();
+    public static ConcurrentBag<string> AuthenticatedAccountIds { get; } = new();
+    public static int OnAuthenticateCallCount => _onAuthenticateCallCount;
+    private static int _onAuthenticateCallCount;
+
     public IActorSender ActorSender { get; }
 
     // 테스트 검증용 데이터
@@ -25,6 +32,7 @@ public class TestActorImpl : IActor
     public TestActorImpl(IActorSender actorSender)
     {
         ActorSender = actorSender;
+        Instances.Add(this);
     }
 
     public Task OnCreate()
@@ -48,6 +56,10 @@ public class TestActorImpl : IActor
         var accountId = Interlocked.Increment(ref _accountIdCounter);
         ActorSender.AccountId = accountId.ToString();
 
+        // Static 필드 업데이트
+        Interlocked.Increment(ref _onAuthenticateCallCount);
+        AuthenticatedAccountIds.Add(ActorSender.AccountId);
+
         return Task.FromResult(true);
     }
 
@@ -55,5 +67,16 @@ public class TestActorImpl : IActor
     {
         OnPostAuthenticateCalled = true;
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 모든 Static 필드를 초기화합니다.
+    /// 테스트 간 격리를 위해 각 테스트 시작 시 호출해야 합니다.
+    /// </summary>
+    public static void ResetAll()
+    {
+        while (Instances.TryTake(out _)) { }
+        while (AuthenticatedAccountIds.TryTake(out _)) { }
+        Interlocked.Exchange(ref _onAuthenticateCallCount, 0);
     }
 }

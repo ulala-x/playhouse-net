@@ -26,6 +26,8 @@ public class ConnectionTests : IAsyncLifetime
     private readonly ClientConnector _connector;
     private readonly List<bool> _connectResults = new();
     private int _disconnectCount;
+    private Timer? _callbackTimer;
+    private readonly object _callbackLock = new();
 
     private const long DefaultStageId = 12345L;
 
@@ -51,10 +53,22 @@ public class ConnectionTests : IAsyncLifetime
             .Build();
 
         await _playServer.StartAsync();
+
+        // 콜백 자동 처리 타이머 시작
+        _callbackTimer = new Timer(_ =>
+        {
+            lock (_callbackLock)
+            {
+                _connector.MainThreadAction();
+            }
+        }, null, 0, 20); // 20ms 간격
     }
 
     public async Task DisposeAsync()
     {
+        _callbackTimer?.Dispose();
+        _callbackTimer = null;
+
         _connector.Disconnect();
         if (_playServer != null)
         {
@@ -72,7 +86,7 @@ public class ConnectionTests : IAsyncLifetime
 
         // When
         var result = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, DefaultStageId);
-        await ProcessCallbacksAsync();
+        await Task.Delay(100);
 
         // Then - E2E 검증: Connector 공개 API만 사용
         result.Should().BeTrue("ConnectAsync 반환값이 true여야 함");
@@ -88,7 +102,7 @@ public class ConnectionTests : IAsyncLifetime
 
         // When - 존재하지 않는 포트로 연결 시도
         var result = await _connector.ConnectAsync("127.0.0.1", 59999, DefaultStageId);
-        await ProcessCallbacksAsync();
+        await Task.Delay(100);
 
         // Then - E2E 검증
         result.Should().BeFalse("ConnectAsync 반환값이 false여야 함");
@@ -154,7 +168,6 @@ public class ConnectionTests : IAsyncLifetime
         while (_disconnectCount == 0 && DateTime.UtcNow < timeout)
         {
             await Task.Delay(50);
-            _connector.MainThreadAction();
         }
 
         // Then - E2E 검증
@@ -221,7 +234,7 @@ public class ConnectionTests : IAsyncLifetime
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
         var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
         connected.Should().BeTrue("서버에 연결되어야 함");
-        await ProcessCallbacksAsync();
+        await Task.Delay(100);
     }
 
     private async Task ConnectToServerAsync(long stageId = 12345L)
@@ -231,15 +244,7 @@ public class ConnectionTests : IAsyncLifetime
         // 인증 수행
         using var authPacket = Packet.Empty("AuthenticateRequest");
         await _connector.AuthenticateAsync(authPacket);
-        await ProcessCallbacksAsync();
-    }
-
-    private async Task ProcessCallbacksAsync()
-    {
-        await Task.Delay(50);
-        _connector.MainThreadAction();
-        await Task.Delay(50);
-        _connector.MainThreadAction();
+        await Task.Delay(100);
     }
 
     #endregion
