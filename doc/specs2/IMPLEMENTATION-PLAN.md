@@ -135,17 +135,19 @@ git worktree remove ../playhouse-net-connector
 
 - **현재 Phase**: 7 (통합 및 정리)
 - **진행 방식**: 단일 에이전트 순차 진행
-- **최근 완료**: Phase 6 - E2E 테스트 인프라 (2025-12-11)
+- **최근 완료**: Phase 1-6 전체 구현 완료 (2025-12-11)
 - **완료된 Phase**:
   - Phase 1: NetMQ 통신 계층 ✅
   - Phase 2: 핵심 인터페이스 ✅
-  - Phase 3: Play 서버 ⚠️ (BaseStageCmdHandler 미구현 - Stage Command 처리 필요)
+  - Phase 3: Play 서버 ✅ (BaseStageCmdHandler 구현 완료)
   - Phase 4: API 서버 ✅
   - Phase 5: Connector ✅
   - Phase 6: E2E 테스트 인프라 ✅
 - **남은 작업**:
-  - **Phase 3 보완**: BaseStageCmdHandler 실제 구현 (JoinStageCmd, CreateJoinStageCmd, DisconnectNoticeCmd, ReconnectCmd)
+  - E2E 테스트 확장: ISender, IStageSender, IActorSender, IApiSender 메서드별 테스트 추가
   - Phase 7: 통합 및 정리, 레거시 코드 제거, 성능 벤치마크
+
+> **Note**: 모든 핵심 기능 구현 완료됨. E2E 테스트만 추가 필요.
 
 ---
 
@@ -156,6 +158,8 @@ git worktree remove ../playhouse-net-connector
 **📖 참조 문서**: [07-netmq-runtime.md](./07-netmq-runtime.md), [02-server-communication.md](./02-server-communication.md)
 
 **🎯 목표**: NetMQ 기반 서버 간 통신 인프라 구축
+
+**✅ 상태**: 구현 완료
 
 #### 작업 목록
 
@@ -254,6 +258,8 @@ public class CommunicatorOption
 **📖 참조 문서**: [06-interfaces.md](./06-interfaces.md), [new-request.md](./new-request.md), [10-request-reply-mechanism.md](./10-request-reply-mechanism.md)
 
 **🎯 목표**: Packet 시스템 및 Sender 인터페이스 구현
+
+**✅ 상태**: 구현 완료
 
 #### 작업 목록
 
@@ -364,6 +370,8 @@ internal class ReplyObject
 
 **🎯 목표**: Play 서버 모듈 구현 및 Bootstrap 제공
 
+**✅ 상태**: 구현 완료 (2025-12-11)
+
 #### 작업 목록
 
 | # | 작업 | 파일 경로 | 상세 |
@@ -451,6 +459,8 @@ ValueTask OnConnectionChanged(IActor actor, bool isConnected);  // 재연결 처
 **📖 참조 문서**: [04-api-server.md](./04-api-server.md), [10-request-reply-mechanism.md](./10-request-reply-mechanism.md)
 
 **🎯 목표**: API 서버 모듈 구현 및 Bootstrap 제공
+
+**✅ 상태**: 구현 완료
 
 #### 작업 목록
 
@@ -919,6 +929,32 @@ IApiSender, IApiController
 > - Given-When-Then 구조, 명시적 셋업
 > - 테스트 목록만 출력해도 **기능 명세서처럼** 읽혀야 함
 
+#### 📊 E2E 테스트 구현 현황 (Phase 6)
+
+> **모든 기능 구현 완료** - E2E 테스트만 추가 필요
+
+| 섹션 | 항목 | 기능 | E2E 테스트 | 비고 |
+|------|------|------|------------|------|
+| 6.1.1 | 연결 테스트 | ✅ | ✅ 완료 | 4개 테스트 |
+| 6.1.2 | 인증 테스트 | ✅ | ✅ 완료 | 6개 테스트 |
+| 6.2.1 | Send | ✅ | ✅ 완료 | OnReceive Push 검증 |
+| 6.2.2 | Request | ✅ | ✅ 완료 | Reply 검증, 멀티플 Request |
+| 6.2.3 | OnReceive | ✅ | ✅ 완료 | Push 메시지 수신 검증 |
+| 6.3.1-3 | SendToApi/RequestToApi | ✅ | ❌ 미구현 | E2E 가능 (PlayServer+ApiServer) |
+| 6.3.4-6 | SendToStage/RequestToStage | ✅ | ❌ 미구현 | E2E 가능 (Stage간 통신) |
+| 6.4.1 | Timer | ✅ | ❌ 미구현 | E2E 가능 (타이머→Push→OnReceive) |
+| 6.4.2 | AsyncBlock | ✅ | ❌ 미구현 | E2E 가능 (pre→post→Reply) |
+| 6.4.3 | SendToClient | ✅ | ✅ 완료 | Push 메시지 검증 |
+| 6.4.4 | CloseStage | ✅ | ❌ 미구현 | E2E 가능 |
+| 6.5.1 | AccountId | ✅ | ⚠️ 부분 | 콜백 검증 완료, Reply 검증 미구현 |
+| 6.5.2 | SendToClient | ✅ | ✅ 완료 | 6.4.3에서 검증 |
+| 6.5.3 | LeaveStage | ✅ | ❌ 미구현 | E2E 가능 |
+| 6.6.x | IApiSender | ✅ | ❌ 미구현 | E2E 가능 (API 서버 구현 완료) |
+
+**범례**:
+- **기능**: ✅ 구현 완료
+- **E2E 테스트**: ✅ 테스트 완료 | ⚠️ 부분구현 | ❌ 테스트 미구현
+
 ---
 
 #### ⚠️ E2E 테스트 핵심 원칙
@@ -931,6 +967,94 @@ IApiSender, IApiController
 | **Send 패킷** | 서버에서 Push 응답 → `OnReceive`로 확인 |
 | **서버만 검증 가능한 것** | 통합테스트 목록에 추가, E2E에서는 "→ 통합테스트" 표기 |
 
+#### ⚠️ E2E 테스트에서 서버 콜백 검증
+
+> E2E 테스트는 응답 확인과 함께 **테스트 구현체의 콜백 호출도 검증**해야 함
+
+| 검증 항목 | 방법 |
+|----------|------|
+| **응답 검증** | 클라이언트 공개 API로 확인 (IsAuthenticated, Response 패킷 등) |
+| **콜백 호출 검증** | 테스트 구현체 (TestStageImpl, TestActorImpl)의 기록으로 확인 |
+
+**예시: 인증 테스트**
+```csharp
+// 1. 응답 검증 (클라이언트 API)
+_connector.IsAuthenticated().Should().BeTrue();
+
+// 2. 콜백 호출 검증 (테스트 구현체)
+testActor.OnAuthenticateCalled.Should().BeTrue();
+testActor.LastAuthPacket.MsgId.Should().Be("AuthenticateRequest");
+```
+
+**예시: 메시지 처리 테스트**
+```csharp
+// 1. 응답 검증 (클라이언트 API)
+var response = await _connector.RequestAsync(packet);
+response.MsgId.Should().Be("EchoReply");
+
+// 2. 콜백 호출 검증 (테스트 구현체)
+testStage.ReceivedMsgIds.Should().Contain("EchoRequest");
+```
+
+---
+
+#### 📋 IActor/IStage 콜백 테스트 매트릭스
+
+##### IActor 콜백 (4개)
+
+| 콜백 | 테스트 유형 | 상태 | 트리거 | 검증 방법 |
+|------|------------|------|--------|----------|
+| `OnCreate()` | **E2E** | ✅ 완료 | JoinStage 요청 | 응답: `JoinStageResult.ErrorCode == 0`<br>콜백: `TestActorImpl.Instances.Any(a => a.OnCreateCalled)` |
+| `OnAuthenticate(IPacket)` | **E2E** | ✅ 완료 | Connector.Authenticate 호출 | 응답: `IsAuthenticated() == true`<br>콜백: `TestActorImpl.OnAuthenticateCallCount > 0`, `TestActorImpl.AuthenticatedAccountIds.Contains(...)` |
+| `OnPostAuthenticate()` | **E2E** | ✅ 완료 | OnAuthenticate 성공 후 자동 | 응답: JoinStage 성공<br>콜백: `TestActorImpl.Instances.Any(a => a.OnPostAuthenticateCalled)` |
+| `OnDestroy()` | **통합** | - | LeaveStage, 인증 실패, Stage 종료 | 콜백: `TestActorImpl.Instances.Any(a => a.OnDestroyCalled)` |
+
+##### IStage 콜백 (8개)
+
+| 콜백 | 테스트 유형 | 상태 | 트리거 | 검증 방법 |
+|------|------------|------|--------|----------|
+| `OnCreate(IPacket)` | **E2E** | ✅ 완료 | CreateStage API 호출 | 응답: `CreateStageResult.ErrorCode == 0`<br>콜백: `TestStageImpl.Instances.Any(s => s.OnCreateCalled)` |
+| `OnPostCreate()` | **E2E** | ✅ 완료 | OnCreate 성공 후 자동 | 응답: CreateStage 성공<br>콜백: (OnCreate와 함께 검증) |
+| `OnDestroy()` | **통합** | - | CloseStage 호출 | 콜백: `TestStageImpl.Instances.Any(s => s.OnDestroyCalled)` |
+| `OnJoinStage(IActor)` | **E2E** | ✅ 완료 | JoinStage API 호출 | 응답: `JoinStageResult.ErrorCode == 0`<br>콜백: `TestStageImpl.Instances.Any(s => s.JoinedActors.Count > 0)` |
+| `OnPostJoinStage(IActor)` | **E2E** | ✅ 완료 | OnJoinStage 성공 후 자동 | 응답: JoinStage 성공<br>콜백: (OnJoinStage와 함께 검증) |
+| `OnConnectionChanged(IActor, bool)` | **E2E** | ✅ 완료 | 클라이언트 연결/해제 | 응답: 연결 상태 변경 후 메시지 처리<br>콜백: `TestStageImpl.Instances.Any(s => s.ConnectionChanges.Count > 0)` |
+| `OnDispatch(IActor, IPacket)` | **E2E** | ✅ 완료 | 클라이언트 메시지 수신 | 응답: Reply 패킷 내용<br>콜백: `TestStageImpl.OnDispatchCallCount > 0`, `TestStageImpl.AllReceivedMsgIds.Contains(...)` |
+| `OnDispatch(IPacket)` | **통합** | - | 서버간 메시지 수신 | 콜백: `TestStageImpl.Instances.Any(s => s.ReceivedMsgIds.Contains(...))` |
+
+##### IStageSender 콜백 (타이머/AsyncBlock)
+
+> **기능 구현**: ✅ 완료 (`XStageSender.cs`)
+> **E2E 검증 가능**: Timer 콜백에서 SendToClient → Client OnReceive / AsyncBlock 결과를 Reply로 전송
+
+| 콜백 | 테스트 유형 | 트리거 | 검증 방법 |
+|------|------------|--------|----------|
+| `TimerCallback` (AddRepeatTimer) | **E2E 가능** | IStageSender.AddRepeatTimer 호출 | 콜백에서 SendToClient → Client OnReceive 검증 |
+| `TimerCallback` (AddCountTimer) | **E2E 가능** | IStageSender.AddCountTimer 호출 | 콜백에서 SendToClient → Client OnReceive (정확히 N회) |
+| `AsyncBlock.PreCallback` | **E2E 가능** | IStageSender.AsyncBlock 호출 | preCallback 결과를 postCallback에서 Reply → Client 검증 |
+| `AsyncBlock.PostCallback` | **E2E 가능** | PreCallback 완료 후 자동 | postCallback에서 Reply → Client 검증 |
+
+##### 테스트 구현체 Static 필드 요약
+
+**TestActorImpl**:
+```csharp
+public static ConcurrentBag<TestActorImpl> Instances { get; }      // 생성된 모든 인스턴스
+public static ConcurrentBag<string> AuthenticatedAccountIds { get; } // 인증된 AccountId 목록
+public static int OnAuthenticateCallCount { get; }                 // OnAuthenticate 호출 횟수
+public static void ResetAll();                                      // 테스트 전 초기화
+```
+
+**TestStageImpl**:
+```csharp
+public static ConcurrentBag<TestStageImpl> Instances { get; }       // 생성된 모든 인스턴스
+public static ConcurrentBag<string> AllReceivedMsgIds { get; }      // 수신된 모든 MsgId
+public static int OnDispatchCallCount { get; }                      // OnDispatch 호출 횟수
+public static int TimerCallbackCount { get; }                       // 타이머 콜백 호출 횟수
+public static int AsyncPreCallbackCount { get; }                    // AsyncBlock Pre 콜백 횟수
+public static int AsyncPostCallbackCount { get; }                   // AsyncBlock Post 콜백 횟수
+public static void ResetAll();                                       // 테스트 전 초기화
+```
+
 ---
 
 #### 6.1 Connector 연결/인증
@@ -942,28 +1066,30 @@ IApiSender, IApiController
 
 ##### 6.1.1 연결 테스트
 
-| 테스트 | 검증 방법 |
-|--------|----------|
-| TCP 연결 성공 | `IsConnected() == true`, `OnConnect(true)` 콜백 |
-| TCP 연결 실패 (잘못된 host) | `IsConnected() == false`, `OnConnect(false)` 콜백 |
-| ConnectAsync 성공 | `await ConnectAsync() == true`, `IsConnected() == true` |
-| ConnectAsync 실패 | `await ConnectAsync() == false` |
-| Disconnect 호출 | `IsConnected() == false`, `OnDisconnect` 콜백 없음 (클라이언트 주도 해제) |
-| 서버 연결 해제 | `OnDisconnect` 콜백 발생 |
+| 테스트 | 상태 | 검증 방법 |
+|--------|------|----------|
+| TCP 연결 성공 | ✅ 완료 | `IsConnected() == true`, `OnConnect(true)` 콜백 |
+| TCP 연결 실패 (잘못된 host) | ✅ 완료 | `IsConnected() == false`, `OnConnect(false)` 콜백 |
+| ConnectAsync 성공 | ✅ 완료 | `await ConnectAsync() == true`, `IsConnected() == true` |
+| ConnectAsync 실패 | ✅ 완료 | `await ConnectAsync() == false` |
+| Disconnect 호출 | ✅ 완료 | `IsConnected() == false`, `OnDisconnect` 콜백 없음 (클라이언트 주도 해제) |
+| 서버 연결 해제 | ✅ 완료 | `OnDisconnect` 콜백 발생 |
 
 > 서버측 세션 생성/제거 → **통합테스트**
 
 ##### 6.1.2 인증 테스트
 
-| 테스트 | 검증 방법 |
-|--------|----------|
-| Authenticate (callback) 성공 | 콜백 호출, 응답 패킷 내용, `IsAuthenticated() == true` |
-| AuthenticateAsync 성공 | 응답 패킷 내용, `IsAuthenticated() == true` |
-| 인증 실패 | `OnDisconnect` 콜백, `IsAuthenticated() == false` |
-| 미인증 상태에서 Send | `OnError(Unauthenticated)` 콜백 |
-| 미인증 상태에서 Request | `OnError(Unauthenticated)` 콜백 |
+| 테스트 | 상태 | 검증 방법 |
+|--------|------|----------|
+| Authenticate (callback) 성공 | ✅ 완료 | 콜백 호출, 응답 패킷 내용, `IsAuthenticated() == true` |
+| AuthenticateAsync 성공 | ✅ 완료 | 응답 패킷 내용, `IsAuthenticated() == true` |
+| 인증 실패 | ✅ 완료 | `OnDisconnect` 콜백, `IsAuthenticated() == false` |
+| 미인증 상태에서 Send | ✅ 완료 | `OnError(Unauthenticated)` 콜백 |
+| 미인증 상태에서 Request | ✅ 완료 | `OnError(Unauthenticated)` 콜백 |
 
-> 서버 IActor.OnAuthenticate 콜백 → **통합테스트**
+> 서버 IActor.OnAuthenticate 콜백 → **E2E**
+> - 응답 검증: `IsAuthenticated() == true`, 응답 패킷 내용
+> - 콜백 검증: `TestActorImpl.OnAuthenticateCallCount > 0`, `TestActorImpl.AuthenticatedAccountIds.Should().Contain(...)`
 
 ---
 
@@ -971,202 +1097,254 @@ IApiSender, IApiController
 
 ##### 6.2.1 Send (Fire-and-Forget)
 
-| 테스트 | 검증 방법 |
-|--------|----------|
-| Send 후 연결 유지 | `IsConnected() == true` |
-| Send 메시지 도착 확인 | 서버에서 에코 Push → `OnReceive(stageId, packet)` 확인 |
+| 테스트 | 상태 | 검증 방법 |
+|--------|------|----------|
+| Send 후 연결 유지 | ✅ 완료 | `IsConnected() == true` |
+| Send 메시지 도착 확인 | ✅ 완료 | 서버에서 에코 Push → `OnReceive(stageId, packet)` 확인 |
 
-> 서버 IStage.OnDispatch 호출 → **통합테스트**
+> 서버 IStage.OnDispatch 호출 → **E2E**
+> - 응답 검증: 응답 패킷 MsgId, 내용 확인
+> - 콜백 검증: `TestStageImpl.OnDispatchCallCount > 0`, `TestStageImpl.AllReceivedMsgIds.Should().Contain("EchoRequest")`
 
 ##### 6.2.2 Request (Callback)
 
-| 테스트 | 검증 방법 |
-|--------|----------|
-| Request 성공 | 콜백 호출, 응답 패킷 내용 검증 |
-| Request 에러 응답 | `OnError(stageId, errorCode, request)` 콜백 |
+| 테스트 | 상태 | 검증 방법 |
+|--------|------|----------|
+| Request 성공 | ✅ 완료 | 콜백 호출, 응답 패킷 내용 검증 |
+| Request 에러 응답 | ✅ 완료 | `OnError(stageId, errorCode, request)` 콜백 |
 
 ##### 6.2.3 RequestAsync
 
-| 테스트 | 검증 방법 |
-|--------|----------|
-| RequestAsync 성공 | 응답 패킷 내용 검증 |
-| RequestAsync 타임아웃 | `ConnectorException` 발생, `ErrorCode == RequestTimeout` |
-| RequestAsync 에러 응답 | `ConnectorException` 발생, `ErrorCode` 확인 |
+| 테스트 | 상태 | 검증 방법 |
+|--------|------|----------|
+| RequestAsync 성공 | ✅ 완료 | 응답 패킷 내용 검증 |
+| RequestAsync 타임아웃 | ✅ 완료 | `ConnectorException` 발생, `ErrorCode == RequestTimeout` |
+| RequestAsync 에러 응답 | ✅ 완료 | `ConnectorException` 발생, `ErrorCode` 확인 |
 
 ##### 6.2.4 OnReceive 이벤트
 
-| 테스트 | 검증 방법 |
-|--------|----------|
-| Push 메시지 수신 | `OnReceive(stageId, packet)` 콜백, stageId/packet 내용 검증 |
-| 여러 Push 수신 | 모든 `OnReceive` 콜백 순서대로 호출 |
+| 테스트 | 상태 | 검증 방법 |
+|--------|------|----------|
+| Push 메시지 수신 | ✅ 완료 | `OnReceive(stageId, packet)` 콜백, stageId/packet 내용 검증 |
+| 여러 Push 수신 | ✅ 완료 | 모든 `OnReceive` 콜백 순서대로 호출 |
 
 ---
 
 #### 6.3 ISender 메서드
 
-> **트리거 방식**: Client Request → Stage/API 핸들러에서 ISender 메서드 호출 → 결과를 Client에게 Reply
+> **기능 구현**: ✅ 완료 (`XSender.cs`)
+> **트리거 방식**: Client Request → Stage.OnDispatch에서 ISender 메서드 호출 → Reply로 결과 검증
 
 ##### 6.3.1 SendToApi
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| SendToApi 호출 | Client Request("TriggerSendToApi") → Stage에서 SendToApi 호출 후 Reply | Client Request 응답 수신 확인 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| SendToApi 성공 | ❌ 미구현 | Client Request("TriggerSendToApi") → Stage에서 SendToApi 호출 | API.OnDispatch 콜백 + Reply 성공 응답 |
 
-> API 서버 메시지 수신 → **통합테스트**
+> **E2E 테스트 시나리오** (PlayServer + ApiServer 동시 구동):
+> 1. Client → PlayServer Request("TriggerSendToApi", apiPacket)
+> 2. Stage.OnDispatch에서 SendToApi(packet) 호출
+> 3. ApiServer.OnDispatch 콜백 호출됨 → TestApiImpl 검증
+> 4. Stage에서 Reply → Client 응답 검증
 
 ##### 6.3.2 RequestToApi (callback)
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| RequestToApi 콜백 | Client Request → Stage에서 RequestToApi(callback) → callback에서 Reply | Client Reply에 API 응답 데이터 포함 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| RequestToApi 콜백 | ❌ 미구현 | Client Request → Stage에서 RequestToApi(callback) → callback에서 Reply | Client Reply에 API 응답 데이터 포함 |
 
 ##### 6.3.3 RequestToApi (async)
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| await RequestToApi | Client Request → Stage에서 await RequestToApi → Reply | Client Reply에 API 응답 데이터 포함 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| await RequestToApi | ❌ 미구현 | Client Request → Stage에서 await RequestToApi → Reply | Client Reply에 API 응답 데이터 포함 |
 
 ##### 6.3.4 SendToStage
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| SendToStage 호출 | HTTP API → API에서 SendToStage 호출 | HTTP 응답 성공 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| SendToStage 성공 | ❌ 미구현 | Client Request("SendToStage", targetStageId) → Stage에서 SendToStage 호출 | targetStage OnDispatch 콜백 + Reply 성공 응답 |
 
-> Stage 메시지 수신 → **통합테스트**
+> **E2E 테스트 시나리오**:
+> 1. Stage A, Stage B 두 개 생성 (UseStage로 등록)
+> 2. Client → Stage A Request("SendToStage", stageB_id, message)
+> 3. Stage A.OnDispatch에서 SendToStage(stageB_id, packet) 호출
+> 4. Stage B.OnDispatch 콜백 호출됨 → TestStageImpl.AllReceivedMsgIds 검증
+> 5. Stage A에서 Reply → Client 응답 검증
 
 ##### 6.3.5 RequestToStage (callback)
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| RequestToStage 콜백 | HTTP API → API에서 RequestToStage(callback) | HTTP 응답에 Stage 데이터 포함 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| RequestToStage 콜백 | ❌ 미구현 | Client Request → Stage A에서 RequestToStage(stageB, callback) → callback에서 Reply | Client Reply에 Stage B 응답 데이터 포함 |
 
 ##### 6.3.6 RequestToStage (async)
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| await RequestToStage | HTTP API → API에서 await RequestToStage | HTTP 응답에 Stage 데이터 포함 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| await RequestToStage | ❌ 미구현 | Client Request → Stage A에서 await RequestToStage(stageB) → Reply | Client Reply에 Stage B 응답 데이터 포함 |
 
 ##### 6.3.7 Reply
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| Reply(errorCode) | Client Request → Stage에서 Reply(500) | `OnError(stageId, 500, request)` 또는 `ConnectorException` |
-| Reply(packet) | Client Request → Stage에서 Reply(packet) | RequestAsync 응답 또는 콜백에서 packet 내용 검증 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| Reply(errorCode) | ✅ 완료 | Client Request → Stage에서 Reply(500) | `OnError(stageId, 500, request)` 또는 `ConnectorException` |
+| Reply(packet) | ✅ 완료 | Client Request → Stage에서 Reply(packet) | RequestAsync 응답 또는 콜백에서 packet 내용 검증 |
 
 ---
 
 #### 6.4 IStageSender 메서드
 
+> **기능 구현**: ✅ 완료 (`XStageSender.cs`)
+
 ##### 6.4.1 타이머 메서드
 
-> 타이머는 서버 내부 동작 → **통합테스트**로 이동
+> 타이머 콜백에서 SendToClient → Client OnReceive로 **E2E 검증 가능**
 
-| 메서드 | 통합테스트 검증 |
-|--------|---------------|
-| AddRepeatTimer | 콜백 반복 호출 확인 |
-| AddCountTimer | 지정 횟수만큼 콜백 호출 확인 |
-| CancelTimer | 콜백 중지 확인 |
-| HasTimer | 타이머 존재 여부 확인 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| AddRepeatTimer | ❌ 미구현 | Client Request("StartTimer") → 타이머 콜백에서 SendToClient | OnReceive로 여러 Push 수신 확인 |
+| AddCountTimer | ❌ 미구현 | Client Request("StartCountTimer", count=3) → 타이머 콜백에서 SendToClient | OnReceive로 정확히 N회 Push 수신 |
+| CancelTimer | ❌ 미구현 | Client Request("CancelTimer") → 타이머 취소 | 더 이상 Push 수신 없음 |
+
+> **E2E 테스트 시나리오**:
+> 1. Client Request("StartTimer") 전송
+> 2. Stage.OnDispatch에서 AddRepeatTimer(100ms, callback) 설정
+> 3. 타이머 콜백에서 SendToClient로 Push 메시지 전송
+> 4. Client OnReceive 콜백으로 Push 수신 횟수 검증
 
 ##### 6.4.2 AsyncBlock
 
-> AsyncBlock은 서버 내부 동작 → **통합테스트**로 이동
+> AsyncBlock preCallback 결과를 postCallback에서 Reply → Client에서 검증 가능 **E2E**
 
-| 메서드 | 통합테스트 검증 |
-|--------|---------------|
-| AsyncBlock(pre, post) | preCallback ThreadPool 실행, postCallback EventLoop 실행 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| AsyncBlock 성공 | ❌ 미구현 | Client Request("TestAsyncBlock") → AsyncBlock(pre, post) | Reply에 pre 결과 포함 검증 |
+
+> **E2E 테스트 시나리오**:
+> 1. Client Request("TestAsyncBlock", input=42) 전송
+> 2. Stage.OnDispatch에서 `AsyncBlock(preCallback, postCallback)` 호출
+> 3. preCallback (ThreadPool): 계산 수행 (예: input * 2 = 84)
+> 4. postCallback (EventLoop): 결과를 Reply로 전송
+> 5. Client Reply 검증: result == 84
 
 ##### 6.4.3 SendToClient
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| Stage에서 클라이언트로 Push | Client Send → Stage.OnDispatch에서 SendToClient 호출 | `OnReceive(stageId, packet)` 콜백, packet 내용 검증 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| Stage에서 클라이언트로 Push | ✅ 완료 | Client Send → Stage.OnDispatch에서 SendToClient 호출 | `OnReceive(stageId, packet)` 콜백, packet 내용 검증 |
 
 ##### 6.4.4 CloseStage
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| Stage 종료 후 요청 | Stage에서 CloseStage() 호출 → Client Request | 에러 응답 수신 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| Stage 종료 후 요청 | ❌ 미구현 | Client Request("TriggerCloseStage") → Stage에서 CloseStage() 호출 | Reply 후 연결 종료 또는 에러 응답 |
 
-> IStage.OnDestroy 콜백 → **통합테스트**
+> **E2E 테스트 시나리오**:
+> 1. Client Request("TriggerCloseStage") 전송
+> 2. Stage.OnDispatch에서 `CloseStage()` 호출
+> 3. IStage.OnDestroy 콜백 호출됨 → TestStageImpl 검증
+> 4. Client에서 연결 종료 또는 이후 Request 시 에러 응답 검증
 
 ---
 
 #### 6.5 IActorSender 메서드
 
+> **기능 구현**: ✅ 완료 (`XActorSender.cs`)
+
 ##### 6.5.1 AccountId
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| AccountId 설정 | 인증 시 AccountId 설정 | 이후 Request에서 AccountId 기반 처리 확인 (Reply에 AccountId 포함) |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| AccountId 설정 | ⚠️ 테스트 부분구현 | 인증 시 AccountId 설정 | 이후 Request에서 AccountId 기반 처리 확인 (Reply에 AccountId 포함) |
 
-> IActor.OnAuthenticate에서 설정 → **통합테스트**
+> IActor.OnAuthenticate에서 설정 → **E2E**
+> - 응답 검증: Reply에 AccountId 포함 ❌ 테스트 미구현
+> - 콜백 검증: `TestActorImpl.AuthenticatedAccountIds` ✅ 테스트 완료
+> - **기능 구현**: ✅ 완료 (XActorSender.AccountId)
 
 ##### 6.5.2 SendToClient
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| Actor에서 클라이언트로 Push | Client Request → Actor에서 SendToClient 호출 | `OnReceive(stageId, packet)` 콜백 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| Actor에서 클라이언트로 Push | ✅ 완료 | Client Request → Actor에서 SendToClient 호출 | `OnReceive(stageId, packet)` 콜백 |
+
+> 6.4.3 SendToClient 테스트에서 함께 검증 (Stage.OnDispatch → IStageSender.SendToClient)
 
 ##### 6.5.3 LeaveStage
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| Actor 퇴장 | Client Request → Actor에서 LeaveStage() 호출 → 재요청 | 새 Actor 생성 확인 (다른 AccountId 또는 상태 초기화) |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| Actor 퇴장 | ❌ 미구현 | Client Request("LeaveStage") → Actor에서 LeaveStage() 호출 | IActor.OnDestroy 콜백 + 재연결 시 새 Actor 생성 |
 
-> IActor.OnDestroy 콜백 → **통합테스트**
+> **E2E 테스트 시나리오**:
+> 1. Client 인증 완료 (Actor 생성됨)
+> 2. Client Request("LeaveStage") 전송
+> 3. Stage.OnDispatch에서 `actor.LeaveStage()` 호출
+> 4. IActor.OnDestroy 콜백 호출됨 → TestActorImpl 검증
+> 5. Reply 후 재인증 시 새 Actor 생성 확인
 
 ---
 
 #### 6.6 IApiSender 메서드
 
+> **기능 구현**: ✅ 완료 (`ApiSender.cs`)
 > **트리거 방식**: HTTP Client → API 서버 → IApiSender 메서드 호출 → HTTP 응답
+> ✅ API 서버 구현 완료 (Phase 4) → **E2E 테스트 가능**
 
 ##### 6.6.1 CreateStage
 
-| 테스트 | E2E 검증 |
-|--------|----------|
-| CreateStage 성공 | `CreateStageResult.ErrorCode == 0`, `CreateStageRes` 내용 검증 |
-| CreateStage 실패 (중복 StageId) | `CreateStageResult.ErrorCode != 0` |
+| 테스트 | 상태 | E2E 검증 |
+|--------|------|----------|
+| CreateStage 성공 | ❌ 미구현 | `CreateStageResult.ErrorCode == 0`, `CreateStageRes` 내용 검증 |
+| CreateStage 실패 (중복 StageId) | ❌ 미구현 | `CreateStageResult.ErrorCode != 0` |
 
-> IStage.OnCreate 콜백 → **통합테스트**
+> IStage.OnCreate 콜백 → **E2E**
+> - 응답 검증: CreateStage 성공 응답 (`ErrorCode == 0`)
+> - 콜백 검증: `TestStageImpl.Instances.Any(s => s.OnCreateCalled)`
 
 ##### 6.6.2 JoinStage
 
-| 테스트 | E2E 검증 |
-|--------|----------|
-| JoinStage 성공 | `JoinStageResult.ErrorCode == 0`, `JoinStageRes` 내용 검증 |
-| JoinStage 실패 (미존재 Stage) | `JoinStageResult.ErrorCode != 0` |
+| 테스트 | 상태 | E2E 검증 |
+|--------|------|----------|
+| JoinStage 성공 | ❌ 미구현 | `JoinStageResult.ErrorCode == 0`, `JoinStageRes` 내용 검증 |
+| JoinStage 실패 (미존재 Stage) | ❌ 미구현 | `JoinStageResult.ErrorCode != 0` |
 
-> IActor 콜백들 → **통합테스트**
+> IActor 콜백들 → **E2E**
+> - 응답 검증: JoinStage 성공 응답 (`ErrorCode == 0`)
+> - 콜백 검증: `TestActorImpl.Instances.Any(a => a.OnCreateCalled && a.OnPostAuthenticateCalled)`
 
 ##### 6.6.3 GetOrCreateStage
 
-| 테스트 | E2E 검증 |
-|--------|----------|
-| 새 Stage 생성 | `ErrorCode == 0`, `IsCreated == true` |
-| 기존 Stage 사용 | `ErrorCode == 0`, `IsCreated == false` |
+| 테스트 | 상태 | E2E 검증 |
+|--------|------|----------|
+| 새 Stage 생성 | ❌ 미구현 | `ErrorCode == 0`, `IsCreated == true` |
+| 기존 Stage 사용 | ❌ 미구현 | `ErrorCode == 0`, `IsCreated == false` |
 
 ##### 6.6.4 CreateJoinStage
 
-| 테스트 | E2E 검증 |
-|--------|----------|
-| CreateJoin 성공 | `ErrorCode == 0`, `CreateStageRes`, `JoinStageRes` 내용 검증 |
+| 테스트 | 상태 | E2E 검증 |
+|--------|------|----------|
+| CreateJoin 성공 | ❌ 미구현 | `ErrorCode == 0`, `CreateStageRes`, `JoinStageRes` 내용 검증 |
 
 ##### 6.6.5 SendToClient
 
-| 테스트 | 트리거 | E2E 검증 |
-|--------|--------|----------|
-| API에서 클라이언트로 Push | HTTP API → SendToClient 호출 | Connector `OnReceive` 콜백 |
-| 특정 세션에 Push | HTTP API → SendToClient(sessionNid, sid, packet) | 해당 클라이언트 `OnReceive` 콜백 |
+| 테스트 | 상태 | 트리거 | E2E 검증 |
+|--------|------|--------|----------|
+| API에서 클라이언트로 Push | ❌ 미구현 | HTTP API → SendToClient 호출 | Connector `OnReceive` 콜백 |
+| 특정 세션에 Push | ❌ 미구현 | HTTP API → SendToClient(sessionNid, sid, packet) | 해당 클라이언트 `OnReceive` 콜백 |
 
 ---
 
-### 6.15 Integration 테스트 (E2E 검증 불가 항목)
+### 6.15 Integration 테스트 (내부 상태 상세 검증)
 
-> 공개 API로 검증 불가능한 **서버 내부 콜백**은 통합 테스트에서 Fake 구현체로 검증
+> **E2E vs Integration 구분**:
+> - **E2E**: 공개 API(응답 패킷, 콜백)로 동작 검증 (예: OnAuthenticate → IsAuthenticated() + 응답)
+> - **Integration**: Fake 구현체로 내부 상태 상세 검증 (예: OnAuthenticateCalled == true, 파라미터 내용)
 >
 > **검증 방식**: Fake 구현체가 콜백 호출을 기록하고, 테스트에서 기록을 검증
+>
+> ※ 일부 콜백은 E2E로도 검증 가능하지만, Integration 테스트는 내부 동작 상세 검증 목적
 
 ---
 
