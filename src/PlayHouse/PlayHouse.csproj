@@ -5,6 +5,7 @@
     <RootNamespace>PlayHouse</RootNamespace>
     <AssemblyName>PlayHouse</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>CS1591;CS1574</NoWarn>
     <PackageId>PlayHouse</PackageId>
     <PackageTags>game-server;networking;multiplayer;actor-model;dotnet</PackageTags>
   </PropertyGroup>

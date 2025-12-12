@@ -1,9 +1,14 @@
 #nullable enable
 
-namespace PlayHouse.Connector.Connection;
-
+using System;
 using System.Buffers;
+using System.IO;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace PlayHouse.Connector.Network;
 
 /// <summary>
 /// TCP 기반 연결 구현
@@ -12,7 +17,7 @@ internal sealed class TcpConnection : IConnection
 {
     private readonly ConnectorConfig _config;
     private TcpClient? _client;
-    private NetworkStream? _stream;
+    private Stream? _stream; // NetworkStream 또는 SslStream
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -31,7 +36,7 @@ internal sealed class TcpConnection : IConnection
         _config = config ?? throw new ArgumentNullException(nameof(config));
     }
 
-    public async Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(string host, int port, bool useSsl = false, CancellationToken cancellationToken = default)
     {
         if (_isConnected)
         {
@@ -50,12 +55,36 @@ internal sealed class TcpConnection : IConnection
             // Configure keep-alive
             _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
+            // netstandard2.1에서는 TcpClient.ConnectAsync가 CancellationToken을 지원하지 않음
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_config.ConnectionIdleTimeoutMs);
 
-            await _client.ConnectAsync(host, port, timeoutCts.Token).ConfigureAwait(false);
+            // Task.WhenAny를 사용하여 타임아웃 처리
+            var connectTask = _client.ConnectAsync(host, port);
+            var timeoutTask = Task.Delay(_config.ConnectionIdleTimeoutMs, timeoutCts.Token);
+            var completedTask = await Task.WhenAny(connectTask, timeoutTask).ConfigureAwait(false);
 
-            _stream = _client.GetStream();
+            if (completedTask == timeoutTask)
+            {
+                throw new TimeoutException($"Connection timeout after {_config.ConnectionIdleTimeoutMs}ms");
+            }
+
+            await connectTask.ConfigureAwait(false);
+
+            var networkStream = _client.GetStream();
+
+            // SSL/TLS 래핑
+            if (useSsl)
+            {
+                var sslStream = new SslStream(networkStream, false);
+                await sslStream.AuthenticateAsClientAsync(host).ConfigureAwait(false);
+                _stream = sslStream;
+            }
+            else
+            {
+                _stream = networkStream;
+            }
+
             _isConnected = true;
 
             // Start receiving data

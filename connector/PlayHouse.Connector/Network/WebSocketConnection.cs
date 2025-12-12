@@ -1,9 +1,14 @@
 #nullable enable
 
-namespace PlayHouse.Connector.Connection;
-
+using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.WebSockets;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace PlayHouse.Connector.Network;
 
 /// <summary>
 /// WebSocket 기반 연결 구현
@@ -29,7 +34,7 @@ internal sealed class WebSocketConnection : IConnection
         _config = config ?? throw new ArgumentNullException(nameof(config));
     }
 
-    public async Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(string host, int port, bool useSsl = false, CancellationToken cancellationToken = default)
     {
         if (_isConnected)
         {
@@ -38,7 +43,9 @@ internal sealed class WebSocketConnection : IConnection
 
         try
         {
-            var uri = new Uri($"ws://{host}:{port}");
+            // ws:// 또는 wss:// 자동 선택
+            var scheme = useSsl ? "wss" : "ws";
+            var uri = new Uri($"{scheme}://{host}:{port}");
 
             _webSocket = new ClientWebSocket();
 

@@ -1,4 +1,8 @@
-namespace PlayHouse.Connector.Connection;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace PlayHouse.Connector.Network;
 
 /// <summary>
 /// Abstraction for network connection (TCP or WebSocket).
@@ -25,8 +29,9 @@ public interface IConnection : IAsyncDisposable
     /// </summary>
     /// <param name="host">Server hostname or IP address</param>
     /// <param name="port">Server port</param>
+    /// <param name="useSsl">Whether to use SSL/TLS encryption</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    Task ConnectAsync(string host, int port, CancellationToken cancellationToken = default);
+    Task ConnectAsync(string host, int port, bool useSsl = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Disconnects from the server gracefully.

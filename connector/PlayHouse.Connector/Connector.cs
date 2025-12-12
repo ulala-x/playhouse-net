@@ -1,5 +1,7 @@
 #nullable enable
 
+using System;
+using System.Threading.Tasks;
 using PlayHouse.Connector.Internal;
 using PlayHouse.Connector.Protocol;
 

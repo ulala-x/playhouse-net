@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using Google.Protobuf;
 
 namespace PlayHouse.Connector.Protocol;
@@ -27,7 +28,6 @@ public sealed class EmptyPayload : IPayload
 public sealed class BytePayload : IPayload
 {
     private readonly byte[] _data;
-    private bool _disposed;
 
     public BytePayload(byte[] data)
     {
@@ -43,7 +43,7 @@ public sealed class BytePayload : IPayload
 
     public void Dispose()
     {
-        _disposed = true;
+        // Nothing to dispose for byte arrays
     }
 }
 

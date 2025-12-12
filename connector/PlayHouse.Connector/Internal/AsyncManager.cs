@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using System.Collections.Concurrent;
 
 namespace PlayHouse.Connector.Internal;
