@@ -46,9 +46,8 @@ public class ConnectionTests : IAsyncLifetime
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
+                // DefaultStageType 설정하지 않음 (인증만 처리)
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
             .Build();
 
         await _playServer.StartAsync();

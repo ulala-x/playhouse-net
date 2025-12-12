@@ -33,6 +33,7 @@ internal sealed class TcpTransportSession : ITransportSession
     public long SessionId { get; }
     public string AccountId { get; set; } = string.Empty;
     public bool IsAuthenticated { get; set; }
+    public long StageId { get; set; }
     public bool IsConnected => !_disposed && _socket.Connected;
 
     internal TcpTransportSession(

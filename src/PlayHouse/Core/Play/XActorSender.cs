@@ -118,13 +118,15 @@ internal sealed class XActorSender : IActorSender
     /// <inheritdoc/>
     public void Reply(ushort errorCode)
     {
+        // For client requests, we don't use SendToClient for error codes
+        // Just use the standard Reply mechanism
         _baseStage.StageSender.Reply(errorCode);
     }
 
     /// <inheritdoc/>
     public void Reply(IPacket reply)
     {
-        _baseStage.StageSender.Reply(reply);
+        _baseStage.Reply(reply);
     }
 
     #endregion

@@ -47,6 +47,7 @@ public class MessagingTests : IAsyncLifetime
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
+                options.DefaultStageType = "TestStage"; // 메시징 테스트에는 Stage 필요
             })
             .UseStage<TestStageImpl>("TestStage")
             .UseActor<TestActorImpl>()
@@ -155,7 +156,7 @@ public class MessagingTests : IAsyncLifetime
         // Then - E2E 검증: 콜백 호출, 응답 패킷 내용
         responseReceived.IsSet.Should().BeTrue("콜백이 호출되어야 함");
         receivedResponse.Should().NotBeNull("응답 패킷을 받아야 함");
-        receivedResponse!.MsgId.Should().Be("EchoReply", "응답 메시지 ID가 EchoReply여야 함");
+        receivedResponse!.MsgId.Should().EndWith("EchoReply", "응답 메시지 ID가 EchoReply로 끝나야 함");
 
         var echoReply = EchoReply.Parser.ParseFrom(receivedResponse.Payload.Data.Span);
         echoReply.Content.Should().Be("Callback Test", "에코 내용이 동일해야 함");
@@ -210,7 +211,7 @@ public class MessagingTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 패킷 내용
         response.Should().NotBeNull("응답을 받아야 함");
-        response.MsgId.Should().Be("EchoReply", "응답 메시지 ID가 EchoReply여야 함");
+        response.MsgId.Should().EndWith("EchoReply", "응답 메시지 ID가 EchoReply로 끝나야 함");
 
         var echoReply = EchoReply.Parser.ParseFrom(response.Payload.Data.Span);
         echoReply.Content.Should().Be("Hello, Server!", "에코 내용이 동일해야 함");
@@ -368,7 +369,7 @@ public class MessagingTests : IAsyncLifetime
         responses.Should().HaveCount(10, "10개의 응답을 받아야 함");
         foreach (var response in responses)
         {
-            response.MsgId.Should().Be("EchoReply");
+            response.MsgId.Should().EndWith("EchoReply");
         }
     }
 

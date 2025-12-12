@@ -7,6 +7,7 @@ using PlayHouse.Abstractions.Play;
 using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
+using PlayHouse.Core.Shared;
 using PlayHouse.Tests.Integration.Proto;
 using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
@@ -59,6 +60,7 @@ public class BootstrapServerE2ETests : IAsyncLifetime
                 options.TcpPort = 0; // 자동 포트 할당 (0 = 자동)
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest"; // 인증 메시지 ID
+                options.DefaultStageType = "TestStage"; // 기본 Stage 타입
             })
             .UseStage<TestStage>("TestStage")
             .UseActor<TestActor>()
@@ -539,7 +541,52 @@ public class TestStage(IStageSender stageSender) : IStage
 
     public ValueTask OnConnectionChanged(IActor actor, bool isConnected) => ValueTask.CompletedTask;
 
-    public Task OnDispatch(IActor actor, ServerPacket packet) => Task.CompletedTask;
+    public Task OnDispatch(IActor actor, ServerPacket packet)
+    {
+        // Integration 테스트용 메시지 처리
+        // E2E 테스트의 TestStageImpl 패턴 참조
+        // Note: 클라이언트 Packet은 message.Descriptor.Name을 MsgId로 사용 (예: "EchoRequest")
+        switch (packet.MsgId)
+        {
+            case "EchoRequest":
+                var echoReq = EchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+                var echoReply = new EchoReply
+                {
+                    Content = echoReq.Content,
+                    Sequence = echoReq.Sequence,
+                    ProcessedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+                // Note: 클라이언트가 기대하는 MsgId는 Descriptor.Name (예: "EchoReply")
+                actor.ActorSender.Reply(CPacket.Of("EchoReply", echoReply.ToByteArray()));
+                break;
+
+            case "StatusRequest":
+                var statusReply = new StatusReply
+                {
+                    ActorCount = 1,
+                    UptimeSeconds = 100,
+                    StageType = "TestStage"
+                };
+                actor.ActorSender.Reply(CPacket.Of("StatusReply", statusReply.ToByteArray()));
+                break;
+
+            case "NoResponseRequest":
+                // 의도적으로 응답하지 않음 (타임아웃 테스트용)
+                break;
+
+            case "FailRequest":
+                // 에러 응답 테스트용
+                actor.ActorSender.Reply(500);
+                break;
+
+            default:
+                // 기본 성공 응답
+                actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
+                break;
+        }
+
+        return Task.CompletedTask;
+    }
 
     public Task OnDispatch(ServerPacket packet) => Task.CompletedTask;
 }

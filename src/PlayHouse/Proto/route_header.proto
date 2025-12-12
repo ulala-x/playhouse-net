@@ -73,41 +73,6 @@ message GetOrCreateStageRes {
     bytes payload = 4;
 }
 
-// Join an existing stage
-message JoinStageReq {
-    string session_nid = 1;
-    int64 sid = 2;
-    string payload_id = 3;
-    bytes payload = 4;
-}
-
-message JoinStageRes {
-    bool result = 1;        // true = success, false = failure
-    string payload_id = 2;
-    bytes payload = 3;
-    string account_id = 4;  // account ID (set after authentication)
-}
-
-// Create and join a stage in one operation
-message CreateJoinStageReq {
-    string stage_type = 1;
-    string create_payload_id = 2;
-    bytes create_payload = 3;
-    string join_payload_id = 4;
-    bytes join_payload = 5;
-    string session_nid = 6;
-    int64 sid = 7;
-}
-
-message CreateJoinStageRes {
-    bool result = 1;        // true = success, false = failure
-    bool is_created = 2;    // true = new stage created, false = existing stage or failed
-    string create_payload_id = 3;
-    bytes create_payload = 4;
-    string join_payload_id = 5;
-    bytes join_payload = 6;
-}
-
 // Destroy a stage
 message DestroyStageReq {
     int64 stage_id = 1;

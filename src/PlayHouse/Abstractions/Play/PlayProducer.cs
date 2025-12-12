@@ -1,5 +1,7 @@
 #nullable enable
 
+using System.Reflection;
+
 namespace PlayHouse.Abstractions.Play;
 
 /// <summary>
@@ -37,19 +39,23 @@ public class PlayProducer
     /// Constructor for Bootstrap pattern with Type-based registration.
     /// </summary>
     /// <param name="stageTypes">Dictionary of stage type names to Stage implementation types.</param>
-    /// <param name="actorType">Default Actor implementation type.</param>
+    /// <param name="actorType">Default Actor implementation type (nullable for auth-only servers).</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when Stage or Actor type doesn't have a constructor accepting the required sender parameter.
     /// </exception>
-    public PlayProducer(Dictionary<string, Type> stageTypes, Type actorType)
+    public PlayProducer(Dictionary<string, Type> stageTypes, Type? actorType)
     {
         _defaultActorType = actorType;
 
-        // Actor 생성자 검증
-        var actorCtor = _defaultActorType.GetConstructor(new[] { typeof(IActorSender) })
-            ?? throw new InvalidOperationException(
-                $"Actor type '{_defaultActorType.Name}' must have a constructor accepting IActorSender parameter. " +
-                $"Example: public {_defaultActorType.Name}(IActorSender actorSender)");
+        // Actor 생성자 검증 (actorType이 null이 아닌 경우에만)
+        ConstructorInfo? actorCtor = null;
+        if (_defaultActorType != null)
+        {
+            actorCtor = _defaultActorType.GetConstructor(new[] { typeof(IActorSender) })
+                ?? throw new InvalidOperationException(
+                    $"Actor type '{_defaultActorType.Name}' must have a constructor accepting IActorSender parameter. " +
+                    $"Example: public {_defaultActorType.Name}(IActorSender actorSender)");
+        }
 
         foreach (var (stageType, type) in stageTypes)
         {
@@ -64,8 +70,12 @@ public class PlayProducer
             _stageFactories[stageType] = stageSender =>
                 (IStage)stageCtor.Invoke(new object[] { stageSender });
 
-            _actorFactories[stageType] = actorSender =>
-                (IActor)actorCtor.Invoke(new object[] { actorSender });
+            // Actor factory는 actorCtor가 null이 아닌 경우에만 등록
+            if (actorCtor != null)
+            {
+                _actorFactories[stageType] = actorSender =>
+                    (IActor)actorCtor.Invoke(new object[] { actorSender });
+            }
         }
     }
 

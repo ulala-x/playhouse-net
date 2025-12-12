@@ -45,6 +45,11 @@ public sealed class PlayServerOption
     public string AuthenticateMessageId { get; set; } = string.Empty;
 
     /// <summary>
+    /// 인증 시 자동으로 생성/조인할 기본 Stage 타입.
+    /// </summary>
+    public string DefaultStageType { get; set; } = string.Empty;
+
+    /// <summary>
     /// 서버 NID (자동 계산).
     /// </summary>
     public string Nid => $"{ServiceId}:{ServerId}";

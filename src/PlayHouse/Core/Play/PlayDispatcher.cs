@@ -40,6 +40,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private readonly ushort _serviceId;
     private readonly string _nid;
     private readonly ILogger? _logger;
+    private readonly IClientReplyHandler? _clientReplyHandler;
     private bool _disposed;
 
     /// <summary>
@@ -51,6 +52,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RequestCache requestCache,
         ushort serviceId,
         string nid,
+        IClientReplyHandler? clientReplyHandler = null,
         ILogger? logger = null)
     {
         _producer = producer;
@@ -58,6 +60,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         _requestCache = requestCache;
         _serviceId = serviceId;
         _nid = nid;
+        _clientReplyHandler = clientReplyHandler;
         _logger = logger;
 
         _timerManager = new TimerManager(OnTimerCallback, logger);
@@ -88,6 +91,14 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
             case ClientRouteMessage clientRouteMsg:
                 ProcessClientRoute(clientRouteMsg);
+                break;
+
+            case JoinActorMessage joinActorMsg:
+                ProcessJoinActor(joinActorMsg);
+                break;
+
+            case DisconnectMessage disconnectMsg:
+                ProcessDisconnect(disconnectMsg);
                 break;
 
             default:
@@ -159,6 +170,47 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
     }
 
+    private void ProcessJoinActor(JoinActorMessage message)
+    {
+        if (_stages.TryGetValue(message.StageId, out var baseStage))
+        {
+            if (message.CompletionSource != null)
+            {
+                // Use async version when CompletionSource is provided
+                _ = baseStage.PostJoinActorAsync(message.Actor).ContinueWith(t =>
+                {
+                    if (t.IsCompletedSuccessfully)
+                        message.CompletionSource.TrySetResult(true);
+                    else if (t.IsFaulted)
+                        message.CompletionSource.TrySetException(t.Exception!);
+                    else
+                        message.CompletionSource.TrySetCanceled();
+                }, TaskScheduler.Default);
+            }
+            else
+            {
+                baseStage.PostJoinActor(message.Actor);
+            }
+        }
+        else
+        {
+            _logger?.LogWarning("Stage {StageId} not found for JoinActorMessage", message.StageId);
+            message.CompletionSource?.TrySetException(new InvalidOperationException($"Stage {message.StageId} not found"));
+        }
+    }
+
+    private void ProcessDisconnect(DisconnectMessage message)
+    {
+        if (_stages.TryGetValue(message.StageId, out var baseStage))
+        {
+            baseStage.PostDisconnect(message.AccountId);
+        }
+        else
+        {
+            _logger?.LogWarning("Stage {StageId} not found for DisconnectMessage", message.StageId);
+        }
+    }
+
     #endregion
 
     #region Stage Creation
@@ -219,7 +271,8 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             _serviceId,
             _nid,
             stageId,
-            this);
+            this,
+            _clientReplyHandler);
 
         stageSender.SetStageType(stageType);
 
@@ -240,8 +293,6 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private void RegisterCommands(BaseStageCmdHandler cmdHandler)
     {
         cmdHandler.Register(nameof(CreateStageReq), new CreateStageCmd(this, _logger));
-        cmdHandler.Register(nameof(JoinStageReq), new JoinStageCmd(_producer, _logger));
-        cmdHandler.Register(nameof(CreateJoinStageReq), new CreateJoinStageCmd(_producer, this, _logger));
         cmdHandler.Register(nameof(GetOrCreateStageReq), new GetOrCreateStageCmd(_logger));
         cmdHandler.Register(nameof(DisconnectNoticeMsg), new DisconnectNoticeCmd(_logger));
         cmdHandler.Register(nameof(ReconnectMsg), new ReconnectCmd(_logger));
@@ -275,6 +326,27 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         var replyPacket = packet.CreateErrorReply(errorCode);
         _communicator.Send(packet.From, replyPacket);
         replyPacket.Dispose();
+    }
+
+    #endregion
+
+    #region Stage Access
+
+    /// <summary>
+    /// Gets an existing Stage or creates a new one if it doesn't exist.
+    /// </summary>
+    /// <param name="stageId">The stage ID.</param>
+    /// <param name="stageType">The stage type.</param>
+    /// <returns>The BaseStage instance.</returns>
+    public BaseStage? GetOrCreateStage(long stageId, string stageType)
+    {
+        if (!_producer.IsValidType(stageType))
+        {
+            _logger?.LogError("Invalid stage type: {StageType}", stageType);
+            return null;
+        }
+
+        return _stages.GetOrAdd(stageId, id => CreateNewStage(id, stageType));
     }
 
     #endregion
