@@ -85,6 +85,7 @@ message JoinStageRes {
     bool result = 1;        // true = success, false = failure
     string payload_id = 2;
     bytes payload = 3;
+    string account_id = 4;  // account ID (set after authentication)
 }
 
 // Create and join a stage in one operation

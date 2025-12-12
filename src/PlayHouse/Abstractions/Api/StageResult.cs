@@ -53,33 +53,6 @@ public class CreateStageResult : StageResult
 }
 
 /// <summary>
-/// Result of a JoinStage operation.
-/// </summary>
-/// <remarks>
-/// Contains the result from Actor join operation.
-/// - Result=true: Join succeeded
-/// - Result=false: Join failed
-/// </remarks>
-public class JoinStageResult : StageResult
-{
-    /// <summary>
-    /// Gets the response packet from Actor join.
-    /// </summary>
-    public IPacket JoinStageRes { get; }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="JoinStageResult"/> class.
-    /// </summary>
-    /// <param name="result">Whether the join was successful.</param>
-    /// <param name="joinStageRes">The join stage response packet.</param>
-    public JoinStageResult(bool result, IPacket joinStageRes)
-        : base(result)
-    {
-        JoinStageRes = joinStageRes;
-    }
-}
-
-/// <summary>
 /// Result of a GetOrCreateStage operation.
 /// </summary>
 /// <remarks>
@@ -118,48 +91,3 @@ public class GetOrCreateStageResult : StageResult
     }
 }
 
-/// <summary>
-/// Result of a CreateJoinStage operation (create + join in one call).
-/// </summary>
-/// <remarks>
-/// Result/IsCreated combinations:
-/// - Result=true, IsCreated=true: New stage created and joined successfully
-/// - Result=true, IsCreated=false: Existing stage found and joined successfully
-/// - Result=false, IsCreated=false: Operation failed
-/// </remarks>
-public class CreateJoinStageResult : StageResult
-{
-    /// <summary>
-    /// Gets whether the stage was newly created.
-    /// </summary>
-    public bool IsCreated { get; }
-
-    /// <summary>
-    /// Gets the response packet from Stage.OnCreate().
-    /// </summary>
-    public IPacket CreateStageRes { get; }
-
-    /// <summary>
-    /// Gets the response packet from Actor join.
-    /// </summary>
-    public IPacket JoinStageRes { get; }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="CreateJoinStageResult"/> class.
-    /// </summary>
-    /// <param name="result">Whether the operation was successful.</param>
-    /// <param name="isCreated">Whether the stage was newly created.</param>
-    /// <param name="createStageRes">The create stage response packet.</param>
-    /// <param name="joinStageRes">The join stage response packet.</param>
-    public CreateJoinStageResult(
-        bool result,
-        bool isCreated,
-        IPacket createStageRes,
-        IPacket joinStageRes)
-        : base(result)
-    {
-        IsCreated = isCreated;
-        CreateStageRes = createStageRes;
-        JoinStageRes = joinStageRes;
-    }
-}

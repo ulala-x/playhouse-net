@@ -17,6 +17,12 @@ public interface ITransportSession : IAsyncDisposable
     long SessionId { get; }
 
     /// <summary>
+    /// Gets or sets the account ID associated with this session.
+    /// Set after successful authentication in OnAuthenticate callback.
+    /// </summary>
+    string AccountId { get; set; }
+
+    /// <summary>
     /// Gets or sets whether the session is authenticated.
     /// </summary>
     bool IsAuthenticated { get; set; }

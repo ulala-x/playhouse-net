@@ -221,7 +221,7 @@ internal sealed class TimerEntry : IDisposable
         _remainingCount = count;
     }
 
-    public void SetSystemTimer(System.Threading.Timer timer)
+    public void SetSystemTimer(Timer timer)
     {
         _timer = timer;
     }

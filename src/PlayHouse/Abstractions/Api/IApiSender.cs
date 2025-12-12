@@ -62,33 +62,7 @@ public interface IApiSender : ISender
         IPacket createPacket,
         IPacket joinPacket);
 
-    /// <summary>
-    /// Joins an existing stage.
-    /// </summary>
-    /// <param name="playNid">Target Play server NID.</param>
-    /// <param name="stageId">ID of the stage to join.</param>
-    /// <param name="packet">Join payload packet.</param>
-    /// <returns>Result containing the error code and join response.</returns>
-    Task<JoinStageResult> JoinStage(
-        string playNid,
-        long stageId,
-        IPacket packet);
 
-    /// <summary>
-    /// Creates and joins a stage in one operation.
-    /// </summary>
-    /// <param name="playNid">Target Play server NID.</param>
-    /// <param name="stageType">Type of stage to create if needed.</param>
-    /// <param name="stageId">ID for the stage.</param>
-    /// <param name="createPacket">Creation payload packet.</param>
-    /// <param name="joinPacket">Join payload packet.</param>
-    /// <returns>Result containing create and join responses.</returns>
-    Task<CreateJoinStageResult> CreateJoinStage(
-        string playNid,
-        string stageType,
-        long stageId,
-        IPacket createPacket,
-        IPacket joinPacket);
 
     #endregion
 

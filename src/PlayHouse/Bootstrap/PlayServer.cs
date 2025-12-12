@@ -11,6 +11,8 @@ using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ClientTransport.Tcp;
 using PlayHouse.Runtime.ClientTransport.WebSocket;
+using PlayHouse.Abstractions;
+using Google.Protobuf;
 
 namespace PlayHouse.Bootstrap;
 
@@ -258,24 +260,10 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
         long stageId,
         ReadOnlyMemory<byte> payload)
     {
-        // 인증 요청 처리 (설정된 인증 메시지 ID와 일치하는 경우)
+        // 인증 요청 처리
         if (msgId == _options.AuthenticateMessageId)
         {
-            session.IsAuthenticated = true;
-            var response = TcpTransportSession.CreateResponsePacket(
-                msgId.Replace("Request", "Response"), msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
-            await session.SendAsync(response);
-            _logger?.LogDebug("Session {SessionId} authenticated", session.SessionId);
-            return;
-        }
-
-        // 에코 요청 처리
-        if (msgId.Contains("Echo"))
-        {
-            var replyMsgId = msgId.Replace("Request", "Reply");
-            var response = TcpTransportSession.CreateResponsePacket(
-                replyMsgId, msgSeq, stageId, 0, payload.Span);
-            await session.SendAsync(response);
+            await HandleAuthenticationAsync(session, msgSeq, stageId, payload);
             return;
         }
 
@@ -288,27 +276,108 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener
             return;
         }
 
-        // 실패 요청 시뮬레이션
-        if (msgId.Contains("Fail"))
+        // 인증된 세션의 일반 메시지 처리
+        if (session.IsAuthenticated && !string.IsNullOrEmpty(session.AccountId))
         {
-            var response = TcpTransportSession.CreateResponsePacket(
-                msgId.Replace("Request", "Reply"), msgSeq, stageId, 500, ReadOnlySpan<byte>.Empty);
-            await session.SendAsync(response);
-            return;
+            // ClientRouteMessage로 라우팅
+            var clientRouteMsg = new ClientRouteMessage(
+                stageId,
+                session.AccountId,
+                msgId,
+                msgSeq,
+                session.SessionId,
+                payload);
+            _dispatcher?.OnPost(clientRouteMsg);
         }
-
-        // 응답이 필요 없는 메시지 (NoResponse)
-        if (msgId.Contains("NoResponse"))
+        else
         {
-            return;
+            _logger?.LogWarning("Unauthenticated session {SessionId} tried to send message: {MsgId}",
+                session.SessionId, msgId);
         }
+    }
 
-        // 기본: 성공 응답
-        if (msgSeq > 0)
+    private async Task HandleAuthenticationAsync(
+        ITransportSession session,
+        ushort msgSeq,
+        long stageId,
+        ReadOnlyMemory<byte> payload)
+    {
+        // JoinStageReq 생성
+        var joinStageReq = new Runtime.Proto.JoinStageReq
         {
-            var response = TcpTransportSession.CreateResponsePacket(
-                msgId + "Reply", msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
-            await session.SendAsync(response);
+            SessionNid = _options.Nid,
+            Sid = session.SessionId,
+            PayloadId = _options.AuthenticateMessageId,
+            Payload = Google.Protobuf.ByteString.CopyFrom(payload.Span)
+        };
+
+        // RuntimeRoutePacket 생성
+        var header = new Runtime.Proto.RouteHeader
+        {
+            MsgSeq = msgSeq,
+            ServiceId = _options.ServiceId,
+            MsgId = nameof(Runtime.Proto.JoinStageReq),
+            ErrorCode = 0,
+            From = _options.Nid,
+            StageId = stageId,
+            AccountId = 0,
+            Sid = session.SessionId
+        };
+
+        var routePacket = RuntimeRoutePacket.Of(header, joinStageReq.ToByteArray());
+
+        // 응답을 기다리기 위한 TaskCompletionSource 설정
+        if (_requestCache != null && _dispatcher != null)
+        {
+            var tcs = new TaskCompletionSource<IPacket>();
+            _requestCache.Register(msgSeq, tcs, TimeSpan.FromSeconds(30));
+
+            // Dispatcher에 전달
+            _dispatcher.OnPost(new RouteMessage(routePacket));
+
+            try
+            {
+                // 응답 대기
+                var reply = await tcs.Task;
+
+                // JoinStageRes 파싱
+                var joinStageRes = Runtime.Proto.JoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
+
+                if (joinStageRes.Result)
+                {
+                    // 인증 성공: AccountId 설정
+                    session.AccountId = joinStageRes.AccountId;
+                    session.IsAuthenticated = true;
+
+                    _logger?.LogInformation("Session {SessionId} authenticated: AccountId={AccountId}",
+                        session.SessionId, session.AccountId);
+
+                    // 클라이언트에 성공 응답 전송
+                    var response = TcpTransportSession.CreateResponsePacket(
+                        _options.AuthenticateMessageId.Replace("Request", "Reply"),
+                        msgSeq, stageId, 0, joinStageRes.Payload.Span);
+                    await session.SendAsync(response);
+                }
+                else
+                {
+                    // 인증 실패
+                    _logger?.LogWarning("Authentication failed for session {SessionId}", session.SessionId);
+                    var response = TcpTransportSession.CreateResponsePacket(
+                        _options.AuthenticateMessageId.Replace("Request", "Reply"),
+                        msgSeq, stageId, BaseErrorCode.AuthenticationFailed, ReadOnlySpan<byte>.Empty);
+                    await session.SendAsync(response);
+                    await session.DisconnectAsync();
+                }
+            }
+            catch (TimeoutException)
+            {
+                _logger?.LogWarning("Authentication timeout for session {SessionId}", session.SessionId);
+                var response = TcpTransportSession.CreateResponsePacket(
+                    _options.AuthenticateMessageId.Replace("Request", "Reply"),
+                    msgSeq, stageId, BaseErrorCode.RequestTimeout, ReadOnlySpan<byte>.Empty);
+                await session.SendAsync(response);
+                await session.DisconnectAsync();
+            }
         }
     }
 

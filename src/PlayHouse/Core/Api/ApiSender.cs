@@ -134,59 +134,6 @@ internal class ApiSender : XSender, IApiSender
             CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
     }
 
-    /// <inheritdoc/>
-    public async Task<JoinStageResult> JoinStage(
-        string playNid,
-        long stageId,
-        IPacket packet)
-    {
-        var req = new JoinStageReq
-        {
-            SessionNid = _sessionNid,
-            Sid = _sid,
-            PayloadId = packet.MsgId,
-            Payload = ByteString.CopyFrom(packet.Payload.DataSpan)
-        };
-
-        var routePacket = CPacket.Of(nameof(JoinStageReq), req.ToByteArray());
-        var reply = await RequestToStage(playNid, stageId, routePacket);
-        var res = JoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-        return new JoinStageResult(
-            res.Result,
-            CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
-    }
-
-    /// <inheritdoc/>
-    public async Task<CreateJoinStageResult> CreateJoinStage(
-        string playNid,
-        string stageType,
-        long stageId,
-        IPacket createPacket,
-        IPacket joinPacket)
-    {
-        var req = new CreateJoinStageReq
-        {
-            StageType = stageType,
-            CreatePayloadId = createPacket.MsgId,
-            CreatePayload = ByteString.CopyFrom(createPacket.Payload.DataSpan),
-            JoinPayloadId = joinPacket.MsgId,
-            JoinPayload = ByteString.CopyFrom(joinPacket.Payload.DataSpan),
-            SessionNid = _sessionNid,
-            Sid = _sid
-        };
-
-        var routePacket = CPacket.Of(nameof(CreateJoinStageReq), req.ToByteArray());
-        var reply = await RequestToStage(playNid, stageId, routePacket);
-        var res = CreateJoinStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
-
-        return new CreateJoinStageResult(
-            res.Result,
-            res.IsCreated,
-            CPacket.Of(res.CreatePayloadId, res.CreatePayload.ToByteArray()),
-            CPacket.Of(res.JoinPayloadId, res.JoinPayload.ToByteArray()));
-    }
-
     #endregion
 
     #region Client Communication

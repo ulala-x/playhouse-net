@@ -116,6 +116,20 @@ internal sealed class BaseStage
         TryStartProcessing();
     }
 
+    /// <summary>
+    /// Posts a client route message to the Stage event loop.
+    /// </summary>
+    /// <param name="accountId">Account ID for actor routing.</param>
+    /// <param name="msgId">Message ID.</param>
+    /// <param name="msgSeq">Message sequence number.</param>
+    /// <param name="sid">Session ID.</param>
+    /// <param name="payload">Message payload.</param>
+    internal void PostClientRoute(string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+    {
+        _messageQueue.Enqueue(new StageMessage.ClientRouteMessage(accountId, msgId, msgSeq, sid, payload));
+        TryStartProcessing();
+    }
+
     private void TryStartProcessing()
     {
         // CAS: Only one thread can enter the processing loop
@@ -167,6 +181,11 @@ internal sealed class BaseStage
 
             case StageMessage.AsyncMessage asyncMessage:
                 await asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
+                break;
+
+            case StageMessage.ClientRouteMessage clientRouteMessage:
+                await ProcessClientRouteAsync(clientRouteMessage.AccountId, clientRouteMessage.MsgId,
+                    clientRouteMessage.MsgSeq, clientRouteMessage.Sid, clientRouteMessage.Payload);
                 break;
 
             case StageMessage.DestroyMessage:
@@ -266,6 +285,22 @@ internal sealed class BaseStage
     private static IPacket CreateContentPacket(RuntimeRoutePacket packet)
     {
         return CPacket.Of(packet.MsgId, packet.Payload.DataSpan.ToArray());
+    }
+
+    /// <summary>
+    /// Processes client route message by finding actor and dispatching to Stage.OnDispatch.
+    /// </summary>
+    private async Task ProcessClientRouteAsync(string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+    {
+        if (_actors.TryGetValue(accountId, out var baseActor))
+        {
+            var packet = CPacket.Of(msgId, payload.ToArray());
+            await Stage.OnDispatch(baseActor.Actor, packet);
+        }
+        else
+        {
+            _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
+        }
     }
 
     #endregion
@@ -530,4 +565,25 @@ internal abstract class StageMessage : IDisposable
     /// Message to destroy the Stage.
     /// </summary>
     public sealed class DestroyMessage : StageMessage { }
+
+    /// <summary>
+    /// Message for client route to actor.
+    /// </summary>
+    public sealed class ClientRouteMessage : StageMessage
+    {
+        public string AccountId { get; }
+        public string MsgId { get; }
+        public ushort MsgSeq { get; }
+        public long Sid { get; }
+        public ReadOnlyMemory<byte> Payload { get; }
+
+        public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+        {
+            AccountId = accountId;
+            MsgId = msgId;
+            MsgSeq = msgSeq;
+            Sid = sid;
+            Payload = payload;
+        }
+    }
 }
