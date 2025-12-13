@@ -38,7 +38,7 @@ public class IApiSenderTests : IAsyncLifetime
             .Configure(options =>
             {
                 options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:15100"; // Fixed port for PlayServer
+                options.BindEndpoint = "tcp://127.0.0.1:15102"; // Fixed port for PlayServer
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
@@ -54,7 +54,7 @@ public class IApiSenderTests : IAsyncLifetime
             .Configure(options =>
             {
                 options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:15101"; // Fixed port for ApiServer
+                options.BindEndpoint = "tcp://127.0.0.1:15103"; // Fixed port for ApiServer
                 options.RequestTimeoutMs = 30000;
             })
             .UseController<TestApiController>()
