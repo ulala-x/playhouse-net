@@ -1,0 +1,273 @@
+syntax = "proto3";
+
+package playhouse.tests.integration;
+
+option csharp_namespace = "PlayHouse.Tests.Integration.Proto";
+
+// ============================================
+// Integration Test-specific Messages
+// ============================================
+
+// 에코 요청
+message EchoRequest {
+    string content = 1;
+    int32 sequence = 2;
+}
+
+// 에코 응답
+message EchoReply {
+    string content = 1;
+    int32 sequence = 2;
+    int64 processed_at = 3;
+}
+
+// 브로드캐스트 알림 (Push 메시지)
+message BroadcastNotify {
+    string event_type = 1;
+    string data = 2;
+    int64 from_account_id = 3;
+}
+
+// 상태 조회 요청
+message StatusRequest {
+}
+
+// 상태 조회 응답
+message StatusReply {
+    int32 actor_count = 1;
+    int64 uptime_seconds = 2;
+    string stage_type = 3;
+}
+
+// Actor 퇴장 알림
+message ActorLeftNotify {
+    int64 account_id = 1;
+    string nickname = 2;
+    string reason = 3;
+}
+
+// 채팅 메시지
+message ChatMessage {
+    int64 sender_id = 1;
+    string sender_name = 2;
+    string message = 3;
+    int64 timestamp = 4;
+}
+
+// ============================================
+// 인증 관련 메시지
+// ============================================
+
+// 인증 요청
+message AuthenticateRequest {
+    string user_id = 1;
+    string token = 2;
+}
+
+// 인증 응답
+message AuthenticateReply {
+    string account_id = 1;
+    bool success = 2;
+}
+
+// ============================================
+// Timer 테스트용 메시지
+// ============================================
+
+// 반복 타이머 시작 요청
+message StartRepeatTimerRequest {
+    int32 interval_ms = 1;
+    int32 initial_delay_ms = 2;
+}
+
+// 카운트 타이머 시작 요청
+message StartCountTimerRequest {
+    int32 interval_ms = 1;
+    int32 count = 2;
+    int32 initial_delay_ms = 3;
+}
+
+// 타이머 콜백 알림 (Push)
+message TimerTickNotify {
+    int32 tick_number = 1;
+    int64 timestamp = 2;
+    string timer_type = 3;
+}
+
+// 타이머 시작 응답
+message StartTimerReply {
+    int64 timer_id = 1;
+}
+
+// ============================================
+// AsyncBlock 테스트용 메시지
+// ============================================
+
+// AsyncBlock 실행 요청
+message AsyncBlockRequest {
+    string operation = 1;
+    int32 delay_ms = 2;
+}
+
+// AsyncBlock 결과 응답
+message AsyncBlockReply {
+    string pre_result = 1;
+    string post_result = 2;
+    int64 pre_thread_id = 3;
+    int64 post_thread_id = 4;
+}
+
+// ============================================
+// Stage 관리 메시지
+// ============================================
+
+// Stage 종료 요청
+message CloseStageRequest {
+    string reason = 1;
+}
+
+// Stage 종료 응답
+message CloseStageReply {
+    bool success = 1;
+}
+
+// 연결 상태 변경 알림 (Push)
+message ConnectionChangedNotify {
+    string account_id = 1;
+    bool is_connected = 2;
+}
+
+// ============================================
+// IActorSender 테스트용 메시지
+// ============================================
+
+// AccountId 조회
+message GetAccountIdRequest {}
+message GetAccountIdReply {
+    string account_id = 1;
+}
+
+// LeaveStage 요청
+message LeaveStageRequest {
+    string reason = 1;
+}
+message LeaveStageReply {
+    bool success = 1;
+}
+
+// ============================================
+// ISender Stage간 통신 테스트용 메시지
+// ============================================
+
+// SendToStage 트리거 요청 (클라이언트 → Stage A)
+message TriggerSendToStageRequest {
+    string target_nid = 1;        // Target PlayServer ServerId (e.g., "1", "2")
+    int64 target_stage_id = 2;
+    string message = 3;
+}
+message TriggerSendToStageReply {
+    bool success = 1;
+}
+
+// RequestToStage 트리거 요청 (클라이언트 → Stage A)
+message TriggerRequestToStageRequest {
+    string target_nid = 1;        // Target PlayServer ServerId (e.g., "1", "2")
+    int64 target_stage_id = 2;
+    string query = 3;
+}
+message TriggerRequestToStageReply {
+    string response = 1;
+}
+
+// Stage간 직접 전달되는 메시지 (Stage A → Stage B)
+message InterStageMessage {
+    int64 from_stage_id = 1;
+    string content = 2;
+}
+message InterStageReply {
+    string response = 1;
+}
+
+// ============================================
+// IApiSender 테스트용 메시지
+// ============================================
+
+// API 에코 (API 서버에서 처리)
+message ApiEchoRequest {
+    string content = 1;
+}
+message ApiEchoReply {
+    string content = 1;
+}
+
+// SendToApi 트리거 (Stage → API)
+message TriggerSendToApiRequest {
+    string message = 1;
+}
+message TriggerSendToApiReply {
+    bool success = 1;
+}
+
+// RequestToApi 트리거 (Stage → API)
+message TriggerRequestToApiRequest {
+    string query = 1;
+}
+message TriggerRequestToApiReply {
+    string api_response = 1;
+}
+
+// CreateStage 트리거 (API → PlayServer)
+message TriggerCreateStageRequest {
+    string stage_type = 1;
+    int64 stage_id = 2;
+}
+message TriggerCreateStageReply {
+    bool success = 1;
+}
+
+// GetOrCreateStage 트리거
+message TriggerGetOrCreateStageRequest {
+    string stage_type = 1;
+    int64 stage_id = 2;
+}
+message TriggerGetOrCreateStageReply {
+    bool is_created = 1;
+    bool success = 2;
+}
+
+// API → Client Push
+message ApiPushNotify {
+    string message = 1;
+    int64 timestamp = 2;
+}
+
+// ============================================
+// API 간 통신 테스트용 메시지
+// ============================================
+
+// API 간 SendToApi 트리거 (ApiServer A → ApiServer B)
+message TriggerSendToApiServerRequest {
+    string target_api_nid = 1;  // Target ApiServer ServerId (e.g., "1", "2")
+    string message = 2;
+}
+message TriggerSendToApiServerReply {
+    bool success = 1;
+}
+
+// API 간 RequestToApi 트리거 (ApiServer A → ApiServer B)
+message TriggerRequestToApiServerRequest {
+    string target_api_nid = 1;  // Target ApiServer ServerId (e.g., "1", "2")
+    string query = 2;
+}
+message TriggerRequestToApiServerReply {
+    string response = 1;
+}
+
+// API 간 직접 전달되는 메시지 (ApiServer A → ApiServer B)
+message InterApiMessage {
+    string from_api_nid = 1;
+    string content = 2;
+}
+message InterApiReply {
+    string response = 1;
+}
