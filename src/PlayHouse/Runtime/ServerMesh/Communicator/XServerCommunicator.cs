@@ -47,7 +47,7 @@ internal sealed class XServerCommunicator : IServerCommunicator
         {
             try
             {
-                // Receive with 1-second timeout (Kairos pattern)
+                // Receive with 10ms timeout - no additional sleep needed as timeout provides waiting
                 var packet = _socket.Receive();
                 if (packet != null)
                 {
@@ -58,8 +58,6 @@ internal sealed class XServerCommunicator : IServerCommunicator
             {
                 Console.Error.WriteLine($"[XServerCommunicator] Receive error: {ex.Message}");
             }
-
-            Thread.Sleep(1);
         }
     }
 
