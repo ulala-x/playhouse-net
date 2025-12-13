@@ -89,7 +89,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// Note: SendToApi는 비동기 전송이므로 응답을 기대하지 않습니다.
     /// InterApiMessage 핸들러가 등록되어 있지만, 이 테스트에서는 호출 검증만 합니다.
     /// </summary>
-    [Fact(DisplayName = "SendToApi - ApiServer A에서 ApiServer B로 메시지 전송 성공", Skip = "API↔API 통신 기능 구현 필요")]
+    [Fact(DisplayName = "SendToApi - ApiServer A에서 ApiServer B로 메시지 전송 성공")]
     public async Task SendToApi_FromApiAToApiB_MessageReceived()
     {
         // Given
@@ -133,7 +133,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// Note: 이 테스트는 ApiServer에 등록된 핸들러를 사용합니다.
     /// ApiEchoRequest 핸들러가 등록되어 있으므로 이를 사용하여 통신을 테스트합니다.
     /// </summary>
-    [Fact(DisplayName = "RequestToApi - ApiServer A에서 ApiServer B로 요청-응답 성공", Skip = "API↔API 통신 기능 구현 필요")]
+    [Fact(DisplayName = "RequestToApi - ApiServer A에서 ApiServer B로 요청-응답 성공")]
     public async Task RequestToApi_FromApiAToApiB_ResponseReceived()
     {
         // Given
@@ -180,7 +180,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// 4. ApiServer A → ApiServer B 응답
     /// 5. 양방향 통신 검증
     /// </summary>
-    [Fact(DisplayName = "RequestToApi - 양방향 통신 성공", Skip = "API↔API 통신 기능 구현 필요")]
+    [Fact(DisplayName = "RequestToApi - 양방향 통신 성공")]
     public async Task RequestToApi_Bidirectional_BothDirectionsWork()
     {
         // Given
@@ -222,28 +222,30 @@ public class ApiToApiTests : IAsyncLifetime
     /// 트리거를 통한 API 간 통신 테스트
     ///
     /// 테스트 플로우:
-    /// 1. ApiServer A의 HandleRequestToApiServer 핸들러 호출 (트리거 역할)
-    /// 2. 핸들러 내에서 ApiServer B로 RequestToApi 호출
-    /// 3. ApiServer B의 HandleInterApiMessage 콜백 호출 및 응답
+    /// 1. ApiServer B의 HandleRequestToApiServer 핸들러 호출 (트리거 역할)
+    /// 2. 핸들러 내에서 ApiServer A로 RequestToApi 호출
+    /// 3. ApiServer A의 HandleInterApiMessage 콜백 호출 및 응답
     /// 4. 최종 응답 검증
     ///
     /// 이 테스트는 핸들러 내에서 다른 API 서버로 요청하는 실제 사용 패턴을 검증합니다.
+    /// Note: NetMQ Router는 자기 자신에게 메시지를 보내는 것을 지원하지 않으므로,
+    /// ApiServer A가 ApiServer B에게 트리거 요청을 보내고, B가 A에게 실제 요청을 합니다.
     /// </summary>
-    [Fact(DisplayName = "RequestToApi - 핸들러 트리거 방식 통신 성공", Skip = "API↔API 통신 기능 구현 필요")]
+    [Fact(DisplayName = "RequestToApi - 핸들러 트리거 방식 통신 성공")]
     public async Task RequestToApi_ThroughHandler_Success()
     {
         // Given
         const string testQuery = "Test query through handler";
 
-        // When - ApiServer A의 트리거 핸들러 호출
+        // When - ApiServer A가 ApiServer B에게 트리거 요청 (B가 A에게 실제 요청)
         var triggerRequest = new TriggerRequestToApiServerRequest
         {
-            TargetApiNid = "2:2",
+            TargetApiNid = "2:1", // ApiServer B가 ApiServer A에게 요청
             Query = testQuery
         };
 
         var responsePacket = await _apiServerA!.ApiSender!.RequestToApi(
-            "2:1", // ApiServer A 자신에게 트리거 요청
+            "2:2", // ApiServer B에게 트리거 요청
             CPacket.Of(triggerRequest));
 
         // Then
@@ -268,27 +270,30 @@ public class ApiToApiTests : IAsyncLifetime
     /// SendToApi 트리거 테스트
     ///
     /// 테스트 플로우:
-    /// 1. ApiServer A의 HandleSendToApiServer 핸들러 호출
-    /// 2. 핸들러 내에서 ApiServer B로 SendToApi 호출 (비동기)
-    /// 3. ApiServer B의 HandleInterApiMessage 콜백 호출
+    /// 1. ApiServer B의 HandleSendToApiServer 핸들러 호출
+    /// 2. 핸들러 내에서 ApiServer A로 SendToApi 호출 (비동기)
+    /// 3. ApiServer A의 HandleInterApiMessage 콜백 호출
     /// 4. 콜백 호출 검증
+    ///
+    /// Note: NetMQ Router는 자기 자신에게 메시지를 보내는 것을 지원하지 않으므로,
+    /// ApiServer A가 ApiServer B에게 트리거 요청을 보내고, B가 A에게 SendToApi 호출합니다.
     /// </summary>
-    [Fact(DisplayName = "SendToApi - 핸들러 트리거 방식 메시지 전송 성공", Skip = "API↔API 통신 기능 구현 필요")]
+    [Fact(DisplayName = "SendToApi - 핸들러 트리거 방식 메시지 전송 성공")]
     public async Task SendToApi_ThroughHandler_Success()
     {
         // Given
         const string testMessage = "Test message through handler";
         var initialCallCount = TestApiController.OnDispatchCallCount;
 
-        // When - ApiServer A의 트리거 핸들러 호출
+        // When - ApiServer A가 ApiServer B에게 트리거 요청 (B가 A에게 SendToApi)
         var triggerRequest = new TriggerSendToApiServerRequest
         {
-            TargetApiNid = "2:2",
+            TargetApiNid = "2:1", // ApiServer B가 ApiServer A에게 SendToApi
             Message = testMessage
         };
 
         var responsePacket = await _apiServerA!.ApiSender!.RequestToApi(
-            "2:1", // ApiServer A 자신에게 트리거 요청
+            "2:2", // ApiServer B에게 트리거 요청
             CPacket.Of(triggerRequest));
 
         // 메시지 전달 대기

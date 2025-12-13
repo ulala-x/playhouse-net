@@ -38,6 +38,9 @@ message RouteHeader {
 
     // Session ID (for client session tracking)
     int64 sid = 8;
+
+    // Is this a reply packet? (true = reply, false = request)
+    bool is_reply = 9;
 }
 
 // ============================================

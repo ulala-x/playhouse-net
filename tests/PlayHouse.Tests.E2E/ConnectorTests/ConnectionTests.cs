@@ -167,7 +167,7 @@ public class ConnectionTests : IAsyncLifetime
         var timeout = DateTime.UtcNow.AddSeconds(5);
         while (_disconnectCount == 0 && DateTime.UtcNow < timeout)
         {
-            await Task.Delay(50);
+            await Task.Delay(100);
         }
 
         // Then - E2E 검증
