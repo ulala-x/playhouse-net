@@ -43,7 +43,7 @@ public interface ISystemController
     /// public async Task&lt;IReadOnlyList&lt;IServerInfo&gt;&gt; UpdateServerInfoAsync(IServerInfo serverInfo)
     /// {
     ///     // 1. 내 서버 정보 저장 (TTL 10초)
-    ///     await db.StringSetAsync($"server:{serverInfo.Nid}", Serialize(serverInfo), TimeSpan.FromSeconds(10));
+    ///     await db.StringSetAsync($"server:{serverInfo.ServerId}", Serialize(serverInfo), TimeSpan.FromSeconds(10));
     ///
     ///     // 2. 전체 서버 목록 조회
     ///     var keys = await db.Keys("server:*");
@@ -83,7 +83,7 @@ public class InMemorySystemController : ISystemController
         lock (_lock)
         {
             // 내 서버 정보 저장
-            _servers[serverInfo.Nid] = new ServerInfoEntry(serverInfo, DateTimeOffset.UtcNow);
+            _servers[serverInfo.ServerId] = new ServerInfoEntry(serverInfo, DateTimeOffset.UtcNow);
 
             // 만료된 서버 정리
             var expiredTime = DateTimeOffset.UtcNow - _ttl;

@@ -43,30 +43,30 @@ public sealed class XServerInfoCenter
                     server.State,
                     server.Weight);
 
-                newServers.Add(info.Nid);
+                newServers.Add(info.ServerId);
 
-                if (_servers.TryGetValue(info.Nid, out var existing))
+                if (_servers.TryGetValue(info.ServerId, out var existing))
                 {
                     // 상태 변경 확인
                     if (existing.State != info.State || existing.Address != info.Address)
                     {
-                        _servers[info.Nid] = info;
+                        _servers[info.ServerId] = info;
                         changes.Add(new ServerChange(info, ChangeType.Updated));
                     }
                 }
                 else
                 {
                     // 새 서버 추가
-                    _servers[info.Nid] = info;
+                    _servers[info.ServerId] = info;
                     changes.Add(new ServerChange(info, ChangeType.Added));
                 }
             }
 
             // 제거된 서버 확인
-            var toRemove = _servers.Keys.Where(nid => !newServers.Contains(nid)).ToList();
-            foreach (var nid in toRemove)
+            var toRemove = _servers.Keys.Where(serverId => !newServers.Contains(serverId)).ToList();
+            foreach (var serverId in toRemove)
             {
-                if (_servers.TryRemove(nid, out var removed))
+                if (_servers.TryRemove(serverId, out var removed))
                 {
                     changes.Add(new ServerChange(removed, ChangeType.Removed));
                 }
@@ -77,13 +77,13 @@ public sealed class XServerInfoCenter
     }
 
     /// <summary>
-    /// NID로 서버 정보를 조회합니다.
+    /// ServerId로 서버 정보를 조회합니다.
     /// </summary>
-    /// <param name="nid">Node ID.</param>
+    /// <param name="serverId">Server ID.</param>
     /// <returns>서버 정보 또는 null.</returns>
-    public XServerInfo? GetServer(string nid)
+    public XServerInfo? GetServer(string serverId)
     {
-        _servers.TryGetValue(nid, out var server);
+        _servers.TryGetValue(serverId, out var server);
         return server;
     }
 
@@ -140,11 +140,11 @@ public sealed class XServerInfoCenter
     /// <summary>
     /// 특정 서버를 제거합니다.
     /// </summary>
-    /// <param name="nid">제거할 서버의 NID.</param>
+    /// <param name="serverId">제거할 서버의 ServerId.</param>
     /// <returns>제거된 서버 정보 또는 null.</returns>
-    public XServerInfo? Remove(string nid)
+    public XServerInfo? Remove(string serverId)
     {
-        _servers.TryRemove(nid, out var removed);
+        _servers.TryRemove(serverId, out var removed);
         return removed;
     }
 

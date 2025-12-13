@@ -22,7 +22,7 @@ public sealed class ApiServerOption
     /// <summary>
     /// 서버 인스턴스 ID.
     /// </summary>
-    public ushort ServerId { get; set; } = 1;
+    public string ServerId { get; set; } = "1";
 
     /// <summary>
     /// NetMQ 서버 간 통신용 바인드 주소.
@@ -36,11 +36,6 @@ public sealed class ApiServerOption
     public int RequestTimeoutMs { get; set; } = 30000;
 
     /// <summary>
-    /// 서버 NID (자동 계산).
-    /// </summary>
-    public string Nid => $"{ServiceId}:{ServerId}";
-
-    /// <summary>
     /// 설정 유효성 검증.
     /// </summary>
     public void Validate()
@@ -48,8 +43,8 @@ public sealed class ApiServerOption
         if (ServiceType == 0)
             throw new InvalidOperationException("ServiceType must be set");
 
-        if (ServerId == 0)
-            throw new InvalidOperationException("ServerId must be greater than 0");
+        if (string.IsNullOrEmpty(ServerId))
+            throw new InvalidOperationException("ServerId is required");
 
         if (string.IsNullOrEmpty(BindEndpoint))
             throw new InvalidOperationException("BindEndpoint is required");

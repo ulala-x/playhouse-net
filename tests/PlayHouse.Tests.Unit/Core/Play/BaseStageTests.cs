@@ -103,7 +103,7 @@ public class BaseStageTests
             communicator,
             requestCache,
             serviceId: 1,
-            nid: "1:1",
+            serverId: "1",
             stageId: 100,
             dispatcher);
 

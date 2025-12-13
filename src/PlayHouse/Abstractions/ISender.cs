@@ -29,25 +29,25 @@ public interface ISender
     /// <summary>
     /// Sends a one-way packet to an API server.
     /// </summary>
-    /// <param name="apiNid">Target API server NID.</param>
+    /// <param name="apiServerId">Target API server ID.</param>
     /// <param name="packet">Packet to send.</param>
-    void SendToApi(string apiNid, IPacket packet);
+    void SendToApi(string apiServerId, IPacket packet);
 
     /// <summary>
     /// Sends a request to an API server with a callback for the reply.
     /// </summary>
-    /// <param name="apiNid">Target API server NID.</param>
+    /// <param name="apiServerId">Target API server ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <param name="replyCallback">Callback to handle the reply.</param>
-    void RequestToApi(string apiNid, IPacket packet, ReplyCallback replyCallback);
+    void RequestToApi(string apiServerId, IPacket packet, ReplyCallback replyCallback);
 
     /// <summary>
     /// Sends a request to an API server and awaits the reply.
     /// </summary>
-    /// <param name="apiNid">Target API server NID.</param>
+    /// <param name="apiServerId">Target API server ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <returns>The reply packet.</returns>
-    Task<IPacket> RequestToApi(string apiNid, IPacket packet);
+    Task<IPacket> RequestToApi(string apiServerId, IPacket packet);
 
     #endregion
 
@@ -56,28 +56,28 @@ public interface ISender
     /// <summary>
     /// Sends a one-way packet to a stage on a Play server.
     /// </summary>
-    /// <param name="playNid">Target Play server NID.</param>
+    /// <param name="playServerId">Target Play server ID.</param>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="packet">Packet to send.</param>
-    void SendToStage(string playNid, long stageId, IPacket packet);
+    void SendToStage(string playServerId, long stageId, IPacket packet);
 
     /// <summary>
     /// Sends a request to a stage with a callback for the reply.
     /// </summary>
-    /// <param name="playNid">Target Play server NID.</param>
+    /// <param name="playServerId">Target Play server ID.</param>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <param name="replyCallback">Callback to handle the reply.</param>
-    void RequestToStage(string playNid, long stageId, IPacket packet, ReplyCallback replyCallback);
+    void RequestToStage(string playServerId, long stageId, IPacket packet, ReplyCallback replyCallback);
 
     /// <summary>
     /// Sends a request to a stage and awaits the reply.
     /// </summary>
-    /// <param name="playNid">Target Play server NID.</param>
+    /// <param name="playServerId">Target Play server ID.</param>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <returns>The reply packet.</returns>
-    Task<IPacket> RequestToStage(string playNid, long stageId, IPacket packet);
+    Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet);
 
     #endregion
 

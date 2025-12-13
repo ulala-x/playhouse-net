@@ -16,7 +16,7 @@ internal sealed class XServerCommunicator : IServerCommunicator
     private volatile bool _running = true;
 
     /// <inheritdoc/>
-    public string Nid => _socket.Nid;
+    public string ServerId => _socket.ServerId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="XServerCommunicator"/> class.

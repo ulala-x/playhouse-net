@@ -54,11 +54,6 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     public bool IsRunning => _isRunning;
 
     /// <summary>
-    /// 서버 NID.
-    /// </summary>
-    public string Nid => _options.Nid;
-
-    /// <summary>
     /// TCP 클라이언트 연결 포트 (설정값).
     /// 실제 바인딩된 포트를 확인하려면 ActualTcpPort를 사용하세요.
     /// null이면 TCP가 비활성화되어 있습니다.
@@ -120,7 +115,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         _communicator.Start();
 
         // 자기 자신에게 연결 (같은 서버 내 Stage 간 통신에 필요)
-        _communicator.Connect(_options.Nid, _options.BindEndpoint);
+        _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
         // PlayDispatcher 생성
         _dispatcher = new PlayDispatcher(
@@ -128,7 +123,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
             new CommunicatorAdapter(_communicator),
             _requestCache,
             _options.ServiceId,
-            _options.Nid,
+            _options.ServerId,
             this, // client reply handler
             _logger);
 
@@ -161,8 +156,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         }
 
         _isRunning = true;
-        _logger?.LogInformation("PlayServer started: Nid={Nid}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
-            Nid, _options.IsTcpEnabled, _options.IsWebSocketEnabled);
+        _logger?.LogInformation("PlayServer started: ServerId={ServerId}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
+            _options.ServerId, _options.IsTcpEnabled, _options.IsWebSocketEnabled);
 
         await Task.Delay(50); // 서버 초기화 대기
     }
@@ -250,7 +245,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         _cts?.Dispose();
         _cts = null;
 
-        _logger?.LogInformation("PlayServer stopped: Nid={Nid}", Nid);
+        _logger?.LogInformation("PlayServer stopped: ServerId={ServerId}", _options.ServerId);
     }
 
     /// <inheritdoc/>
@@ -399,7 +394,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                 try
                 {
                     // XActorSender 생성 (transport session 포함하여 직접 클라이언트 통신 가능)
-                    var actorSender = new XActorSender(_options.Nid, session.SessionId, _options.Nid, baseStage, session);
+                    var actorSender = new XActorSender(_options.ServerId, session.SessionId, _options.ServerId, baseStage, session);
 
                     // IActor 생성
                     BaseActor actor;
@@ -670,7 +665,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
             _communicator = communicator;
         }
 
-        public string Nid => _communicator.Nid;
+        public string ServerId => _communicator.ServerId;
 
         public void Send(string targetNid, RuntimeRoutePacket packet)
         {

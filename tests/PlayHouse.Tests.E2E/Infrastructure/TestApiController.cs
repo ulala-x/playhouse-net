@@ -57,8 +57,8 @@ public class TestApiController : IApiController
 
         var request = TriggerCreateStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
 
-        // PlayServer NID는 "1:1" (ServiceId=1, ServerId=1)
-        const string playNid = "1:1";
+        // PlayServer ServerId는 "1"
+        const string playNid = "1";
         var result = await sender.CreateStage(
             playNid,
             request.StageType,
@@ -79,7 +79,8 @@ public class TestApiController : IApiController
 
         var request = TriggerGetOrCreateStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
 
-        const string playNid = "1:1";
+        // PlayServer ServerId는 "1"
+        const string playNid = "1";
         var result = await sender.GetOrCreateStage(
             playNid,
             request.StageType,

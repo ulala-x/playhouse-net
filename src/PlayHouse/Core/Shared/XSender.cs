@@ -33,9 +33,9 @@ public abstract class XSender : ISender
     public ushort ServiceId { get; }
 
     /// <summary>
-    /// Gets the NID of this sender.
+    /// Gets the ServerId of this sender.
     /// </summary>
-    protected string Nid { get; }
+    protected string ServerId { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="XSender"/> class.
@@ -43,19 +43,19 @@ public abstract class XSender : ISender
     /// <param name="communicator">Communicator for sending messages.</param>
     /// <param name="requestCache">Cache for tracking pending requests.</param>
     /// <param name="serviceId">Service ID of this sender.</param>
-    /// <param name="nid">NID of this sender.</param>
+    /// <param name="serverId">ServerId of this sender.</param>
     /// <param name="requestTimeoutMs">Request timeout in milliseconds.</param>
     protected XSender(
         IClientCommunicator communicator,
         RequestCache requestCache,
         ushort serviceId,
-        string nid,
+        string serverId,
         int requestTimeoutMs = 30000)
     {
         _communicator = communicator;
         _requestCache = requestCache;
         ServiceId = serviceId;
-        Nid = nid;
+        ServerId = serverId;
         _requestTimeoutMs = requestTimeoutMs;
     }
 
@@ -96,14 +96,14 @@ public abstract class XSender : ISender
     #region API Communication
 
     /// <inheritdoc/>
-    public void SendToApi(string apiNid, IPacket packet)
+    public void SendToApi(string apiServerId, IPacket packet)
     {
         var header = CreateHeader(packet.MsgId, 0);
-        SendInternal(apiNid, header, packet.Payload);
+        SendInternal(apiServerId, header, packet.Payload);
     }
 
     /// <inheritdoc/>
-    public void RequestToApi(string apiNid, IPacket packet, ReplyCallback replyCallback)
+    public void RequestToApi(string apiServerId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
         var header = CreateHeader(packet.MsgId, msgSeq);
@@ -111,11 +111,11 @@ public abstract class XSender : ISender
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback);
         RegisterReply(replyObject);
 
-        SendInternal(apiNid, header, packet.Payload);
+        SendInternal(apiServerId, header, packet.Payload);
     }
 
     /// <inheritdoc/>
-    public async Task<IPacket> RequestToApi(string apiNid, IPacket packet)
+    public async Task<IPacket> RequestToApi(string apiServerId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
         var header = CreateHeader(packet.MsgId, msgSeq);
@@ -123,7 +123,7 @@ public abstract class XSender : ISender
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
         RegisterReply(replyObject);
 
-        SendInternal(apiNid, header, packet.Payload);
+        SendInternal(apiServerId, header, packet.Payload);
 
         return await task;
     }
@@ -133,14 +133,14 @@ public abstract class XSender : ISender
     #region Stage Communication
 
     /// <inheritdoc/>
-    public void SendToStage(string playNid, long stageId, IPacket packet)
+    public void SendToStage(string playServerId, long stageId, IPacket packet)
     {
         var header = CreateHeader(packet.MsgId, 0, stageId);
-        SendInternal(playNid, header, packet.Payload);
+        SendInternal(playServerId, header, packet.Payload);
     }
 
     /// <inheritdoc/>
-    public void RequestToStage(string playNid, long stageId, IPacket packet, ReplyCallback replyCallback)
+    public void RequestToStage(string playServerId, long stageId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
         var header = CreateHeader(packet.MsgId, msgSeq, stageId);
@@ -148,11 +148,11 @@ public abstract class XSender : ISender
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback);
         RegisterReply(replyObject);
 
-        SendInternal(playNid, header, packet.Payload);
+        SendInternal(playServerId, header, packet.Payload);
     }
 
     /// <inheritdoc/>
-    public async Task<IPacket> RequestToStage(string playNid, long stageId, IPacket packet)
+    public async Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
         var header = CreateHeader(packet.MsgId, msgSeq, stageId);
@@ -160,7 +160,7 @@ public abstract class XSender : ISender
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
         RegisterReply(replyObject);
 
-        SendInternal(playNid, header, packet.Payload);
+        SendInternal(playServerId, header, packet.Payload);
 
         return await task;
     }
@@ -187,7 +187,7 @@ public abstract class XSender : ISender
             MsgSeq = CurrentHeader.MsgSeq,
             ServiceId = ServiceId,
             MsgId = CurrentHeader.MsgId,
-            From = Nid,
+            From = ServerId,
             ErrorCode = errorCode,
             IsReply = true
         };
@@ -213,7 +213,7 @@ public abstract class XSender : ISender
             MsgSeq = CurrentHeader.MsgSeq,
             ServiceId = ServiceId,
             MsgId = reply.MsgId,
-            From = Nid,
+            From = ServerId,
             ErrorCode = 0,
             IsReply = true
         };
@@ -232,23 +232,23 @@ public abstract class XSender : ISender
             MsgSeq = msgSeq,
             ServiceId = ServiceId,
             MsgId = msgId,
-            From = Nid,
+            From = ServerId,
             StageId = stageId,
             AccountId = accountId
         };
     }
 
-    private void SendInternal(string targetNid, RouteHeader header, IPayload payload)
+    private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
         var packet = RuntimeRoutePacket.Of(header, payload.Data.ToArray());
-        _communicator.Send(targetNid, packet);
+        _communicator.Send(targetServerId, packet);
         packet.Dispose();
     }
 
-    private void SendReplyInternal(string targetNid, RouteHeader header, ReadOnlyMemory<byte> payload)
+    private void SendReplyInternal(string targetServerId, RouteHeader header, ReadOnlyMemory<byte> payload)
     {
         var packet = RuntimeRoutePacket.Of(header, payload.ToArray());
-        _communicator.Send(targetNid, packet);
+        _communicator.Send(targetServerId, packet);
         packet.Dispose();
     }
 

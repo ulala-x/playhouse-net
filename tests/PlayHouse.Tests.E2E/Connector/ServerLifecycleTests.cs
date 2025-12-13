@@ -33,7 +33,7 @@ public class ServerLifecycleTests : IAsyncLifetime
         _playServer = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:0";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;

@@ -22,11 +22,11 @@ public class DualPlayServerFixture : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
-        // PlayServer A (NID="1:1", ServerId=1)
+        // PlayServer A (ServerId, ServerId=1)
         PlayServerA = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15200";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
@@ -38,11 +38,11 @@ public class DualPlayServerFixture : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // PlayServer B (NID="1:2", ServerId=2)
+        // PlayServer B (ServerId, ServerId=2)
         PlayServerB = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 2;
+                options.ServerId = "2";
                 options.BindEndpoint = "tcp://127.0.0.1:15201";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;

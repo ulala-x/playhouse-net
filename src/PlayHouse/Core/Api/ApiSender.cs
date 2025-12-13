@@ -157,7 +157,7 @@ internal class ApiSender : XSender, IApiSender
         {
             ServiceId = ServiceId,
             MsgId = packet.MsgId,
-            From = Nid,
+            From = ServerId,
             Sid = sid
         };
 

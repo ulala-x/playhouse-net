@@ -10,16 +10,16 @@ namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 /// <remarks>
 /// Implements Router-Router pattern for bidirectional messaging.
 /// 3-Frame message structure:
-/// - Frame 0: Target NID (UTF-8)
+/// - Frame 0: Target ServerId (UTF-8)
 /// - Frame 1: RouteHeader (Protobuf serialized)
 /// - Frame 2: Payload (binary)
 /// </remarks>
 internal interface IPlaySocket : IDisposable
 {
     /// <summary>
-    /// Gets the Node ID of this socket.
+    /// Gets the Server ID of this socket.
     /// </summary>
-    string Nid { get; }
+    string ServerId { get; }
 
     /// <summary>
     /// Gets the bind endpoint address.
@@ -49,12 +49,12 @@ internal interface IPlaySocket : IDisposable
     /// <summary>
     /// Sends a RuntimeRoutePacket to the specified target.
     /// </summary>
-    /// <param name="nid">Target node ID.</param>
+    /// <param name="serverId">Target server ID.</param>
     /// <param name="packet">Route packet to send.</param>
     /// <remarks>
     /// Packet will be disposed after sending. Sends as 3-frame multipart message.
     /// </remarks>
-    void Send(string nid, RuntimeRoutePacket packet);
+    void Send(string serverId, RuntimeRoutePacket packet);
 
     /// <summary>
     /// Receives a RuntimeRoutePacket (blocking with 1-second timeout).

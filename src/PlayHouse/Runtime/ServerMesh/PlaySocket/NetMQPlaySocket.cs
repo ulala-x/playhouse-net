@@ -26,7 +26,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
     private bool _disposed;
 
     /// <inheritdoc/>
-    public string Nid { get; }
+    public string ServerId { get; }
 
     /// <inheritdoc/>
     public string EndPoint => _bindEndpoint;
@@ -34,18 +34,18 @@ internal sealed class NetMqPlaySocket : IPlaySocket
     /// <summary>
     /// Initializes a new instance of the <see cref="NetMqPlaySocket"/> class.
     /// </summary>
-    /// <param name="nid">Node ID for this socket.</param>
+    /// <param name="serverId">Server ID for this socket.</param>
     /// <param name="bindEndpoint">Bind endpoint address (e.g., "tcp://*:5555").</param>
     /// <param name="config">Socket configuration.</param>
-    public NetMqPlaySocket(string nid, string bindEndpoint, PlaySocketConfig? config = null)
+    public NetMqPlaySocket(string serverId, string bindEndpoint, PlaySocketConfig? config = null)
     {
-        Nid = nid;
+        ServerId = serverId;
         _bindEndpoint = bindEndpoint;
         config ??= PlaySocketConfig.Default;
 
         // Server socket - for receiving messages
         _serverSocket = new RouterSocket();
-        _serverSocket.Options.Identity = Encoding.UTF8.GetBytes(nid);
+        _serverSocket.Options.Identity = Encoding.UTF8.GetBytes(serverId);
         _serverSocket.Options.RouterHandover = true;
         _serverSocket.Options.ReceiveHighWatermark = config.ReceiveHighWatermark;
         _serverSocket.Options.TcpKeepalive = config.TcpKeepalive;
@@ -58,7 +58,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
 
         // Client socket - for sending messages
         _clientSocket = new RouterSocket();
-        _clientSocket.Options.Identity = Encoding.UTF8.GetBytes(nid);
+        _clientSocket.Options.Identity = Encoding.UTF8.GetBytes(serverId);
         _clientSocket.Options.DelayAttachOnConnect = true;
         _clientSocket.Options.RouterHandover = true;
         _clientSocket.Options.RouterMandatory = true;
@@ -80,7 +80,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
     public static NetMqPlaySocket Create(ServerConfig config)
     {
         var socketConfig = PlaySocketConfig.FromServerConfig(config);
-        return new NetMqPlaySocket(config.Nid, config.BindEndpoint, socketConfig);
+        return new NetMqPlaySocket(config.ServerId, config.BindEndpoint, socketConfig);
     }
 
     /// <inheritdoc/>
@@ -105,7 +105,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
     }
 
     /// <inheritdoc/>
-    public void Send(string nid, RuntimeRoutePacket packet)
+    public void Send(string serverId, RuntimeRoutePacket packet)
     {
         ThrowIfDisposed();
 
@@ -114,8 +114,8 @@ internal sealed class NetMqPlaySocket : IPlaySocket
         {
             var message = new NetMQMessage();
 
-            // Frame 0: Target NID
-            message.Append(new NetMQFrame(Encoding.UTF8.GetBytes(nid)));
+            // Frame 0: Target ServerId
+            message.Append(new NetMQFrame(Encoding.UTF8.GetBytes(serverId)));
 
             // Frame 1: RouteHeader
             var headerBytes = packet.SerializeHeader();
@@ -129,7 +129,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
             {
                 // RouterMandatory causes send to fail if target not connected
                 // Log error or throw depending on requirements
-                Console.Error.WriteLine($"[NetMqPlaySocket] Failed to send to {nid}, MsgId: {packet.MsgId}");
+                Console.Error.WriteLine($"[NetMqPlaySocket] Failed to send to {serverId}, MsgId: {packet.MsgId}");
             }
         }
     }
@@ -148,8 +148,8 @@ internal sealed class NetMqPlaySocket : IPlaySocket
                 return null;
             }
 
-            // Frame 0: Sender NID
-            var senderNid = Encoding.UTF8.GetString(message[0].Buffer);
+            // Frame 0: Sender ServerId
+            var senderServerId = Encoding.UTF8.GetString(message[0].Buffer);
 
             // Frame 1: RouteHeader
             var headerBytes = message[1].ToByteArray();
@@ -157,8 +157,8 @@ internal sealed class NetMqPlaySocket : IPlaySocket
             // Frame 2: Payload
             var payloadBytes = message[2].ToByteArray();
 
-            // Create packet with sender NID set in header (Kairos pattern)
-            return RuntimeRoutePacket.FromFrames(headerBytes, payloadBytes, senderNid);
+            // Create packet with sender ServerId set in header (Kairos pattern)
+            return RuntimeRoutePacket.FromFrames(headerBytes, payloadBytes, senderServerId);
         }
 
         return null;

@@ -38,9 +38,9 @@ internal sealed class XStageSender : XSender, IStageSender
     public string StageType { get; private set; } = "";
 
     /// <summary>
-    /// Gets the NID of this stage sender.
+    /// Gets the ServerId of this stage sender.
     /// </summary>
-    public new string Nid => base.Nid;
+    public new string ServerId => base.ServerId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="XStageSender"/> class.
@@ -49,12 +49,12 @@ internal sealed class XStageSender : XSender, IStageSender
         IClientCommunicator communicator,
         RequestCache requestCache,
         ushort serviceId,
-        string nid,
+        string serverId,
         long stageId,
         IPlayDispatcher dispatcher,
         IClientReplyHandler? clientReplyHandler = null,
         int requestTimeoutMs = 30000)
-        : base(communicator, requestCache, serviceId, nid, requestTimeoutMs)
+        : base(communicator, requestCache, serviceId, serverId, requestTimeoutMs)
     {
         StageId = stageId;
         _dispatcher = dispatcher;
@@ -205,7 +205,7 @@ internal sealed class XStageSender : XSender, IStageSender
     #region Client Communication
 
     /// <inheritdoc/>
-    public void SendToClient(string sessionNid, long sid, IPacket packet)
+    public void SendToClient(string sessionServerId, long sid, IPacket packet)
     {
         // For directly connected clients, use transport handler
         if (sid > 0 && _clientReplyHandler != null)
@@ -226,13 +226,13 @@ internal sealed class XStageSender : XSender, IStageSender
         {
             ServiceId = ServiceId,
             MsgId = packet.MsgId,
-            From = Nid,
+            From = ServerId,
             StageId = StageId,
             Sid = sid
         };
 
         var routePacket = RuntimeRoutePacket.Of(header, packet.Payload.Data.ToArray());
-        _communicator.Send(sessionNid, routePacket);
+        _communicator.Send(sessionServerId, routePacket);
         routePacket.Dispose();
     }
 

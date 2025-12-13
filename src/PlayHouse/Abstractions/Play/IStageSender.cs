@@ -124,10 +124,10 @@ public interface IStageSender : ISender
     /// <summary>
     /// Sends a message to a specific client.
     /// </summary>
-    /// <param name="sessionNid">The session server NID.</param>
+    /// <param name="sessionServerId">The session server ID.</param>
     /// <param name="sid">The session ID.</param>
     /// <param name="packet">The packet to send.</param>
-    void SendToClient(string sessionNid, long sid, IPacket packet);
+    void SendToClient(string sessionServerId, long sid, IPacket packet);
 
     #endregion
 }

@@ -112,13 +112,13 @@ public sealed class ServerAddressResolver : IDisposable
     }
 
     /// <summary>
-    /// NID로 서버 주소를 조회합니다.
+    /// ServerId로 서버 주소를 조회합니다.
     /// </summary>
-    /// <param name="nid">Node ID.</param>
+    /// <param name="serverId">Server ID.</param>
     /// <returns>서버 주소 또는 null.</returns>
-    public string? ResolveAddress(string nid)
+    public string? ResolveAddress(string serverId)
     {
-        return _serverInfoCenter.GetServer(nid)?.Address;
+        return _serverInfoCenter.GetServer(serverId)?.Address;
     }
 
     /// <summary>
@@ -159,7 +159,7 @@ public sealed class ServerAddressResolver : IDisposable
         foreach (var change in changes)
         {
             // 자기 자신은 스킵
-            if (change.Server.Nid == _myServerInfo.Nid)
+            if (change.Server.ServerId == _myServerInfo.ServerId)
                 continue;
 
             switch (change.Type)
@@ -167,7 +167,7 @@ public sealed class ServerAddressResolver : IDisposable
                 case ChangeType.Added:
                     if (change.Server.State == ServerState.Running)
                     {
-                        _communicator!.Connect(change.Server.Nid, change.Server.Address);
+                        _communicator!.Connect(change.Server.ServerId, change.Server.Address);
                     }
                     break;
 
@@ -175,18 +175,18 @@ public sealed class ServerAddressResolver : IDisposable
                     // 상태가 Disabled로 변경되면 연결 해제
                     if (change.Server.State == ServerState.Disabled)
                     {
-                        _communicator!.Disconnect(change.Server.Nid, change.Server.Address);
+                        _communicator!.Disconnect(change.Server.ServerId, change.Server.Address);
                     }
                     else
                     {
                         // 주소가 변경되었을 수 있으므로 재연결
-                        _communicator!.Disconnect(change.Server.Nid, change.Server.Address);
-                        _communicator.Connect(change.Server.Nid, change.Server.Address);
+                        _communicator!.Disconnect(change.Server.ServerId, change.Server.Address);
+                        _communicator.Connect(change.Server.ServerId, change.Server.Address);
                     }
                     break;
 
                 case ChangeType.Removed:
-                    _communicator!.Disconnect(change.Server.Nid, change.Server.Address);
+                    _communicator!.Disconnect(change.Server.ServerId, change.Server.Address);
                     break;
             }
         }

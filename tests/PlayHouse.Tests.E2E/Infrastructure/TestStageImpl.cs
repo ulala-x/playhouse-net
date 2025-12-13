@@ -421,8 +421,8 @@ public class TestStageImpl : IStage
             Content = request.Message
         };
 
-        // TargetNid가 지정되지 않으면 기본값 "1:1" 사용 (이전 호환성)
-        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1:1" : request.TargetNid;
+        // TargetNid가 지정되지 않으면 기본값 "1" 사용 (이전 호환성)
+        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1" : request.TargetNid;
         StageSender.SendToStage(targetNid, request.TargetStageId, CPacket.Of(interStageMsg));
 
         // 성공 응답
@@ -439,8 +439,8 @@ public class TestStageImpl : IStage
             Content = request.Query
         };
 
-        // TargetNid가 지정되지 않으면 기본값 "1:1" 사용 (이전 호환성)
-        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1:1" : request.TargetNid;
+        // TargetNid가 지정되지 않으면 기본값 "1" 사용 (이전 호환성)
+        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1" : request.TargetNid;
         var response = await StageSender.RequestToStage(
             targetNid,
             request.TargetStageId,
@@ -455,8 +455,8 @@ public class TestStageImpl : IStage
     {
         var request = TriggerSendToApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
 
-        // API Server NID는 "2:1" (ServiceId=2, ServerId=1)
-        const string apiNid = "2:1";
+        // API Server ServerId는 "1"
+        const string apiNid = "1";
         var apiMsg = new ApiEchoRequest { Content = request.Message };
         StageSender.SendToApi(apiNid, CPacket.Of(apiMsg));
 
@@ -467,7 +467,8 @@ public class TestStageImpl : IStage
     {
         var request = TriggerRequestToApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
 
-        const string apiNid = "2:1";
+        // API Server ServerId는 "1"
+        const string apiNid = "1";
         var apiMsg = new ApiEchoRequest { Content = request.Query };
         var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
 

@@ -22,12 +22,12 @@ public class DualApiServerFixture : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
-        // ApiServer A (NID="2:1", ServiceType=Api, ServerId=1)
+        // ApiServer A (ServerId, ServiceType=Api, ServerId=1)
         ApiServerA = new ApiServerBootstrap()
             .Configure(options =>
             {
                 // ServiceType.Api (=2) is default, no need to set
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15300";
                 options.RequestTimeoutMs = 30000;
             })
@@ -35,12 +35,12 @@ public class DualApiServerFixture : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // ApiServer B (NID="2:2", ServiceType=Api, ServerId=2)
+        // ApiServer B (ServerId, ServiceType=Api, ServerId=2)
         ApiServerB = new ApiServerBootstrap()
             .Configure(options =>
             {
                 // ServiceType.Api (=2) is default, no need to set
-                options.ServerId = 2;
+                options.ServerId = "2";
                 options.BindEndpoint = "tcp://127.0.0.1:15301";
                 options.RequestTimeoutMs = 30000;
             })
