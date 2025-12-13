@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PlayHouse.Tests.Performance</RootNamespace>
+    <StartupObject>PlayHouse.Tests.Performance.BenchmarkProgram</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="All" />
+    <!-- xUnit packages are inherited from Directory.Build.props -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PlayHouse\PlayHouse.csproj" />
+    <ProjectReference Include="..\..\connector\PlayHouse.Connector\PlayHouse.Connector.csproj" />
+  </ItemGroup>
+
+  <!-- E2E 프로젝트의 Infrastructure 파일 참조 -->
+  <ItemGroup>
+    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestActorImpl.cs" Link="Infrastructure\E2E\TestActorImpl.cs" />
+    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestStageImpl.cs" Link="Infrastructure\E2E\TestStageImpl.cs" />
+    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestSystemController.cs" Link="Infrastructure\E2E\TestSystemController.cs" />
+    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestApiController.cs" Link="Infrastructure\E2E\TestApiController.cs" />
+  </ItemGroup>
+
+  <!-- E2E Proto 파일 참조 -->
+  <ItemGroup>
+    <Protobuf Include="..\PlayHouse.Tests.E2E\Proto\*.proto" GrpcServices="None" Link="Proto\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
