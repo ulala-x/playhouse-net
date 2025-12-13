@@ -11,7 +11,7 @@ using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
 using ClientPacket = PlayHouse.Connector.Protocol.IPacket;
 
-namespace PlayHouse.Tests.E2E.ConnectorTests;
+namespace PlayHouse.Tests.E2E.Connector;
 
 /// <summary>
 /// 6.1 Connector 연결/인증 E2E 테스트

@@ -7,7 +7,7 @@ using PlayHouse.Tests.E2E.Infrastructure;
 using PlayHouse.Tests.E2E.Proto;
 using Xunit;
 
-namespace PlayHouse.Tests.E2E.ServerTests;
+namespace PlayHouse.Tests.E2E.Api;
 
 /// <summary>
 /// Self-connection (자기 자신에게 메시지 보내기) 테스트
