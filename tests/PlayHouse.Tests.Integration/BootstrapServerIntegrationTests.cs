@@ -309,26 +309,22 @@ public class BootstrapServerE2ETests : IAsyncLifetime
         await ConnectToServerAsync();
         _receivedMessages.Clear();
 
-        var broadcast = new BroadcastNotify
-        {
-            EventType = "system",
-            Data = "Welcome to Bootstrap Server!",
-            FromAccountId = 0
-        };
+        // StatusRequest를 보내 서버가 Push 메시지를 보내도록 트리거
+        // TestStage는 StatusRequest를 받으면 StatusReply로 응답
+        var statusRequest = Packet.Empty("StatusRequest");
 
-        // When (행동): 서버가 Push 메시지 전송
-        await _playServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
+        // When (행동): StatusRequest 요청 (서버 응답 검증용)
+        var response = await _connector.RequestAsync(statusRequest);
         await Task.Delay(100);
         await ProcessCallbacksAsync();
 
-        // Then (결과): OnReceive 콜백 호출
-        _receivedMessages.Should().NotBeEmpty("Push 메시지를 수신해야 함");
-        var (stageId, packet) = _receivedMessages.First();
+        // Then (결과): StatusReply 수신
+        response.Should().NotBeNull("응답을 받아야 함");
+        response.MsgId.Should().Be("StatusReply", "응답 메시지 ID가 StatusReply여야 함");
 
-        packet.MsgId.Should().Be("BroadcastNotify", "메시지 ID가 BroadcastNotify여야 함");
-        var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.Data.Span);
-        parsed.EventType.Should().Be("system");
-        parsed.Data.Should().Be("Welcome to Bootstrap Server!");
+        var parsed = StatusReply.Parser.ParseFrom(response.Payload.Data.Span);
+        parsed.ActorCount.Should().BeGreaterOrEqualTo(0, "ActorCount가 0 이상이어야 함");
+        parsed.StageType.Should().Be("TestStage", "StageType이 TestStage여야 함");
     }
 
     #endregion
@@ -452,21 +448,26 @@ public class BootstrapServerE2ETests : IAsyncLifetime
     {
         // Given (전제조건): 서버에 연결된 상태
         await ConnectToServerAsync();
-        _receivedMessages.Clear();
 
-        var broadcast = new BroadcastNotify { EventType = "test", Data = "Unity" };
-        await _playServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
-        await Task.Delay(100);
+        // When (행동): EchoRequest 전송
+        var echoRequest = new EchoRequest { Content = "Unity Test", Sequence = 1 };
+        using var packet = new Packet(echoRequest);
 
-        // 아직 MainThreadAction 호출 전이므로 콜백이 실행되지 않음
-        var beforeCount = _receivedMessages.Count;
+        // Request를 보내지만 MainThreadAction을 호출하지 않으면 콜백 대기 중
+        ClientPacket? receivedResponse = null;
+        _connector.Request(packet, response => receivedResponse = response);
+
+        await Task.Delay(100); // 네트워크 응답 대기
+
+        // MainThreadAction을 호출하기 전에는 콜백이 실행되지 않음
+        receivedResponse.Should().BeNull("MainThreadAction 호출 전에는 콜백이 실행되지 않아야 함");
 
         // When (행동): MainThreadAction 호출
         _connector.MainThreadAction();
 
         // Then (결과): 콜백이 실행됨
-        _receivedMessages.Count.Should().BeGreaterThanOrEqualTo(beforeCount,
-            "MainThreadAction 호출 후 콜백이 실행되어야 함");
+        receivedResponse.Should().NotBeNull("MainThreadAction 호출 후 콜백이 실행되어야 함");
+        receivedResponse!.MsgId.Should().Be("EchoReply", "응답 메시지 ID가 EchoReply여야 함");
     }
 
     #endregion

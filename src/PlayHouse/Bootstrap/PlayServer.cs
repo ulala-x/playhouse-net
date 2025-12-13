@@ -563,20 +563,6 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         }
     }
 
-    /// <summary>
-    /// 모든 연결된 클라이언트에게 Push 메시지를 전송합니다.
-    /// </summary>
-    public async Task BroadcastAsync(string msgId, long stageId, byte[] payload)
-    {
-        if (_transportServer == null) return;
-
-        var responsePacket = TcpTransportSession.CreateResponsePacket(
-            msgId, 0, stageId, 0, payload);
-
-        var sessions = _transportServer.GetAllSessions().Where(s => s.IsConnected).ToList();
-        var tasks = sessions.Select(s => s.SendAsync(responsePacket).AsTask());
-        await Task.WhenAll(tasks);
-    }
 
     /// <summary>
     /// 특정 세션을 연결 해제합니다.
