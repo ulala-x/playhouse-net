@@ -206,6 +206,92 @@ public class ISenderTests : IAsyncLifetime
 
     #endregion
 
+    #region 같은 서버 내 Stage간 통신 테스트
+
+    /// <summary>
+    /// 같은 서버 내 Stage간 SendToStage 테스트
+    /// Stage A에서 같은 서버의 Stage B로 단방향 메시지를 전송합니다.
+    ///
+    /// 테스트 플로우:
+    /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
+    /// 2. 클라이언트 B를 같은 PlayServer A에 연결하여 Stage B 생성
+    /// 3. 클라이언트 A가 Stage A에 TriggerSendToStageRequest 전송 (targetNid="1:1", 같은 서버)
+    /// 4. Stage A에서 IStageSender.SendToStage("1:1", StageIdB, message)로 같은 서버의 Stage B에 메시지 전송
+    /// 5. Stage B에서 OnDispatch(IPacket) 콜백 호출 검증
+    /// </summary>
+    [Fact(DisplayName = "SendToStage - 같은 서버 내 Stage간 단방향 메시지 전송 성공")]
+    public async Task SendToStage_SameServer_Success_MessageDelivered()
+    {
+        // Given - 같은 서버에 두 개의 Stage 연결
+        await ConnectAndAuthenticateAsync(_connectorA, StageIdA, _playServerA!);
+        await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerA!); // 같은 서버!
+
+        var initialCount = TestStageImpl.InterStageMessageCount;
+
+        // When - Stage A에서 같은 서버의 Stage B로 SendToStage 트리거
+        // 같은 서버이므로 NID는 "1:1" (PlayServer A)
+        var request = new TriggerSendToStageRequest
+        {
+            TargetNid = "1:1",  // 같은 서버 (PlayServer A)
+            TargetStageId = StageIdB,
+            Message = "Hello from Stage A (same server)"
+        };
+        using var packet = new Packet(request);
+        var response = await _connectorA.RequestAsync(packet);
+
+        await Task.Delay(500); // 비동기 처리 대기
+
+        // Then - E2E 검증: 응답 검증
+        response.MsgId.Should().EndWith("TriggerSendToStageReply");
+        var reply = TriggerSendToStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        reply.Success.Should().BeTrue("SendToStage가 성공해야 함");
+
+        // Then - E2E 검증: Stage B에서 메시지 수신 확인
+        TestStageImpl.InterStageMessageCount.Should().BeGreaterThan(initialCount,
+            "같은 서버의 Stage B에서 InterStageMessage를 수신해야 함");
+        TestStageImpl.InterStageReceivedMsgIds.Should().Contain(msgId => msgId.Contains("InterStageMessage"),
+            "InterStageMessage가 기록되어야 함");
+    }
+
+    /// <summary>
+    /// 같은 서버 내 Stage간 RequestToStage 테스트
+    /// Stage A에서 같은 서버의 Stage B로 요청을 보내고 응답을 받습니다.
+    ///
+    /// 테스트 플로우:
+    /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
+    /// 2. 클라이언트 B를 같은 PlayServer A에 연결하여 Stage B 생성
+    /// 3. 클라이언트 A가 Stage A에 TriggerRequestToStageRequest 전송 (targetNid="1:1", 같은 서버)
+    /// 4. Stage A에서 IStageSender.RequestToStage("1:1", StageIdB, message)로 같은 서버의 Stage B에 요청 전송
+    /// 5. Stage B에서 OnDispatch(IPacket) 콜백 호출되고 Reply 반환
+    /// 6. Stage A가 Stage B의 응답을 받아서 클라이언트에 전달
+    /// </summary>
+    [Fact(DisplayName = "RequestToStage - 같은 서버 내 Stage간 요청/응답 성공")]
+    public async Task RequestToStage_SameServer_Success_ResponseReceived()
+    {
+        // Given - 같은 서버에 두 개의 Stage 연결
+        await ConnectAndAuthenticateAsync(_connectorA, StageIdA, _playServerA!);
+        await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerA!); // 같은 서버!
+
+        // When - Stage A에서 같은 서버의 Stage B로 RequestToStage 트리거
+        // 같은 서버이므로 NID는 "1:1" (PlayServer A)
+        var request = new TriggerRequestToStageRequest
+        {
+            TargetNid = "1:1",  // 같은 서버 (PlayServer A)
+            TargetStageId = StageIdB,
+            Query = "Query from Stage A (same server)"
+        };
+        using var packet = new Packet(request);
+        var response = await _connectorA.RequestAsync(packet);
+
+        // Then - E2E 검증: 응답 검증
+        response.MsgId.Should().EndWith("TriggerRequestToStageReply");
+        var reply = TriggerRequestToStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        reply.Response.Should().Contain("Query from Stage A (same server)",
+            "같은 서버의 Stage B의 에코 응답이 포함되어야 함");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private async Task ConnectAndAuthenticateAsync(ClientConnector connector, long stageId, PlayServer server)

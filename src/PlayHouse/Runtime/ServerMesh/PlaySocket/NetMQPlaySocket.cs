@@ -13,14 +13,16 @@ namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 /// NetMQ Router socket implementation for server-to-server communication.
 /// </summary>
 /// <remarks>
-/// Uses Router-Router pattern for bidirectional messaging.
-/// The socket identity is set to the NID for routing purposes.
-/// Follows Kairos pattern with multipart message handling.
+/// Uses dual Router sockets for bidirectional messaging:
+/// - Server socket: Bind and Receive
+/// - Client socket: Connect and Send
+/// This separation allows self-messaging (sending to own server socket).
 /// </remarks>
 internal sealed class NetMqPlaySocket : IPlaySocket
 {
     private readonly string _bindEndpoint;
-    private readonly RouterSocket _socket;
+    private readonly RouterSocket _serverSocket;  // For Bind + Receive
+    private readonly RouterSocket _clientSocket;  // For Connect + Send
     private bool _disposed;
 
     /// <inheritdoc/>
@@ -41,29 +43,33 @@ internal sealed class NetMqPlaySocket : IPlaySocket
         _bindEndpoint = bindEndpoint;
         config ??= PlaySocketConfig.Default;
 
-        _socket = new RouterSocket();
-
-        // Set socket identity to NID for routing
-        _socket.Options.Identity = Encoding.UTF8.GetBytes(nid);
-
-        // Router options
-        _socket.Options.DelayAttachOnConnect = true; // immediate
-        _socket.Options.RouterHandover = true;
-        _socket.Options.RouterMandatory = true;
-
-        // High water marks
-        _socket.Options.SendHighWatermark = config.SendHighWatermark;
-        _socket.Options.ReceiveHighWatermark = config.ReceiveHighWatermark;
-
-        // TCP options
-        _socket.Options.TcpKeepalive = config.TcpKeepalive;
+        // Server socket - for receiving messages
+        _serverSocket = new RouterSocket();
+        _serverSocket.Options.Identity = Encoding.UTF8.GetBytes(nid);
+        _serverSocket.Options.RouterHandover = true;
+        _serverSocket.Options.ReceiveHighWatermark = config.ReceiveHighWatermark;
+        _serverSocket.Options.TcpKeepalive = config.TcpKeepalive;
         if (config.TcpKeepalive)
         {
-            _socket.Options.TcpKeepaliveIdle = TimeSpan.FromSeconds(config.TcpKeepaliveIdle);
-            _socket.Options.TcpKeepaliveInterval = TimeSpan.FromSeconds(config.TcpKeepaliveInterval);
+            _serverSocket.Options.TcpKeepaliveIdle = TimeSpan.FromSeconds(config.TcpKeepaliveIdle);
+            _serverSocket.Options.TcpKeepaliveInterval = TimeSpan.FromSeconds(config.TcpKeepaliveInterval);
         }
+        _serverSocket.Options.Linger = TimeSpan.FromMilliseconds(config.Linger);
 
-        _socket.Options.Linger = TimeSpan.FromMilliseconds(config.Linger);
+        // Client socket - for sending messages
+        _clientSocket = new RouterSocket();
+        _clientSocket.Options.Identity = Encoding.UTF8.GetBytes(nid);
+        _clientSocket.Options.DelayAttachOnConnect = true;
+        _clientSocket.Options.RouterHandover = true;
+        _clientSocket.Options.RouterMandatory = true;
+        _clientSocket.Options.SendHighWatermark = config.SendHighWatermark;
+        _clientSocket.Options.TcpKeepalive = config.TcpKeepalive;
+        if (config.TcpKeepalive)
+        {
+            _clientSocket.Options.TcpKeepaliveIdle = TimeSpan.FromSeconds(config.TcpKeepaliveIdle);
+            _clientSocket.Options.TcpKeepaliveInterval = TimeSpan.FromSeconds(config.TcpKeepaliveInterval);
+        }
+        _clientSocket.Options.Linger = TimeSpan.FromMilliseconds(config.Linger);
     }
 
     /// <summary>
@@ -81,21 +87,21 @@ internal sealed class NetMqPlaySocket : IPlaySocket
     public void Bind()
     {
         ThrowIfDisposed();
-        _socket.Bind(_bindEndpoint);
+        _serverSocket.Bind(_bindEndpoint);
     }
 
     /// <inheritdoc/>
     public void Connect(string endpoint)
     {
         ThrowIfDisposed();
-        _socket.Connect(endpoint);
+        _clientSocket.Connect(endpoint);
     }
 
     /// <inheritdoc/>
     public void Disconnect(string endpoint)
     {
         ThrowIfDisposed();
-        _socket.Disconnect(endpoint);
+        _clientSocket.Disconnect(endpoint);
     }
 
     /// <inheritdoc/>
@@ -119,7 +125,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
             var payloadBytes = packet.GetPayloadBytes();
             message.Append(new NetMQFrame(payloadBytes));
 
-            if (!_socket.TrySendMultipartMessage(message))
+            if (!_clientSocket.TrySendMultipartMessage(message))
             {
                 // RouterMandatory causes send to fail if target not connected
                 // Log error or throw depending on requirements
@@ -134,7 +140,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
         ThrowIfDisposed();
 
         var message = new NetMQMessage();
-        if (_socket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(1), ref message))
+        if (_serverSocket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(1), ref message))
         {
             if (message.FrameCount < 3)
             {
@@ -171,6 +177,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
     {
         if (_disposed) return;
         _disposed = true;
-        _socket.Dispose();
+        _serverSocket.Dispose();
+        _clientSocket.Dispose();
     }
 }

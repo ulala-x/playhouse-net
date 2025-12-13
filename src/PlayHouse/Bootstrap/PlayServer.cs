@@ -119,6 +119,9 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         _communicator.Bind(this);
         _communicator.Start();
 
+        // 자기 자신에게 연결 (같은 서버 내 Stage 간 통신에 필요)
+        _communicator.Connect(_options.Nid, _options.BindEndpoint);
+
         // PlayDispatcher 생성
         _dispatcher = new PlayDispatcher(
             _producer,
