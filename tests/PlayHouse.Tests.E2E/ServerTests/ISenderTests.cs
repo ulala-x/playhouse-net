@@ -18,11 +18,16 @@ namespace PlayHouse.Tests.E2E.ServerTests;
 /// 이 테스트는 PlayHouse의 Stage간 메시지 전송을 검증합니다.
 /// - SendToStage: Stage A → Stage B 단방향 메시지
 /// - RequestToStage: Stage A → Stage B 요청/응답
+///
+/// Note: Stage간 통신을 테스트하기 위해 두 개의 PlayServer를 구동합니다.
+/// - PlayServer A (NID="1:1"): Stage A가 속한 서버
+/// - PlayServer B (NID="1:2"): Stage B가 속한 서버
 /// </summary>
 [Collection("E2E ISender Tests")]
 public class ISenderTests : IAsyncLifetime
 {
-    private PlayServer? _playServer;
+    private PlayServer? _playServerA;
+    private PlayServer? _playServerB;
     private readonly ClientConnector _connectorA;
     private readonly ClientConnector _connectorB;
     private readonly List<(long stageId, ClientPacket packet)> _receivedMessagesA = new();
@@ -46,11 +51,12 @@ public class ISenderTests : IAsyncLifetime
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
 
-        _playServer = new PlayServerBootstrap()
+        // PlayServer A (NID="1:1", ServerId=1)
+        _playServerA = new PlayServerBootstrap()
             .Configure(options =>
             {
                 options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:15200"; // Fixed port for Stage communication
+                options.BindEndpoint = "tcp://127.0.0.1:15200";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
@@ -60,13 +66,31 @@ public class ISenderTests : IAsyncLifetime
             .UseActor<TestActorImpl>()
             .Build();
 
-        await _playServer.StartAsync();
+        // PlayServer B (NID="1:2", ServerId=2)
+        _playServerB = new PlayServerBootstrap()
+            .Configure(options =>
+            {
+                options.ServerId = 2;
+                options.BindEndpoint = "tcp://127.0.0.1:15201";
+                options.TcpPort = 0;
+                options.RequestTimeoutMs = 30000;
+                options.AuthenticateMessageId = "AuthenticateRequest";
+                options.DefaultStageType = "TestStage";
+            })
+            .UseStage<TestStageImpl>("TestStage")
+            .UseActor<TestActorImpl>()
+            .Build();
+
+        await _playServerA.StartAsync();
+        await _playServerB.StartAsync();
         await Task.Delay(200); // 서버 초기화 대기
 
-        // PlayServer가 자기 자신에게 연결 (Stage간 통신을 위해)
-        // NID "1:1" = ServiceType.Play(1):ServerId(1)
-        _playServer.Connect("1:1", "tcp://127.0.0.1:15200");
-        await Task.Delay(500); // Connection stabilization
+        // 양방향 연결 설정 (PlayServer A ↔ PlayServer B)
+        // PlayServer A → PlayServer B
+        _playServerA.Connect("1:2", "tcp://127.0.0.1:15201");
+        // PlayServer B → PlayServer A
+        _playServerB.Connect("1:1", "tcp://127.0.0.1:15200");
+        await Task.Delay(1000); // Connection stabilization
 
         _callbackTimer = new Timer(_ =>
         {
@@ -83,9 +107,13 @@ public class ISenderTests : IAsyncLifetime
         _callbackTimer?.Dispose();
         _connectorA.Disconnect();
         _connectorB.Disconnect();
-        if (_playServer != null)
+        if (_playServerB != null)
         {
-            await _playServer.DisposeAsync();
+            await _playServerB.DisposeAsync();
+        }
+        if (_playServerA != null)
+        {
+            await _playServerA.DisposeAsync();
         }
     }
 
@@ -95,31 +123,35 @@ public class ISenderTests : IAsyncLifetime
     /// SendToStage E2E 테스트
     /// Stage A에서 Stage B로 단방향 메시지를 전송합니다.
     ///
-    /// Note: 이 테스트는 같은 PlayServer 내 Stage간 통신을 테스트합니다.
-    /// PlayHouse 아키텍처에서 Stage간 통신은 NetMQ를 통해 라우팅되며,
-    /// 같은 서버 내에서는 자체 라우팅이 필요합니다.
-    /// 현재 테스트 환경에서는 서버간 Discovery/Connection이 설정되지 않아
-    /// 실제 Stage간 통신 테스트를 위해서는 별도의 PlayServer 클러스터 설정이 필요합니다.
+    /// 테스트 플로우:
+    /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
+    /// 2. 클라이언트 B를 PlayServer B에 연결하여 Stage B 생성
+    /// 3. 클라이언트 A가 Stage A에 TriggerSendToStageRequest 전송
+    /// 4. Stage A에서 IStageSender.SendToStage("1:2", StageIdB, message)로 PlayServer B의 Stage B에 메시지 전송
+    /// 5. PlayServer B의 Stage B에서 OnDispatch(IPacket) 콜백 호출 검증
     /// </summary>
-    [Fact(DisplayName = "SendToStage - Stage간 단방향 메시지 전송 성공", Skip = "같은 PlayServer 내 Stage간 라우팅 구현 필요")]
+    [Fact(DisplayName = "SendToStage - Stage간 단방향 메시지 전송 성공")]
     public async Task SendToStage_Success_MessageDelivered()
     {
-        // Given - 두 개의 Stage 연결 (각각 다른 stageId로)
-        await ConnectAndAuthenticateAsync(_connectorA, StageIdA);
-        await ConnectAndAuthenticateAsync(_connectorB, StageIdB);
+        // Given - 두 개의 서버에 각각 Stage 연결
+        await ConnectAndAuthenticateAsync(_connectorA, StageIdA, _playServerA!);
+        await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerB!);
 
         var initialCount = TestStageImpl.InterStageMessageCount;
+        var instanceCount = TestStageImpl.Instances.Count;
 
         // When - Stage A에서 Stage B로 SendToStage 트리거
+        // PlayServer B의 NID는 "1:2" (ServiceType.Play=1, ServerId=2)
         var request = new TriggerSendToStageRequest
         {
+            TargetNid = "1:2",  // PlayServer B
             TargetStageId = StageIdB,
             Message = "Hello from Stage A"
         };
         using var packet = new Packet(request);
         var response = await _connectorA.RequestAsync(packet);
 
-        await Task.Delay(300); // 비동기 처리 대기
+        await Task.Delay(500); // 비동기 처리 대기
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("TriggerSendToStageReply");
@@ -129,7 +161,7 @@ public class ISenderTests : IAsyncLifetime
         // Then - E2E 검증: Stage B에서 메시지 수신 확인
         TestStageImpl.InterStageMessageCount.Should().BeGreaterThan(initialCount,
             "Stage B에서 InterStageMessage를 수신해야 함");
-        TestStageImpl.InterStageReceivedMsgIds.Should().Contain("InterStageMessage",
+        TestStageImpl.InterStageReceivedMsgIds.Should().Contain(msgId => msgId.Contains("InterStageMessage"),
             "InterStageMessage가 기록되어야 함");
     }
 
@@ -141,19 +173,26 @@ public class ISenderTests : IAsyncLifetime
     /// RequestToStage (async) E2E 테스트
     /// Stage A에서 Stage B로 요청을 보내고 응답을 받습니다.
     ///
-    /// Note: SendToStage와 동일한 제약사항이 적용됩니다.
-    /// 실제 Stage간 통신 테스트를 위해서는 별도의 PlayServer 클러스터 설정이 필요합니다.
+    /// 테스트 플로우:
+    /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
+    /// 2. 클라이언트 B를 PlayServer B에 연결하여 Stage B 생성
+    /// 3. 클라이언트 A가 Stage A에 TriggerRequestToStageRequest 전송
+    /// 4. Stage A에서 IStageSender.RequestToStage("1:2", StageIdB, message)로 PlayServer B의 Stage B에 요청 전송
+    /// 5. PlayServer B의 Stage B에서 OnDispatch(IPacket) 콜백 호출되고 Reply 반환
+    /// 6. Stage A가 Stage B의 응답을 받아서 클라이언트에 전달
     /// </summary>
-    [Fact(DisplayName = "RequestToStage - Stage간 요청/응답 성공", Skip = "같은 PlayServer 내 Stage간 라우팅 구현 필요")]
+    [Fact(DisplayName = "RequestToStage - Stage간 요청/응답 성공")]
     public async Task RequestToStage_Async_Success_ResponseReceived()
     {
-        // Given - 두 개의 Stage 연결
-        await ConnectAndAuthenticateAsync(_connectorA, StageIdA);
-        await ConnectAndAuthenticateAsync(_connectorB, StageIdB);
+        // Given - 두 개의 서버에 각각 Stage 연결
+        await ConnectAndAuthenticateAsync(_connectorA, StageIdA, _playServerA!);
+        await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerB!);
 
         // When - Stage A에서 Stage B로 RequestToStage 트리거
+        // PlayServer B의 NID는 "1:2" (ServiceType.Play=1, ServerId=2)
         var request = new TriggerRequestToStageRequest
         {
+            TargetNid = "1:2",  // PlayServer B
             TargetStageId = StageIdB,
             Query = "Query from Stage A"
         };
@@ -171,10 +210,10 @@ public class ISenderTests : IAsyncLifetime
 
     #region Helper Methods
 
-    private async Task ConnectAndAuthenticateAsync(ClientConnector connector, long stageId)
+    private async Task ConnectAndAuthenticateAsync(ClientConnector connector, long stageId, PlayServer server)
     {
         connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
+        var connected = await connector.ConnectAsync("127.0.0.1", server.ActualTcpPort, stageId);
         connected.Should().BeTrue($"서버에 연결되어야 함 (stageId: {stageId})");
         await Task.Delay(100);
 

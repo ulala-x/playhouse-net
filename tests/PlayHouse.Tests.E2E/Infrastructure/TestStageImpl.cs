@@ -198,7 +198,8 @@ public class TestStageImpl : IStage
         ReceivedMsgIds.Add(packet.MsgId);
 
         // Stage간 메시지 처리
-        if (packet.MsgId == "InterStageMessage")
+        // MsgId는 전체 네임스페이스를 포함할 수 있으므로 EndsWith로 확인
+        if (packet.MsgId.Contains("InterStageMessage"))
         {
             Interlocked.Increment(ref _interStageMessageCount);
             InterStageReceivedMsgIds.Add(packet.MsgId);
@@ -387,16 +388,16 @@ public class TestStageImpl : IStage
     {
         var request = TriggerSendToStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
 
-        // 같은 Play 서버 내의 다른 Stage로 메시지 전송
+        // Stage간 메시지 전송
         var interStageMsg = new InterStageMessage
         {
             FromStageId = StageSender.StageId,
             Content = request.Message
         };
 
-        // PlayServer의 Nid는 "ServiceId:ServerId" 형식 (기본값: ServiceType.Play=1, ServerId=1 → "1:1")
-        const string playServerNid = "1:1";
-        StageSender.SendToStage(playServerNid, request.TargetStageId, CPacket.Of(interStageMsg));
+        // TargetNid가 지정되지 않으면 기본값 "1:1" 사용 (이전 호환성)
+        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1:1" : request.TargetNid;
+        StageSender.SendToStage(targetNid, request.TargetStageId, CPacket.Of(interStageMsg));
 
         // 성공 응답
         actor.ActorSender.Reply(CPacket.Of(new TriggerSendToStageReply { Success = true }));
@@ -412,10 +413,10 @@ public class TestStageImpl : IStage
             Content = request.Query
         };
 
-        // PlayServer의 Nid는 "ServiceId:ServerId" 형식 (기본값: ServiceType.Play=1, ServerId=1 → "1:1")
-        const string playServerNid = "1:1";
+        // TargetNid가 지정되지 않으면 기본값 "1:1" 사용 (이전 호환성)
+        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1:1" : request.TargetNid;
         var response = await StageSender.RequestToStage(
-            playServerNid,
+            targetNid,
             request.TargetStageId,
             CPacket.Of(interStageMsg));
 
