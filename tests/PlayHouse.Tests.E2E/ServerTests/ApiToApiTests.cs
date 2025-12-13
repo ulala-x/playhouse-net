@@ -108,7 +108,7 @@ public class ApiToApiTests : IAsyncLifetime
 
         // Then
         // 1. ApiServer B의 HandleInterApiMessage 콜백 호출됨
-        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).FullName,
+        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).Name,
             "HandleInterApiMessage should be called on ApiServer B");
 
         // 2. 핸들러 호출 횟수 증가
@@ -150,7 +150,7 @@ public class ApiToApiTests : IAsyncLifetime
         // Then
         // 1. 응답 패킷 수신됨
         responsePacket.Should().NotBeNull("response should be received");
-        responsePacket.MsgId.Should().Be(typeof(ApiEchoReply).FullName,
+        responsePacket.MsgId.Should().Be(typeof(ApiEchoReply).Name,
             "response should be ApiEchoReply");
 
         // 2. 응답 내용 검증
@@ -159,7 +159,7 @@ public class ApiToApiTests : IAsyncLifetime
             "response should contain the original content");
 
         // 3. ApiServer B의 핸들러 호출됨
-        TestApiController.ReceivedMsgIds.Should().Contain(typeof(ApiEchoRequest).FullName,
+        TestApiController.ReceivedMsgIds.Should().Contain(typeof(ApiEchoRequest).Name,
             "HandleApiEcho should be called on ApiServer B");
 
         TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialCallCount,
@@ -210,7 +210,7 @@ public class ApiToApiTests : IAsyncLifetime
         replyFromA.Response.Should().Contain(contentBtoA, "response from A should contain B's content");
 
         // 두 메시지 모두 처리됨
-        TestApiController.ReceivedMsgIds.Count(x => x == typeof(InterApiMessage).FullName)
+        TestApiController.ReceivedMsgIds.Count(x => x == typeof(InterApiMessage).Name)
             .Should().BeGreaterOrEqualTo(2, "both messages should be received");
     }
 
@@ -250,7 +250,7 @@ public class ApiToApiTests : IAsyncLifetime
 
         // Then
         // 1. 트리거 응답 검증
-        responsePacket.MsgId.Should().Be(typeof(TriggerRequestToApiServerReply).FullName);
+        responsePacket.MsgId.Should().Be(typeof(TriggerRequestToApiServerReply).Name);
         var triggerReply = TriggerRequestToApiServerReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
 
         // 2. ApiServer B로부터 받은 응답이 포함됨
@@ -260,9 +260,9 @@ public class ApiToApiTests : IAsyncLifetime
             "response should indicate processing");
 
         // 3. 두 핸들러 모두 호출됨
-        TestApiController.ReceivedMsgIds.Should().Contain(typeof(TriggerRequestToApiServerRequest).FullName,
+        TestApiController.ReceivedMsgIds.Should().Contain(typeof(TriggerRequestToApiServerRequest).Name,
             "trigger handler should be called");
-        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).FullName,
+        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).Name,
             "target API handler should be called");
     }
 
@@ -301,12 +301,12 @@ public class ApiToApiTests : IAsyncLifetime
 
         // Then
         // 1. 트리거 응답 검증
-        responsePacket.MsgId.Should().Be(typeof(TriggerSendToApiServerReply).FullName);
+        responsePacket.MsgId.Should().Be(typeof(TriggerSendToApiServerReply).Name);
         var triggerReply = TriggerSendToApiServerReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
         triggerReply.Success.Should().BeTrue("trigger should succeed");
 
         // 2. ApiServer B의 HandleInterApiMessage 콜백 호출됨
-        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).FullName,
+        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).Name,
             "target API handler should be called");
 
         // 3. 핸들러 호출 횟수 증가

@@ -40,7 +40,7 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
     /// <inheritdoc/>
     public void Add<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage, new()
     {
-        var msgId = typeof(TMessage).FullName ?? typeof(TMessage).Name;
+        var msgId = typeof(TMessage).Name;
 
         _handlers[msgId] = async (payload) =>
         {

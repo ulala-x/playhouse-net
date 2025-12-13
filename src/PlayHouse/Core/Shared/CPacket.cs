@@ -43,7 +43,7 @@ public sealed class CPacket : IPacket
     /// <returns>A new CPacket instance.</returns>
     public static CPacket Of<T>(T message) where T : IMessage
     {
-        var msgId = typeof(T).FullName ?? typeof(T).Name;
+        var msgId = typeof(T).Name;
         return new CPacket(msgId, new ProtoPayload(message));
     }
 

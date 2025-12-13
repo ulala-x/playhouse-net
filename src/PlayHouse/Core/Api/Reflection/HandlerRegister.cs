@@ -42,6 +42,6 @@ internal sealed class HandlerRegister : IHandlerRegister
     /// <inheritdoc/>
     public void Add<TPacket>(ApiHandler handler) where TPacket : class
     {
-        Add(typeof(TPacket).FullName!, handler);
+        Add(typeof(TPacket).Name!, handler);
     }
 }

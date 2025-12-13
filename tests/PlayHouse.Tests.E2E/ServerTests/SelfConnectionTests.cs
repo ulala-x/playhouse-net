@@ -67,7 +67,7 @@ public class SelfConnectionTests : IAsyncLifetime
         // Then
         TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialCount,
             "자기 자신에게 보낸 메시지가 수신되어야 함");
-        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).FullName,
+        TestApiController.ReceivedMsgIds.Should().Contain(typeof(InterApiMessage).Name,
             "InterApiMessage가 수신되어야 함");
     }
 
@@ -86,7 +86,7 @@ public class SelfConnectionTests : IAsyncLifetime
 
         // Then
         response.Should().NotBeNull("응답을 받아야 함");
-        response.MsgId.Should().Be(typeof(ApiEchoReply).FullName, "ApiEchoReply여야 함");
+        response.MsgId.Should().Be(typeof(ApiEchoReply).Name, "ApiEchoReply여야 함");
 
         var reply = ApiEchoReply.Parser.ParseFrom(response.Payload.Data.Span);
         reply.Content.Should().Contain(testContent, "에코 응답이어야 함");

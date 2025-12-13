@@ -73,7 +73,7 @@ public sealed class RuntimeRoutePacket : IDisposable
         {
             MsgSeq = msgSeq,
             ServiceId = serviceId,
-            MsgId = typeof(T).FullName ?? typeof(T).Name,
+            MsgId = typeof(T).Name,
             From = from
         };
         var payload = new ByteStringPayload(message.ToByteString());
@@ -128,7 +128,7 @@ public sealed class RuntimeRoutePacket : IDisposable
         {
             MsgSeq = Header.MsgSeq,  // Same sequence for matching
             ServiceId = Header.ServiceId,
-            MsgId = typeof(T).FullName ?? typeof(T).Name,
+            MsgId = typeof(T).Name,
             From = Header.From,  // Will be overwritten by sender
             ErrorCode = 0
         };
