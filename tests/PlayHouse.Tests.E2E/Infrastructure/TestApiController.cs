@@ -32,12 +32,12 @@ public class TestApiController : IApiController
 
     public void Handles(IHandlerRegister register)
     {
-        register.Add(typeof(ApiEchoRequest).FullName!, HandleApiEcho);
-        register.Add(typeof(TriggerCreateStageRequest).FullName!, HandleCreateStage);
-        register.Add(typeof(TriggerGetOrCreateStageRequest).FullName!, HandleGetOrCreateStage);
-        register.Add(typeof(TriggerSendToApiServerRequest).FullName!, HandleSendToApiServer);
-        register.Add(typeof(TriggerRequestToApiServerRequest).FullName!, HandleRequestToApiServer);
-        register.Add(typeof(InterApiMessage).FullName!, HandleInterApiMessage);
+        register.Add(typeof(ApiEchoRequest).Name!, HandleApiEcho);
+        register.Add(typeof(TriggerCreateStageRequest).Name!, HandleCreateStage);
+        register.Add(typeof(TriggerGetOrCreateStageRequest).Name!, HandleGetOrCreateStage);
+        register.Add(typeof(TriggerSendToApiServerRequest).Name!, HandleSendToApiServer);
+        register.Add(typeof(TriggerRequestToApiServerRequest).Name!, HandleRequestToApiServer);
+        register.Add(typeof(InterApiMessage).Name!, HandleInterApiMessage);
     }
 
     private async Task HandleApiEcho(IPacket packet, IApiSender sender)
