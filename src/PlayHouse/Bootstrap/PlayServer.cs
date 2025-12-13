@@ -254,7 +254,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     public void OnReceive(RuntimeRoutePacket packet)
     {
         // 응답 패킷인 경우 RequestCache에서 처리
-        if (packet.MsgSeq > 0)
+        // IsReply 플래그로 응답/요청을 구분 (MsgSeq만으로는 구분 불가)
+        if (packet.Header.IsReply && packet.MsgSeq > 0)
         {
             var response = CPacket.Of(packet.MsgId, packet.GetPayloadBytes());
             if (_requestCache?.TryComplete(packet.MsgSeq, response) == true)

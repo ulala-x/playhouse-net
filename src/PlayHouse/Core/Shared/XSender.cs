@@ -188,7 +188,8 @@ public abstract class XSender : ISender
             ServiceId = ServiceId,
             MsgId = CurrentHeader.MsgId,
             From = Nid,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            IsReply = true
         };
 
         SendReplyInternal(CurrentHeader.From, replyHeader, ReadOnlyMemory<byte>.Empty);
@@ -213,7 +214,8 @@ public abstract class XSender : ISender
             ServiceId = ServiceId,
             MsgId = reply.MsgId,
             From = Nid,
-            ErrorCode = 0
+            ErrorCode = 0,
+            IsReply = true
         };
 
         SendReplyInternal(CurrentHeader.From, replyHeader, reply.Payload.Data);

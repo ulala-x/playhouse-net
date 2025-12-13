@@ -78,7 +78,8 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         var services = new ServiceCollection();
         foreach (var controllerType in _controllerTypes)
         {
-            services.AddTransient(controllerType);
+            // IApiController 인터페이스로 등록하여 ApiReflection에서 찾을 수 있게 함
+            services.AddTransient(typeof(IApiController), controllerType);
         }
 
         // SystemController 등록
@@ -178,7 +179,8 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     public void OnReceive(RuntimeRoutePacket packet)
     {
         // 응답 패킷인 경우 RequestCache에서 처리
-        if (packet.MsgSeq > 0)
+        // IsReply 플래그로 응답/요청을 구분 (MsgSeq만으로는 구분 불가)
+        if (packet.Header.IsReply && packet.MsgSeq > 0)
         {
             var response = CPacket.Of(packet.MsgId, packet.GetPayloadBytes());
             if (_requestCache?.TryComplete(packet.MsgSeq, response) == true)
