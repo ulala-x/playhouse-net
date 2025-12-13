@@ -117,10 +117,17 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         var stageId = packet.StageId;
         var msgId = packet.MsgId;
 
-        // Handle Stage creation
-        if (IsCreateStageRequest(msgId))
+        // Handle CreateStageReq
+        if (msgId == nameof(CreateStageReq) || msgId == "PlayHouse.Runtime.Proto.CreateStageReq")
         {
             HandleCreateStage(stageId, packet);
+            return;
+        }
+
+        // Handle GetOrCreateStageReq
+        if (msgId == nameof(GetOrCreateStageReq) || msgId == "PlayHouse.Runtime.Proto.GetOrCreateStageReq")
+        {
+            HandleGetOrCreateStage(stageId, packet);
             return;
         }
 
@@ -215,12 +222,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
     #region Stage Creation
 
-    private static bool IsCreateStageRequest(string msgId)
-    {
-        return msgId == nameof(CreateStageReq) ||
-               msgId == "PlayHouse.Runtime.Proto.CreateStageReq";
-    }
-
+    /// <summary>
+    /// Handles CreateStageReq - creates a new Stage only if it doesn't exist.
+    /// </summary>
     private void HandleCreateStage(long stageId, RuntimeRoutePacket packet)
     {
         try
@@ -245,7 +249,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
             if (!created)
             {
-                // Stage already exists
+                // Stage already exists - this is an error for CreateStage
                 _logger?.LogWarning("Stage {StageId} already exists", stageId);
                 SendErrorReply(packet, BaseErrorCode.StageAlreadyExists);
                 packet.Dispose();
@@ -258,6 +262,38 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to create Stage {StageId}", stageId);
+            SendErrorReply(packet, BaseErrorCode.InternalError);
+            packet.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Handles GetOrCreateStageReq - gets existing Stage or creates new one.
+    /// </summary>
+    private void HandleGetOrCreateStage(long stageId, RuntimeRoutePacket packet)
+    {
+        try
+        {
+            var req = GetOrCreateStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
+
+            if (!_producer.IsValidType(req.StageType))
+            {
+                _logger?.LogError("Invalid stage type: {StageType}", req.StageType);
+                SendErrorReply(packet, BaseErrorCode.InvalidStageType);
+                packet.Dispose();
+                return;
+            }
+
+            // Get or create Stage atomically
+            var baseStage = _stages.GetOrAdd(stageId, id => CreateNewStage(id, req.StageType));
+
+            // Post request to Stage event loop
+            // GetOrCreateStageCmd will handle whether to call OnCreate or not
+            baseStage.Post(packet);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to get or create Stage {StageId}", stageId);
             SendErrorReply(packet, BaseErrorCode.InternalError);
             packet.Dispose();
         }

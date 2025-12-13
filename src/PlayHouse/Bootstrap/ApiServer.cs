@@ -159,6 +159,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         _disposed = true;
 
         await StopAsync();
+        _communicator?.Dispose();
     }
 
     /// <summary>

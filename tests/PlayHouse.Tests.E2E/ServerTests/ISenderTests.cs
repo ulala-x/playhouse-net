@@ -50,7 +50,7 @@ public class ISenderTests : IAsyncLifetime
             .Configure(options =>
             {
                 options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:0";
+                options.BindEndpoint = "tcp://127.0.0.1:15200"; // Fixed port for Stage communication
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
@@ -61,9 +61,12 @@ public class ISenderTests : IAsyncLifetime
             .Build();
 
         await _playServer.StartAsync();
+        await Task.Delay(200); // 서버 초기화 대기
 
-        // Note: Stage간 통신은 같은 PlayServer 내에서는 로컬 디스패치로 처리됨
-        await Task.Delay(100); // 서버 초기화 대기
+        // PlayServer가 자기 자신에게 연결 (Stage간 통신을 위해)
+        // NID "1:1" = ServiceType.Play(1):ServerId(1)
+        _playServer.Connect("1:1", "tcp://127.0.0.1:15200");
+        await Task.Delay(500); // Connection stabilization
 
         _callbackTimer = new Timer(_ =>
         {
@@ -98,7 +101,7 @@ public class ISenderTests : IAsyncLifetime
     /// 현재 테스트 환경에서는 서버간 Discovery/Connection이 설정되지 않아
     /// 실제 Stage간 통신 테스트를 위해서는 별도의 PlayServer 클러스터 설정이 필요합니다.
     /// </summary>
-    [Fact(DisplayName = "SendToStage - Stage간 단방향 메시지 전송 성공", Skip = "Stage간 통신은 별도 PlayServer 클러스터 설정 필요")]
+    [Fact(DisplayName = "SendToStage - Stage간 단방향 메시지 전송 성공", Skip = "같은 PlayServer 내 Stage간 라우팅 구현 필요")]
     public async Task SendToStage_Success_MessageDelivered()
     {
         // Given - 두 개의 Stage 연결 (각각 다른 stageId로)
@@ -141,7 +144,7 @@ public class ISenderTests : IAsyncLifetime
     /// Note: SendToStage와 동일한 제약사항이 적용됩니다.
     /// 실제 Stage간 통신 테스트를 위해서는 별도의 PlayServer 클러스터 설정이 필요합니다.
     /// </summary>
-    [Fact(DisplayName = "RequestToStage - Stage간 요청/응답 성공", Skip = "Stage간 통신은 별도 PlayServer 클러스터 설정 필요")]
+    [Fact(DisplayName = "RequestToStage - Stage간 요청/응답 성공", Skip = "같은 PlayServer 내 Stage간 라우팅 구현 필요")]
     public async Task RequestToStage_Async_Success_ResponseReceived()
     {
         // Given - 두 개의 Stage 연결
