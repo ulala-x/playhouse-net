@@ -2,10 +2,10 @@
 
 using FluentAssertions;
 using Google.Protobuf;
-using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
 using PlayHouse.Tests.E2E.Infrastructure;
+using PlayHouse.Tests.E2E.Infrastructure.Fixtures;
 using PlayHouse.Tests.E2E.Proto;
 using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
@@ -19,47 +19,26 @@ namespace PlayHouse.Tests.E2E.ConnectorTests;
 /// 이 테스트는 PlayHouse의 콜백 시스템 사용법을 보여줍니다.
 /// E2E 테스트 원칙:
 /// - 응답 검증: Connector 공개 API로 확인
-/// - 콜백 호출 검증: 테스트 구현체의 Static 필드로 확인
+/// - 콜백 호출 검증: 테스트 구현체의 StageId 기반 검증
 /// </summary>
-[Collection("E2E Callback Tests")]
+[Collection("E2E Connector Tests")]
 public class CallbackTests : IAsyncLifetime
 {
-    private PlayServer? _playServer;
+    private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
     private readonly List<(long stageId, ClientPacket packet)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
-    private const long DefaultStageId = 12345L;
-
-    public CallbackTests()
+    public CallbackTests(SinglePlayServerFixture fixture)
     {
+        _fixture = fixture;
         _connector = new ClientConnector();
         _connector.OnReceive += (stageId, packet) => _receivedMessages.Add((stageId, packet));
     }
 
     public async Task InitializeAsync()
     {
-        // 테스트 간 격리를 위해 Static 필드 리셋
-        TestActorImpl.ResetAll();
-        TestStageImpl.ResetAll();
-
-        _playServer = new PlayServerBootstrap()
-            .Configure(options =>
-            {
-                options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:0";
-                options.TcpPort = 0;
-                options.RequestTimeoutMs = 30000;
-                options.AuthenticateMessageId = "AuthenticateRequest";
-                options.DefaultStageType = "TestStage";
-            })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
-            .Build();
-
-        await _playServer.StartAsync();
-
         // 콜백 자동 처리 타이머 시작
         _callbackTimer = new Timer(_ =>
         {
@@ -68,6 +47,8 @@ public class CallbackTests : IAsyncLifetime
                 _connector.MainThreadAction();
             }
         }, null, 0, 20); // 20ms 간격
+
+        await Task.CompletedTask;
     }
 
     public async Task DisposeAsync()
@@ -76,10 +57,7 @@ public class CallbackTests : IAsyncLifetime
         _callbackTimer = null;
 
         _connector.Disconnect();
-        if (_playServer != null)
-        {
-            await _playServer.DisposeAsync();
-        }
+        await Task.CompletedTask;
     }
 
     #region IActor 콜백 테스트 (3개)
@@ -98,7 +76,7 @@ public class CallbackTests : IAsyncLifetime
     public async Task Authenticate_CallsOnAuthenticate_SetsAccountId()
     {
         // Given - 연결된 상태
-        await ConnectOnlyAsync();
+        var stageId = await ConnectOnlyAsync();
 
         // When - AuthenticateRequest로 인증
         var authRequest = new AuthenticateRequest
@@ -134,7 +112,7 @@ public class CallbackTests : IAsyncLifetime
     public async Task Authenticate_CallsOnPostAuthenticate_AfterSuccess()
     {
         // Given - 연결된 상태
-        await ConnectOnlyAsync();
+        var stageId = await ConnectOnlyAsync();
 
         // When - 인증 성공 후
         var authRequest = new AuthenticateRequest
@@ -168,7 +146,7 @@ public class CallbackTests : IAsyncLifetime
     public async Task JoinStage_CallsOnCreate_ForNewActor()
     {
         // Given - 인증된 상태 (자동으로 Stage에 Join)
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // Then - E2E 검증: 콜백 호출 검증
         TestActorImpl.Instances.Should().Contain(a => a.OnCreateCalled,
@@ -187,20 +165,20 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: IsAuthenticated() == true
-    /// - 콜백 호출 검증: TestStageImpl.Instances에서 OnCreateCalled 확인
+    /// - 콜백 호출 검증: TestStageImpl.GetByStageId()로 특정 Stage 검증
     /// </remarks>
     [Fact(DisplayName = "CreateStage - OnCreate 콜백 호출 (패킷 전달)")]
     public async Task CreateStage_CallsOnCreate_WithPacket()
     {
         // Given - 서버 시작됨
         // When - 클라이언트 연결 및 인증
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.Instances.Should().Contain(s => s.OnCreateCalled,
-            "OnCreate 콜백이 호출되어야 함");
-        TestStageImpl.Instances.Should().Contain(s => s.LastCreatePacket != null,
-            "OnCreate에 패킷이 전달되어야 함");
+        var stage = TestStageImpl.GetByStageId(stageId);
+        stage.Should().NotBeNull();
+        stage!.OnCreateCalled.Should().BeTrue("OnCreate 콜백이 호출되어야 함");
+        stage.LastCreatePacket.Should().NotBeNull("OnCreate에 패킷이 전달되어야 함");
     }
 
     /// <summary>
@@ -211,7 +189,7 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: IsAuthenticated() == true
-    /// - 콜백 호출 검증: TestStageImpl.Instances에서 OnCreateCalled 확인
+    /// - 콜백 호출 검증: TestStageImpl.GetByStageId()로 특정 Stage 검증
     ///
     /// Note: OnPostCreate는 비동기로 처리되므로 OnCreate가 호출되면 OnPostCreate도 호출됨
     /// 따라서 OnCreateCalled로 간접 검증
@@ -221,15 +199,16 @@ public class CallbackTests : IAsyncLifetime
     {
         // Given - 서버 시작됨
         // When - 클라이언트 연결 및 인증
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // 비동기 처리를 위해 추가 대기
         await Task.Delay(100);
 
         // Then - E2E 검증: 콜백 호출 검증
         // OnPostCreate는 내부적으로 호출되지만, E2E에서는 OnCreate 호출 여부로 검증
-        TestStageImpl.Instances.Should().Contain(s => s.OnCreateCalled,
-            "OnCreate 콜백이 호출되어야 하며, OnPostCreate도 내부적으로 호출됨");
+        var stage = TestStageImpl.GetByStageId(stageId);
+        stage.Should().NotBeNull();
+        stage!.OnCreateCalled.Should().BeTrue("OnCreate 콜백이 호출되어야 하며, OnPostCreate도 내부적으로 호출됨");
     }
 
     /// <summary>
@@ -240,18 +219,19 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: IsAuthenticated() == true
-    /// - 콜백 호출 검증: TestStageImpl.Instances에서 JoinedActors 확인
+    /// - 콜백 호출 검증: TestStageImpl.GetByStageId()로 특정 Stage의 JoinedActors 확인
     /// </remarks>
     [Fact(DisplayName = "JoinStage - OnJoinStage 콜백 호출, Actor 추가")]
     public async Task JoinStage_CallsOnJoinStage_AddsActor()
     {
         // Given - 서버 시작됨
         // When - 클라이언트 연결 및 인증 (자동으로 Stage에 Join)
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.Instances.Should().Contain(s => s.JoinedActors.Count > 0,
-            "OnJoinStage 콜백이 호출되어 Actor가 추가되어야 함");
+        var stage = TestStageImpl.GetByStageId(stageId);
+        stage.Should().NotBeNull();
+        stage!.JoinedActors.Should().NotBeEmpty("OnJoinStage 콜백이 호출되어 Actor가 추가되어야 함");
     }
 
     /// <summary>
@@ -262,18 +242,19 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: IsAuthenticated() == true
-    /// - 콜백 호출 검증: TestStageImpl.Instances에서 OnPostJoinStageCalled 확인
+    /// - 콜백 호출 검증: TestStageImpl.GetByStageId()로 특정 Stage의 OnPostJoinStageCalled 확인
     /// </remarks>
     [Fact(DisplayName = "JoinStage - OnPostJoinStage 콜백 호출 (Join 후)")]
     public async Task JoinStage_CallsOnPostJoinStage_AfterJoin()
     {
         // Given - 서버 시작됨
         // When - 클라이언트 연결 및 인증 (자동으로 Stage에 Join)
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.Instances.Should().Contain(s => s.OnPostJoinStageCalled,
-            "OnPostJoinStage 콜백이 호출되어야 함");
+        var stage = TestStageImpl.GetByStageId(stageId);
+        stage.Should().NotBeNull();
+        stage!.OnPostJoinStageCalled.Should().BeTrue("OnPostJoinStage 콜백이 호출되어야 함");
     }
 
     /// <summary>
@@ -284,13 +265,13 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: EchoReply 메시지 수신
-    /// - 콜백 호출 검증: TestStageImpl.OnDispatchCallCount > 0, AllReceivedMsgIds 확인
+    /// - 콜백 호출 검증: TestStageImpl.GetByStageId()로 특정 Stage의 ReceivedMsgIds 확인
     /// </remarks>
     [Fact(DisplayName = "SendMessage - OnDispatch 콜백 호출, MsgId 기록")]
     public async Task SendMessage_CallsOnDispatch_RecordsMsgId()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // When - EchoRequest 전송
         var echoRequest = new EchoRequest
@@ -305,10 +286,9 @@ public class CallbackTests : IAsyncLifetime
         response.MsgId.Should().EndWith("EchoReply", "응답 메시지 ID가 EchoReply로 끝나야 함");
 
         // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.OnDispatchCallCount.Should().BeGreaterThan(0,
-            "OnDispatch 콜백이 호출되어야 함");
-        TestStageImpl.AllReceivedMsgIds.Should().Contain("EchoRequest",
-            "OnDispatch에서 EchoRequest를 받아야 함");
+        var stage = TestStageImpl.GetByStageId(stageId);
+        stage.Should().NotBeNull();
+        stage!.ReceivedMsgIds.Should().Contain("EchoRequest", "OnDispatch에서 EchoRequest를 받아야 함");
     }
 
     /// <summary>
@@ -327,7 +307,7 @@ public class CallbackTests : IAsyncLifetime
     public async Task Disconnect_CallsOnConnectionChanged_RecordsChange()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
         _connector.IsConnected().Should().BeTrue("연결이 되어 있어야 함");
 
         // When - 연결 해제
@@ -347,13 +327,13 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: CloseStageReply 메시지 수신
-    /// - 콜백 호출 검증: TestStageImpl.Instances에서 OnDestroyCalled 확인
+    /// - 콜백 호출 검증: TestStageImpl.GetByStageId()로 특정 Stage의 OnDestroyCalled 확인
     /// </remarks>
     [Fact(DisplayName = "CloseStage - OnDestroy 콜백 호출, Stage 소멸")]
     public async Task CloseStage_CallsOnDestroy_StageDestroyed()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // When - CloseStageRequest 전송
         var closeRequest = new CloseStageRequest
@@ -372,8 +352,9 @@ public class CallbackTests : IAsyncLifetime
         await Task.Delay(200);
 
         // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.Instances.Should().Contain(s => s.OnDestroyCalled,
-            "OnDestroy 콜백이 호출되어야 함");
+        var stage = TestStageImpl.GetByStageId(stageId);
+        stage.Should().NotBeNull();
+        stage!.OnDestroyCalled.Should().BeTrue("OnDestroy 콜백이 호출되어야 함");
     }
 
     #endregion
@@ -388,16 +369,14 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: StartTimerReply 메시지 수신
-    /// - 콜백 호출 검증: TestStageImpl.TimerCallbackCount >= 3
-    ///
-    /// Note: Push 메시지는 클라이언트 연결 상태에 따라 수신되지 않을 수 있으므로
-    /// 콜백 호출 횟수로만 검증합니다.
+    /// - Push 메시지 검증: TimerTickNotify 메시지 3회 이상 수신
     /// </remarks>
     [Fact(DisplayName = "AddRepeatTimer - 타이머 콜백 호출 (주기적)")]
     public async Task AddRepeatTimer_SendsPushMessages_OnEachTick()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
+        _receivedMessages.Clear();
 
         // When - StartRepeatTimerRequest 전송 (IntervalMs = 100)
         var timerRequest = new StartRepeatTimerRequest
@@ -413,12 +392,25 @@ public class CallbackTests : IAsyncLifetime
         var timerReply = StartTimerReply.Parser.ParseFrom(response.Payload.Data.Span);
         timerReply.TimerId.Should().BeGreaterThan(0, "유효한 타이머 ID가 반환되어야 함");
 
-        // 타이머가 3회 이상 호출될 때까지 대기
-        await Task.Delay(500);
+        // 타이머 Tick 메시지 3회 수신 대기 (충분한 시간)
+        await Task.Delay(800);
 
-        // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.TimerCallbackCount.Should().BeGreaterOrEqualTo(3,
-            "타이머 콜백이 3회 이상 호출되어야 함");
+        // 진단: 해당 stageId에 대한 타이머 콜백 호출 횟수 확인
+        var callbackCount = TestStageImpl.GetTimerCallbackCount(stageId);
+
+        // Then - E2E 검증: Push 메시지 검증
+        var timerTicks = _receivedMessages.Count(m => m.packet.MsgId.Contains("TimerTickNotify"));
+
+        // 진단 메시지 포함
+        timerTicks.Should().BeGreaterOrEqualTo(3,
+            $"타이머 Tick Push 메시지가 3회 이상 수신되어야 함. " +
+            $"(콜백호출: {callbackCount}회, 수신메시지: {_receivedMessages.Count}개, " +
+            $"MsgIds: [{string.Join(", ", _receivedMessages.Select(m => m.packet.MsgId))}])");
+
+        // 테스트 종료 전 Stage 정리 (반복 타이머 중지)
+        var closeRequest = new CloseStageRequest { Reason = "Test cleanup" };
+        using var closePacket = new Packet(closeRequest);
+        await _connector.RequestAsync(closePacket);
     }
 
     /// <summary>
@@ -429,18 +421,14 @@ public class CallbackTests : IAsyncLifetime
     /// <remarks>
     /// E2E 검증 방법:
     /// - 응답 검증: StartTimerReply 메시지 수신
-    /// - 콜백 호출 검증: TestStageImpl.TimerCallbackCount 확인 (정확히 3회)
-    ///
-    /// Note: Push 메시지는 클라이언트 연결 상태에 따라 수신되지 않을 수 있으므로
-    /// 콜백 호출 횟수로만 검증합니다.
+    /// - Push 메시지 검증: TimerTickNotify 메시지 정확히 3회 수신
     /// </remarks>
     [Fact(DisplayName = "AddCountTimer - 정확한 횟수의 타이머 콜백 호출")]
     public async Task AddCountTimer_SendsExactNumberOfPushMessages()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
-
-        var initialCount = TestStageImpl.TimerCallbackCount;
+        var stageId = await ConnectToServerAsync();
+        _receivedMessages.Clear();
 
         // When - StartCountTimerRequest (Count = 3) 전송
         var timerRequest = new StartCountTimerRequest
@@ -461,10 +449,15 @@ public class CallbackTests : IAsyncLifetime
         // 추가로 타이머가 호출되지 않는지 확인하기 위해 대기
         await Task.Delay(300);
 
-        // Then - E2E 검증: 정확히 3회 호출 확인
-        var callbackCount = TestStageImpl.TimerCallbackCount - initialCount;
-        callbackCount.Should().Be(3,
-            "타이머 콜백이 정확히 3회 호출되어야 함");
+        // 진단: 해당 stageId에 대한 타이머 콜백 호출 횟수 확인
+        var callbackCount = TestStageImpl.GetTimerCallbackCount(stageId);
+
+        // Then - E2E 검증: 정확히 3회 수신 확인
+        var timerTicks = _receivedMessages.Count(m => m.packet.MsgId.Contains("TimerTickNotify"));
+        timerTicks.Should().Be(3,
+            $"타이머 Tick Push 메시지가 정확히 3회 수신되어야 함. " +
+            $"(콜백호출: {callbackCount}회, 수신메시지: {_receivedMessages.Count}개, " +
+            $"MsgIds: [{string.Join(", ", _receivedMessages.Select(m => m.packet.MsgId))}])");
     }
 
     /// <summary>
@@ -474,20 +467,19 @@ public class CallbackTests : IAsyncLifetime
     /// </summary>
     /// <remarks>
     /// E2E 검증 방법:
-    /// - 콜백 호출 검증: TestStageImpl.AsyncPreCallbackCount > 0, AsyncPostCallbackCount > 0
+    /// - 즉시 응답: AsyncBlockAccepted 메시지 수신
+    /// - Push 메시지: AsyncBlockReply 수신 (Pre/Post 처리 결과 포함)
     ///
-    /// Note: AsyncBlock은 비동기 처리이므로 응답은 기다리지 않고 콜백 호출만 검증합니다.
+    /// Note: AsyncBlock은 비동기 특성상 즉시 수락 응답 후 결과는 Push로 전송됨
     /// </remarks>
     [Fact(DisplayName = "AsyncBlock - Pre/Post 콜백 실행")]
     public async Task AsyncBlock_ExecutesPreAndPostCallbacks_ReturnsResult()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
+        _receivedMessages.Clear();
 
-        var initialPreCount = TestStageImpl.AsyncPreCallbackCount;
-        var initialPostCount = TestStageImpl.AsyncPostCallbackCount;
-
-        // When - AsyncBlockRequest 전송 (응답을 기다리지 않음)
+        // When - AsyncBlockRequest 전송
         var asyncRequest = new AsyncBlockRequest
         {
             Operation = "test_operation",
@@ -495,17 +487,24 @@ public class CallbackTests : IAsyncLifetime
         };
         using var packet = new Packet(asyncRequest);
 
-        // AsyncBlock은 비동기로 처리되므로 Send로 전송
-        _connector.Send(packet);
+        // AsyncBlock은 즉시 수락 응답 후 결과는 Push로 전송됨
+        var response = await _connector.RequestAsync(packet);
 
-        // Pre/Post 콜백이 실행될 때까지 대기
-        await Task.Delay(500);
+        // Then - E2E 검증: 즉시 응답 (수락 확인)
+        response.MsgId.Should().Contain("AsyncBlockAccepted", "즉시 수락 응답이 와야 함");
 
-        // Then - E2E 검증: 콜백 호출 검증
-        TestStageImpl.AsyncPreCallbackCount.Should().BeGreaterThan(initialPreCount,
-            "AsyncBlock Pre 콜백이 호출되어야 함");
-        TestStageImpl.AsyncPostCallbackCount.Should().BeGreaterThan(initialPostCount,
-            "AsyncBlock Post 콜백이 호출되어야 함");
+        // Then - E2E 검증: Push 메시지 대기 (비동기 결과)
+        await Task.Delay(300); // AsyncBlock 처리 완료 대기 (100ms delay + 여유)
+
+        var asyncReplyMessage = _receivedMessages
+            .FirstOrDefault(m => m.packet.MsgId.Contains("AsyncBlockReply"));
+        asyncReplyMessage.packet.Should().NotBeNull("AsyncBlockReply Push 메시지가 수신되어야 함");
+
+        var asyncReply = AsyncBlockReply.Parser.ParseFrom(asyncReplyMessage.packet.Payload.Data.Span);
+        asyncReply.PreResult.Should().Contain("pre_completed", "Pre 콜백이 실행되어야 함");
+        asyncReply.PostResult.Should().Contain("post_completed", "Post 콜백이 실행되어야 함");
+        asyncReply.PreThreadId.Should().NotBe(asyncReply.PostThreadId,
+            "Pre/Post 콜백은 다른 스레드에서 실행되어야 함");
     }
 
     #endregion
@@ -520,7 +519,7 @@ public class CallbackTests : IAsyncLifetime
     public async Task AccountId_InReply_Verified()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
 
         // When - GetAccountIdRequest 전송
         var request = new GetAccountIdRequest();
@@ -545,7 +544,7 @@ public class CallbackTests : IAsyncLifetime
     public async Task LeaveStage_OnDestroy_Called()
     {
         // Given - 인증된 상태
-        await ConnectToServerAsync();
+        var stageId = await ConnectToServerAsync();
         var initialInstanceCount = TestActorImpl.Instances.Count;
 
         // When - LeaveStageRequest 전송
@@ -573,20 +572,22 @@ public class CallbackTests : IAsyncLifetime
     /// <summary>
     /// 서버에 연결만 수행 (인증 X).
     /// </summary>
-    private async Task ConnectOnlyAsync(long stageId = DefaultStageId)
+    private async Task<long> ConnectOnlyAsync()
     {
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
+        return stageId;
     }
 
     /// <summary>
     /// 서버에 연결 및 인증 수행.
     /// </summary>
-    private async Task ConnectToServerAsync(long stageId = DefaultStageId)
+    private async Task<long> ConnectToServerAsync()
     {
-        await ConnectOnlyAsync(stageId);
+        var stageId = await ConnectOnlyAsync();
 
         // Proto 메시지로 인증
         var authRequest = new AuthenticateRequest
@@ -597,6 +598,7 @@ public class CallbackTests : IAsyncLifetime
         using var authPacket = new Packet(authRequest);
         await _connector.AuthenticateAsync(authPacket);
         await Task.Delay(100);
+        return stageId;
     }
 
     /// <summary>

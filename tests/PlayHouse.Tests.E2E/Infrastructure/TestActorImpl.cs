@@ -18,6 +18,7 @@ public class TestActorImpl : IActor
     public static ConcurrentBag<TestActorImpl> Instances { get; } = new();
     public static ConcurrentBag<string> AuthenticatedAccountIds { get; } = new();
     public static int OnAuthenticateCallCount => _onAuthenticateCallCount;
+    private static readonly ConcurrentDictionary<string, TestActorImpl> _accountIdMap = new();
     private static int _onAuthenticateCallCount;
 
     public IActorSender ActorSender { get; }
@@ -59,6 +60,7 @@ public class TestActorImpl : IActor
         // Static 필드 업데이트
         Interlocked.Increment(ref _onAuthenticateCallCount);
         AuthenticatedAccountIds.Add(ActorSender.AccountId);
+        _accountIdMap[ActorSender.AccountId] = this;
 
         return Task.FromResult(true);
     }
@@ -70,6 +72,12 @@ public class TestActorImpl : IActor
     }
 
     /// <summary>
+    /// AccountId로 특정 TestActorImpl 인스턴스를 조회합니다.
+    /// </summary>
+    public static TestActorImpl? GetByAccountId(string accountId)
+        => _accountIdMap.TryGetValue(accountId, out var instance) ? instance : null;
+
+    /// <summary>
     /// 모든 Static 필드를 초기화합니다.
     /// 테스트 간 격리를 위해 각 테스트 시작 시 호출해야 합니다.
     /// </summary>
@@ -77,6 +85,7 @@ public class TestActorImpl : IActor
     {
         while (Instances.TryTake(out _)) { }
         while (AuthenticatedAccountIds.TryTake(out _)) { }
+        _accountIdMap.Clear();
         Interlocked.Exchange(ref _onAuthenticateCallCount, 0);
     }
 }

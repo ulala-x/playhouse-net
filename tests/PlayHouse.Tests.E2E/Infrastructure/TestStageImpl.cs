@@ -34,6 +34,8 @@ public class TestStageImpl : IStage
     public static ConcurrentBag<string> InterStageReceivedMsgIds { get; } = new();
     public static int InterStageMessageCount => _interStageMessageCount;
 
+    private static readonly ConcurrentDictionary<long, TestStageImpl> _stageIdMap = new();
+    private static readonly ConcurrentDictionary<long, int> _timerCallbackCountByStageId = new();
     private static int _onDispatchCallCount;
     private static int _timerCallbackCount;
     private static int _asyncPreCallbackCount;
@@ -50,11 +52,25 @@ public class TestStageImpl : IStage
     public bool OnPostJoinStageCalled { get; private set; }
     public IPacket? LastCreatePacket { get; private set; }
 
+    /// <summary>
+    /// StageId로 특정 TestStageImpl 인스턴스를 조회합니다.
+    /// </summary>
+    public static TestStageImpl? GetByStageId(long stageId)
+        => _stageIdMap.TryGetValue(stageId, out var instance) ? instance : null;
+
+    /// <summary>
+    /// 특정 StageId에 대한 타이머 콜백 호출 횟수를 반환합니다.
+    /// </summary>
+    public static int GetTimerCallbackCount(long stageId)
+        => _timerCallbackCountByStageId.TryGetValue(stageId, out var count) ? count : 0;
+
     public static void ResetAll()
     {
         while (Instances.TryTake(out _)) { }
         while (AllReceivedMsgIds.TryTake(out _)) { }
         while (InterStageReceivedMsgIds.TryTake(out _)) { }
+        _stageIdMap.Clear();
+        _timerCallbackCountByStageId.Clear();
         Interlocked.Exchange(ref _onDispatchCallCount, 0);
         Interlocked.Exchange(ref _timerCallbackCount, 0);
         Interlocked.Exchange(ref _asyncPreCallbackCount, 0);
@@ -66,6 +82,7 @@ public class TestStageImpl : IStage
     {
         StageSender = stageSender;
         Instances.Add(this);
+        _stageIdMap[stageSender.StageId] = this;
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -277,6 +294,7 @@ public class TestStageImpl : IStage
     {
         var request = StartRepeatTimerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
         var tickNumber = 0;
+        var stageId = StageSender.StageId;
 
         var timerId = StageSender.AddRepeatTimer(
             TimeSpan.FromMilliseconds(request.InitialDelayMs),
@@ -284,6 +302,7 @@ public class TestStageImpl : IStage
             async () =>
             {
                 Interlocked.Increment(ref _timerCallbackCount);
+                _timerCallbackCountByStageId.AddOrUpdate(stageId, 1, (_, c) => c + 1);
                 tickNumber++;
                 var notify = new TimerTickNotify
                 {
@@ -302,6 +321,7 @@ public class TestStageImpl : IStage
     {
         var request = StartCountTimerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
         var tickNumber = 0;
+        var stageId = StageSender.StageId;
 
         var timerId = StageSender.AddCountTimer(
             TimeSpan.FromMilliseconds(request.InitialDelayMs),
@@ -310,6 +330,7 @@ public class TestStageImpl : IStage
             async () =>
             {
                 Interlocked.Increment(ref _timerCallbackCount);
+                _timerCallbackCountByStageId.AddOrUpdate(stageId, 1, (_, c) => c + 1);
                 tickNumber++;
                 var notify = new TimerTickNotify
                 {
@@ -356,8 +377,13 @@ public class TestStageImpl : IStage
                     PostThreadId = postThreadId
                 };
 
-                actor.ActorSender.Reply(CPacket.Of(reply));
+                // AsyncBlock의 post 콜백에서는 CurrentHeader가 이미 클리어됨
+                // 따라서 SendToClient로 Push 메시지 전송 (MsgSeq=0)
+                actor.ActorSender.SendToClient(CPacket.Of(reply));
             });
+
+        // 즉시 수락 응답 전송 (CurrentHeader가 아직 유효할 때)
+        actor.ActorSender.Reply(CPacket.Empty("AsyncBlockAccepted"));
     }
 
     private void HandleCloseStage(IActor actor, IPacket packet)

@@ -2,10 +2,10 @@
 
 using FluentAssertions;
 using Google.Protobuf;
-using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
 using PlayHouse.Tests.E2E.Infrastructure;
+using PlayHouse.Tests.E2E.Infrastructure.Fixtures;
 using PlayHouse.Tests.E2E.Proto;
 using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
@@ -20,49 +20,31 @@ namespace PlayHouse.Tests.E2E.ConnectorTests;
 /// - Request 패킷: 응답 메시지 내용 검증
 /// - Send 패킷: 서버에서 Push 응답 → OnReceive로 확인
 /// </summary>
-[Collection("E2E Messaging Tests")]
+[Collection("E2E Connector Tests")]
 public class MessagingTests : IAsyncLifetime
 {
-    private PlayServer? _playServer;
+    private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
     private readonly List<(long stageId, ClientPacket packet)> _receivedMessages = new();
     private readonly List<(long stageId, ushort errorCode, ClientPacket request)> _receivedErrors = new();
 
-    private const long DefaultStageId = 12345L;
-
-    public MessagingTests()
+    public MessagingTests(SinglePlayServerFixture fixture)
     {
+        _fixture = fixture;
         _connector = new ClientConnector();
         _connector.OnReceive += (stageId, packet) => _receivedMessages.Add((stageId, packet));
         _connector.OnError += (stageId, errorCode, request) => _receivedErrors.Add((stageId, errorCode, request));
     }
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
     {
-        _playServer = new PlayServerBootstrap()
-            .Configure(options =>
-            {
-                options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:0";
-                options.TcpPort = 0;
-                options.RequestTimeoutMs = 30000;
-                options.AuthenticateMessageId = "AuthenticateRequest";
-                options.DefaultStageType = "TestStage"; // 메시징 테스트에는 Stage 필요
-            })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
-            .Build();
-
-        await _playServer.StartAsync();
+        return Task.CompletedTask;
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
         _connector.Disconnect();
-        if (_playServer != null)
-        {
-            await _playServer.DisposeAsync();
-        }
+        return Task.CompletedTask;
     }
 
     #region 6.2.1 Send (Fire-and-Forget)
@@ -108,7 +90,7 @@ public class MessagingTests : IAsyncLifetime
             Data = "message_arrived",
             FromAccountId = 0
         };
-        await _playServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
+        await _fixture.PlayServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
         await Task.Delay(100);
         await ProcessCallbacksAsync();
 
@@ -227,7 +209,8 @@ public class MessagingTests : IAsyncLifetime
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig { RequestTimeoutMs = 100 });
 
-        await connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, DefaultStageId);
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
+        await connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
         await ProcessCallbacksAsync(connector);
 
         // 인증 수행
@@ -284,7 +267,7 @@ public class MessagingTests : IAsyncLifetime
         };
 
         // When - 서버가 Broadcast로 Push 메시지 전송
-        await _playServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
+        await _fixture.PlayServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
         await Task.Delay(100);
         await ProcessCallbacksAsync();
 
@@ -314,7 +297,7 @@ public class MessagingTests : IAsyncLifetime
                 Data = $"Data {i}",
                 FromAccountId = i
             };
-            await _playServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
+            await _fixture.PlayServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
             await Task.Delay(50);
         }
 
@@ -377,10 +360,11 @@ public class MessagingTests : IAsyncLifetime
 
     #region Helper Methods
 
-    private async Task ConnectToServerAsync(long stageId = 12345L)
+    private async Task ConnectToServerAsync()
     {
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
         connected.Should().BeTrue("서버에 연결되어야 함");
         await ProcessCallbacksAsync();
 

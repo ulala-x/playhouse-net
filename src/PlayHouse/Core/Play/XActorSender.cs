@@ -3,6 +3,8 @@
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play.Base;
+using PlayHouse.Runtime.ClientTransport;
+using PlayHouse.Runtime.ClientTransport.Tcp;
 
 namespace PlayHouse.Core.Play;
 
@@ -16,6 +18,7 @@ namespace PlayHouse.Core.Play;
 internal sealed class XActorSender : IActorSender
 {
     private readonly BaseStage _baseStage;
+    private ITransportSession? _transportSession;
 
     private string _sessionNid;
     private long _sid;
@@ -34,16 +37,19 @@ internal sealed class XActorSender : IActorSender
     /// <param name="sid">Session ID.</param>
     /// <param name="apiNid">API server NID.</param>
     /// <param name="baseStage">Parent BaseStage.</param>
+    /// <param name="transportSession">Optional transport session for direct client communication.</param>
     public XActorSender(
         string sessionNid,
         long sid,
         string apiNid,
-        BaseStage baseStage)
+        BaseStage baseStage,
+        ITransportSession? transportSession = null)
     {
         _sessionNid = sessionNid;
         _sid = sid;
         _apiNid = apiNid;
         _baseStage = baseStage;
+        _transportSession = transportSession;
     }
 
     /// <summary>
@@ -72,6 +78,26 @@ internal sealed class XActorSender : IActorSender
     /// <inheritdoc/>
     public void SendToClient(IPacket packet)
     {
+        // For directly connected clients, use transport session directly
+        if (_transportSession != null)
+        {
+            if (_transportSession.IsConnected)
+            {
+                var response = TcpTransportSession.CreateResponsePacket(
+                    packet.MsgId,
+                    0,  // msgSeq = 0 for push messages
+                    _baseStage.StageId,
+                    0,  // errorCode = 0
+                    packet.Payload.Data.Span);
+                _ = _transportSession.SendAsync(response);
+                return;
+            }
+            // Session exists but disconnected - skip sending
+            Console.WriteLine($"[XActorSender] SendToClient skipped: session {_transportSession.SessionId} disconnected for stage {_baseStage.StageId}");
+            return;
+        }
+
+        // For server-to-server (API → PlayServer), use the routing mechanism
         _baseStage.StageSender.SendToClient(_sessionNid, _sid, packet);
     }
 
@@ -139,11 +165,13 @@ internal sealed class XActorSender : IActorSender
     /// <param name="sessionNid">New session server NID.</param>
     /// <param name="sid">New session ID.</param>
     /// <param name="apiNid">New API server NID.</param>
-    internal void Update(string sessionNid, long sid, string apiNid)
+    /// <param name="transportSession">Optional new transport session.</param>
+    internal void Update(string sessionNid, long sid, string apiNid, ITransportSession? transportSession = null)
     {
         _sessionNid = sessionNid;
         _sid = sid;
         _apiNid = apiNid;
+        _transportSession = transportSession;
     }
 
     #endregion
