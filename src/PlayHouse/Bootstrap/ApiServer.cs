@@ -96,6 +96,9 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         _communicator.Bind(this);
         _communicator.Start();
 
+        // 자기 자신에게 연결 (자기 자신에게 메시지를 보내기 위해 필요)
+        _communicator.Connect(_options.Nid, _options.BindEndpoint);
+
         // ApiDispatcher 생성
         _dispatcher = new ApiDispatcher(
             _options.ServiceId,
