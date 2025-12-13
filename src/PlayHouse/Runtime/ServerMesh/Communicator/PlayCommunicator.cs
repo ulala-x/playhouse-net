@@ -96,6 +96,9 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     {
         if (IsRunning) return;
 
+        // Bind the underlying socket first
+        _socket.Bind();
+
         _server.Bind(this);
         _messageLoop.Start();
         IsRunning = true;
@@ -118,6 +121,10 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
 
         Stop();
         _messageLoop.AwaitTermination();
+
+        // Give time for sockets to fully close before dispose
+        Thread.Sleep(500);
+
         _socket.Dispose();
     }
 }

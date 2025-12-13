@@ -180,6 +180,16 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     }
 
     /// <summary>
+    /// 다른 서버에 연결합니다 (NetMQ Router-Router 패턴).
+    /// </summary>
+    /// <param name="targetNid">대상 서버 NID (예: "2:1")</param>
+    /// <param name="address">대상 서버 주소 (예: "tcp://127.0.0.1:15101")</param>
+    public void Connect(string targetNid, string address)
+    {
+        _communicator?.Connect(targetNid, address);
+    }
+
+    /// <summary>
     /// 서버를 중지합니다.
     /// </summary>
     public async Task StopAsync()
@@ -361,7 +371,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     catch (KeyNotFoundException)
                     {
                         _logger?.LogError("Actor factory not found for stage type: {StageType}", _options.DefaultStageType);
-                        return (false, BaseErrorCode.InvalidStageType, null);
+                        return (false, BaseErrorCode.InvalidStageType, (BaseActor?)null);
                     }
 
                     // 4. Actor 콜백 순차 호출
@@ -374,7 +384,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     {
                         _logger?.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
-                        return (false, BaseErrorCode.AuthenticationFailed, null);
+                        return (false, BaseErrorCode.AuthenticationFailed, (BaseActor?)null);
                     }
 
                     // 5. AccountId 검증
@@ -382,7 +392,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     {
                         _logger?.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
-                        return (false, BaseErrorCode.InvalidAccountId, null);
+                        return (false, BaseErrorCode.InvalidAccountId, (BaseActor?)null);
                     }
 
                     // 6. 세션에 인증 정보 설정
@@ -396,7 +406,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "Error during actor authentication callbacks");
-                    return (false, BaseErrorCode.InternalError, null);
+                    return (false, BaseErrorCode.InternalError, (BaseActor?)null);
                 }
             });
 
@@ -618,6 +628,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         {
             await _transportServer.DisposeAsync();
         }
+
+        _communicator?.Dispose();
     }
 
     /// <summary>

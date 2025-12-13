@@ -2,6 +2,7 @@
 
 using FluentAssertions;
 using PlayHouse.Bootstrap;
+using PlayHouse.Core.Shared;
 using PlayHouse.Tests.E2E.Infrastructure;
 using PlayHouse.Tests.E2E.Proto;
 using Xunit;
@@ -31,12 +32,12 @@ public class IApiSenderTests : IAsyncLifetime
         TestStageImpl.ResetAll();
         TestApiController.ResetAll();
 
-        // PlayServer (ServiceId=1, ServerId=1)
+        // PlayServer (ServiceId=1, ServerId=1, NID="1:1")
         _playServer = new PlayServerBootstrap()
             .Configure(options =>
             {
                 options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:0";
+                options.BindEndpoint = "tcp://127.0.0.1:15100"; // Fixed port for PlayServer
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
@@ -46,12 +47,12 @@ public class IApiSenderTests : IAsyncLifetime
             .UseActor<TestActorImpl>()
             .Build();
 
-        // ApiServer (ServiceType.Api=2, ServerId=1)
+        // ApiServer (ServiceType.Api=2, ServerId=1, NID="2:1")
         _apiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
                 options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:0";
+                options.BindEndpoint = "tcp://127.0.0.1:15101"; // Fixed port for ApiServer
                 options.RequestTimeoutMs = 30000;
             })
             .UseController<TestApiController>()
@@ -60,6 +61,17 @@ public class IApiSenderTests : IAsyncLifetime
         await _playServer.StartAsync();
         await _apiServer.StartAsync();
         await Task.Delay(200); // 서버 초기화 대기
+
+        // Establish bidirectional server connections
+        // For NetMQ Router-Router pattern, BOTH servers need to connect to each other
+
+        // ApiServer → PlayServer (for CreateStage, GetOrCreateStage)
+        _apiServer.ConnectToPlayServer("1:1", "tcp://127.0.0.1:15100");
+
+        // PlayServer → ApiServer (for return path in Router-Router)
+        _playServer.Connect("2:1", "tcp://127.0.0.1:15101");
+
+        await Task.Delay(1000); // Connection stabilization
     }
 
     public async Task DisposeAsync()
@@ -80,30 +92,42 @@ public class IApiSenderTests : IAsyncLifetime
     /// CreateStage E2E 테스트
     /// API 서버에서 PlayServer로 Stage 생성 요청을 전송합니다.
     ///
-    /// Note: 이 테스트는 ApiServer → PlayServer 통신을 테스트합니다.
-    /// PlayHouse 아키텍처에서 서버간 통신은 NetMQ를 통해 라우팅되며,
-    /// 현재 테스트 환경에서는 서버간 Discovery/Connection이 설정되지 않아
-    /// 실제 서버간 통신 테스트를 위해서는 별도의 서버 클러스터 설정이 필요합니다.
+    /// 테스트 플로우:
+    /// 1. ApiServer.ApiSender.CreateStage() 호출
+    /// 2. ApiServer → PlayServer로 NetMQ 메시지 전송
+    /// 3. PlayServer에서 Stage 생성 및 OnCreate 콜백 호출
+    /// 4. 응답 검증
     /// </summary>
-    [Fact(DisplayName = "CreateStage - API에서 Stage 생성 요청 성공", Skip = "서버간 통신은 별도 클러스터 설정 필요")]
+    [Fact(DisplayName = "CreateStage - API에서 Stage 생성 요청 성공")]
     public async Task CreateStage_Success_StageCreated()
     {
-        // Given - API 서버에 CreateStage 요청 준비
-        var request = new TriggerCreateStageRequest
-        {
-            StageType = "TestStage",
-            StageId = 12345L
-        };
+        // Given
+        const long stageId = 12345L;
+        const string stageType = "TestStage";
+        var initialInstanceCount = TestStageImpl.Instances.Count;
 
-        // When - API 핸들러에서 CreateStage 호출
-        // Note: 실제로는 HTTP/Client 요청을 통해 API 서버로 전달되어야 하지만,
-        // 서버간 통신이 설정되지 않아 Skip 처리
+        // When - ApiServer에서 PlayServer로 CreateStage 요청
+        var result = await _apiServer!.ApiSender!.CreateStage(
+            "1:1", // PlayServer NID
+            stageType,
+            stageId,
+            CPacket.Empty("CreateStagePayload"));
 
-        // Then - 검증할 사항:
+        // Then
         // 1. CreateStage 호출 성공
-        // 2. TestStageImpl.OnCreate 콜백 호출됨
-        // 3. 응답에서 success=true 확인
-        await Task.CompletedTask;
+        result.Result.Should().BeTrue($"CreateStage should succeed, but got Result={result.Result}");
+
+        // 2. TestStageImpl.OnCreate 콜백 호출됨 (새 인스턴스 생성됨)
+        TestStageImpl.Instances.Count.Should().Be(initialInstanceCount + 1,
+            "a new TestStageImpl instance should be created");
+
+        var createdStage = TestStageImpl.Instances.Last();
+        createdStage.OnCreateCalled.Should().BeTrue(
+            "OnCreate callback should be called");
+
+        // 3. OnPostCreate도 호출되어야 함
+        createdStage.OnPostCreateCalled.Should().BeTrue(
+            "OnPostCreate callback should be called");
     }
 
     #endregion
@@ -111,32 +135,91 @@ public class IApiSenderTests : IAsyncLifetime
     #region GetOrCreateStage 테스트
 
     /// <summary>
-    /// GetOrCreateStage E2E 테스트
+    /// GetOrCreateStage E2E 테스트 - 새 Stage 생성
     /// API 서버에서 PlayServer로 Stage 조회/생성 요청을 전송합니다.
     ///
-    /// Note: CreateStage와 동일한 제약사항이 적용됩니다.
-    /// 실제 서버간 통신 테스트를 위해서는 별도의 서버 클러스터 설정이 필요합니다.
+    /// 테스트 플로우:
+    /// 1. 존재하지 않는 StageId로 GetOrCreateStage 호출
+    /// 2. ApiServer → PlayServer로 NetMQ 메시지 전송
+    /// 3. PlayServer에서 Stage 생성 및 OnCreate 콜백 호출
+    /// 4. IsCreated=true 응답 검증
     /// </summary>
-    [Fact(DisplayName = "GetOrCreateStage - API에서 Stage 조회/생성 요청 성공", Skip = "서버간 통신은 별도 클러스터 설정 필요")]
-    public async Task GetOrCreateStage_Success_StageReturned()
+    [Fact(DisplayName = "GetOrCreateStage - 새 Stage 생성 성공")]
+    public async Task GetOrCreateStage_NewStage_Created()
     {
-        // Given - API 서버에 GetOrCreateStage 요청 준비
-        var request = new TriggerGetOrCreateStageRequest
-        {
-            StageType = "TestStage",
-            StageId = 12345L
-        };
+        // Given
+        const long stageId = 99999L;
+        const string stageType = "TestStage";
+        var initialInstanceCount = TestStageImpl.Instances.Count;
 
-        // When - API 핸들러에서 GetOrCreateStage 호출
-        // Note: 실제로는 HTTP/Client 요청을 통해 API 서버로 전달되어야 하지만,
-        // 서버간 통신이 설정되지 않아 Skip 처리
+        // When - 존재하지 않는 Stage 조회/생성
+        var result = await _apiServer!.ApiSender!.GetOrCreateStage(
+            "1:1", // PlayServer NID
+            stageType,
+            stageId,
+            CPacket.Empty("CreatePayload"),
+            CPacket.Empty("JoinPayload"));
 
-        // Then - 검증할 사항:
+        // Then
         // 1. GetOrCreateStage 호출 성공
-        // 2. 새 Stage인 경우: OnCreate 콜백 호출됨, is_created=true
-        // 3. 기존 Stage인 경우: is_created=false
-        // 4. 응답에서 success=true 확인
-        await Task.CompletedTask;
+        result.Result.Should().BeTrue("GetOrCreateStage should succeed");
+
+        // 2. 새 Stage가 생성됨
+        result.IsCreated.Should().BeTrue("Stage should be newly created");
+
+        // 3. TestStageImpl.OnCreate 콜백 호출됨
+        TestStageImpl.Instances.Count.Should().Be(initialInstanceCount + 1,
+            "a new TestStageImpl instance should be created");
+
+        var createdStage = TestStageImpl.Instances.Last();
+        createdStage.OnCreateCalled.Should().BeTrue(
+            "OnCreate callback should be called");
+    }
+
+    /// <summary>
+    /// GetOrCreateStage E2E 테스트 - 기존 Stage 조회
+    /// API 서버에서 PlayServer로 기존 Stage 조회 요청을 전송합니다.
+    ///
+    /// 테스트 플로우:
+    /// 1. CreateStage로 Stage 미리 생성
+    /// 2. 동일 StageId로 GetOrCreateStage 호출
+    /// 3. IsCreated=false 응답 검증 (기존 Stage 반환됨)
+    /// </summary>
+    [Fact(DisplayName = "GetOrCreateStage - 기존 Stage 조회 성공")]
+    public async Task GetOrCreateStage_ExistingStage_Returned()
+    {
+        // Given - Stage 미리 생성
+        const long stageId = 88888L;
+        const string stageType = "TestStage";
+
+        var createResult = await _apiServer!.ApiSender!.CreateStage(
+            "1:1",
+            stageType,
+            stageId,
+            CPacket.Empty("CreatePayload"));
+
+        createResult.Result.Should().BeTrue("CreateStage should succeed first");
+
+        var instanceCountAfterCreate = TestStageImpl.Instances.Count;
+
+        // When - 동일 StageId로 GetOrCreateStage 호출
+        var result = await _apiServer.ApiSender.GetOrCreateStage(
+            "1:1",
+            stageType,
+            stageId,
+            CPacket.Empty("CreatePayload2"),
+            CPacket.Empty("JoinPayload"));
+
+        // Then
+        // 1. GetOrCreateStage 호출 성공
+        result.Result.Should().BeTrue("GetOrCreateStage should succeed");
+
+        // 2. 기존 Stage 반환됨 (새로 생성되지 않음)
+        result.IsCreated.Should().BeFalse("Stage should already exist");
+
+        // 3. 새 인스턴스가 생성되지 않음
+        TestStageImpl.Instances.Count.Should().Be(instanceCountAfterCreate,
+            "no new instance should be created");
     }
 
     #endregion
