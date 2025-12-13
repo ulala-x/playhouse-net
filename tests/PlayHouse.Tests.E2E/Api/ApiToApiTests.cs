@@ -17,8 +17,8 @@ namespace PlayHouse.Tests.E2E.Api;
 /// - RequestToApi: 동기 요청-응답 패턴
 ///
 /// 테스트 아키텍처:
-/// - ApiServer A (NID="2:1", Port=15101)
-/// - ApiServer B (NID="2:2", Port=15102)
+/// - ApiServer A (ServerId="1", Port=15101)
+/// - ApiServer B (ServerId="2", Port=15102)
 /// - 양방향 NetMQ Router-Router 연결
 /// </summary>
 [Collection("E2E ApiToApi Tests")]
@@ -32,11 +32,11 @@ public class ApiToApiTests : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
-        // ApiServer A (ServiceType.Api=2, ServerId=1, NID="2:1")
+        // ApiServer A (ServiceType.Api=2, ServerId=1)
         _apiServerA = new ApiServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15101";
                 options.RequestTimeoutMs = 30000;
             })
@@ -44,11 +44,11 @@ public class ApiToApiTests : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // ApiServer B (ServiceType.Api=2, ServerId=2, NID="2:2")
+        // ApiServer B (ServiceType.Api=2, ServerId=2)
         _apiServerB = new ApiServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 2;
+                options.ServerId = "2";
                 options.BindEndpoint = "tcp://127.0.0.1:15102";
                 options.RequestTimeoutMs = 30000;
             })
@@ -81,7 +81,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// ApiServer A → ApiServer B SendToApi 테스트
     ///
     /// 테스트 플로우:
-    /// 1. ApiServer A의 ApiSender.SendToApi("2:2", message) 호출
+    /// 1. ApiServer A의 ApiSender.SendToApi("2", message) 호출
     /// 2. ApiServer A → ApiServer B로 NetMQ 메시지 전송
     /// 3. ApiServer B의 핸들러 콜백 호출
     /// 4. 콜백 호출 검증 (응답은 기대하지 않음)
@@ -98,10 +98,10 @@ public class ApiToApiTests : IAsyncLifetime
         // When - ApiServer A에서 ApiServer B로 SendToApi (InterApiMessage 사용)
         var message = new InterApiMessage
         {
-            FromApiNid = "2:1",
+            FromApiNid = "1",
             Content = "Hello from API A"
         };
-        _apiServerA!.ApiSender!.SendToApi("2:2", CPacket.Of(message));
+        _apiServerA!.ApiSender!.SendToApi("2", CPacket.Of(message));
 
         // 메시지 전달 대기
         await Task.Delay(1000);
@@ -124,7 +124,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// ApiServer A → ApiServer B RequestToApi 테스트
     ///
     /// 테스트 플로우:
-    /// 1. ApiServer A의 ApiSender.RequestToApi("2:2", message) 호출
+    /// 1. ApiServer A의 ApiSender.RequestToApi("2", message) 호출
     /// 2. ApiServer A → ApiServer B로 NetMQ 메시지 전송
     /// 3. ApiServer B의 HandleInterApiMessage 콜백 호출 및 응답 생성
     /// 4. ApiServer B → ApiServer A로 응답 전송
@@ -145,7 +145,7 @@ public class ApiToApiTests : IAsyncLifetime
         {
             Content = testContent
         };
-        var responsePacket = await _apiServerA!.ApiSender!.RequestToApi("2:2", CPacket.Of(echoRequest));
+        var responsePacket = await _apiServerA!.ApiSender!.RequestToApi("2", CPacket.Of(echoRequest));
 
         // Then
         // 1. 응답 패킷 수신됨
@@ -190,10 +190,10 @@ public class ApiToApiTests : IAsyncLifetime
         // When & Then - A → B
         var messageAtoB = new InterApiMessage
         {
-            FromApiNid = "2:1",
+            FromApiNid = "1",
             Content = contentAtoB
         };
-        var responseFromB = await _apiServerA!.ApiSender!.RequestToApi("2:2", CPacket.Of(messageAtoB));
+        var responseFromB = await _apiServerA!.ApiSender!.RequestToApi("2", CPacket.Of(messageAtoB));
         var replyFromB = InterApiReply.Parser.ParseFrom(responseFromB.Payload.Data.Span);
 
         replyFromB.Response.Should().Contain(contentAtoB, "response from B should contain A's content");
@@ -201,10 +201,10 @@ public class ApiToApiTests : IAsyncLifetime
         // When & Then - B → A
         var messageBtoA = new InterApiMessage
         {
-            FromApiNid = "2:2",
+            FromApiNid = "2",
             Content = contentBtoA
         };
-        var responseFromA = await _apiServerB!.ApiSender!.RequestToApi("2:1", CPacket.Of(messageBtoA));
+        var responseFromA = await _apiServerB!.ApiSender!.RequestToApi("1", CPacket.Of(messageBtoA));
         var replyFromA = InterApiReply.Parser.ParseFrom(responseFromA.Payload.Data.Span);
 
         replyFromA.Response.Should().Contain(contentBtoA, "response from A should contain B's content");
@@ -240,12 +240,12 @@ public class ApiToApiTests : IAsyncLifetime
         // When - ApiServer A가 ApiServer B에게 트리거 요청 (B가 A에게 실제 요청)
         var triggerRequest = new TriggerRequestToApiServerRequest
         {
-            TargetApiNid = "2:1", // ApiServer B가 ApiServer A에게 요청
+            TargetApiNid = "1", // ApiServer B가 ApiServer A에게 요청
             Query = testQuery
         };
 
         var responsePacket = await _apiServerA!.ApiSender!.RequestToApi(
-            "2:2", // ApiServer B에게 트리거 요청
+            "2", // ApiServer B에게 트리거 요청
             CPacket.Of(triggerRequest));
 
         // Then
@@ -288,12 +288,12 @@ public class ApiToApiTests : IAsyncLifetime
         // When - ApiServer A가 ApiServer B에게 트리거 요청 (B가 A에게 SendToApi)
         var triggerRequest = new TriggerSendToApiServerRequest
         {
-            TargetApiNid = "2:1", // ApiServer B가 ApiServer A에게 SendToApi
+            TargetApiNid = "1", // ApiServer B가 ApiServer A에게 SendToApi
             Message = testMessage
         };
 
         var responsePacket = await _apiServerA!.ApiSender!.RequestToApi(
-            "2:2", // ApiServer B에게 트리거 요청
+            "2", // ApiServer B에게 트리거 요청
             CPacket.Of(triggerRequest));
 
         // 메시지 전달 대기

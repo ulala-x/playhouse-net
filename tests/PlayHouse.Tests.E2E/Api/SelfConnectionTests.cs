@@ -25,7 +25,7 @@ public class SelfConnectionTests : IAsyncLifetime
         _apiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15300";
                 options.RequestTimeoutMs = 5000;
             })
@@ -53,13 +53,13 @@ public class SelfConnectionTests : IAsyncLifetime
         // Given
         var initialCount = TestApiController.OnDispatchCallCount;
 
-        // When - 자기 자신("2:1")에게 메시지 전송
+        // When - 자기 자신("1")에게 메시지 전송
         var message = new InterApiMessage
         {
-            FromApiNid = "2:1",
+            FromApiNid = "1",
             Content = "Hello to myself"
         };
-        _apiServer!.ApiSender!.SendToApi("2:1", CPacket.Of(message));
+        _apiServer!.ApiSender!.SendToApi("1", CPacket.Of(message));
 
         // 메시지 전달 대기
         await Task.Delay(1000);
@@ -80,9 +80,9 @@ public class SelfConnectionTests : IAsyncLifetime
         // Given
         const string testContent = "Echo to myself";
 
-        // When - 자기 자신("2:1")에게 요청
+        // When - 자기 자신("1")에게 요청
         var echoRequest = new ApiEchoRequest { Content = testContent };
-        var response = await _apiServer!.ApiSender!.RequestToApi("2:1", CPacket.Of(echoRequest));
+        var response = await _apiServer!.ApiSender!.RequestToApi("1", CPacket.Of(echoRequest));
 
         // Then
         response.Should().NotBeNull("응답을 받아야 함");

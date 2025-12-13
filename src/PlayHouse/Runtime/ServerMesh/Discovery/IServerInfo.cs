@@ -29,14 +29,9 @@ public interface IServerInfo
     ushort ServiceId { get; }
 
     /// <summary>
-    /// 서버 인스턴스 ID.
+    /// 서버 인스턴스 ID (고유 문자열, 예: "play-1", "api-seoul-1").
     /// </summary>
-    ushort ServerId { get; }
-
-    /// <summary>
-    /// Node ID (형식: "{ServiceId}:{ServerId}").
-    /// </summary>
-    string Nid { get; }
+    string ServerId { get; }
 
     /// <summary>
     /// NetMQ 연결 주소 (예: "tcp://192.168.1.100:5000").
@@ -63,10 +58,7 @@ public sealed class XServerInfo : IServerInfo
     public ushort ServiceId { get; }
 
     /// <inheritdoc/>
-    public ushort ServerId { get; }
-
-    /// <inheritdoc/>
-    public string Nid { get; }
+    public string ServerId { get; }
 
     /// <inheritdoc/>
     public string Address { get; }
@@ -82,41 +74,32 @@ public sealed class XServerInfo : IServerInfo
     /// </summary>
     public XServerInfo(
         ushort serviceId,
-        ushort serverId,
+        string serverId,
         string address,
         ServerState state = ServerState.Running,
         int weight = 100)
     {
         ServiceId = serviceId;
         ServerId = serverId;
-        Nid = $"{serviceId}:{serverId}";
         Address = address;
         State = state;
         Weight = weight;
     }
 
     /// <summary>
-    /// NID로부터 XServerInfo를 생성합니다.
+    /// ServerId와 ServiceId로부터 XServerInfo를 생성합니다.
     /// </summary>
-    public static XServerInfo Create(string nid, string address, ServerState state = ServerState.Running)
+    public static XServerInfo Create(ushort serviceId, string serverId, string address, ServerState state = ServerState.Running)
     {
-        var parts = nid.Split(':');
-        if (parts.Length != 2)
-            throw new ArgumentException($"Invalid NID format: {nid}. Expected 'ServiceId:ServerId'.");
-
-        return new XServerInfo(
-            ushort.Parse(parts[0]),
-            ushort.Parse(parts[1]),
-            address,
-            state);
+        return new XServerInfo(serviceId, serverId, address, state);
     }
 
     /// <inheritdoc/>
-    public override string ToString() => $"{Nid}@{Address}[{State}]";
+    public override string ToString() => $"{ServiceId}:{ServerId}@{Address}[{State}]";
 
     /// <inheritdoc/>
-    public override bool Equals(object? obj) => obj is XServerInfo other && Nid == other.Nid;
+    public override bool Equals(object? obj) => obj is XServerInfo other && ServerId == other.ServerId;
 
     /// <inheritdoc/>
-    public override int GetHashCode() => Nid.GetHashCode();
+    public override int GetHashCode() => ServerId.GetHashCode();
 }

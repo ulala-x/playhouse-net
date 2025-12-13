@@ -20,8 +20,8 @@ namespace PlayHouse.Tests.E2E.Play;
 /// - RequestToStage: Stage A → Stage B 요청/응답
 ///
 /// Note: Stage간 통신을 테스트하기 위해 두 개의 PlayServer를 구동합니다.
-/// - PlayServer A (NID="1:1"): Stage A가 속한 서버
-/// - PlayServer B (NID="1:2"): Stage B가 속한 서버
+/// - PlayServer A (ServerId="1"): Stage A가 속한 서버
+/// - PlayServer B (ServerId="2"): Stage B가 속한 서버
 /// </summary>
 [Collection("E2E ISender Tests")]
 public class ISenderTests : IAsyncLifetime
@@ -52,11 +52,11 @@ public class ISenderTests : IAsyncLifetime
         TestStageImpl.ResetAll();
         TestSystemController.Reset();
 
-        // PlayServer A (NID="1:1", ServerId=1)
+        // PlayServer A (ServerId=1)
         _playServerA = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15200";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
@@ -68,11 +68,11 @@ public class ISenderTests : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // PlayServer B (NID="1:2", ServerId=2)
+        // PlayServer B (ServerId=2)
         _playServerB = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 2;
+                options.ServerId = "2";
                 options.BindEndpoint = "tcp://127.0.0.1:15201";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
@@ -125,7 +125,7 @@ public class ISenderTests : IAsyncLifetime
     /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
     /// 2. 클라이언트 B를 PlayServer B에 연결하여 Stage B 생성
     /// 3. 클라이언트 A가 Stage A에 TriggerSendToStageRequest 전송
-    /// 4. Stage A에서 IStageSender.SendToStage("1:2", StageIdB, message)로 PlayServer B의 Stage B에 메시지 전송
+    /// 4. Stage A에서 IStageSender.SendToStage("2", StageIdB, message)로 PlayServer B의 Stage B에 메시지 전송
     /// 5. PlayServer B의 Stage B에서 OnDispatch(IPacket) 콜백 호출 검증
     /// </summary>
     [Fact(DisplayName = "SendToStage - Stage간 단방향 메시지 전송 성공")]
@@ -139,10 +139,10 @@ public class ISenderTests : IAsyncLifetime
         var instanceCount = TestStageImpl.Instances.Count;
 
         // When - Stage A에서 Stage B로 SendToStage 트리거
-        // PlayServer B의 NID는 "1:2" (ServiceType.Play=1, ServerId=2)
+        // PlayServer B의 ServerId는 "2"
         var request = new TriggerSendToStageRequest
         {
-            TargetNid = "1:2",  // PlayServer B
+            TargetNid = "2",  // PlayServer B
             TargetStageId = StageIdB,
             Message = "Hello from Stage A"
         };
@@ -175,7 +175,7 @@ public class ISenderTests : IAsyncLifetime
     /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
     /// 2. 클라이언트 B를 PlayServer B에 연결하여 Stage B 생성
     /// 3. 클라이언트 A가 Stage A에 TriggerRequestToStageRequest 전송
-    /// 4. Stage A에서 IStageSender.RequestToStage("1:2", StageIdB, message)로 PlayServer B의 Stage B에 요청 전송
+    /// 4. Stage A에서 IStageSender.RequestToStage("2", StageIdB, message)로 PlayServer B의 Stage B에 요청 전송
     /// 5. PlayServer B의 Stage B에서 OnDispatch(IPacket) 콜백 호출되고 Reply 반환
     /// 6. Stage A가 Stage B의 응답을 받아서 클라이언트에 전달
     /// </summary>
@@ -187,10 +187,10 @@ public class ISenderTests : IAsyncLifetime
         await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerB!);
 
         // When - Stage A에서 Stage B로 RequestToStage 트리거
-        // PlayServer B의 NID는 "1:2" (ServiceType.Play=1, ServerId=2)
+        // PlayServer B의 ServerId는 "2"
         var request = new TriggerRequestToStageRequest
         {
-            TargetNid = "1:2",  // PlayServer B
+            TargetNid = "2",  // PlayServer B
             TargetStageId = StageIdB,
             Query = "Query from Stage A"
         };
@@ -215,8 +215,8 @@ public class ISenderTests : IAsyncLifetime
     /// 테스트 플로우:
     /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
     /// 2. 클라이언트 B를 같은 PlayServer A에 연결하여 Stage B 생성
-    /// 3. 클라이언트 A가 Stage A에 TriggerSendToStageRequest 전송 (targetNid="1:1", 같은 서버)
-    /// 4. Stage A에서 IStageSender.SendToStage("1:1", StageIdB, message)로 같은 서버의 Stage B에 메시지 전송
+    /// 3. 클라이언트 A가 Stage A에 TriggerSendToStageRequest 전송 (targetServerId="1", 같은 서버)
+    /// 4. Stage A에서 IStageSender.SendToStage("1", StageIdB, message)로 같은 서버의 Stage B에 메시지 전송
     /// 5. Stage B에서 OnDispatch(IPacket) 콜백 호출 검증
     /// </summary>
     [Fact(DisplayName = "SendToStage - 같은 서버 내 Stage간 단방향 메시지 전송 성공")]
@@ -229,10 +229,10 @@ public class ISenderTests : IAsyncLifetime
         var initialCount = TestStageImpl.InterStageMessageCount;
 
         // When - Stage A에서 같은 서버의 Stage B로 SendToStage 트리거
-        // 같은 서버이므로 NID는 "1:1" (PlayServer A)
+        // 같은 서버이므로 ServerId는 "1" (PlayServer A)
         var request = new TriggerSendToStageRequest
         {
-            TargetNid = "1:1",  // 같은 서버 (PlayServer A)
+            TargetNid = "1",  // 같은 서버 (PlayServer A)
             TargetStageId = StageIdB,
             Message = "Hello from Stage A (same server)"
         };
@@ -260,8 +260,8 @@ public class ISenderTests : IAsyncLifetime
     /// 테스트 플로우:
     /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
     /// 2. 클라이언트 B를 같은 PlayServer A에 연결하여 Stage B 생성
-    /// 3. 클라이언트 A가 Stage A에 TriggerRequestToStageRequest 전송 (targetNid="1:1", 같은 서버)
-    /// 4. Stage A에서 IStageSender.RequestToStage("1:1", StageIdB, message)로 같은 서버의 Stage B에 요청 전송
+    /// 3. 클라이언트 A가 Stage A에 TriggerRequestToStageRequest 전송 (targetServerId="1", 같은 서버)
+    /// 4. Stage A에서 IStageSender.RequestToStage("1", StageIdB, message)로 같은 서버의 Stage B에 요청 전송
     /// 5. Stage B에서 OnDispatch(IPacket) 콜백 호출되고 Reply 반환
     /// 6. Stage A가 Stage B의 응답을 받아서 클라이언트에 전달
     /// </summary>
@@ -273,10 +273,10 @@ public class ISenderTests : IAsyncLifetime
         await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerA!); // 같은 서버!
 
         // When - Stage A에서 같은 서버의 Stage B로 RequestToStage 트리거
-        // 같은 서버이므로 NID는 "1:1" (PlayServer A)
+        // 같은 서버이므로 ServerId는 "1" (PlayServer A)
         var request = new TriggerRequestToStageRequest
         {
-            TargetNid = "1:1",  // 같은 서버 (PlayServer A)
+            TargetNid = "1",  // 같은 서버 (PlayServer A)
             TargetStageId = StageIdB,
             Query = "Query from Stage A (same server)"
         };

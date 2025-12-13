@@ -24,7 +24,7 @@ public sealed class PlayServerOption
     /// <summary>
     /// 서버 인스턴스 ID.
     /// </summary>
-    public ushort ServerId { get; set; } = 1;
+    public string ServerId { get; set; } = "1";
 
     /// <summary>
     /// NetMQ 서버 간 통신용 바인드 주소.
@@ -48,11 +48,6 @@ public sealed class PlayServerOption
     /// 인증 시 자동으로 생성/조인할 기본 Stage 타입.
     /// </summary>
     public string DefaultStageType { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 서버 NID (자동 계산).
-    /// </summary>
-    public string Nid => $"{ServiceId}:{ServerId}";
 
     #region Transport Configuration
 
@@ -106,8 +101,8 @@ public sealed class PlayServerOption
         if (ServiceType == 0)
             throw new InvalidOperationException("ServiceType must be set");
 
-        if (ServerId == 0)
-            throw new InvalidOperationException("ServerId must be greater than 0");
+        if (string.IsNullOrEmpty(ServerId))
+            throw new InvalidOperationException("ServerId is required");
 
         if (string.IsNullOrEmpty(BindEndpoint))
             throw new InvalidOperationException("BindEndpoint is required");

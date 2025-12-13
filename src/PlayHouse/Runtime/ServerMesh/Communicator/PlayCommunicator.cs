@@ -19,7 +19,7 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     private bool _disposed;
 
     /// <inheritdoc/>
-    public string Nid => _socket.Nid;
+    public string ServerId => _socket.ServerId;
 
     /// <inheritdoc/>
     public bool IsRunning { get; private set; }
@@ -63,7 +63,7 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     /// <inheritdoc/>
     public void Bind(ICommunicateListener listener)
     {
-        _handler = (senderNid, packet) => listener.OnReceive(packet);
+        _handler = (senderServerId, packet) => listener.OnReceive(packet);
     }
 
     /// <summary>
@@ -76,13 +76,13 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     }
 
     /// <inheritdoc/>
-    public void Send(string targetNid, RuntimeRoutePacket packet) => _client.Send(targetNid, packet);
+    public void Send(string targetServerId, RuntimeRoutePacket packet) => _client.Send(targetServerId, packet);
 
     /// <inheritdoc/>
-    public void Connect(string targetNid, string address) => _client.Connect(targetNid, address);
+    public void Connect(string targetServerId, string address) => _client.Connect(targetServerId, address);
 
     /// <inheritdoc/>
-    public void Disconnect(string targetNid, string endpoint) => _client.Disconnect(targetNid, endpoint);
+    public void Disconnect(string targetServerId, string endpoint) => _client.Disconnect(targetServerId, endpoint);
 
     /// <inheritdoc/>
     public void Communicate()

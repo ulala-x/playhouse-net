@@ -17,7 +17,7 @@ internal sealed class XClientCommunicator : IClientCommunicator
     private readonly HashSet<string> _connected = new();
 
     /// <inheritdoc/>
-    public string Nid => _socket.Nid;
+    public string ServerId => _socket.ServerId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="XClientCommunicator"/> class.
@@ -29,25 +29,25 @@ internal sealed class XClientCommunicator : IClientCommunicator
     }
 
     /// <inheritdoc/>
-    public void Send(string targetNid, RuntimeRoutePacket packet)
+    public void Send(string targetServerId, RuntimeRoutePacket packet)
     {
         _queue.Add(() =>
         {
             try
             {
-                // Send using new IPlaySocket.Send(nid, packet) signature
+                // Send using new IPlaySocket.Send(serverId, packet) signature
                 // Packet will be disposed inside IPlaySocket.Send
-                _socket.Send(targetNid, packet);
+                _socket.Send(targetServerId, packet);
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[XClientCommunicator] Send error to {targetNid}: {ex.Message}");
+                Console.Error.WriteLine($"[XClientCommunicator] Send error to {targetServerId}: {ex.Message}");
             }
         });
     }
 
     /// <inheritdoc/>
-    public void Connect(string targetNid, string address)
+    public void Connect(string targetServerId, string address)
     {
         if (!_connected.Add(address))
         {
@@ -59,17 +59,17 @@ internal sealed class XClientCommunicator : IClientCommunicator
             try
             {
                 _socket.Connect(address);
-                Console.WriteLine($"[XClientCommunicator] Connected - nid:{targetNid}, endpoint:{address}");
+                Console.WriteLine($"[XClientCommunicator] Connected - serverId:{targetServerId}, endpoint:{address}");
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[XClientCommunicator] Connect error - nid:{targetNid}, endpoint:{address}, error:{ex.Message}");
+                Console.Error.WriteLine($"[XClientCommunicator] Connect error - serverId:{targetServerId}, endpoint:{address}, error:{ex.Message}");
             }
         });
     }
 
     /// <inheritdoc/>
-    public void Disconnect(string targetNid, string address)
+    public void Disconnect(string targetServerId, string address)
     {
         if (!_connected.Contains(address))
         {
@@ -80,11 +80,11 @@ internal sealed class XClientCommunicator : IClientCommunicator
         {
             _socket.Disconnect(address);
             _connected.Remove(address);
-            Console.WriteLine($"[XClientCommunicator] Disconnected - nid:{targetNid}, endpoint:{address}");
+            Console.WriteLine($"[XClientCommunicator] Disconnected - serverId:{targetServerId}, endpoint:{address}");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[XClientCommunicator] Disconnect error - nid:{targetNid}, endpoint:{address}, error:{ex.Message}");
+            Console.Error.WriteLine($"[XClientCommunicator] Disconnect error - serverId:{targetServerId}, endpoint:{address}, error:{ex.Message}");
         }
     }
 

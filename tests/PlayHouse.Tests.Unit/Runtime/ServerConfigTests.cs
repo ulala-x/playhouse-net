@@ -12,39 +12,40 @@ public class ServerConfigTests
 {
     #region NID 생성
 
-    [Fact(DisplayName = "NID는 ServiceId:ServerId 형식으로 생성된다")]
-    public void ServerConfig_WhenCreated_GeneratesCorrectNidFormat()
+    [Fact(DisplayName = "ServerId는 문자열로 저장된다")]
+    public void ServerConfig_WhenCreated_StoresServerId()
     {
         // Given
         const ushort serviceId = 1;
-        const ushort serverId = 2;
+        const string serverId = "play-server-2";
 
         // When
         var config = new ServerConfig(serviceId, serverId, "tcp://*:5555");
 
         // Then
-        config.Nid.Should().Be("1:2");
+        config.ServerId.Should().Be("play-server-2");
+        config.ServiceId.Should().Be(1);
     }
 
-    [Fact(DisplayName = "Play 서버 NID는 1:N 형식이다")]
-    public void ServerConfig_ForPlayServer_GeneratesPlayNidFormat()
+    [Fact(DisplayName = "Play 서버는 ServiceId가 1이다")]
+    public void ServerConfig_ForPlayServer_HasCorrectServiceId()
     {
         // Given & When
-        var config = new ServerConfig(ServiceIds.Play, 1, "tcp://*:5555");
+        var config = new ServerConfig(ServiceIds.Play, "play-1", "tcp://*:5555");
 
         // Then
-        config.Nid.Should().Be("1:1");
+        config.ServerId.Should().Be("play-1");
         config.ServiceId.Should().Be(ServiceIds.Play);
     }
 
-    [Fact(DisplayName = "API 서버 NID는 2:N 형식이다")]
-    public void ServerConfig_ForApiServer_GeneratesApiNidFormat()
+    [Fact(DisplayName = "API 서버는 ServiceId가 2이다")]
+    public void ServerConfig_ForApiServer_HasCorrectServiceId()
     {
         // Given & When
-        var config = new ServerConfig(ServiceIds.Api, 3, "tcp://*:5556");
+        var config = new ServerConfig(ServiceIds.Api, "api-3", "tcp://*:5556");
 
         // Then
-        config.Nid.Should().Be("2:3");
+        config.ServerId.Should().Be("api-3");
         config.ServiceId.Should().Be(ServiceIds.Api);
     }
 
@@ -56,7 +57,7 @@ public class ServerConfigTests
     public void ServerConfig_WithDefaults_HasThirtySecondTimeout()
     {
         // Given & When
-        var config = new ServerConfig(1, 1, "tcp://*:5555");
+        var config = new ServerConfig(1, "test-1", "tcp://*:5555");
 
         // Then
         config.RequestTimeoutMs.Should().Be(30000);
@@ -66,7 +67,7 @@ public class ServerConfigTests
     public void ServerConfig_WithDefaults_HasDefaultHighWatermarks()
     {
         // Given & When
-        var config = new ServerConfig(1, 1, "tcp://*:5555");
+        var config = new ServerConfig(1, "test-1", "tcp://*:5555");
 
         // Then
         config.SendHighWatermark.Should().Be(1000);
@@ -77,7 +78,7 @@ public class ServerConfigTests
     public void ServerConfig_WithDefaults_EnablesTcpKeepalive()
     {
         // Given & When
-        var config = new ServerConfig(1, 1, "tcp://*:5555");
+        var config = new ServerConfig(1, "test-1", "tcp://*:5555");
 
         // Then
         config.TcpKeepalive.Should().BeTrue();
@@ -94,7 +95,7 @@ public class ServerConfigTests
         const int port = 5555;
 
         // When
-        var config = ServerConfig.Create(ServiceIds.Play, 1, port);
+        var config = ServerConfig.Create(ServiceIds.Play, "play-1", port);
 
         // Then
         config.BindAddress.Should().Be("tcp://*:5555");
@@ -125,7 +126,7 @@ public class ServerConfigTests
         const int customTimeout = 60000;
 
         // When
-        var config = new ServerConfig(1, 1, "tcp://*:5555", requestTimeoutMs: customTimeout);
+        var config = new ServerConfig(1, "test-1", "tcp://*:5555", requestTimeoutMs: customTimeout);
 
         // Then
         config.RequestTimeoutMs.Should().Be(customTimeout);
@@ -139,7 +140,7 @@ public class ServerConfigTests
         const int recvHwm = 3000;
 
         // When
-        var config = new ServerConfig(1, 1, "tcp://*:5555",
+        var config = new ServerConfig(1, "test-1", "tcp://*:5555",
             sendHighWatermark: sendHwm,
             receiveHighWatermark: recvHwm);
 

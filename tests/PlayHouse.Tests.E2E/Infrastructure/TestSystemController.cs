@@ -40,7 +40,7 @@ public class TestSystemController : ISystemController
     public Task<IReadOnlyList<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)
     {
         // 내 서버 정보 저장
-        _servers[serverInfo.Nid] = new ServerInfoEntry(serverInfo, DateTimeOffset.UtcNow);
+        _servers[serverInfo.ServerId] = new ServerInfoEntry(serverInfo, DateTimeOffset.UtcNow);
 
         // 만료된 서버 정리
         var expiredTime = DateTimeOffset.UtcNow - _ttl;
@@ -80,7 +80,7 @@ public class TestSystemController : ISystemController
     /// <param name="serverInfo">등록할 서버 정보.</param>
     public static void RegisterServer(IServerInfo serverInfo)
     {
-        _servers[serverInfo.Nid] = new ServerInfoEntry(serverInfo, DateTimeOffset.UtcNow);
+        _servers[serverInfo.ServerId] = new ServerInfoEntry(serverInfo, DateTimeOffset.UtcNow);
     }
 
     /// <summary>

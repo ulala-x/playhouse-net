@@ -22,11 +22,11 @@ public class ApiPlayServerFixture : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
-        // PlayServer (NID="1:1", ServiceId=1, ServerId=1)
+        // PlayServer (ServerId, ServiceId=1, ServerId=1)
         PlayServer = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15100";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
@@ -38,12 +38,12 @@ public class ApiPlayServerFixture : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // ApiServer (NID="2:1", ServiceType=Api, ServerId=1)
+        // ApiServer (ServerId, ServiceType=Api, ServerId=1)
         ApiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
                 // ServiceType.Api (=2) is default, no need to set
-                options.ServerId = 1;
+                options.ServerId = "1";
                 options.BindEndpoint = "tcp://127.0.0.1:15101";
                 options.RequestTimeoutMs = 30000;
             })

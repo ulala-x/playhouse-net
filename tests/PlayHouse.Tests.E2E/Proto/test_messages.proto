@@ -161,7 +161,7 @@ message LeaveStageReply {
 
 // SendToStage 트리거 요청 (클라이언트 → Stage A)
 message TriggerSendToStageRequest {
-    string target_nid = 1;        // Target PlayServer NID (e.g., "1:2")
+    string target_nid = 1;        // Target PlayServer ServerId (e.g., "1", "2")
     int64 target_stage_id = 2;
     string message = 3;
 }
@@ -171,7 +171,7 @@ message TriggerSendToStageReply {
 
 // RequestToStage 트리거 요청 (클라이언트 → Stage A)
 message TriggerRequestToStageRequest {
-    string target_nid = 1;        // Target PlayServer NID (e.g., "1:2")
+    string target_nid = 1;        // Target PlayServer ServerId (e.g., "1", "2")
     int64 target_stage_id = 2;
     string query = 3;
 }
@@ -247,7 +247,7 @@ message ApiPushNotify {
 
 // API 간 SendToApi 트리거 (ApiServer A → ApiServer B)
 message TriggerSendToApiServerRequest {
-    string target_api_nid = 1;  // Target ApiServer NID (e.g., "2:2")
+    string target_api_nid = 1;  // Target ApiServer ServerId (e.g., "1", "2")
     string message = 2;
 }
 message TriggerSendToApiServerReply {
@@ -256,7 +256,7 @@ message TriggerSendToApiServerReply {
 
 // API 간 RequestToApi 트리거 (ApiServer A → ApiServer B)
 message TriggerRequestToApiServerRequest {
-    string target_api_nid = 1;  // Target ApiServer NID (e.g., "2:2")
+    string target_api_nid = 1;  // Target ApiServer ServerId (e.g., "1", "2")
     string query = 2;
 }
 message TriggerRequestToApiServerReply {

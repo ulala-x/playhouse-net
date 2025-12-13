@@ -17,14 +17,9 @@ public sealed class ServerConfig
     public ushort ServiceId { get; }
 
     /// <summary>
-    /// Gets the server instance identifier within the service.
+    /// Gets the server instance identifier (unique string, e.g., "play-1", "api-seoul-1").
     /// </summary>
-    public ushort ServerId { get; }
-
-    /// <summary>
-    /// Gets the Node ID in "{ServiceId}:{ServerId}" format.
-    /// </summary>
-    public string Nid { get; }
+    public string ServerId { get; }
 
     /// <summary>
     /// Gets the bind address for NetMQ socket (e.g., "tcp://*:5555").
@@ -68,7 +63,7 @@ public sealed class ServerConfig
     /// <param name="tcpKeepalive">Enable TCP keepalive.</param>
     public ServerConfig(
         ushort serviceId,
-        ushort serverId,
+        string serverId,
         string bindAddress,
         int requestTimeoutMs = 30000,
         int sendHighWatermark = 1000,
@@ -77,7 +72,6 @@ public sealed class ServerConfig
     {
         ServiceId = serviceId;
         ServerId = serverId;
-        Nid = $"{serviceId}:{serverId}";
         BindAddress = bindAddress;
         RequestTimeoutMs = requestTimeoutMs;
         SendHighWatermark = sendHighWatermark;
@@ -92,7 +86,7 @@ public sealed class ServerConfig
     /// <param name="serverId">Server instance identifier.</param>
     /// <param name="port">Port number for binding.</param>
     /// <returns>A new ServerConfig instance.</returns>
-    public static ServerConfig Create(ushort serviceId, ushort serverId, int port)
+    public static ServerConfig Create(ushort serviceId, string serverId, int port)
     {
         return new ServerConfig(
             serviceId,

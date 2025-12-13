@@ -13,9 +13,9 @@ public sealed class CommunicatorOption
     public ushort ServiceId { get; set; }
 
     /// <summary>
-    /// 서버 인스턴스 ID.
+    /// 서버 인스턴스 ID (고유 문자열, 예: "play-1", "api-seoul-1").
     /// </summary>
-    public ushort ServerId { get; set; }
+    public string ServerId { get; set; } = string.Empty;
 
     /// <summary>
     /// NetMQ 바인드 주소 (예: "tcp://*:5000").
@@ -53,11 +53,6 @@ public sealed class CommunicatorOption
     public int DiscoveryRefreshIntervalMs { get; set; } = 3000;
 
     /// <summary>
-    /// Node ID를 생성합니다.
-    /// </summary>
-    public string GetNid() => $"{ServiceId}:{ServerId}";
-
-    /// <summary>
     /// ServerConfig를 생성합니다.
     /// </summary>
     /// <returns>ServerConfig 인스턴스.</returns>
@@ -82,8 +77,8 @@ public sealed class CommunicatorOption
         if (ServiceId == 0)
             throw new InvalidOperationException("ServiceId must be greater than 0.");
 
-        if (ServerId == 0)
-            throw new InvalidOperationException("ServerId must be greater than 0.");
+        if (string.IsNullOrEmpty(ServerId))
+            throw new InvalidOperationException("ServerId must be specified.");
 
         if (string.IsNullOrEmpty(BindEndpoint))
             throw new InvalidOperationException("BindEndpoint must be specified.");
@@ -112,7 +107,7 @@ public sealed class CommunicatorBuilder
     /// <summary>
     /// 서버 ID를 설정합니다.
     /// </summary>
-    public CommunicatorBuilder WithServerId(ushort serverId)
+    public CommunicatorBuilder WithServerId(string serverId)
     {
         _option.ServerId = serverId;
         return this;

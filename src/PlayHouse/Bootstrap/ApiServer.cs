@@ -40,11 +40,6 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     public bool IsRunning => _isRunning;
 
     /// <summary>
-    /// 서버 NID.
-    /// </summary>
-    public string Nid => _options.Nid;
-
-    /// <summary>
     /// API Sender 인터페이스.
     /// DI에 등록하여 Play Server에 요청을 보낼 때 사용합니다.
     /// </summary>
@@ -97,12 +92,12 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         _communicator.Start();
 
         // 자기 자신에게 연결 (자기 자신에게 메시지를 보내기 위해 필요)
-        _communicator.Connect(_options.Nid, _options.BindEndpoint);
+        _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
         // ApiDispatcher 생성
         _dispatcher = new ApiDispatcher(
             _options.ServiceId,
-            _options.Nid,
+            _options.ServerId,
             _requestCache,
             new CommunicatorAdapter(_communicator),
             _serviceProvider);
@@ -112,7 +107,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
             new CommunicatorAdapter(_communicator),
             _requestCache,
             _options.ServiceId,
-            _options.Nid);
+            _options.ServerId);
 
         // ServerAddressResolver 시작 (SystemController가 등록된 경우)
         if (_systemControllerType != null)
@@ -219,7 +214,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
             _communicator = communicator;
         }
 
-        public string Nid => _communicator.Nid;
+        public string ServerId => _communicator.ServerId;
 
         public void Send(string targetNid, RuntimeRoutePacket packet)
         {

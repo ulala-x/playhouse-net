@@ -33,11 +33,11 @@ public class IApiSenderTests : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
-        // PlayServer (ServiceId=1, ServerId=1, NID="1:1")
+        // PlayServer (ServiceId=1, ServerId=play-1)
         _playServer = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "play-1";
                 options.BindEndpoint = "tcp://127.0.0.1:15102"; // Fixed port for PlayServer
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
@@ -49,11 +49,11 @@ public class IApiSenderTests : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // ApiServer (ServiceType.Api=2, ServerId=1, NID="2:1")
+        // ApiServer (ServiceType.Api=2, ServerId=api-1)
         _apiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = 1;
+                options.ServerId = "api-1";
                 options.BindEndpoint = "tcp://127.0.0.1:15103"; // Fixed port for ApiServer
                 options.RequestTimeoutMs = 30000;
             })
@@ -102,7 +102,7 @@ public class IApiSenderTests : IAsyncLifetime
 
         // When - ApiServer에서 PlayServer로 CreateStage 요청
         var result = await _apiServer!.ApiSender!.CreateStage(
-            "1:1", // PlayServer NID
+            "play-1", // PlayServer ServerId
             stageType,
             stageId,
             CPacket.Empty("CreateStagePayload"));
@@ -148,7 +148,7 @@ public class IApiSenderTests : IAsyncLifetime
 
         // When - 존재하지 않는 Stage 조회/생성
         var result = await _apiServer!.ApiSender!.GetOrCreateStage(
-            "1:1", // PlayServer NID
+            "play-1", // PlayServer ServerId
             stageType,
             stageId,
             CPacket.Empty("CreatePayload"),
@@ -187,7 +187,7 @@ public class IApiSenderTests : IAsyncLifetime
         const string stageType = "TestStage";
 
         var createResult = await _apiServer!.ApiSender!.CreateStage(
-            "1:1",
+            "play-1",
             stageType,
             stageId,
             CPacket.Empty("CreatePayload"));
@@ -198,7 +198,7 @@ public class IApiSenderTests : IAsyncLifetime
 
         // When - 동일 StageId로 GetOrCreateStage 호출
         var result = await _apiServer.ApiSender.GetOrCreateStage(
-            "1:1",
+            "play-1",
             stageType,
             stageId,
             CPacket.Empty("CreatePayload2"),

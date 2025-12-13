@@ -12,16 +12,16 @@ public interface IClientCommunicator
     /// <summary>
     /// Sends a packet to the specified target.
     /// </summary>
-    /// <param name="targetNid">Target node ID.</param>
+    /// <param name="targetServerId">Target server ID.</param>
     /// <param name="packet">Packet to send.</param>
-    void Send(string targetNid, RuntimeRoutePacket packet);
+    void Send(string targetServerId, RuntimeRoutePacket packet);
 
     /// <summary>
     /// Connects to a remote server.
     /// </summary>
-    /// <param name="targetNid">Target node ID.</param>
+    /// <param name="targetServerId">Target server ID.</param>
     /// <param name="address">Connection address.</param>
-    void Connect(string targetNid, string address);
+    void Connect(string targetServerId, string address);
 
     /// <summary>
     /// Communicates with remote servers. Called from external thread.
@@ -31,9 +31,9 @@ public interface IClientCommunicator
     /// <summary>
     /// Disconnects from a remote server.
     /// </summary>
-    /// <param name="targetNid">Target node ID.</param>
+    /// <param name="targetServerId">Target server ID.</param>
     /// <param name="endpoint">Connection endpoint.</param>
-    void Disconnect(string targetNid, string endpoint);
+    void Disconnect(string targetServerId, string endpoint);
 
     /// <summary>
     /// Stops the communicator.
@@ -70,9 +70,9 @@ public interface IServerCommunicator
 public interface ICommunicator : IClientCommunicator, IServerCommunicator, IDisposable
 {
     /// <summary>
-    /// Gets the NID of this communicator.
+    /// Gets the ServerId of this communicator.
     /// </summary>
-    string Nid { get; }
+    string ServerId { get; }
 
     /// <summary>
     /// Gets whether the communicator is running.
