@@ -6,6 +6,7 @@ using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
 using PlayHouse.Tests.E2E.Infrastructure;
+using PlayHouse.Tests.E2E.Infrastructure.Fixtures;
 using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
 using ClientPacket = PlayHouse.Connector.Protocol.IPacket;
@@ -19,41 +20,26 @@ namespace PlayHouse.Tests.E2E.ConnectorTests;
 /// - Connector 공개 API만 사용하여 검증
 /// - 서버 내부 상태는 검증하지 않음 (통합테스트로 이동)
 /// </summary>
-[Collection("E2E Connection Tests")]
+[Collection("E2E Connector Tests")]
 public class ConnectionTests : IAsyncLifetime
 {
-    private PlayServer? _playServer;
+    private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
     private readonly List<bool> _connectResults = new();
     private int _disconnectCount;
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
-    private const long DefaultStageId = 12345L;
-
-    public ConnectionTests()
+    public ConnectionTests(SinglePlayServerFixture fixture)
     {
+        _fixture = fixture;
         _connector = new ClientConnector();
         _connector.OnConnect += result => _connectResults.Add(result);
         _connector.OnDisconnect += () => Interlocked.Increment(ref _disconnectCount);
     }
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
     {
-        _playServer = new PlayServerBootstrap()
-            .Configure(options =>
-            {
-                options.ServerId = 1;
-                options.BindEndpoint = "tcp://127.0.0.1:0";
-                options.TcpPort = 0;
-                options.RequestTimeoutMs = 30000;
-                options.AuthenticateMessageId = "AuthenticateRequest";
-                // DefaultStageType 설정하지 않음 (인증만 처리)
-            })
-            .Build();
-
-        await _playServer.StartAsync();
-
         // 콜백 자동 처리 타이머 시작
         _callbackTimer = new Timer(_ =>
         {
@@ -62,18 +48,17 @@ public class ConnectionTests : IAsyncLifetime
                 _connector.MainThreadAction();
             }
         }, null, 0, 20); // 20ms 간격
+
+        return Task.CompletedTask;
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
         _callbackTimer?.Dispose();
         _callbackTimer = null;
 
         _connector.Disconnect();
-        if (_playServer != null)
-        {
-            await _playServer.DisposeAsync();
-        }
+        return Task.CompletedTask;
     }
 
     #region 6.1.1 연결 테스트
@@ -83,9 +68,10 @@ public class ConnectionTests : IAsyncLifetime
     {
         // Given
         _connector.Init(new ConnectorConfig());
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When
-        var result = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, DefaultStageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
         await Task.Delay(100);
 
         // Then - E2E 검증: Connector 공개 API만 사용
@@ -99,9 +85,10 @@ public class ConnectionTests : IAsyncLifetime
     {
         // Given
         _connector.Init(new ConnectorConfig());
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When - 존재하지 않는 포트로 연결 시도
-        var result = await _connector.ConnectAsync("127.0.0.1", 59999, DefaultStageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", 59999, stageId);
         await Task.Delay(100);
 
         // Then - E2E 검증
@@ -115,9 +102,10 @@ public class ConnectionTests : IAsyncLifetime
     {
         // Given
         _connector.Init(new ConnectorConfig());
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When
-        var result = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, DefaultStageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
 
         // Then - E2E 검증
         result.Should().BeTrue("await ConnectAsync()가 true를 반환해야 함");
@@ -129,9 +117,10 @@ public class ConnectionTests : IAsyncLifetime
     {
         // Given
         _connector.Init(new ConnectorConfig());
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When
-        var result = await _connector.ConnectAsync("127.0.0.1", 59999, DefaultStageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", 59999, stageId);
 
         // Then - E2E 검증
         result.Should().BeFalse("await ConnectAsync()가 false를 반환해야 함");
@@ -153,6 +142,9 @@ public class ConnectionTests : IAsyncLifetime
         // Note: 클라이언트 주도 해제 시 OnDisconnect 콜백은 호출되지 않을 수 있음
     }
 
+    // Step 5에서 ServerLifecycleTests로 이동 예정
+    // 이 테스트는 서버를 종료하므로 다른 테스트에 영향을 주어 Fixture 패턴과 호환되지 않음
+    /*
     [Fact(DisplayName = "서버 연결 해제 - OnDisconnect 콜백 발생")]
     public async Task ServerDisconnect_OnDisconnectCallbackInvoked()
     {
@@ -161,7 +153,7 @@ public class ConnectionTests : IAsyncLifetime
         _disconnectCount = 0;
 
         // When - 서버가 연결 종료
-        await _playServer!.StopAsync();
+        await _fixture.PlayServer!.StopAsync();
 
         // 콜백 대기
         var timeout = DateTime.UtcNow.AddSeconds(5);
@@ -173,6 +165,7 @@ public class ConnectionTests : IAsyncLifetime
         // Then - E2E 검증
         _disconnectCount.Should().BeGreaterOrEqualTo(1, "OnDisconnect 콜백이 호출되어야 함");
     }
+    */
 
     #endregion
 
@@ -229,17 +222,20 @@ public class ConnectionTests : IAsyncLifetime
 
     #region Helper Methods
 
-    private async Task ConnectOnlyAsync(long stageId = 12345L)
+    private async Task ConnectOnlyAsync()
     {
+        // 고유 StageId 생성
+        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
+
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
     }
 
-    private async Task ConnectToServerAsync(long stageId = 12345L)
+    private async Task ConnectToServerAsync()
     {
-        await ConnectOnlyAsync(stageId);
+        await ConnectOnlyAsync();
 
         // 인증 수행
         using var authPacket = Packet.Empty("AuthenticateRequest");

@@ -398,8 +398,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
             {
                 try
                 {
-                    // XActorSender 생성
-                    var actorSender = new XActorSender(_options.Nid, session.SessionId, _options.Nid, baseStage);
+                    // XActorSender 생성 (transport session 포함하여 직접 클라이언트 통신 가능)
+                    var actorSender = new XActorSender(_options.Nid, session.SessionId, _options.Nid, baseStage, session);
 
                     // IActor 생성
                     BaseActor actor;

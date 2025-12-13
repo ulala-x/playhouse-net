@@ -207,6 +207,21 @@ internal sealed class XStageSender : XSender, IStageSender
     /// <inheritdoc/>
     public void SendToClient(string sessionNid, long sid, IPacket packet)
     {
+        // For directly connected clients, use transport handler
+        if (sid > 0 && _clientReplyHandler != null)
+        {
+            // Client push message - msgSeq = 0 (not a response to a request)
+            _ = _clientReplyHandler.SendClientReplyAsync(
+                sid,
+                packet.MsgId,
+                0,  // msgSeq = 0 for push messages
+                StageId,
+                0,  // errorCode = 0
+                packet.Payload.Data);
+            return;
+        }
+
+        // Server-to-server communication (e.g., through API server)
         var header = new RouteHeader
         {
             ServiceId = ServiceId,
