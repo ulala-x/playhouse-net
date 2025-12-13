@@ -2,12 +2,14 @@
 
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
+using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ClientTransport.Tcp;
@@ -26,6 +28,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
 {
     private readonly PlayServerOption _options;
     private readonly PlayProducer _producer;
+    private readonly Type? _systemControllerType;
     private readonly ServerConfig _serverConfig;
     private readonly ILogger? _logger;
 
@@ -33,6 +36,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     private PlayDispatcher? _dispatcher;
     private RequestCache? _requestCache;
     private ITransportServer? _transportServer;
+    private ServerAddressResolver? _addressResolver;
     private CancellationTokenSource? _cts;
 
     private bool _isRunning;
@@ -84,10 +88,11 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     /// </summary>
     public ITransportServer? TransportServer => _transportServer;
 
-    internal PlayServer(PlayServerOption options, PlayProducer producer, ILogger? logger = null)
+    internal PlayServer(PlayServerOption options, PlayProducer producer, Type? systemControllerType, ILogger? logger = null)
     {
         _options = options;
         _producer = producer;
+        _systemControllerType = systemControllerType;
         _logger = logger;
 
         _serverConfig = new ServerConfig(
@@ -127,6 +132,30 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         // Transport 서버 빌드 및 시작
         _transportServer = BuildTransportServer();
         await _transportServer.StartAsync(_cts.Token);
+
+        // ServerAddressResolver 시작 (SystemController가 등록된 경우)
+        if (_systemControllerType != null)
+        {
+            var systemController = Activator.CreateInstance(_systemControllerType) as ISystemController
+                ?? throw new InvalidOperationException($"Failed to create SystemController instance: {_systemControllerType.Name}");
+
+            var serverInfoCenter = new XServerInfoCenter();
+
+            var myServerInfo = new XServerInfo(
+                _options.ServiceId,
+                _options.ServerId,
+                _options.BindEndpoint,
+                ServerState.Running);
+
+            _addressResolver = new ServerAddressResolver(
+                myServerInfo,
+                systemController,
+                serverInfoCenter,
+                _communicator,
+                TimeSpan.FromSeconds(3));
+
+            _addressResolver.Start();
+        }
 
         _isRunning = true;
         _logger?.LogInformation("PlayServer started: Nid={Nid}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
@@ -180,10 +209,14 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     }
 
     /// <summary>
-    /// 다른 서버에 연결합니다 (NetMQ Router-Router 패턴).
+    /// 다른 서버에 수동으로 연결합니다 (NetMQ Router-Router 패턴).
     /// </summary>
     /// <param name="targetNid">대상 서버 NID (예: "2:1")</param>
     /// <param name="address">대상 서버 주소 (예: "tcp://127.0.0.1:15101")</param>
+    /// <remarks>
+    /// UseSystemController()를 사용한 경우 ServerAddressResolver가 자동으로 서버를 연결하므로
+    /// 이 메서드를 호출할 필요가 없습니다. 수동 연결이 필요한 경우에만 사용하세요.
+    /// </remarks>
     public void Connect(string targetNid, string address)
     {
         _communicator?.Connect(targetNid, address);
@@ -198,6 +231,9 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
 
         _isRunning = false;
         _cts?.Cancel();
+
+        _addressResolver?.Stop();
+        _addressResolver?.Dispose();
 
         if (_transportServer != null)
         {

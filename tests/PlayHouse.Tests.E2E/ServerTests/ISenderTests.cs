@@ -50,6 +50,7 @@ public class ISenderTests : IAsyncLifetime
     {
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
+        TestSystemController.Reset();
 
         // PlayServer A (NID="1:1", ServerId=1)
         _playServerA = new PlayServerBootstrap()
@@ -64,6 +65,7 @@ public class ISenderTests : IAsyncLifetime
             })
             .UseStage<TestStageImpl>("TestStage")
             .UseActor<TestActorImpl>()
+            .UseSystemController<TestSystemController>()
             .Build();
 
         // PlayServer B (NID="1:2", ServerId=2)
@@ -79,18 +81,14 @@ public class ISenderTests : IAsyncLifetime
             })
             .UseStage<TestStageImpl>("TestStage")
             .UseActor<TestActorImpl>()
+            .UseSystemController<TestSystemController>()
             .Build();
 
         await _playServerA.StartAsync();
         await _playServerB.StartAsync();
-        await Task.Delay(200); // 서버 초기화 대기
 
-        // 양방향 연결 설정 (PlayServer A ↔ PlayServer B)
-        // PlayServer A → PlayServer B
-        _playServerA.Connect("1:2", "tcp://127.0.0.1:15201");
-        // PlayServer B → PlayServer A
-        _playServerB.Connect("1:1", "tcp://127.0.0.1:15200");
-        await Task.Delay(1000); // Connection stabilization
+        // ServerAddressResolver가 서버를 자동으로 연결할 시간을 줌
+        await Task.Delay(5000);
 
         _callbackTimer = new Timer(_ =>
         {

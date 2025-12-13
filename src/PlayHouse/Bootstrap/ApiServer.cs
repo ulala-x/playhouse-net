@@ -2,11 +2,13 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Abstractions.Api;
+using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Api;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Bootstrap;
@@ -19,12 +21,14 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 {
     private readonly ApiServerOption _options;
     private readonly List<Type> _controllerTypes;
+    private readonly Type? _systemControllerType;
     private readonly ServerConfig _serverConfig;
 
     private PlayCommunicator? _communicator;
     private ApiDispatcher? _dispatcher;
     private RequestCache? _requestCache;
     private ServiceProvider? _serviceProvider;
+    private ServerAddressResolver? _addressResolver;
     private CancellationTokenSource? _cts;
 
     private bool _isRunning;
@@ -46,10 +50,11 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     /// </summary>
     public IApiSender? ApiSender { get; private set; }
 
-    internal ApiServer(ApiServerOption options, List<Type> controllerTypes)
+    internal ApiServer(ApiServerOption options, List<Type> controllerTypes, Type? systemControllerType)
     {
         _options = options;
         _controllerTypes = controllerTypes;
+        _systemControllerType = systemControllerType;
 
         _serverConfig = new ServerConfig(
             options.ServiceId,
@@ -75,6 +80,13 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         {
             services.AddTransient(controllerType);
         }
+
+        // SystemController 등록
+        if (_systemControllerType != null)
+        {
+            services.AddSingleton(typeof(ISystemController), _systemControllerType);
+        }
+
         _serviceProvider = services.BuildServiceProvider();
 
         // NetMQ Communicator 시작
@@ -98,6 +110,28 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
             _options.ServiceId,
             _options.Nid);
 
+        // ServerAddressResolver 시작 (SystemController가 등록된 경우)
+        if (_systemControllerType != null)
+        {
+            var systemController = _serviceProvider.GetRequiredService<ISystemController>();
+            var serverInfoCenter = new XServerInfoCenter();
+
+            var myServerInfo = new XServerInfo(
+                _options.ServiceId,
+                _options.ServerId,
+                _options.BindEndpoint,
+                ServerState.Running);
+
+            _addressResolver = new ServerAddressResolver(
+                myServerInfo,
+                systemController,
+                serverInfoCenter,
+                _communicator,
+                TimeSpan.FromSeconds(3));
+
+            _addressResolver.Start();
+        }
+
         _isRunning = true;
 
         await Task.Delay(50); // 서버 초기화 대기
@@ -113,6 +147,8 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         _isRunning = false;
         _cts?.Cancel();
 
+        _addressResolver?.Stop();
+        _addressResolver?.Dispose();
         _communicator?.Stop();
         _dispatcher?.Dispose();
         _requestCache?.CancelAll();
@@ -125,13 +161,17 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     }
 
     /// <summary>
-    /// Play Server에 연결합니다.
+    /// 다른 서버에 수동으로 연결합니다.
     /// </summary>
-    /// <param name="playNid">Play Server NID (예: "1:1")</param>
-    /// <param name="address">Play Server 주소 (예: "tcp://localhost:5000")</param>
-    public void ConnectToPlayServer(string playNid, string address)
+    /// <param name="targetNid">대상 서버 NID (예: "2:2" for ApiServer, "1:1" for PlayServer)</param>
+    /// <param name="address">대상 서버 주소 (예: "tcp://localhost:5000")</param>
+    /// <remarks>
+    /// UseSystemController()를 사용한 경우 ServerAddressResolver가 자동으로 서버를 연결하므로
+    /// 이 메서드를 호출할 필요가 없습니다. 수동 연결이 필요한 경우에만 사용하세요.
+    /// </remarks>
+    public void Connect(string targetNid, string address)
     {
-        _communicator?.Connect(playNid, address);
+        _communicator?.Connect(targetNid, address);
     }
 
     /// <inheritdoc/>
