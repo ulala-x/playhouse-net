@@ -204,12 +204,11 @@ public class ConnectionTests : IAsyncLifetime
             authCompleted.Set();
         });
 
-        // 콜백 대기
+        // 콜백 대기 (Timer가 자동으로 MainThreadAction 호출)
         var timeout = DateTime.UtcNow.AddSeconds(5);
         while (!authCompleted.IsSet && DateTime.UtcNow < timeout)
         {
             await Task.Delay(50);
-            _connector.MainThreadAction();
         }
 
         // Then - E2E 검증

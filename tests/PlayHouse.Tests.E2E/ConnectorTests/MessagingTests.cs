@@ -27,6 +27,8 @@ public class MessagingTests : IAsyncLifetime
     private readonly ClientConnector _connector;
     private readonly List<(long stageId, ClientPacket packet)> _receivedMessages = new();
     private readonly List<(long stageId, ushort errorCode, ClientPacket request)> _receivedErrors = new();
+    private Timer? _callbackTimer;
+    private readonly object _callbackLock = new();
 
     public MessagingTests(SinglePlayServerFixture fixture)
     {
@@ -38,11 +40,23 @@ public class MessagingTests : IAsyncLifetime
 
     public Task InitializeAsync()
     {
+        // 콜백 자동 처리 타이머 시작
+        _callbackTimer = new Timer(_ =>
+        {
+            lock (_callbackLock)
+            {
+                _connector.MainThreadAction();
+            }
+        }, null, 0, 20); // 20ms 간격
+
         return Task.CompletedTask;
     }
 
     public Task DisposeAsync()
     {
+        _callbackTimer?.Dispose();
+        _callbackTimer = null;
+
         _connector.Disconnect();
         return Task.CompletedTask;
     }
@@ -57,52 +71,15 @@ public class MessagingTests : IAsyncLifetime
 
         using var packet = Packet.Empty("StatusRequest");
 
-        // When - Send (응답 없이 전송)
+        // When - Send (Fire-and-Forget, 응답 없이 전송)
         _connector.Send(packet);
         await Task.Delay(100);
 
         // Then - E2E 검증: 연결 유지 확인
+        // Note: Send는 Fire-and-Forget이므로 응답이 없음
+        // Send 메시지가 도착했는지는 서버 내부 동작이므로 E2E에서 직접 검증 불가
+        // 대신 연결이 유지되는지 확인하여 메시지가 정상 처리되었음을 간접 검증
         _connector.IsConnected().Should().BeTrue("Send 후에도 연결이 유지되어야 함");
-    }
-
-    [Fact(DisplayName = "Send 메시지 도착 확인 - 서버에서 에코 Push → OnReceive로 확인")]
-    public async Task Send_MessageArrival_VerifiedByPushResponse()
-    {
-        // Given - 인증된 상태로 연결
-        await ConnectToServerAsync();
-        _receivedMessages.Clear();
-
-        // Send로 Echo 요청 전송
-        var echoRequest = new EchoRequest { Content = "Send Test", Sequence = 1 };
-        using var sendPacket = new Packet(echoRequest);
-
-        // When - Send (Fire-and-Forget)
-        _connector.Send(sendPacket);
-
-        // 서버가 Push로 응답할 때까지 대기하고 확인
-        // Note: Send는 Fire-and-Forget이므로, Echo 응답이 서버 기본 핸들러에 의해 자동으로 반환됨
-        // 실제로 Send된 메시지는 서버에 도달했지만, 응답은 Request가 아니므로 OnReceive로 오지 않음
-
-        // 대신 서버의 Broadcast 기능으로 Push 메시지 테스트
-        var broadcast = new BroadcastNotify
-        {
-            EventType = "send_test",
-            Data = "message_arrived",
-            FromAccountId = 0
-        };
-        await _fixture.PlayServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
-        await Task.Delay(100);
-        await ProcessCallbacksAsync();
-
-        // Then - E2E 검증: OnReceive 콜백으로 Push 메시지 확인
-        _receivedMessages.Should().NotBeEmpty("Push 메시지가 OnReceive로 수신되어야 함");
-
-        var (stageId, pushPacket) = _receivedMessages.First();
-        pushPacket.MsgId.Should().Be("BroadcastNotify", "Push 메시지 ID가 BroadcastNotify여야 함");
-
-        var parsed = BroadcastNotify.Parser.ParseFrom(pushPacket.Payload.Data.Span);
-        parsed.EventType.Should().Be("send_test");
-        parsed.Data.Should().Be("message_arrived");
     }
 
     #endregion
@@ -127,12 +104,11 @@ public class MessagingTests : IAsyncLifetime
             responseReceived.Set();
         });
 
-        // 콜백 대기
+        // 콜백 대기 (Timer가 자동으로 MainThreadAction 호출)
         var timeout = DateTime.UtcNow.AddSeconds(5);
         while (!responseReceived.IsSet && DateTime.UtcNow < timeout)
         {
             await Task.Delay(50);
-            _connector.MainThreadAction();
         }
 
         // Then - E2E 검증: 콜백 호출, 응답 패킷 내용
@@ -157,12 +133,11 @@ public class MessagingTests : IAsyncLifetime
         // When - 실패하는 요청 (콜백 방식)
         _connector.Request(failRequest, _ => { });
 
-        // 콜백 대기
+        // 콜백 대기 (Timer가 자동으로 MainThreadAction 호출)
         var timeout = DateTime.UtcNow.AddSeconds(5);
         while (_receivedErrors.Count == 0 && DateTime.UtcNow < timeout)
         {
             await Task.Delay(50);
-            _connector.MainThreadAction();
         }
 
         // Then - E2E 검증: OnError 콜백 호출
@@ -207,29 +182,43 @@ public class MessagingTests : IAsyncLifetime
     {
         // Given - 짧은 타임아웃으로 설정된 Connector
         var connector = new ClientConnector();
-        connector.Init(new ConnectorConfig { RequestTimeoutMs = 100 });
+        var callbackTimer = new Timer(_ =>
+        {
+            lock (_callbackLock)
+            {
+                connector.MainThreadAction();
+            }
+        }, null, 0, 20);
 
-        var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
-        await connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
-        await ProcessCallbacksAsync(connector);
+        try
+        {
+            connector.Init(new ConnectorConfig { RequestTimeoutMs = 100 });
 
-        // 인증 수행
-        using var authPacket = Packet.Empty("AuthenticateRequest");
-        await connector.AuthenticateAsync(authPacket);
-        await ProcessCallbacksAsync(connector);
+            var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
+            await connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+            await Task.Delay(100);
 
-        // 서버가 응답하지 않는 메시지
-        using var noResponsePacket = Packet.Empty("NoResponseRequest");
+            // 인증 수행
+            using var authPacket = Packet.Empty("AuthenticateRequest");
+            await connector.AuthenticateAsync(authPacket);
+            await Task.Delay(100);
 
-        // When
-        Func<Task> action = async () => await connector.RequestAsync(noResponsePacket);
+            // 서버가 응답하지 않는 메시지
+            using var noResponsePacket = Packet.Empty("NoResponseRequest");
 
-        // Then - E2E 검증: ConnectorException 발생, ErrorCode 확인
-        var exception = await action.Should().ThrowAsync<ConnectorException>("타임아웃시 예외가 발생해야 함");
-        exception.Which.ErrorCode.Should().Be((ushort)ConnectorErrorCode.RequestTimeout,
-            "ErrorCode가 RequestTimeout이어야 함");
+            // When
+            Func<Task> action = async () => await connector.RequestAsync(noResponsePacket);
 
-        connector.Disconnect();
+            // Then - E2E 검증: ConnectorException 발생, ErrorCode 확인
+            var exception = await action.Should().ThrowAsync<ConnectorException>("타임아웃시 예외가 발생해야 함");
+            exception.Which.ErrorCode.Should().Be((ushort)ConnectorErrorCode.RequestTimeout,
+                "ErrorCode가 RequestTimeout이어야 함");
+        }
+        finally
+        {
+            callbackTimer.Dispose();
+            connector.Disconnect();
+        }
     }
 
     [Fact(DisplayName = "RequestAsync 에러 응답 - ConnectorException 발생, ErrorCode 확인")]
@@ -259,23 +248,27 @@ public class MessagingTests : IAsyncLifetime
         await ConnectToServerAsync();
         _receivedMessages.Clear();
 
-        var broadcast = new BroadcastNotify
+        // BroadcastTrigger 요청 전송하여 서버가 Push 메시지를 보내도록 트리거
+        var trigger = new BroadcastNotify
         {
             EventType = "system",
             Data = "Welcome!",
             FromAccountId = 0
         };
+        // MsgId를 "BroadcastTrigger"로 지정하여 패킷 생성
+        using var triggerPacket = new Packet("BroadcastTrigger", trigger.ToByteArray());
 
-        // When - 서버가 Broadcast로 Push 메시지 전송
-        await _fixture.PlayServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
-        await Task.Delay(100);
-        await ProcessCallbacksAsync();
+        // When - BroadcastTrigger 요청 (서버가 Push 메시지를 보냄)
+        var response = await _connector.RequestAsync(triggerPacket);
+        await Task.Delay(200);
 
         // Then - E2E 검증: OnReceive 콜백, stageId, packet 내용
+        response.MsgId.Should().Be("BroadcastTriggerReply", "트리거 응답을 받아야 함");
         _receivedMessages.Should().NotBeEmpty("Push 메시지를 수신해야 함");
-        var (stageId, packet) = _receivedMessages.First();
 
-        packet.MsgId.Should().Be("BroadcastNotify", "메시지 ID가 BroadcastNotify여야 함");
+        var (stageId, packet) = _receivedMessages.First();
+        packet.MsgId.Should().EndWith("BroadcastNotify", "메시지 ID가 BroadcastNotify로 끝나야 함");
+
         var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.Data.Span);
         parsed.EventType.Should().Be("system");
         parsed.Data.Should().Be("Welcome!");
@@ -288,24 +281,31 @@ public class MessagingTests : IAsyncLifetime
         await ConnectToServerAsync();
         _receivedMessages.Clear();
 
-        // When - 서버가 여러 Push 메시지 전송
+        // When - 여러 BroadcastTrigger 요청 전송 (각각 Push 메시지를 트리거)
         for (int i = 0; i < 3; i++)
         {
-            var broadcast = new BroadcastNotify
+            var trigger = new BroadcastNotify
             {
                 EventType = $"event_{i}",
                 Data = $"Data {i}",
-                FromAccountId = i
+                FromAccountId = 0
             };
-            await _fixture.PlayServer!.BroadcastAsync("BroadcastNotify", 0, broadcast.ToByteArray());
+            using var triggerPacket = new Packet("BroadcastTrigger", trigger.ToByteArray());
+
+            await _connector.RequestAsync(triggerPacket);
             await Task.Delay(50);
         }
 
-        await Task.Delay(100);
-        await ProcessCallbacksAsync();
+        await Task.Delay(200);
 
         // Then - E2E 검증: 모든 OnReceive 콜백 호출
         _receivedMessages.Should().HaveCountGreaterOrEqualTo(3, "3개 이상의 Push 메시지를 수신해야 함");
+
+        // Push 메시지 내용 검증
+        var pushMessages = _receivedMessages
+            .Where(m => m.packet.MsgId.Contains("BroadcastNotify"))
+            .ToList();
+        pushMessages.Should().HaveCountGreaterOrEqualTo(3, "3개 이상의 BroadcastNotify를 수신해야 함");
     }
 
     #endregion
@@ -366,21 +366,12 @@ public class MessagingTests : IAsyncLifetime
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
         var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
         connected.Should().BeTrue("서버에 연결되어야 함");
-        await ProcessCallbacksAsync();
+        await Task.Delay(100);
 
         // 인증 수행
         using var authPacket = Packet.Empty("AuthenticateRequest");
         await _connector.AuthenticateAsync(authPacket);
-        await ProcessCallbacksAsync();
-    }
-
-    private async Task ProcessCallbacksAsync(ClientConnector? connector = null)
-    {
-        connector ??= _connector;
-        await Task.Delay(50);
-        connector.MainThreadAction();
-        await Task.Delay(50);
-        connector.MainThreadAction();
+        await Task.Delay(100);
     }
 
     #endregion

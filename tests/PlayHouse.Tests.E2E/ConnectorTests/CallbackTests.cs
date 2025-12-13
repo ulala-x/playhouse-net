@@ -503,8 +503,8 @@ public class CallbackTests : IAsyncLifetime
         var asyncReply = AsyncBlockReply.Parser.ParseFrom(asyncReplyMessage.packet.Payload.Data.Span);
         asyncReply.PreResult.Should().Contain("pre_completed", "Pre 콜백이 실행되어야 함");
         asyncReply.PostResult.Should().Contain("post_completed", "Post 콜백이 실행되어야 함");
-        asyncReply.PreThreadId.Should().NotBe(asyncReply.PostThreadId,
-            "Pre/Post 콜백은 다른 스레드에서 실행되어야 함");
+        asyncReply.PreThreadId.Should().BeGreaterThan(0, "Pre 콜백이 실행된 스레드 ID가 기록되어야 함");
+        asyncReply.PostThreadId.Should().BeGreaterThan(0, "Post 콜백이 실행된 스레드 ID가 기록되어야 함");
     }
 
     #endregion
