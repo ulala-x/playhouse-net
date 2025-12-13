@@ -7,7 +7,7 @@ using PlayHouse.Tests.E2E.Infrastructure;
 using PlayHouse.Tests.E2E.Proto;
 using Xunit;
 
-namespace PlayHouse.Tests.E2E.ServerTests;
+namespace PlayHouse.Tests.E2E.Api;
 
 /// <summary>
 /// IApiSender E2E 테스트

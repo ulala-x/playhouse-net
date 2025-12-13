@@ -7,7 +7,7 @@ using PlayHouse.Tests.E2E.Infrastructure;
 using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
 
-namespace PlayHouse.Tests.E2E.ConnectorTests;
+namespace PlayHouse.Tests.E2E.Connector;
 
 /// <summary>
 /// 서버 생명주기 테스트.

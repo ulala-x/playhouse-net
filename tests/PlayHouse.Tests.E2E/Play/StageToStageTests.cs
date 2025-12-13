@@ -10,7 +10,7 @@ using Xunit;
 using ClientConnector = PlayHouse.Connector.Connector;
 using ClientPacket = PlayHouse.Connector.Protocol.IPacket;
 
-namespace PlayHouse.Tests.E2E.ServerTests;
+namespace PlayHouse.Tests.E2E.Play;
 
 /// <summary>
 /// ISender Stage간 통신 E2E 테스트
