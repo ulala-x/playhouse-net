@@ -140,7 +140,7 @@ internal sealed class NetMqPlaySocket : IPlaySocket
         ThrowIfDisposed();
 
         var message = new NetMQMessage();
-        if (_serverSocket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(1), ref message))
+        if (_serverSocket.TryReceiveMultipartMessage(TimeSpan.FromMilliseconds(10), ref message))
         {
             if (message.FrameCount < 3)
             {
