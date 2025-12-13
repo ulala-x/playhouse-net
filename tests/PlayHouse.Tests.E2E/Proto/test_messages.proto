@@ -161,8 +161,9 @@ message LeaveStageReply {
 
 // SendToStage 트리거 요청 (클라이언트 → Stage A)
 message TriggerSendToStageRequest {
-    int64 target_stage_id = 1;
-    string message = 2;
+    string target_nid = 1;        // Target PlayServer NID (e.g., "1:2")
+    int64 target_stage_id = 2;
+    string message = 3;
 }
 message TriggerSendToStageReply {
     bool success = 1;
@@ -170,8 +171,9 @@ message TriggerSendToStageReply {
 
 // RequestToStage 트리거 요청 (클라이언트 → Stage A)
 message TriggerRequestToStageRequest {
-    int64 target_stage_id = 1;
-    string query = 2;
+    string target_nid = 1;        // Target PlayServer NID (e.g., "1:2")
+    int64 target_stage_id = 2;
+    string query = 3;
 }
 message TriggerRequestToStageReply {
     string response = 1;
