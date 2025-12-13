@@ -46,8 +46,8 @@ public class HandlerRegisterTests
         _register.Add<TestMessageType>(handler);
 
         // Then (결과)
-        var expectedKey = nameof(TestMessageType);
-        _handlers.Should().ContainKey(expectedKey, "타입 이름이 키로 사용되어야 함");
+        var expectedKey = typeof(TestMessageType).FullName;
+        _handlers.Should().ContainKey(expectedKey!, "타입 FullName이 키로 사용되어야 함");
     }
 
     [Fact(DisplayName = "Add - 중복 등록 시 예외를 발생한다")]
