@@ -1,5 +1,5 @@
 using PlayHouse.Bootstrap;
-using PlayHouse.Tests.E2E.Infrastructure;
+using PlayHouse.Tests.Integration.Infrastructure;
 
 namespace PlayHouse.Tests.Performance.Infrastructure;
 

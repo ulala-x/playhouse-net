@@ -4,7 +4,7 @@ using Google.Protobuf;
 using PlayHouse.Connector.Protocol;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Runtime.ServerMesh.Message;
-using PlayHouse.Tests.E2E.Proto;
+using PlayHouse.Tests.Integration.Proto;
 
 namespace PlayHouse.Tests.Performance.Benchmarks;
 

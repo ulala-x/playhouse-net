@@ -5,8 +5,8 @@ using BenchmarkDotNet.Order;
 using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
-using PlayHouse.Tests.E2E.Infrastructure;
-using PlayHouse.Tests.E2E.Proto;
+using PlayHouse.Tests.Integration.Infrastructure;
+using PlayHouse.Tests.Integration.Proto;
 using ClientConnector = PlayHouse.Connector.Connector;
 using ClientPacket = PlayHouse.Connector.Protocol.Packet;
 

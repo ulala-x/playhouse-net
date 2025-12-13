@@ -21,17 +21,17 @@
     <ProjectReference Include="..\..\connector\PlayHouse.Connector\PlayHouse.Connector.csproj" />
   </ItemGroup>
 
-  <!-- E2E 프로젝트의 Infrastructure 파일 참조 -->
+  <!-- Integration 프로젝트의 Infrastructure 파일 참조 -->
   <ItemGroup>
-    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestActorImpl.cs" Link="Infrastructure\E2E\TestActorImpl.cs" />
-    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestStageImpl.cs" Link="Infrastructure\E2E\TestStageImpl.cs" />
-    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestSystemController.cs" Link="Infrastructure\E2E\TestSystemController.cs" />
-    <Compile Include="..\PlayHouse.Tests.E2E\Infrastructure\TestApiController.cs" Link="Infrastructure\E2E\TestApiController.cs" />
+    <Compile Include="..\PlayHouse.Tests.Integration\Infrastructure\TestActorImpl.cs" Link="Infrastructure\Integration\TestActorImpl.cs" />
+    <Compile Include="..\PlayHouse.Tests.Integration\Infrastructure\TestStageImpl.cs" Link="Infrastructure\Integration\TestStageImpl.cs" />
+    <Compile Include="..\PlayHouse.Tests.Integration\Infrastructure\TestSystemController.cs" Link="Infrastructure\Integration\TestSystemController.cs" />
+    <Compile Include="..\PlayHouse.Tests.Integration\Infrastructure\TestApiController.cs" Link="Infrastructure\Integration\TestApiController.cs" />
   </ItemGroup>
 
-  <!-- E2E Proto 파일 참조 -->
+  <!-- Integration Proto 파일 참조 -->
   <ItemGroup>
-    <Protobuf Include="..\PlayHouse.Tests.E2E\Proto\*.proto" GrpcServices="None" Link="Proto\%(Filename)%(Extension)" />
+    <Protobuf Include="..\PlayHouse.Tests.Integration\Proto\*.proto" GrpcServices="None" Link="Proto\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

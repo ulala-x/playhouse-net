@@ -15,7 +15,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Tests.Unit", "tests\PlayHouse.Tests.Unit\PlayHouse.Tests.Unit.csproj", "{CA0985AF-46F9-4D0E-B7A1-392E700EA515}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Tests.E2E", "tests\PlayHouse.Tests.E2E\PlayHouse.Tests.E2E.csproj", "{55764966-1C2A-45DF-8074-151DA54E09F2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Tests.Integration", "tests\PlayHouse.Tests.Integration\PlayHouse.Tests.Integration.csproj", "{55764966-1C2A-45DF-8074-151DA54E09F2}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Tests.Performance", "tests\PlayHouse.Tests.Performance\PlayHouse.Tests.Performance.csproj", "{0C1E2CDF-677A-412E-BABE-D93E63FDE0D1}"
 EndProject
