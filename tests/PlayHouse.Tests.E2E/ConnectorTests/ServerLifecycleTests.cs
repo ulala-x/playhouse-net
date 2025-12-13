@@ -68,33 +68,37 @@ public class ServerLifecycleTests : IAsyncLifetime
         }
     }
 
-    [Fact(DisplayName = "서버 연결 해제 - OnDisconnect 콜백 발생")]
+    [Fact(DisplayName = "서버 연결 해제 - OnDisconnect 콜백 발생 (HeartbeatTimeout)")]
     public async Task ServerDisconnect_OnDisconnectCallbackInvoked()
     {
-        // Given - 서버에 연결된 상태
-        await ConnectToServerAsync();
+        // Given - 서버에 연결된 상태 (짧은 HeartbeatTimeout 사용)
+        await ConnectToServerAsync(heartbeatTimeoutMs: 500);
         _disconnectCount = 0;
 
         // When - 서버가 연결 종료
         await _playServer!.StopAsync();
 
-        // 콜백 대기
-        var timeout = DateTime.UtcNow.AddSeconds(5);
+        // 콜백 대기 - HeartbeatTimeout(500ms) + 여유 시간
+        var timeout = DateTime.UtcNow.AddSeconds(3);
         while (_disconnectCount == 0 && DateTime.UtcNow < timeout)
         {
             await Task.Delay(100);
         }
 
         // Then - E2E 검증
-        _disconnectCount.Should().BeGreaterOrEqualTo(1, "OnDisconnect 콜백이 호출되어야 함");
+        _disconnectCount.Should().BeGreaterOrEqualTo(1, "HeartbeatTimeout으로 OnDisconnect 콜백이 호출되어야 함");
     }
 
     #region Helper Methods
 
-    private async Task ConnectToServerAsync()
+    private async Task ConnectToServerAsync(int heartbeatTimeoutMs = 30000)
     {
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
-        _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
+        _connector.Init(new ConnectorConfig
+        {
+            RequestTimeoutMs = 30000,
+            HeartbeatTimeoutMs = heartbeatTimeoutMs
+        });
         var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);

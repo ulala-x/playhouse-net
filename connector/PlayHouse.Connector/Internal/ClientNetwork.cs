@@ -144,12 +144,24 @@ internal sealed class ClientNetwork : IAsyncDisposable
             {
                 SendHeartBeat();
 
-                if (IsIdleState())
+                if (IsHeartbeatTimeout() || IsIdleState())
                 {
+                    // Heartbeat/Idle timeout - 직접 콜백 호출 후 연결 정리
+                    _callback.DisconnectCallback();
                     _ = DisconnectAsync();
                 }
             }
         }
+    }
+
+    private bool IsHeartbeatTimeout()
+    {
+        if (_config.HeartbeatTimeoutMs == 0)
+        {
+            return false;
+        }
+
+        return _lastReceivedTime.ElapsedMilliseconds > _config.HeartbeatTimeoutMs;
     }
 
     private void SendHeartBeat()

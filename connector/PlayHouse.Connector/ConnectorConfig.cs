@@ -32,6 +32,13 @@ public sealed class ConnectorConfig
     public int HeartBeatIntervalMs { get; set; } = 10000;
 
     /// <summary>
+    /// 하트비트 타임아웃 (밀리초, 기본값 30000)
+    /// 마지막 메시지 수신 후 이 시간이 지나면 연결 끊김으로 판단하여 OnDisconnect 발생
+    /// 0이면 비활성화
+    /// </summary>
+    public int HeartbeatTimeoutMs { get; set; } = 30000;
+
+    /// <summary>
     /// 요청 타임아웃 (밀리초, 기본값 30000)
     /// </summary>
     public int RequestTimeoutMs { get; set; } = 30000;
