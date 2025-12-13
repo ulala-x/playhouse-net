@@ -240,3 +240,34 @@ message ApiPushNotify {
     string message = 1;
     int64 timestamp = 2;
 }
+
+// ============================================
+// API 간 통신 테스트용 메시지
+// ============================================
+
+// API 간 SendToApi 트리거 (ApiServer A → ApiServer B)
+message TriggerSendToApiServerRequest {
+    string target_api_nid = 1;  // Target ApiServer NID (e.g., "2:2")
+    string message = 2;
+}
+message TriggerSendToApiServerReply {
+    bool success = 1;
+}
+
+// API 간 RequestToApi 트리거 (ApiServer A → ApiServer B)
+message TriggerRequestToApiServerRequest {
+    string target_api_nid = 1;  // Target ApiServer NID (e.g., "2:2")
+    string query = 2;
+}
+message TriggerRequestToApiServerReply {
+    string response = 1;
+}
+
+// API 간 직접 전달되는 메시지 (ApiServer A → ApiServer B)
+message InterApiMessage {
+    string from_api_nid = 1;
+    string content = 2;
+}
+message InterApiReply {
+    string response = 1;
+}

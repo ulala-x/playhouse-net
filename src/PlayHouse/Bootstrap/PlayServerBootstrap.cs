@@ -48,6 +48,7 @@ public sealed class PlayServerBootstrap
     private readonly PlayServerOption _options = new();
     private readonly Dictionary<string, Type> _stageTypes = new();
     private Type? _actorType;
+    private Type? _systemControllerType;
     private ILogger? _logger;
 
     /// <summary>
@@ -150,6 +151,17 @@ public sealed class PlayServerBootstrap
     }
 
     /// <summary>
+    /// System Controller를 등록합니다.
+    /// </summary>
+    /// <typeparam name="TSystemController">ISystemController 구현 타입.</typeparam>
+    /// <returns>빌더 인스턴스.</returns>
+    public PlayServerBootstrap UseSystemController<TSystemController>() where TSystemController : class, Abstractions.System.ISystemController
+    {
+        _systemControllerType = typeof(TSystemController);
+        return this;
+    }
+
+    /// <summary>
     /// Play Server 인스턴스를 생성합니다.
     /// </summary>
     /// <returns>PlayServer 인스턴스.</returns>
@@ -168,6 +180,6 @@ public sealed class PlayServerBootstrap
         }
 
         var producer = new PlayProducer(_stageTypes, _actorType);
-        return new PlayServer(_options, producer, _logger);
+        return new PlayServer(_options, producer, _systemControllerType, _logger);
     }
 }

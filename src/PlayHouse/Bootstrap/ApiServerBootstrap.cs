@@ -27,6 +27,7 @@ public sealed class ApiServerBootstrap
 {
     private readonly ApiServerOption _options = new();
     private readonly List<Type> _controllerTypes = new();
+    private Type? _systemControllerType;
 
     /// <summary>
     /// 서버 옵션을 설정합니다.
@@ -51,6 +52,17 @@ public sealed class ApiServerBootstrap
     }
 
     /// <summary>
+    /// System Controller를 등록합니다.
+    /// </summary>
+    /// <typeparam name="TSystemController">ISystemController 구현 타입.</typeparam>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap UseSystemController<TSystemController>() where TSystemController : class, Abstractions.System.ISystemController
+    {
+        _systemControllerType = typeof(TSystemController);
+        return this;
+    }
+
+    /// <summary>
     /// API Server 인스턴스를 생성합니다.
     /// </summary>
     /// <returns>ApiServer 인스턴스.</returns>
@@ -58,6 +70,6 @@ public sealed class ApiServerBootstrap
     {
         _options.Validate();
 
-        return new ApiServer(_options, _controllerTypes);
+        return new ApiServer(_options, _controllerTypes, _systemControllerType);
     }
 }

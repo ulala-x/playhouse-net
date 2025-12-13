@@ -32,9 +32,12 @@ public class TestApiController : IApiController
 
     public void Handles(IHandlerRegister register)
     {
-        register.Add("ApiEchoRequest", HandleApiEcho);
-        register.Add("TriggerCreateStageRequest", HandleCreateStage);
-        register.Add("TriggerGetOrCreateStageRequest", HandleGetOrCreateStage);
+        register.Add(typeof(ApiEchoRequest).FullName!, HandleApiEcho);
+        register.Add(typeof(TriggerCreateStageRequest).FullName!, HandleCreateStage);
+        register.Add(typeof(TriggerGetOrCreateStageRequest).FullName!, HandleGetOrCreateStage);
+        register.Add(typeof(TriggerSendToApiServerRequest).FullName!, HandleSendToApiServer);
+        register.Add(typeof(TriggerRequestToApiServerRequest).FullName!, HandleRequestToApiServer);
+        register.Add(typeof(InterApiMessage).FullName!, HandleInterApiMessage);
     }
 
     private async Task HandleApiEcho(IPacket packet, IApiSender sender)
@@ -88,6 +91,63 @@ public class TestApiController : IApiController
         {
             Success = result.Result,
             IsCreated = result.IsCreated
+        };
+        sender.Reply(CPacket.Of(reply));
+    }
+
+    private async Task HandleSendToApiServer(IPacket packet, IApiSender sender)
+    {
+        ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+
+        var request = TriggerSendToApiServerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // SendToApi (비동기, 응답 없음)
+        var message = new InterApiMessage
+        {
+            FromApiNid = "sender-api",
+            Content = request.Message
+        };
+        sender.SendToApi(request.TargetApiNid, CPacket.Of(message));
+
+        var reply = new TriggerSendToApiServerReply { Success = true };
+        sender.Reply(CPacket.Of(reply));
+    }
+
+    private async Task HandleRequestToApiServer(IPacket packet, IApiSender sender)
+    {
+        ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+
+        var request = TriggerRequestToApiServerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // RequestToApi (동기, 응답 있음)
+        var message = new InterApiMessage
+        {
+            FromApiNid = "sender-api",
+            Content = request.Query
+        };
+        var responsePacket = await sender.RequestToApi(request.TargetApiNid, CPacket.Of(message));
+        var response = InterApiReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
+
+        var reply = new TriggerRequestToApiServerReply
+        {
+            Response = response.Response
+        };
+        sender.Reply(CPacket.Of(reply));
+    }
+
+    private async Task HandleInterApiMessage(IPacket packet, IApiSender sender)
+    {
+        ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+
+        var request = InterApiMessage.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // 다른 API 서버에서 온 메시지 처리
+        var reply = new InterApiReply
+        {
+            Response = $"Processed: {request.Content} from {request.FromApiNid}"
         };
         sender.Reply(CPacket.Of(reply));
     }

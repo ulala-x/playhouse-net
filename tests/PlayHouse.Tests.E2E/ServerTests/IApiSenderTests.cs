@@ -31,6 +31,7 @@ public class IApiSenderTests : IAsyncLifetime
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
         TestApiController.ResetAll();
+        TestSystemController.Reset();
 
         // PlayServer (ServiceId=1, ServerId=1, NID="1:1")
         _playServer = new PlayServerBootstrap()
@@ -45,6 +46,7 @@ public class IApiSenderTests : IAsyncLifetime
             })
             .UseStage<TestStageImpl>("TestStage")
             .UseActor<TestActorImpl>()
+            .UseSystemController<TestSystemController>()
             .Build();
 
         // ApiServer (ServiceType.Api=2, ServerId=1, NID="2:1")
@@ -56,22 +58,14 @@ public class IApiSenderTests : IAsyncLifetime
                 options.RequestTimeoutMs = 30000;
             })
             .UseController<TestApiController>()
+            .UseSystemController<TestSystemController>()
             .Build();
 
         await _playServer.StartAsync();
         await _apiServer.StartAsync();
-        await Task.Delay(200); // 서버 초기화 대기
 
-        // Establish bidirectional server connections
-        // For NetMQ Router-Router pattern, BOTH servers need to connect to each other
-
-        // ApiServer → PlayServer (for CreateStage, GetOrCreateStage)
-        _apiServer.ConnectToPlayServer("1:1", "tcp://127.0.0.1:15100");
-
-        // PlayServer → ApiServer (for return path in Router-Router)
-        _playServer.Connect("2:1", "tcp://127.0.0.1:15101");
-
-        await Task.Delay(1000); // Connection stabilization
+        // ServerAddressResolver가 서버를 자동으로 연결할 시간을 줌
+        await Task.Delay(5000);
     }
 
     public async Task DisposeAsync()
