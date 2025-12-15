@@ -43,7 +43,7 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     /// <returns>A new PlayCommunicator instance.</returns>
     public static PlayCommunicator Create(ServerConfig config)
     {
-        var socket = NetMqPlaySocket.Create(config);
+        var socket = ZmqPlaySocket.Create(config);
         return new PlayCommunicator(socket);
     }
 
