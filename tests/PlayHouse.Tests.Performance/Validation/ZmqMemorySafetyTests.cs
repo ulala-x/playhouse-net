@@ -14,11 +14,11 @@ using ClientPacket = PlayHouse.Connector.Protocol.IPacket;
 namespace PlayHouse.Tests.Performance.Validation;
 
 /// <summary>
-/// NetMQ Send() 메서드의 메모리 수명 주기 안전성 검증.
+/// Net.Zmq Send() 메서드의 메모리 수명 주기 안전성 검증.
 /// ToArray() 제거 전에 반드시 통과해야 함.
 /// </summary>
 /// <remarks>
-/// NetMQ의 Send() 메서드가 메모리를 즉시 복사하는지 검증합니다.
+/// Net.Zmq의 Send() 메서드가 메모리를 즉시 복사하는지 검증합니다.
 /// 이 검증이 실패하면 Phase 3의 ToArray() 제거가 불가능합니다.
 ///
 /// 테스트 시나리오:
@@ -27,7 +27,7 @@ namespace PlayHouse.Tests.Performance.Validation;
 /// 3. 서버간 통신 데이터 무결성 (1KB)
 /// 4. 대용량 데이터 무결성 (10KB)
 /// </remarks>
-public class NetMqMemorySafetyTests : IAsyncLifetime
+public class ZmqMemorySafetyTests : IAsyncLifetime
 {
     private PlayServer? _serverA;
     private PlayServer? _serverB;
@@ -130,7 +130,7 @@ public class NetMqMemorySafetyTests : IAsyncLifetime
     /// ArrayPool 사용 시 조기 반환 후 데이터 손상 여부 검증.
     /// </summary>
     /// <remarks>
-    /// NetMQ가 Send() 호출 시 메모리를 즉시 복사하지 않는다면,
+    /// Net.Zmq가 Send() 호출 시 메모리를 즉시 복사하지 않는다면,
     /// ArrayPool 버퍼를 조기 반환하면 데이터가 손상됩니다.
     /// </remarks>
     [Fact]
@@ -231,7 +231,7 @@ public class NetMqMemorySafetyTests : IAsyncLifetime
     /// </summary>
     /// <remarks>
     /// 10KB 크기의 페이로드를 전송하여 대용량 데이터의 메모리 안전성을 검증합니다.
-    /// NetMQ가 Send() 시 메모리를 즉시 복사하지 않으면 데이터가 손상될 수 있습니다.
+    /// Net.Zmq가 Send() 시 메모리를 즉시 복사하지 않으면 데이터가 손상될 수 있습니다.
     /// </remarks>
     [Fact]
     public async Task ClientToServer_10KB_ShouldPreserveDataIntegrity()
@@ -272,7 +272,7 @@ public class NetMqMemorySafetyTests : IAsyncLifetime
     /// </summary>
     /// <remarks>
     /// 실제 시나리오에서 ArrayPool 버퍼를 조기 반환했을 때
-    /// NetMQ가 메모리를 복사했는지 확인합니다.
+    /// Net.Zmq가 메모리를 복사했는지 확인합니다.
     /// </remarks>
     [Fact]
     public async Task ArrayPool_BufferReuse_ShouldNotAffectSentData()

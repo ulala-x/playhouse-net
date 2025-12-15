@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>PlayHouse.Tests.Performance</RootNamespace>
     <StartupObject>PlayHouse.Tests.Performance.BenchmarkProgram</StartupObject>
+    <!-- Integration 프로젝트 파일의 async without await 경고 무시 -->
+    <NoWarn>$(NoWarn);CS1998</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
