@@ -1,9 +1,9 @@
-# NetMQ 서버 간 통신 스펙
+# ZMQ 서버 간 통신 스펙
 
 ## 1. 개요
 
 ### 1.1 목적
-PlayHouse-NET v2에서는 서버 간 통신을 위해 **NetMQ(ZeroMQ의 .NET 구현)**를 사용합니다. REST API를 제거하고 고성능 비동기 메시징으로 전환합니다.
+PlayHouse-NET v2에서는 서버 간 통신을 위해 **ZMQ(ZeroMQ의 .NET 구현)**를 사용합니다. REST API를 제거하고 고성능 비동기 메시징으로 전환합니다.
 
 ### 1.2 주요 특징
 - **Router-Router 패턴**: 모든 서버가 RouterSocket 사용 (양방향 통신)
@@ -100,11 +100,11 @@ public static string MakeNid(ushort serviceId, int serverId)
 
 ## 3. 메시지 프로토콜
 
-### 3.1 NetMQMessage 구조
+### 3.1 ZMQMessage 구조
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│ NetMQMessage                                               │
+│ ZMQMessage                                               │
 ├───────────────────────────────────────────────────────────┤
 │ Frame 0: Target NID                                        │
 │          - UTF-8 인코딩 문자열                             │
@@ -837,7 +837,7 @@ if (payload is FramePayload framePayload)
 else
 {
     _buffer.Write(payload.DataSpan);
-    frame = new NetMQFrame(_buffer.Buffer(), _buffer.Count);
+    frame = new ZMQFrame(_buffer.Buffer(), _buffer.Count);
 }
 ```
 

@@ -42,10 +42,10 @@
 ```
 ┌──────────────────┐                    ┌──────────────────┐
 │   API Server     │                    │   Play Server    │
-│   (Stateless)    │◄──── NetMQ ──────►│   (Stateful)     │
+│   (Stateless)    │◄──── ZMQ ──────►│   (Stateful)     │
 │                  │    Router-Router   │                  │
 │ - HTTP API       │                    │ - Stage 관리     │
-│ - NetMQ Client   │                    │ - Actor 관리     │
+│ - ZMQ Client   │                    │ - Actor 관리     │
 │ - 요청 라우팅     │                    │ - Client 연결    │
 └──────────────────┘                    └────────┬─────────┘
                                                  │
@@ -58,7 +58,7 @@
 
 **변경 사항**:
 - **서버 분리**: Play 서버 + API 서버
-- **통신 방식**: NetMQ Router-Router 패턴
+- **통신 방식**: ZMQ Router-Router 패턴
 - **클라이언트 연결**: Play 서버에 직접 연결
 - **인증 흐름**: HTTP 토큰 → TCP 인증으로 변경
 
@@ -69,7 +69,7 @@
 **재사용 가능 컴포넌트**:
 - Session 서버 개념 **삭제** (Play 서버에 통합)
 - API 서버 개념 **간소화** (단순 요청 처리)
-- NetMQ 통신 레이어 **재사용 가능**
+- ZMQ 통신 레이어 **재사용 가능**
 
 ---
 
@@ -80,9 +80,9 @@
 | 영역 | 현재 | 변경 후 | 영향도 |
 |------|------|---------|--------|
 | **서버 구성** | 단일 PlayHouseServer | Play 서버 + API 서버 | 🔴 High |
-| **서버 간 통신** | 없음 (단일 프로세스) | NetMQ Router-Router | 🔴 High |
+| **서버 간 통신** | 없음 (단일 프로세스) | ZMQ Router-Router | 🔴 High |
 | **클라이언트 연결** | HTTP 토큰 → TCP | Play 서버 직접 연결 → 인증 | 🟡 Medium |
-| **REST API** | RoomController | 삭제 (NetMQ로 대체) | 🔴 High |
+| **REST API** | RoomController | 삭제 (ZMQ로 대체) | 🔴 High |
 | **Stage 생성** | HTTP API 직접 호출 | API 서버 → Play 서버 요청 | 🟡 Medium |
 | **인터페이스** | IStage, IActor | OnAuthenticate 추가 | 🟢 Low |
 
@@ -160,12 +160,12 @@ Client → Play 서버 (TCP 직접 연결 + 인증)
 External System → HTTP POST /api/rooms/create → Play 서버
 
 [변경]
-External System → HTTP POST → API 서버 → NetMQ → Play 서버
+External System → HTTP POST → API 서버 → ZMQ → Play 서버
 ```
 
 ### 2.4 신규 구현 🆕
 
-**NetMQ 통신 레이어** (재사용):
+**ZMQ 통신 레이어** (재사용):
 ```
 PlayHouse/Runtime/
 ├── Communicator.cs          # 메인 통신 오케스트레이터
@@ -175,7 +175,7 @@ PlayHouse/Runtime/
 ├── RequestCache.cs          # Request-Response 매칭
 ├── PlaySocket/
 │   ├── IPlaySocket.cs
-│   ├── NetMQPlaySocket.cs   # Router 소켓 구현
+│   ├── ZMQPlaySocket.cs   # Router 소켓 구현
 │   └── PlaySocketConfig.cs
 └── Message/
     ├── RoutePacket.cs
@@ -225,7 +225,7 @@ var playServer = new PlayServerBootstrap()
     {
         options.ServiceId = 1;
         options.ServerId = 1;
-        options.BindEndpoint = "tcp://0.0.0.0:5000";      // NetMQ 서버 간 통신
+        options.BindEndpoint = "tcp://0.0.0.0:5000";      // ZMQ 서버 간 통신
         options.ClientEndpoint = "tcp://0.0.0.0:6000";    // 클라이언트 TCP
     })
     .UseStage<GameRoomStage>("GameRoom")
@@ -265,7 +265,7 @@ app.Run();
 
 ### 3.1 그대로 복사 가능 (Copy)
 
-**NetMQ 통신 레이어** (95% 재사용):
+**ZMQ 통신 레이어** (95% 재사용):
 - `D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime\PlaySocket\` → 그대로 복사
 - `D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime\Message\` → 그대로 복사
 - `D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime\XClientCommunicator.cs` → 그대로 복사
@@ -303,7 +303,7 @@ app.Run();
 - AsyncBlock 패턴
 
 **설정 및 구조**:
-- NetMQ 소켓 옵션 설정
+- ZMQ 소켓 옵션 설정
 - 버퍼 크기 및 워터마크 설정
 - 스레드 모델 (Server Thread + Client Thread)
 
@@ -311,12 +311,12 @@ app.Run();
 
 ## 4. 구현 우선순위 (Phase별)
 
-### Phase 1: 인프라 구축 (NetMQ 통신 계층)
+### Phase 1: 인프라 구축 (ZMQ 통신 계층)
 
-**목표**: NetMQ 기반 서버 간 통신 인프라 구축
+**목표**: ZMQ 기반 서버 간 통신 인프라 구축
 
 **작업 항목**:
-1. **NetMQ 통신 레이어 복사** ✅
+1. **ZMQ 통신 레이어 복사** ✅
    - `PlaySocket` 디렉토리 복사
    - `Message` 디렉토리 복사
    - `Communicator`, `XServerCommunicator`, `XClientCommunicator` 복사
@@ -328,16 +328,16 @@ app.Run();
    - `ISystemPanel`, `IServerInfo` 인터페이스 정의
 
 3. **단위 테스트 작성** ✅
-   - NetMQ 메시지 송수신 테스트
+   - ZMQ 메시지 송수신 테스트
    - Request-Response 패턴 테스트
    - Timeout 처리 테스트
 
 **산출물**:
 - `PlayHouse.Runtime` 프로젝트 완성
-- NetMQ 통신 단위 테스트 통과
+- ZMQ 통신 단위 테스트 통과
 
 **참조 문서**:
-- [07-netmq-runtime.md](./07-netmq-runtime.md) - NetMQ Runtime 상세 스펙
+- [07-zmq-runtime.md](./07-zmq-runtime.md) - ZMQ Runtime 상세 스펙
 - [02-server-communication.md](./02-server-communication.md) - 서버 간 통신 프로토콜
 
 ---
@@ -420,7 +420,7 @@ var playServer = new PlayServerBootstrap()
     {
         options.ServiceId = 1;
         options.ServerId = 1;
-        options.BindEndpoint = "tcp://0.0.0.0:5000";      // NetMQ 서버 간 통신
+        options.BindEndpoint = "tcp://0.0.0.0:5000";      // ZMQ 서버 간 통신
         options.ClientEndpoint = "tcp://0.0.0.0:6000";    // 클라이언트 TCP 연결
         options.WebSocketEndpoint = "ws://0.0.0.0:6001";  // 클라이언트 WebSocket (옵션)
     })
@@ -463,7 +463,7 @@ await host.RunAsync();  // IHostedService가 StartAsync/StopAsync 관리
 2. **ApiSender 구현** 🆕
    - `IApiSender` 인터페이스 구현
    - `CreateStage()`, `GetOrCreateStage()` 메서드
-   - NetMQ Request-Response 패턴 구현
+   - ZMQ Request-Response 패턴 구현
 
 3. **API Controller 등록 시스템** 🆕
    - `IApiController.Handles()` 구현
@@ -540,7 +540,7 @@ app.Run();  // IHostedService가 ApiServer의 StartAsync/StopAsync 관리
    - 재연결 플로우
 
 3. **성능 벤치마크** ✅
-   - NetMQ 처리량 측정 (> 100,000 messages/sec 목표)
+   - ZMQ 처리량 측정 (> 100,000 messages/sec 목표)
    - 지연 시간 측정 (< 100ms P95 목표)
    - 동시 접속 테스트 (10,000 CCU 목표)
 
@@ -566,7 +566,7 @@ app.Run();  // IHostedService가 ApiServer의 StartAsync/StopAsync 관리
 
 | Phase | 주요 문서 | 보조 문서 |
 |-------|----------|----------|
-| **Phase 1** | [07-netmq-runtime.md](./07-netmq-runtime.md) | [02-server-communication.md](./02-server-communication.md) |
+| **Phase 1** | [07-zmq-runtime.md](./07-zmq-runtime.md) | [02-server-communication.md](./02-server-communication.md) |
 | **Phase 2** | [06-interfaces.md](./06-interfaces.md) | [new-request.md](./new-request.md) |
 | **Phase 3** | [03-play-server.md](./03-play-server.md) | [05-authentication-flow.md](./05-authentication-flow.md) |
 | **Phase 4** | [04-api-server.md](./04-api-server.md) | [02-server-communication.md](./02-server-communication.md) |
@@ -575,12 +575,12 @@ app.Run();  // IHostedService가 ApiServer의 StartAsync/StopAsync 관리
 ### 5.2 전체 문서 목록
 
 1. **[01-architecture-v2.md](./01-architecture-v2.md)** - 시스템 아키텍처 개요
-2. **[02-server-communication.md](./02-server-communication.md)** - NetMQ 서버 간 통신
+2. **[02-server-communication.md](./02-server-communication.md)** - ZMQ 서버 간 통신
 3. **[03-play-server.md](./03-play-server.md)** - Play 서버 상세 스펙
 4. **[04-api-server.md](./04-api-server.md)** - API 서버 상세 스펙
 5. **[05-authentication-flow.md](./05-authentication-flow.md)** - 인증 흐름
 6. **[06-interfaces.md](./06-interfaces.md)** - 핵심 인터페이스 정의
-7. **[07-netmq-runtime.md](./07-netmq-runtime.md)** - NetMQ Runtime 상세 스펙 ⭐
+7. **[07-zmq-runtime.md](./07-zmq-runtime.md)** - ZMQ Runtime 상세 스펙 ⭐
 8. **[new-request.md](./new-request.md)** - 인터페이스 요구사항
 
 ---
@@ -592,14 +592,14 @@ app.Run();  // IHostedService가 ApiServer의 StartAsync/StopAsync 관리
 
 ### Phase 1: 인프라 구축 ✅ (완료)
 - [x] `PlayHouse/Runtime/` 디렉토리 생성
-- [x] NetMQ 통신 레이어 구현 (PlaySocket, Message, Communicator)
-  - `Runtime/PlaySocket/IPlaySocket.cs`, `NetMQPlaySocket.cs`
+- [x] ZMQ 통신 레이어 구현 (PlaySocket, Message, Communicator)
+  - `Runtime/PlaySocket/IPlaySocket.cs`, `ZMQPlaySocket.cs`
   - `Runtime/Message/RuntimePayload.cs`, `RuntimeRoutePacket.cs`
   - `Runtime/Communicator/XClientCommunicator.cs`, `XServerCommunicator.cs`, `PlayCommunicator.cs`
 - [x] `ISender`, `IApiSender` 인터페이스 정의
   - `Abstractions/ISender.cs`
   - `Abstractions/Api/IApiSender.cs`
-- [x] NetMQ 단위 테스트 작성 및 통과
+- [x] ZMQ 단위 테스트 작성 및 통과
   - `tests/PlayHouse.Tests.Unit/Runtime/`
 
 ### Phase 2: 인터페이스 구현 ✅ (완료)
@@ -676,7 +676,7 @@ app.Run();  // IHostedService가 ApiServer의 StartAsync/StopAsync 관리
 
 ## 7. 주의사항 및 권장사항
 
-### 7.1 NetMQ 사용 시 주의사항
+### 7.1 ZMQ 사용 시 주의사항
 
 **Router 소켓 사용** (Dealer 아님):
 - 모든 서버는 Router 소켓을 사용
@@ -712,12 +712,12 @@ app.Run();  // IHostedService가 ApiServer의 StartAsync/StopAsync 관리
 **처리량**:
 - Play Server: 10,000 CCU per instance
 - API Server: 5,000 requests/sec per instance
-- NetMQ: > 100,000 messages/sec
+- ZMQ: > 100,000 messages/sec
 
 ### 7.4 코드 재사용 원칙
 
 **그대로 복사 (Copy)**:
-- NetMQ 통신 레이어 (PlaySocket, Message, Communicator)
+- ZMQ 통신 레이어 (PlaySocket, Message, Communicator)
 - 검증된 코드이므로 수정 최소화
 
 **수정 후 사용 (Adapt)**:

@@ -133,20 +133,20 @@ presentation(또는 api) → domain ← infrastructure
 │     (ASP.NET Core 등)           │          │        (독립 프로세스)           │
 │                                 │          │                                 │
 │  ┌───────────────────────────┐  │          │  - Stage 관리                   │
-│  │    API Server 모듈        │  │  NetMQ   │  - Actor 실행                   │
+│  │    API Server 모듈        │  │  ZMQ   │  - Actor 실행                   │
 │  │  (PlayHouse.Api 라이브러리)│──┼─────────►│  - Client 연결 (TCP/WS)         │
 │  │                           │  │ Router   │                                 │
 │  │  - IApiSender (DI 주입)   │◄─┼──────────┤                                 │
 │  │  - Stage 생성 요청        │  │          │                                 │
 │  └───────────────────────────┘  │          └─────────────────────────────────┘
 │                                 │                        ▲
-└─────────────────────────────────┘                        │ NetMQ
+└─────────────────────────────────┘                        │ ZMQ
                                               ┌────────────┴────────────┐
                                               │                         │
                                               ▼                         ▼
                                    ┌─────────────────┐       ┌─────────────────┐
                                    │  Play Server 2  │◄─────►│  Play Server N  │
-                                   └─────────────────┘ NetMQ └─────────────────┘
+                                   └─────────────────┘ ZMQ └─────────────────┘
 ```
 
 ## 8. PlayHouse API 사용 가이드
@@ -162,7 +162,7 @@ var playServer = new PlayServerBootstrap()
     {
         options.ServiceId = 1;                          // 서비스 식별자
         options.ServerId = 1;                           // 서버 인스턴스 ID
-        options.BindEndpoint = "tcp://0.0.0.0:5000";    // NetMQ 서버 간 통신
+        options.BindEndpoint = "tcp://0.0.0.0:5000";    // ZMQ 서버 간 통신
         options.ClientEndpoint = "tcp://0.0.0.0:6000";  // 클라이언트 TCP
     })
     .UseStage<GameRoomStage>("GameRoom")  // Stage 타입 등록
@@ -174,7 +174,7 @@ await playServer.StartAsync();
 
 ### 8.2 API Server 부트스트랩
 
-API Server는 웹서버에 통합되어 Play Server와 NetMQ로 통신합니다.
+API Server는 웹서버에 통합되어 Play Server와 ZMQ로 통신합니다.
 
 ```csharp
 // API Server 시작 (웹서버에 통합)

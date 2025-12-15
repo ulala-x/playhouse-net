@@ -22,12 +22,12 @@ public sealed class ServerConfig
     public string ServerId { get; }
 
     /// <summary>
-    /// Gets the bind address for NetMQ socket (e.g., "tcp://*:5555").
+    /// Gets the bind address for ZMQ socket (e.g., "tcp://*:5555").
     /// </summary>
     public string BindAddress { get; }
 
     /// <summary>
-    /// Gets the bind endpoint for NetMQ socket (alias for BindAddress).
+    /// Gets the bind endpoint for ZMQ socket (alias for BindAddress).
     /// </summary>
     public string BindEndpoint => BindAddress;
 
@@ -56,7 +56,7 @@ public sealed class ServerConfig
     /// </summary>
     /// <param name="serviceId">Service identifier.</param>
     /// <param name="serverId">Server instance identifier.</param>
-    /// <param name="bindAddress">NetMQ bind address.</param>
+    /// <param name="bindAddress">ZMQ bind address.</param>
     /// <param name="requestTimeoutMs">Request timeout in milliseconds.</param>
     /// <param name="sendHighWatermark">Send high water mark.</param>
     /// <param name="receiveHighWatermark">Receive high water mark.</param>

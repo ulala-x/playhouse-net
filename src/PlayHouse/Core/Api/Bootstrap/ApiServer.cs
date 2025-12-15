@@ -15,7 +15,7 @@ namespace PlayHouse.Bootstrap;
 
 /// <summary>
 /// API Server 인스턴스.
-/// Play Server와 NetMQ로 통신하며 Stateless 요청 처리를 담당합니다.
+/// Play Server와 ZMQ로 통신하며 Stateless 요청 처리를 담당합니다.
 /// </summary>
 public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 {
@@ -85,7 +85,6 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 
         _serviceProvider = services.BuildServiceProvider();
 
-        // NetMQ Communicator 시작
         _communicator = PlayCommunicator.Create(_serverConfig);
         _communicator.Bind(_options.BindEndpoint);
         _communicator.Bind(this);

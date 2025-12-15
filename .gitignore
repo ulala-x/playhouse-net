@@ -61,5 +61,8 @@ nunit-*.xml
 # Legacy code (moved during refactoring)
 _legacy_code/
 
+# Claude Code agents directory
+.claude/agents/
+
 # Windows special files
 nul

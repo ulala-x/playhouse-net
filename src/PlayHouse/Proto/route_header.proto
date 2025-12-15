@@ -6,7 +6,7 @@ option csharp_namespace = "PlayHouse.Runtime.Proto";
 
 // ============================================
 // Server-to-Server Communication Protocol
-// Used for NetMQ Router-Router messaging
+// Used for ZMQ Router-Router messaging
 // ============================================
 
 // Route header for server-to-server messages

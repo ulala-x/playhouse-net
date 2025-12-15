@@ -5,7 +5,7 @@ using BenchmarkDotNet.Diagnosers;
 namespace PlayHouse.Tests.Performance.Benchmarks;
 
 /// <summary>
-/// 서버 메시(NetMQ) 통신 성능 측정.
+/// 서버 메시(ZMQ) 통신 성능 측정.
 /// 폴링 타임아웃, HWM 설정 등의 영향 분석.
 /// </summary>
 [MemoryDiagnoser]
