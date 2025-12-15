@@ -17,12 +17,12 @@ PlayHouse-NET은 .NET 기반의 실시간 게임 서버 프레임워크로, 기�
 |------|----------------------|----------------------|
 | 서버 구조 | Session + API + Play 3개 서버 | Room 서버만 (단일 서버) |
 | 서버 간 통신 | Full-Mesh TCP | 없음 |
-| 외부 의존성 | Redis 필수, NetCoreServer 라이브러리 | 불필요 |
+| 외부 의존성 | Redis 필수, 외부 라이브러리 | 불필요 |
 | HTTP API | 별도 구현 필요 | 내장 지원 |
-| 소켓 라이브러리 | NetCoreServer (외부 라이브러리) | .NET 네이티브 (System.Net.Sockets, System.Net.WebSockets) |
+| 소켓 라이브러리 | 외부 라이브러리 | .NET 네이티브 (System.Net.Sockets, System.Net.WebSockets) |
 | 패킷 헤더 | ServiceId 등 라우팅 정보 포함 | 라우팅 정보 제거 (단순화) |
 
-**핵심 차이점**: 기존 playhouse-net은 여러 서버 간 통신을 위해 `NetCoreServer` 외부 라이브러리와 Redis를 사용했으나, 신규 버전은 Room 서버 하나로 단순화하여 **외부 의존성 없이 .NET 기본 라이브러리만으로** 구현합니다.
+**핵심 차이점**: 기존 playhouse-net은 여러 서버 간 통신을 위해 외부 라이브러리와 Redis를 사용했으나, 신규 버전은 Room 서버 하나로 단순화하여 **외부 의존성 없이 .NET 기본 라이브러리만으로** 구현합니다.
 
 ## 2. 아키텍처 개요
 

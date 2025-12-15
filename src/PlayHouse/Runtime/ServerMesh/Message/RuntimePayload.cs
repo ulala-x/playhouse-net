@@ -91,7 +91,7 @@ public sealed class EmptyRuntimePayload : IRuntimePayload
 }
 
 /// <summary>
-/// Payload backed by NetMQ frame data (zero-copy when possible).
+/// Payload backed by ZMQ frame data (zero-copy when possible).
 /// </summary>
 public sealed class FramePayload : IRuntimePayload
 {

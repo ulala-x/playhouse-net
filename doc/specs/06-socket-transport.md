@@ -8,18 +8,18 @@ PlayHouse-NET은 **.NET 기본 소켓 라이브러리**와 **System.IO.Pipelines
 
 | 항목 | 기존 (playhouse-net) | 신규 (playhouse-net) |
 |------|----------------------|----------------------|
-| 소켓 라이브러리 | **NetCoreServer** (외부 라이브러리) | **.NET 네이티브** (System.Net.Sockets) |
+| 소켓 라이브러리 | 외부 라이브러리 | **.NET 네이티브** (System.Net.Sockets) |
 | 버퍼 관리 | RingBuffer (직접 구현) | **System.IO.Pipelines** (고성능 파이프라인) |
-| WebSocket | NetCoreServer.WsServer | System.Net.WebSockets |
-| TLS/SSL | NetCoreServer.SslServer | System.Net.Security.SslStream |
-| 의존성 | NetCoreServer.dll 필요 | 외부 의존성 없음 |
+| WebSocket | 외부 라이브러리 | System.Net.WebSockets |
+| TLS/SSL | 외부 라이브러리 | System.Net.Security.SslStream |
+| 의존성 | 외부 의존성 필요 | 외부 의존성 없음 |
 | .NET 버전 | .NET 8.0 | **.NET 8.0 / 9.0 / 10.0** 멀티 타겟 |
 
 **변경 이유**:
 - 외부 라이브러리 의존성 제거로 유지보수 용이
 - **System.IO.Pipelines**로 Zero-Copy 고성능 버퍼 관리
 - .NET 8.0+ 네이티브 소켓 성능이 충분히 우수
-- 단일 서버 구조로 단순화되어 복잡한 소켓 라이브러리 불필요
+- 단일 서버 구조로 단순화
 
 ### 1.2 지원 프로토콜
 

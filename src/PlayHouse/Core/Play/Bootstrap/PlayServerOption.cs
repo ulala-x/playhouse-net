@@ -27,7 +27,7 @@ public sealed class PlayServerOption
     public string ServerId { get; set; } = "1";
 
     /// <summary>
-    /// NetMQ 서버 간 통신용 바인드 주소.
+    /// ZMQ 서버 간 통신용 바인드 주소.
     /// 예: "tcp://0.0.0.0:5000"
     /// </summary>
     public string BindEndpoint { get; set; } = "tcp://0.0.0.0:5000";

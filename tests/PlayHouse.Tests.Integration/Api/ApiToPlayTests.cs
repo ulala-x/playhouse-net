@@ -88,7 +88,7 @@ public class IApiSenderTests : IAsyncLifetime
     ///
     /// 테스트 플로우:
     /// 1. ApiServer.ApiSender.CreateStage() 호출
-    /// 2. ApiServer → PlayServer로 NetMQ 메시지 전송
+    /// 2. ApiServer → PlayServer로 ZMQ 메시지 전송
     /// 3. PlayServer에서 Stage 생성 및 OnCreate 콜백 호출
     /// 4. 응답 검증
     /// </summary>
@@ -134,7 +134,7 @@ public class IApiSenderTests : IAsyncLifetime
     ///
     /// 테스트 플로우:
     /// 1. 존재하지 않는 StageId로 GetOrCreateStage 호출
-    /// 2. ApiServer → PlayServer로 NetMQ 메시지 전송
+    /// 2. ApiServer → PlayServer로 ZMQ 메시지 전송
     /// 3. PlayServer에서 Stage 생성 및 OnCreate 콜백 호출
     /// 4. IsCreated=true 응답 검증
     /// </summary>

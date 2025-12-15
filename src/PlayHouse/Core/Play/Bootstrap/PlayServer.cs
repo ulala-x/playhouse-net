@@ -108,7 +108,6 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         _cts = new CancellationTokenSource();
         _requestCache = new RequestCache();
 
-        // NetMQ Communicator 시작
         _communicator = PlayCommunicator.Create(_serverConfig);
         _communicator.Bind(_options.BindEndpoint);
         _communicator.Bind(this);
@@ -207,7 +206,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     }
 
     /// <summary>
-    /// 다른 서버에 수동으로 연결합니다 (NetMQ Router-Router 패턴).
+    /// 다른 서버에 수동으로 연결합니다 (ZMQ Router-Router 패턴).
     /// </summary>
     /// <param name="targetNid">대상 서버 NID (예: "2:1")</param>
     /// <param name="address">대상 서버 주소 (예: "tcp://127.0.0.1:15101")</param>

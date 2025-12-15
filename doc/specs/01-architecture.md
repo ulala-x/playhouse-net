@@ -9,7 +9,7 @@
 ```
 [기존 PlayHouse - 3-Tier Architecture]
 Session Server → API Server → Play Server
-(NetMQ Full-Mesh + Redis Discovery)
+(ZMQ Full-Mesh + Redis Discovery)
 
 [PlayHouse-NET - Single Server Framework]
 단일 프로세스 내 통합 (HTTP API + Socket Server + Core Engine)

@@ -24,7 +24,7 @@ Play Server → API Server: CreateStageResponse (MsgSeq=42)  ← 어떻게 매�
 | **RequestCache.cs** | `PlayHouse/Runtime/RequestCache.cs` | 요청 추적, 타임아웃 관리 |
 | **RoutePacket.cs** | `PlayHouse/Runtime/Message/RoutePacket.cs` | 패킷 헤더, ReplyOf 생성 |
 | **ReplyObject.cs** | `PlayHouse/Runtime/RequestCache.cs` | 콜백/TaskCompletionSource 래퍼 |
-| **NetMQPlaySocket.cs** | `PlayHouse/Runtime/PlaySocket/NetMQPlaySocket.cs` | ⭐ From 주소 수집 |
+| **ZMQPlaySocket.cs** | `PlayHouse/Runtime/PlaySocket/ZMQPlaySocket.cs` | ⭐ From 주소 수집 |
 
 ---
 
@@ -47,12 +47,12 @@ Play Server → API Server: CreateStageResponse (MsgSeq=42)  ← 어떻게 매�
          │                           │
 ```
 
-### 2.2 해결: NetMQ Router 소켓의 Identity 프레임 활용
+### 2.2 해결: ZMQ Router 소켓의 Identity 프레임 활용
 
-**NetMQ Router 소켓**은 메시지를 수신할 때 **발신자의 Identity를 첫 번째 프레임에 자동으로 포함**합니다.
+**ZMQ Router 소켓**은 메시지를 수신할 때 **발신자의 Identity를 첫 번째 프레임에 자동으로 포함**합니다.
 
 ```
-NetMQ Message 구조:
+ZMQ Message 구조:
 ┌─────────────────┬─────────────────┬─────────────────┐
 │  Frame[0]       │  Frame[1]       │  Frame[2]       │
 │  Identity       │  RouteHeader    │  Payload        │
@@ -64,13 +64,13 @@ NetMQ Message 구조:
 ### 2.3 구현: 수신 시 From 주소 자동 수집
 
 ```csharp
-// NetMQPlaySocket.Receive() - 참조: PlayHouse/Runtime/PlaySocket/NetMQPlaySocket.cs
+// ZMQPlaySocket.Receive() - 참조: PlayHouse/Runtime/PlaySocket/ZMQPlaySocket.cs
 public RoutePacket? Receive()
 {
-    var message = new NetMQMessage();
+    var message = new ZMQMessage();
     if (_socket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(1), ref message))
     {
-        // ⭐ Frame[0]: 발신자 Identity (NetMQ Router가 자동 추가)
+        // ⭐ Frame[0]: 발신자 Identity (ZMQ Router가 자동 추가)
         var target = Encoding.UTF8.GetString(message[0].Buffer);
 
         // Frame[1]: 헤더
@@ -101,7 +101,7 @@ private void Reply(ushort errorCode, IPacket? reply)
         return; // 요청 컨텍스트 없음 또는 단방향 Send
     }
 
-    // ⭐ CurrentHeader.From = 원래 요청자 주소 (NetMQ 수신 시 수집됨)
+    // ⭐ CurrentHeader.From = 원래 요청자 주소 (ZMQ 수신 시 수집됨)
     var from = CurrentHeader.From;
 
     var routePacket = RoutePacket.ReplyOf(ServiceId, CurrentHeader, errorCode, reply);
@@ -119,11 +119,11 @@ private void Reply(ushort errorCode, IPacket? reply)
 │  (nid: api-1)   │                           │  (nid: play-1)  │
 └────────┬────────┘                           └────────┬────────┘
          │                                             │
-         │  1. NetMQ Router로 전송                      │
+         │  1. ZMQ Router로 전송                      │
          │     (Identity = "api-1" 자동 포함)           │
          │  ─────────────────────────────────────────► │
          │                                             │
-         │                                             │  2. NetMQ Router 수신
+         │                                             │  2. ZMQ Router 수신
          │                                             │     Frame[0] = "api-1" (From)
          │                                             │     routePacket.RouteHeader.From = "api-1"
          │                                             │

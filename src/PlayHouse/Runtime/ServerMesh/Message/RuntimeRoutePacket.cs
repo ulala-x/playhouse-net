@@ -6,7 +6,7 @@ using PlayHouse.Runtime.Proto;
 namespace PlayHouse.Runtime.ServerMesh.Message;
 
 /// <summary>
-/// Server-to-server route packet for NetMQ communication.
+/// Server-to-server route packet for ZMQ communication.
 /// </summary>
 /// <remarks>
 /// 3-Frame message structure:

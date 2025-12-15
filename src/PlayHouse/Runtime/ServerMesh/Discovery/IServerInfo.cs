@@ -34,7 +34,7 @@ public interface IServerInfo
     string ServerId { get; }
 
     /// <summary>
-    /// NetMQ 연결 주소 (예: "tcp://192.168.1.100:5000").
+    /// ZMQ 연결 주소 (예: "tcp://192.168.1.100:5000").
     /// </summary>
     string Address { get; }
 

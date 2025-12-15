@@ -15,7 +15,7 @@
 │                         Play 서버                               │
 │                                                                 │
 │  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
-│  │ Client Layer │      │ Stage Layer  │      │  NetMQ Layer │  │
+│  │ Client Layer │      │ Stage Layer  │      │  ZMQ Layer │  │
 │  │              │      │              │      │              │  │
 │  │ TCP/WebSocket│◄────►│ BaseStage    │◄────►│ PlaySocket   │  │
 │  │ Authenticator│      │ XStageSender │      │ RouterSocket │  │

@@ -591,7 +591,7 @@ public interface IStageSender
 
 | 컴포넌트 | 이유 |
 |---------|------|
-| `NetMQ`, `IPlaySocket` | 멀티서버 통신용 |
+| `ZMQ`, `IPlaySocket` | 멀티서버 통신용 |
 | `ServerAddressResolver` | 서버 디스커버리용 |
 | `IClientCommunicator.Send(nid, packet)` | 노드간 통신용 |
 | `PacketContext.AsyncCore` | 디버깅/추적용 컨텍스트 |
@@ -610,7 +610,7 @@ public interface IStageSender
 <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
 
 <!-- 제거 대상 -->
-<PackageReference Include="NetMQ" Version="4.0.1.13" />  <!-- 멀티서버용 -->
+<PackageReference Include="ZMQ" Version="4.0.1.13" />  <!-- 멀티서버용 -->
 
 <!-- 신규 추가 고려 -->
 <PackageReference Include="System.IO.Pipelines" />  <!-- 네트워크 버퍼 -->
@@ -618,7 +618,7 @@ public interface IStageSender
 
 ### 6.2 네트워크 스택
 
-**기존 PlayHouse**: NetCoreServer 8.0.7 + 수동 RingBuffer
+**기존 PlayHouse**: 외부 라이브러리 + 수동 RingBuffer
 
 **PlayHouse-NET 결정**: `System.Net.Sockets` + `System.IO.Pipelines`
 
@@ -709,4 +709,4 @@ while (true)
 
 - RouteHeader → PacketHeader (필드 축소)
 - XSender → IStageSender (멀티서버 제거)
-- 네트워크 스택 (NetMQ 제거)
+- 네트워크 스택 (ZMQ 제거)

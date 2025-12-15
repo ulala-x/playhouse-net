@@ -19,7 +19,7 @@ namespace PlayHouse.Tests.Integration.Api;
 /// 테스트 아키텍처:
 /// - ApiServer A (ServerId="1", Port=15101)
 /// - ApiServer B (ServerId="2", Port=15102)
-/// - 양방향 NetMQ Router-Router 연결
+/// - 양방향 ZMQ Router-Router 연결
 /// </summary>
 [Collection("E2E ApiToApi Tests")]
 public class ApiToApiTests : IAsyncLifetime
@@ -82,7 +82,7 @@ public class ApiToApiTests : IAsyncLifetime
     ///
     /// 테스트 플로우:
     /// 1. ApiServer A의 ApiSender.SendToApi("2", message) 호출
-    /// 2. ApiServer A → ApiServer B로 NetMQ 메시지 전송
+    /// 2. ApiServer A → ApiServer B로 ZMQ 메시지 전송
     /// 3. ApiServer B의 핸들러 콜백 호출
     /// 4. 콜백 호출 검증 (응답은 기대하지 않음)
     ///
@@ -125,7 +125,7 @@ public class ApiToApiTests : IAsyncLifetime
     ///
     /// 테스트 플로우:
     /// 1. ApiServer A의 ApiSender.RequestToApi("2", message) 호출
-    /// 2. ApiServer A → ApiServer B로 NetMQ 메시지 전송
+    /// 2. ApiServer A → ApiServer B로 ZMQ 메시지 전송
     /// 3. ApiServer B의 HandleInterApiMessage 콜백 호출 및 응답 생성
     /// 4. ApiServer B → ApiServer A로 응답 전송
     /// 5. 응답 내용 검증
@@ -228,7 +228,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// 4. 최종 응답 검증
     ///
     /// 이 테스트는 핸들러 내에서 다른 API 서버로 요청하는 실제 사용 패턴을 검증합니다.
-    /// Note: NetMQ Router는 자기 자신에게 메시지를 보내는 것을 지원하지 않으므로,
+    /// Note: ZMQ Router는 자기 자신에게 메시지를 보내는 것을 지원하지 않으므로,
     /// ApiServer A가 ApiServer B에게 트리거 요청을 보내고, B가 A에게 실제 요청을 합니다.
     /// </summary>
     [Fact(DisplayName = "RequestToApi - 핸들러 트리거 방식 통신 성공")]
@@ -275,7 +275,7 @@ public class ApiToApiTests : IAsyncLifetime
     /// 3. ApiServer A의 HandleInterApiMessage 콜백 호출
     /// 4. 콜백 호출 검증
     ///
-    /// Note: NetMQ Router는 자기 자신에게 메시지를 보내는 것을 지원하지 않으므로,
+    /// Note: ZMQ Router는 자기 자신에게 메시지를 보내는 것을 지원하지 않으므로,
     /// ApiServer A가 ApiServer B에게 트리거 요청을 보내고, B가 A에게 SendToApi 호출합니다.
     /// </summary>
     [Fact(DisplayName = "SendToApi - 핸들러 트리거 방식 메시지 전송 성공")]

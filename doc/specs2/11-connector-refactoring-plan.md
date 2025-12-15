@@ -34,8 +34,8 @@ D:\project\kairos\playhouse\playhouse-connector-net\PlayHouseConnector\
 │   ├── ClientNetwork.cs           # HeartBeat, IdleTimeout 참조
 │   ├── RequestCache.cs            # 직접 포팅
 │   ├── PacketParser.cs            # ServiceId 제거 후 포팅
-│   ├── TcpClient.cs               # NetCoreServer 사용 → 재작성
-│   └── WsClient.cs                # NetCoreServer 사용 → 재작성
+│   ├── TcpClient.cs               # 외부 라이브러리 사용 → 재작성
+│   └── WsClient.cs                # 외부 라이브러리 사용 → 재작성
 ├── Protocol/
 │   ├── PacketConst.cs             # 상수 참조
 │   └── ClientPacket.cs            # 참조용
@@ -135,8 +135,8 @@ connector/PlayHouse.Connector/
 | `Network/AsyncManager.cs` | `Network/AsyncManager.cs` | 유지 |
 | `Network/PacketParser.cs` | `Network/PacketParser.cs` | ServiceId 제거 |
 | `Network/RequestCache.cs` | `Network/RequestCache.cs` | 로깅 단순화 |
-| `Network/TcpClient.cs` | `Network/TcpConnection.cs` | NetCoreServer → .NET 소켓 |
-| `Network/WsClient.cs` | `Network/WebSocketConnection.cs` | NetCoreServer → ClientWebSocket |
+| `Network/TcpClient.cs` | `Network/TcpConnection.cs` | 외부 라이브러리 → .NET 소켓 |
+| `Network/WsClient.cs` | `Network/WebSocketConnection.cs` | 외부 라이브러리 → ClientWebSocket |
 | `Network/IClient.cs` | `Network/IConnection.cs` | 인터페이스 통합 |
 | `Protocol/PacketConst.cs` | `Network/PacketConst.cs` | MinHeaderSize 변경 |
 | `Callbacks/IConnectorCallback.cs` | `Connector.cs` (이벤트) | 콜백 → 이벤트 |

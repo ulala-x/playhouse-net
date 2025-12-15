@@ -15,8 +15,8 @@ AS-IS (단일 프로세스)              →    TO-BE (분산 시스템)
 ─────────────────────────              ─────────────────────────
 PlayHouseServer                        API Server (Stateless)
 ├─ HTTP API                            ├─ HTTP API
-├─ TCP/WebSocket                       └─ NetMQ Client
-└─ Stage/Actor                                ↕ NetMQ Router-Router
+├─ TCP/WebSocket                       └─ ZMQ Client
+└─ Stage/Actor                                ↕ ZMQ Router-Router
                                        Play Server (Stateful)
                                        ├─ Stage 관리
                                        ├─ Actor 관리
@@ -29,7 +29,7 @@ PlayHouseServer                        API Server (Stateless)
 |------|------|----------|
 | **Session 서버** | ❌ 전체 삭제 | Play 서버에서 직접 클라이언트 관리 |
 | **REST API** | ❌ Play 서버에서 제거 | API 서버로 이동 |
-| **통신 방식** | HTTP 기반 | NetMQ Router-Router 패턴 |
+| **통신 방식** | HTTP 기반 | ZMQ Router-Router 패턴 |
 | **인증 방식** | 토큰 기반 | 직접 인증 (OnAuthenticate) |
 
 ---
@@ -38,7 +38,7 @@ PlayHouseServer                        API Server (Stateless)
 
 | Phase | 주요 문서 | 보조 문서 | 핵심 내용 |
 |-------|----------|----------|----------|
-| **Phase 1** | [07-netmq-runtime.md](./07-netmq-runtime.md) | [02-server-communication.md](./02-server-communication.md) | NetMQ 통신 인프라 |
+| **Phase 1** | [07-zmq-runtime.md](./07-zmq-runtime.md) | [02-server-communication.md](./02-server-communication.md) | ZMQ 통신 인프라 |
 | **Phase 2** | [06-interfaces.md](./06-interfaces.md) | [new-request.md](./new-request.md) | 핵심 인터페이스 구현 |
 | **Phase 3** | [03-play-server.md](./03-play-server.md) | [05-authentication-flow.md](./05-authentication-flow.md) | Play 서버 모듈 |
 | **Phase 4** | [04-api-server.md](./04-api-server.md) | [10-request-reply-mechanism.md](./10-request-reply-mechanism.md) | API 서버 모듈 |
@@ -52,7 +52,7 @@ PlayHouseServer                        API Server (Stateless)
 
 ```
                     ┌─────────────────────────────────────┐
-                    │         Phase 1: NetMQ Runtime       │
+                    │         Phase 1: ZMQ Runtime       │
                     │  PlaySocket, Message, Communicator   │
                     └──────────────────┬──────────────────┘
                                        │
@@ -137,7 +137,7 @@ git worktree remove ../playhouse-net-connector
 - **진행 방식**: 단일 에이전트 순차 진행
 - **최근 검증**: Phase 1-6 실제 구현 상태 검증 완료 (2025-12-12)
 - **완료된 Phase**:
-  - Phase 1: NetMQ 통신 계층 ✅ (100% - 실제 구현 검증됨)
+  - Phase 1: ZMQ 통신 계층 ✅ (100% - 실제 구현 검증됨)
   - Phase 2: 핵심 인터페이스 ✅ (100% - 실제 구현 검증됨)
   - Phase 3: Play 서버 ✅ (95% - Transport 레이어로 아키텍처 변경됨)
   - Phase 4: API 서버 ✅ (100% - 실제 구현 검증됨)
@@ -157,11 +157,11 @@ git worktree remove ../playhouse-net-connector
 
 ## 4. Phase별 구현 계획
 
-### Phase 1: NetMQ 통신 계층 구현
+### Phase 1: ZMQ 통신 계층 구현
 
-**📖 참조 문서**: [07-netmq-runtime.md](./07-netmq-runtime.md), [02-server-communication.md](./02-server-communication.md)
+**📖 참조 문서**: [07-zmq-runtime.md](./07-zmq-runtime.md), [02-server-communication.md](./02-server-communication.md)
 
-**🎯 목표**: NetMQ 기반 서버 간 통신 인프라 구축
+**🎯 목표**: ZMQ 기반 서버 간 통신 인프라 구축
 
 **✅ 상태**: 구현 완료
 
@@ -170,7 +170,7 @@ git worktree remove ../playhouse-net-connector
 | # | 작업 | 파일 경로 | 상세 |
 |---|------|----------|------|
 | 1.1 | PlaySocket 인터페이스 정의 | `Runtime/PlaySocket/IPlaySocket.cs` | Send, Receive, Bind, Connect 메서드 |
-| 1.2 | NetMQPlaySocket 구현 | `Runtime/PlaySocket/NetMQPlaySocket.cs` | Router-Router 소켓 패턴, 3-Frame 메시지 |
+| 1.2 | ZMQPlaySocket 구현 | `Runtime/PlaySocket/ZMQPlaySocket.cs` | Router-Router 소켓 패턴, 3-Frame 메시지 |
 | 1.3 | SocketConfig 정의 | `Runtime/PlaySocket/SocketConfig.cs` | 버퍼 크기, Watermark 설정 |
 | 1.4 | Payload 클래스 구현 | `Runtime/Message/Payload.cs` | FramePayload, ByteStringPayload |
 | 1.5 | RoutePacket 구현 | `Runtime/Message/RoutePacket.cs` | RouteHeader + Payload, Factory 메서드 |
@@ -185,7 +185,7 @@ git worktree remove ../playhouse-net-connector
 | 1.14 | PooledByteBuffer 구현 | `Infrastructure/Buffers/PooledByteBuffer.cs` | 버퍼 풀링, Zero-Copy 지원 |
 | 1.15 | AtomicShort 구현 | `Infrastructure/Utils/AtomicShort.cs` | MsgSeq 생성기 (1~65535 순환) |
 | 1.16 | Communicator 구현 | `Runtime/Communicator.cs` | 메시지 디스패치 오케스트레이터 |
-| 1.17 | 단위 테스트 작성 | `Tests/Runtime/` | NetMQ 메시지 송수신 검증 |
+| 1.17 | 단위 테스트 작성 | `Tests/Runtime/` | ZMQ 메시지 송수신 검증 |
 
 #### 핵심 구현 상세
 
@@ -249,7 +249,7 @@ public class CommunicatorOption
 ```
 
 #### 완료 조건
-- [ ] NetMQ 메시지 송수신 테스트 통과
+- [ ] ZMQ 메시지 송수신 테스트 통과
 - [ ] Router-Router 패턴 양방향 통신 검증
 - [ ] NID 기반 라우팅 동작 확인
 - [ ] ServerAddressResolver를 통한 자동 연결 테스트
@@ -485,7 +485,7 @@ ValueTask OnConnectionChanged(IActor actor, bool isConnected);  // 재연결 처
 | 4.13 | ISystemController 인터페이스 | `Abstractions/Shared/ISystemController.cs` | 서버 디스커버리 (컨텐츠 구현) |
 | 4.14 | ISystemHandlerRegister 인터페이스 | `Abstractions/Shared/ISystemHandlerRegister.cs` | 시스템 핸들러 등록 |
 | 4.15 | ApiServerBootstrap 구현 | `Core/Api/ApiServerBootstrap.cs` | 빌더 패턴, ASP.NET Core 통합 |
-| 4.16 | 통합 테스트 작성 | `Tests/Api/` | HTTP API → NetMQ → Play 서버 |
+| 4.16 | 통합 테스트 작성 | `Tests/Api/` | HTTP API → ZMQ → Play 서버 |
 
 #### 핵심 구현 상세
 
@@ -567,7 +567,7 @@ public class InMemorySystemController : ISystemController
 ```
 
 #### 완료 조건
-- [ ] HTTP API → NetMQ → Play 서버 통합 테스트 통과
+- [ ] HTTP API → ZMQ → Play 서버 통합 테스트 통과
 - [ ] CreateStage, GetOrCreateStage 동작 확인
 - [ ] ISystemController 구현체를 통한 서버 디스커버리 검증
 
@@ -805,7 +805,7 @@ connector.Authenticate(authPacket, response => { ... });
 ### 6.1 그대로 복사 (95% 재사용)
 
 ```
-Runtime/PlaySocket/*.cs          → 전체 복사 (NetMQ 소켓)
+Runtime/PlaySocket/*.cs          → 전체 복사 (ZMQ 소켓)
 Runtime/Message/*.cs             → 전체 복사 (메시지 구조)
 Runtime/XClientCommunicator.cs   → 전체 복사 (송신)
 Runtime/XServerCommunicator.cs   → 전체 복사 (수신)
@@ -834,11 +834,11 @@ IApiSender, IApiController
 
 ## 7. 체크리스트 요약
 
-### Phase 1: NetMQ 통신 계층 ✅
+### Phase 1: ZMQ 통신 계층 ✅
 > **프로젝트 경로**: `src/PlayHouse/Runtime/ServerMesh/`
 
 - [x] 1.1 IPlaySocket 인터페이스 (Runtime/ServerMesh/PlaySocket/IPlaySocket.cs)
-- [x] 1.2 NetMQPlaySocket 구현 (Runtime/ServerMesh/PlaySocket/NetMQPlaySocket.cs)
+- [x] 1.2 ZMQPlaySocket 구현 (Runtime/ServerMesh/PlaySocket/ZMQPlaySocket.cs)
 - [x] 1.3 PlaySocketConfig 정의 (IPlaySocket.cs에 포함)
 - [x] 1.4 RuntimePayload 클래스 (Runtime/ServerMesh/Message/RuntimePayload.cs)
 - [x] 1.5 RuntimeRoutePacket 구현 (Runtime/ServerMesh/Message/RuntimeRoutePacket.cs)
@@ -912,7 +912,7 @@ IApiSender, IApiController
 - [x] 4.6 CreateStageResult (StageResult.cs에 포함)
 - [x] 4.7 GetOrCreateStageResult, JoinStageResult, CreateJoinStageResult (StageResult.cs에 포함)
 - [x] 4.8 ApiDispatcher (Core/Api/ApiDispatcher.cs)
-- [x] 4.9 ApiSender (Core/Api/ApiSender.cs - XSender 상속, NetMQ 통신 구현)
+- [x] 4.9 ApiSender (Core/Api/ApiSender.cs - XSender 상속, ZMQ 통신 구현)
 - [x] 4.10 HandlerRegister (Core/Api/Reflection/HandlerRegister.cs)
 - [x] 4.11 ApiReflection (Core/Api/Reflection/ApiReflection.cs)
 - [x] 4.12 SystemDispatcher (Abstractions/System/SystemDispatcher.cs)

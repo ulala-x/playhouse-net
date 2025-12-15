@@ -100,7 +100,7 @@
 │  (ASP.NET Core, Express, etc.)  │          │        (독립 프로세스)           │
 │                                 │          │                                 │
 │  ┌───────────────────────────┐  │          │  - Stage 관리                   │
-│  │    API Server 모듈        │  │  NetMQ   │  - Actor 실행                   │
+│  │    API Server 모듈        │  │  ZMQ   │  - Actor 실행                   │
 │  │  (PlayHouse.Api 라이브러리)│──┼─────────►│  - Client 연결 (TCP/WS)         │
 │  │                           │  │ Router   │  - ISender로 API 요청 가능      │
 │  │  - IApiSender (DI 주입)   │◄─┼──────────┤                                 │
@@ -109,13 +109,13 @@
 │  └───────────────────────────┘  │          └─────────────────────────────────┘
 │                                 │                        ▲
 └─────────────────────────────────┘                        │
-                                                           │ NetMQ
+                                                           │ ZMQ
                                               ┌────────────┴────────────┐
                                               │                         │
                                               ▼                         ▼
                                    ┌─────────────────┐       ┌─────────────────┐
                                    │  Play Server 2  │◄─────►│  Play Server N  │
-                                   │                 │ NetMQ │                 │
+                                   │                 │ ZMQ │                 │
                                    └─────────────────┘       └─────────────────┘
 ```
 
@@ -133,12 +133,12 @@
 **API Server 모듈 (PlayHouse.Api)**
 - **역할**: 웹서버에 통합되는 라이브러리 모듈
 - **통합**: .NET Core DI로 `IApiSender` 주입
-- **통신**: NetMQ (Play 서버와 통신)
+- **통신**: ZMQ (Play 서버와 통신)
 - **기능**: Stage 생성/조회 요청, Play 서버 목록 관리
 
 **Play Server (PlayHouse.Play)**
 - **역할**: Stage/Actor 관리, 클라이언트 직접 연결
-- **통신**: NetMQ (서버 간) + TCP/WebSocket (클라이언트)
+- **통신**: ZMQ (서버 간) + TCP/WebSocket (클라이언트)
 - **기능**: Stage 실행, Actor 관리, 인증 처리
 - **API 요청**: `IApiSender`로 API 서버에 데이터 요청 가능
 
@@ -153,7 +153,7 @@
 | HTTP API | ✅ 포함 (RoomController) | ❌ 제거 | ✅ 전담 |
 | Stage/Actor 관리 | ✅ | ✅ | ❌ |
 | 클라이언트 연결 | ✅ TCP/WebSocket | ✅ TCP/WebSocket | ❌ |
-| 서버 간 통신 | ❌ | ✅ NetMQ Router | ✅ NetMQ Router |
+| 서버 간 통신 | ❌ | ✅ ZMQ Router | ✅ ZMQ Router |
 | 상태 관리 | Stateful | Stateful | Stateless |
 
 ### 2.2 통신 방식 변경
@@ -168,9 +168,9 @@
 
 #### 추가 대상
 
-**1. NetMQ 통신 모듈**
-- Play Server: NetMQ Router 소켓 바인드 (서버 간 메시지 수신)
-- API Server 모듈: NetMQ Router 소켓 (Play Server로 요청 전송)
+**1. ZMQ 통신 모듈**
+- Play Server: ZMQ Router 소켓 바인드 (서버 간 메시지 수신)
+- API Server 모듈: ZMQ Router 소켓 (Play Server로 요청 전송)
 - 참조 구현: `D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime\PlaySocket`
 
 **2. API Server 인터페이스 (`IApiSender`)**
@@ -186,7 +186,7 @@ public interface IApiSender : ISender
 }
 ```
 
-**3. 서버 간 내부 메시지 (NetMQ로 전송)**
+**3. 서버 간 내부 메시지 (ZMQ로 전송)**
 | 메시지 | 방향 | 용도 |
 |--------|------|------|
 | CreateStageReq/Res | API → Play | Stage 생성 |
@@ -383,11 +383,11 @@ public interface IPacket : IDisposable
 
 참조 시스템: `D:\project\kairos\playhouse\playhouse-net\PlayHouse`
 
-### 3.1 NetMQ 통신 계층 (그대로 복사)
+### 3.1 ZMQ 통신 계층 (그대로 복사)
 
 | 영역 | 파일 경로 | 재사용 방법 |
 |-----|---------|-----------|
-| NetMQ 소켓 | `Runtime/PlaySocket/*.cs` | 전체 복사 |
+| ZMQ 소켓 | `Runtime/PlaySocket/*.cs` | 전체 복사 |
 | 메시지 구조 | `Runtime/Message/*.cs` | 전체 복사 |
 | 통신 관리자 | `Runtime/XClientCommunicator.cs` | 전체 복사 (송신) |
 | 통신 관리자 | `Runtime/XServerCommunicator.cs` | 전체 복사 (수신) |
@@ -399,7 +399,7 @@ public interface IPacket : IDisposable
 PlayHouse/Runtime/
 ├── PlaySocket/
 │   ├── IPlaySocket.cs              # 소켓 인터페이스
-│   ├── NetMQPlaySocket.cs          # Router 소켓 구현
+│   ├── ZMQPlaySocket.cs          # Router 소켓 구현
 │   └── PlaySocketConfig.cs         # 소켓 설정
 ├── Message/
 │   ├── RoutePacket.cs              # 라우팅 패킷
@@ -493,7 +493,7 @@ D:\project\ulalax\playhouse-net\
 │   │   ├── IApiSender.cs                # 🆕 추가
 │   │   └── IApiController.cs            # 🆕 추가
 │   │
-│   ├── Runtime\                         # 🆕 NetMQ 통신 계층 (참조 시스템에서 복사)
+│   ├── Runtime\                         # 🆕 ZMQ 통신 계층 (참조 시스템에서 복사)
 │   │   ├── Communicator.cs
 │   │   ├── XServerCommunicator.cs
 │   │   ├── XClientCommunicator.cs
@@ -501,7 +501,7 @@ D:\project\ulalax\playhouse-net\
 │   │   ├── RequestCache.cs
 │   │   ├── PlaySocket\
 │   │   │   ├── IPlaySocket.cs
-│   │   │   ├── NetMQPlaySocket.cs
+│   │   │   ├── ZMQPlaySocket.cs
 │   │   │   └── PlaySocketConfig.cs
 │   │   └── Message\
 │   │       ├── RoutePacket.cs
@@ -548,14 +548,14 @@ D:\project\ulalax\playhouse-net\
     ├── PlayHouse.Tests.Unit\
     ├── PlayHouse.Tests.Integration\
     ├── PlayHouse.Tests.E2E\
-    └── PlayHouse.Tests.NetMQ\           # 🆕 NetMQ 통신 테스트
+    └── PlayHouse.Tests.ZMQ\           # 🆕 ZMQ 통신 테스트
 ```
 
 ### 4.3 폴더 변경 요약
 
 | 상태 | 경로 | 설명 |
 |-----|------|-----|
-| 🆕 추가 | `Core/Runtime/` | NetMQ 통신 계층 (참조 시스템에서 복사) |
+| 🆕 추가 | `Core/Runtime/` | ZMQ 통신 계층 (참조 시스템에서 복사) |
 | 🆕 추가 | `Core/Play/` | Play 서버 모듈 + Bootstrap |
 | 🆕 추가 | `Core/Api/` | API 서버 모듈 + Bootstrap |
 | 📦 이동 | `Core/Stage/` → `Core/Play/Stage/` | Stage를 Play 하위로 이동 |
@@ -579,7 +579,7 @@ var playServer = new PlayServerBootstrap()
     {
         options.ServiceId = 1;
         options.ServerId = 1;
-        options.BindEndpoint = "tcp://0.0.0.0:5000";      // NetMQ 서버 간 통신
+        options.BindEndpoint = "tcp://0.0.0.0:5000";      // ZMQ 서버 간 통신
         options.ClientEndpoint = "tcp://0.0.0.0:6000";    // 클라이언트 TCP
         options.WebSocketEndpoint = "ws://0.0.0.0:6001";  // 클라이언트 WebSocket (옵션)
     })
@@ -607,7 +607,7 @@ var apiServer = new ApiServerBootstrap()
     {
         options.ServiceId = 2;
         options.ServerId = 1;
-        options.BindEndpoint = "tcp://0.0.0.0:5100";      // NetMQ 서버 간 통신
+        options.BindEndpoint = "tcp://0.0.0.0:5100";      // ZMQ 서버 간 통신
     })
     .UseController<GameApiController>()
     .Build();
@@ -839,7 +839,7 @@ app.Run();
 
 ## 6. 구현 체크리스트
 
-### Phase 1: NetMQ 통신 계층 구현
+### Phase 1: ZMQ 통신 계층 구현
 
 - [ ] **1.1 참조 시스템에서 파일 복사**
   - [ ] `D:\project\kairos\playhouse\playhouse-net\PlayHouse\Runtime\PlaySocket\*.cs` → `src\PlayHouse\Runtime\PlaySocket\`
@@ -849,16 +849,16 @@ app.Run();
   - [ ] `D:\project\kairos\playhouse\playhouse-net\PlayHouse\Runtime\XServerInfoCenter.cs` → `src\PlayHouse\Runtime\`
   - [ ] `D:\project\kairos\playhouse\playhouse-net\PlayHouse\Runtime\MessageLoop.cs` → `src\PlayHouse\Runtime\`
 
-- [ ] **1.2 NetMQ NuGet 패키지 추가**
+- [ ] **1.2 ZMQ NuGet 패키지 추가**
   ```bash
-  dotnet add src/PlayHouse/PlayHouse.csproj package NetMQ
+  dotnet add src/PlayHouse/PlayHouse.csproj package ZMQ
   ```
 
 - [ ] **1.3 네임스페이스 변경**
   - 복사한 파일의 네임스페이스를 `PlayHouse.Runtime`으로 변경
 
 - [ ] **1.4 단위 테스트 작성**
-  - [ ] NetMQPlaySocket 테스트
+  - [ ] ZMQPlaySocket 테스트
   - [ ] RoutePacket 직렬화/역직렬화 테스트
   - [ ] XClientCommunicator/XServerCommunicator 테스트
 
@@ -873,7 +873,7 @@ app.Run();
 - [ ] **2.2 PlayServerBootstrap 구현**
   - [ ] `Core/Play/PlayServerBootstrap.cs` 생성
   - [ ] `Core/Play/PlayServerOption.cs` 설정 클래스
-  - [ ] NetMQ Router 소켓 통합
+  - [ ] ZMQ Router 소켓 통합
   - [ ] TCP/WebSocket 리스너 통합
 
 - [ ] **2.3 Actor/Stage 관리자 구현**
@@ -897,7 +897,7 @@ app.Run();
 - [ ] **3.2 ApiServerBootstrap 구현**
   - [ ] `Core/Api/ApiServerBootstrap.cs` 생성
   - [ ] `Core/Api/ApiServerOption.cs` 설정 클래스
-  - [ ] NetMQ Router 소켓 (Play 서버와 통신)
+  - [ ] ZMQ Router 소켓 (Play 서버와 통신)
 
 - [ ] **3.3 ApiSender 구현**
   - [ ] `Core/Api/ApiSender.cs` (IApiSender 구현)
@@ -931,7 +931,7 @@ app.Run();
 
 - [ ] **5.1 E2E 테스트 작성**
   - [ ] API 서버 → Play 서버 → Client 전체 플로우
-  - [ ] NetMQ 통신 검증
+  - [ ] ZMQ 통신 검증
   - [ ] 인증 플로우 검증
 
 - [ ] **5.2 기존 테스트 수정**
@@ -941,7 +941,7 @@ app.Run();
   - [ ] `PlayHouse.Tests.Integration` 수정
 
 - [ ] **5.3 성능 테스트**
-  - [ ] NetMQ 메시지 처리량 측정
+  - [ ] ZMQ 메시지 처리량 측정
   - [ ] 서버 간 통신 지연 시간 측정
 
 - [ ] **5.4 문서 업데이트**
@@ -954,7 +954,7 @@ app.Run();
 - [ ] **6.1 설정 파일**
   - [ ] Play 서버 appsettings.json
   - [ ] API 서버 appsettings.json
-  - [ ] NetMQ 설정 (NID, Bind/Connect 주소)
+  - [ ] ZMQ 설정 (NID, Bind/Connect 주소)
 
 - [ ] **6.2 Docker 이미지**
   - [ ] Play 서버 Dockerfile
@@ -972,7 +972,7 @@ app.Run();
 ## 7. 구현 우선순위
 
 ### 높음 (High Priority)
-1. NetMQ 통신 계층 구현 (Phase 1)
+1. ZMQ 통신 계층 구현 (Phase 1)
 2. Play 서버 분리 (Phase 2)
 3. 인증 플로우 변경 (Phase 2.4)
 
@@ -997,18 +997,18 @@ app.Run();
 - 기존 기능 회귀 테스트 필수
 
 ### 8.3 성능
-- NetMQ 메시지 처리량 모니터링
+- ZMQ 메시지 처리량 모니터링
 - 서버 간 통신 지연 시간 측정
 
 ### 8.4 보안
-- NetMQ CurveZMQ 암호화 고려
+- ZMQ CurveZMQ 암호화 고려
 - 서버 간 상호 인증 구현
 
 ---
 
 ## 9. 참고 자료
 
-- [NetMQ Documentation](https://netmq.readthedocs.io/)
+- [ZMQ Documentation](https://zmq.readthedocs.io/)
 - [ZeroMQ Guide](https://zguide.zeromq.org/)
 - 참조 시스템: `D:\project\kairos\playhouse\playhouse-net\PlayHouse`
 

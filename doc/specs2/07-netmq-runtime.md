@@ -1,14 +1,14 @@
-# NetMQ Runtime 상세 구현 가이드
+# ZMQ Runtime 상세 구현 가이드
 
 ## 문서 목적
 
-이 문서는 PlayHouse 참조 시스템의 NetMQ 기반 Runtime 코드를 PlayHouse-NET 프로젝트에 재사용하기 위한 상세 가이드입니다. 각 클래스의 정확한 위치, 핵심 코드, 그리고 통합 방법을 제공합니다.
+이 문서는 PlayHouse 참조 시스템의 ZMQ 기반 Runtime 코드를 PlayHouse-NET 프로젝트에 재사용하기 위한 상세 가이드입니다. 각 클래스의 정확한 위치, 핵심 코드, 그리고 통합 방법을 제공합니다.
 
 **참조 시스템 경로**: `D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime`
 
 ## 1. 아키텍처 개요
 
-### 1.1 NetMQ Router-Router 패턴
+### 1.1 ZMQ Router-Router 패턴
 
 PlayHouse는 **Router-Router 패턴**을 사용합니다. 모든 서버가 RouterSocket을 사용하여 Bind와 Connect를 동시에 수행합니다.
 
@@ -49,7 +49,7 @@ Connect("tcp://C:10001") Connect("tcp://C:10001") Connect("tcp://B:9001")
         │  - RouterSocket   │
         └───────────────────┘
             ↓
-    [NetMQ RouterSocket]
+    [ZMQ RouterSocket]
 ```
 
 ### 1.3 스레드 모델
@@ -80,7 +80,7 @@ OnReceive()         Send() / Connect()
 ```
 Runtime/PlaySocket/
 ├── IPlaySocket.cs           (18 lines)
-├── NetMQPlaySocket.cs       (163 lines)
+├── ZMQPlaySocket.cs       (163 lines)
 ├── PlaySocketConfig.cs      (11 lines)
 ├── PlaySocketFactory.cs     (팩토리 클래스)
 └── SocketConfig.cs          (8 lines)
@@ -117,9 +117,9 @@ internal interface IPlaySocket
 - `Disconnect(endPoint)`: 연결 해제
 - `GetBindEndpoint()`: 자신의 바인드 엔드포인트 반환
 
-#### 📄 NetMQPlaySocket.cs (핵심 구현 클래스)
+#### 📄 ZMQPlaySocket.cs (핵심 구현 클래스)
 
-**파일**: `Runtime/PlaySocket/NetMQPlaySocket.cs` (163 lines)
+**파일**: `Runtime/PlaySocket/ZMQPlaySocket.cs` (163 lines)
 
 **핵심 코드 1 - 생성자 및 소켓 옵션 설정**:
 
@@ -170,7 +170,7 @@ internal class NetMqPlaySocket : IPlaySocket
 ```csharp
 public RoutePacket? Receive()
 {
-    var message = new NetMQMessage();
+    var message = new ZMQMessage();
 
     // 1초 타임아웃으로 수신 시도
     if (_socket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(1), ref message))
@@ -212,9 +212,9 @@ public void Send(string nid, RoutePacket routePacket)
 {
     using (routePacket)
     {
-        var message = new NetMQMessage();
+        var message = new ZMQMessage();
         var payload = routePacket.Payload;
-        NetMQFrame frame;
+        ZMQFrame frame;
 
         _buffer.Clear();
 
@@ -222,7 +222,7 @@ public void Send(string nid, RoutePacket routePacket)
         if (routePacket.IsToClient())
         {
             routePacket.WriteClientPacketBytes(_buffer);
-            frame = new NetMQFrame(_buffer.Buffer(), _buffer.Count);
+            frame = new ZMQFrame(_buffer.Buffer(), _buffer.Count);
         }
         else
         {
@@ -234,17 +234,17 @@ public void Send(string nid, RoutePacket routePacket)
             else
             {
                 _buffer.Write(payload.DataSpan);
-                frame = new NetMQFrame(_buffer.Buffer(), _buffer.Count);
+                frame = new ZMQFrame(_buffer.Buffer(), _buffer.Count);
             }
         }
 
         // Frame 0: Target NID (UTF-8 문자열)
-        message.Append(new NetMQFrame(Encoding.UTF8.GetBytes(nid)));
+        message.Append(new ZMQFrame(Encoding.UTF8.GetBytes(nid)));
 
         // Frame 1: RouteHeader (Protobuf 직렬화)
         var routerHeaderMsg = routePacket.RouteHeader.ToMsg();
         var headerSize = routerHeaderMsg.CalculateSize();
-        var headerFrame = new NetMQFrame(headerSize);
+        var headerFrame = new ZMQFrame(headerSize);
         routerHeaderMsg.WriteTo(new MemoryStream(headerFrame.Buffer));
         message.Append(headerFrame);
 
@@ -325,7 +325,7 @@ Runtime/Message/
 
 ```csharp
 using Google.Protobuf;
-using NetMQ;
+using ZMQ;
 using PlayHouse.Infrastructure.Common.Buffers;
 
 namespace PlayHouse.Runtime.Message;
@@ -336,10 +336,10 @@ public interface IPayload : IDisposable
     public ReadOnlySpan<byte> DataSpan => Data.Span;
 }
 
-// Zero-Copy를 위한 NetMQ Frame 래퍼
-public class FramePayload(NetMQFrame frame) : IPayload
+// Zero-Copy를 위한 ZMQ Frame 래퍼
+public class FramePayload(ZMQFrame frame) : IPayload
 {
-    public NetMQFrame Frame { get; } = frame;
+    public ZMQFrame Frame { get; } = frame;
     public ReadOnlyMemory<byte> Data => new(Frame.Buffer, 0, Frame.MessageSize);
     public void Dispose() { }
 }
@@ -383,7 +383,7 @@ public class ByteStringPayload(ByteString byteString) : IPayload
 ```
 
 **Payload 타입별 용도**:
-- `FramePayload`: NetMQ 수신 메시지의 Zero-Copy 래핑
+- `FramePayload`: ZMQ 수신 메시지의 Zero-Copy 래핑
 - `ProtoPayload`: Protobuf 메시지 직렬화
 - `CopyPayload`: 메시지 복사본 생성
 - `PooledBytePayload`: 재사용 가능한 버퍼
@@ -1380,11 +1380,11 @@ public interface ISystemPanel
 
 ## 3. 메시지 구조 상세
 
-### 3.1 NetMQ 3-Frame 구조
+### 3.1 ZMQ 3-Frame 구조
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     NetMQ Message                       │
+│                     ZMQ Message                       │
 ├─────────────────────────────────────────────────────────┤
 │ Frame 0: Target NID (UTF-8 string)                      │
 │          예: "1000:1" (Service 1000, Server 1)          │
@@ -1583,7 +1583,7 @@ _clientCommunicator.Connect(nid, bindEndpoint);  // 자기 자신에게 Connect
 ┌─────────────────────────────────────────────┐
 │       NetMqPlaySocket                       │
 ├─────────────────────────────────────────────┤
-│ 1. NetMQMessage 생성                        │
+│ 1. ZMQMessage 생성                        │
 │ 2. Frame 0: Target NID                      │
 │ 3. Frame 1: RouteHeader (Protobuf)          │
 │ 4. Frame 2: Payload                         │
@@ -1684,7 +1684,7 @@ Response 수신:
 ```
 PlaySocket 계층 (100% 재사용):
 ├── Runtime/PlaySocket/IPlaySocket.cs
-├── Runtime/PlaySocket/NetMQPlaySocket.cs
+├── Runtime/PlaySocket/ZMQPlaySocket.cs
 ├── Runtime/PlaySocket/PlaySocketConfig.cs
 ├── Runtime/PlaySocket/SocketConfig.cs
 └── Runtime/PlaySocket/PlaySocketFactory.cs
@@ -2100,7 +2100,7 @@ requestCache.CheckExpire();  // 1초마다 실행
 - [ ] XSender 클래스 작성
 - [ ] ISystemController 인터페이스 구현
 - [ ] Protobuf 메시지 정의 (route.proto)
-- [ ] NetMQ NuGet 패키지 설치
+- [ ] ZMQ NuGet 패키지 설치
 - [ ] 서버 초기화 코드 작성
 - [ ] 메시지 송수신 테스트
 - [ ] Request-Response 패턴 테스트
@@ -2113,7 +2113,7 @@ requestCache.CheckExpire();  // 1초마다 실행
 D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime\
 ├── PlaySocket/
 │   ├── IPlaySocket.cs (18 lines)
-│   ├── NetMQPlaySocket.cs (163 lines) ⭐ 핵심
+│   ├── ZMQPlaySocket.cs (163 lines) ⭐ 핵심
 │   ├── PlaySocketConfig.cs (11 lines)
 │   ├── SocketConfig.cs (8 lines)
 │   └── PlaySocketFactory.cs
@@ -2129,4 +2129,4 @@ D:\project\kairos\playhouse\playhouse-net\PlayHouse\PlayHouse\Runtime\
 └── ServerAddressResolver.cs (100 lines)
 ```
 
-이 문서를 따라 NetMQ Runtime을 통합하면 PlayHouse-NET 프로젝트에서 안정적이고 고성능의 서버 간 통신 시스템을 구축할 수 있습니다.
+이 문서를 따라 ZMQ Runtime을 통합하면 PlayHouse-NET 프로젝트에서 안정적이고 고성능의 서버 간 통신 시스템을 구축할 수 있습니다.

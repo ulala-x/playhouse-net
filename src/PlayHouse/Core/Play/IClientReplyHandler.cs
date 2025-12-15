@@ -7,8 +7,7 @@ namespace PlayHouse.Core.Play;
 /// </summary>
 /// <remarks>
 /// This interface decouples PlayDispatcher/BaseStage from PlayServer,
-/// allowing client replies to be routed through the transport layer
-/// instead of through NetMQ communicator.
+/// allowing client replies to be routed through the transport layer.
 /// </remarks>
 internal interface IClientReplyHandler
 {

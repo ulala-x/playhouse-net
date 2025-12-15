@@ -5,7 +5,7 @@ using PlayHouse.Runtime.ServerMesh.Message;
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
 
 /// <summary>
-/// Interface for NetMQ-based server-to-server communication sockets.
+/// Interface for ZMQ-based server-to-server communication sockets.
 /// </summary>
 /// <remarks>
 /// Implements Router-Router pattern for bidirectional messaging.

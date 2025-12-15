@@ -18,7 +18,7 @@ public sealed class CommunicatorOption
     public string ServerId { get; set; } = string.Empty;
 
     /// <summary>
-    /// NetMQ 바인드 주소 (예: "tcp://*:5000").
+    /// ZMQ 바인드 주소 (예: "tcp://*:5000").
     /// </summary>
     public string BindEndpoint { get; set; } = "tcp://*:5000";
 

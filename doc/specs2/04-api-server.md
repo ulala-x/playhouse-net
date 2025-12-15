@@ -15,7 +15,7 @@
 │                         API 서버                                │
 │                                                                 │
 │  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
-│  │ Dispatcher   │      │   Sender     │      │  NetMQ Layer │  │
+│  │ Dispatcher   │      │   Sender     │      │  ZMQ Layer │  │
 │  │              │      │              │      │              │  │
 │  │ ApiDispatcher│◄────►│  ApiSender   │◄────►│ PlaySocket   │  │
 │  │ ApiReflection│      │ RequestCache │      │ RouterSocket │  │

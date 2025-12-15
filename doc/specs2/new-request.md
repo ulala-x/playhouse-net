@@ -1,6 +1,6 @@
 // 현재 작업중인 시스템의 구현을 변경할예정
 // 기존 Play (Playhouse) 서버만 있던것을  Play (Stage관리) 서버와  Api ( play 서버로부터 요청 처리 stateless) 서버로 두개로 관리
-// 기존 RestApi 로 요청 받던 부분을 , Zeromq(netmq) 를 이용해서 서버간 통신으로 처리,  rest api 처리 부분은 삭제
+// 기존 RestApi 로 요청 받던 부분을 , Zeromq(zmq) 를 이용해서 서버간 통신으로 처리,  rest api 처리 부분은 삭제
 //  Stage 생성은  api 서버에서 요청으로 생성되고, 방입장은 client 가 접속후 인증이 성공하면 방입장이 가능하도록 수정
 // 아래 인터페이스를 제공해야 하는데 어떻게 구현되어야 할지는 D:\project\kairos\playhouse\playhouse-net\PlayHouse 여기에 이미 다 구현이 이 되어 있음
 //  단 완전히 똑같지는 않음 같은것도 있고 비슷한것도 있고 동작의 정의가 달라진것도 있음 D:\project\kairos\playhouse\playhouse-net\PlayHouse 이 시스템에서 Session 을 삭제하고 Session 의 client 연결관리 기능이 Play  서버와 합쳐지고 , API 서버 기능은 단순 요청 처리로 간소화 된다고 생각하면됨
