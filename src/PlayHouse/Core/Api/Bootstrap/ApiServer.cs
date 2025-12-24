@@ -85,8 +85,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 
         _serviceProvider = services.BuildServiceProvider();
 
-        _communicator = PlayCommunicator.Create(_serverConfig);
-        _communicator.Bind(_options.BindEndpoint);
+        _communicator = new PlayCommunicator(_serverConfig);
         _communicator.Bind(this);
         _communicator.Start();
 
@@ -232,7 +231,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 
         public void Communicate()
         {
-            _communicator.Communicate();
+            // Thread management is handled internally by PlayCommunicator.Start()
         }
 
         public void Stop()

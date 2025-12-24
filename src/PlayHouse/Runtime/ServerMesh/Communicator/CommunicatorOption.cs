@@ -185,7 +185,7 @@ public sealed class CommunicatorBuilder
     {
         _option.Validate();
         var config = _option.ToServerConfig();
-        return PlayCommunicator.Create(config);
+        return new PlayCommunicator(config);
     }
 
     /// <summary>
