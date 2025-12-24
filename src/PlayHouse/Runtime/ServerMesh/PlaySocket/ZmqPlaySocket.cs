@@ -26,6 +26,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     private readonly byte[] _recvServerIdBuffer = new byte[1024];      // 1KB - for Recv
     private readonly byte[] _recvHeaderBuffer = new byte[65536];       // 64KB - for Recv
     private bool _disposed;
+    private bool _contextTerminated;
 
     /// <inheritdoc/>
     public string ServerId { get; }
@@ -68,7 +69,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         socket.SetOption(SocketOption.Routing_Id, _serverIdBytes);
         socket.SetOption(SocketOption.Router_Handover, 1);
         socket.SetOption(SocketOption.Rcvhwm, config.ReceiveHighWatermark);
-        socket.SetOption(SocketOption.Rcvtimeo, 1000); // 1000ms (1 second) timeout for Receive()
+        socket.SetOption(SocketOption.Rcvtimeo, -1); // 무한 대기, Context.Dispose()로 해제
         socket.SetOption(SocketOption.Linger, config.Linger);
 
         if (config.TcpKeepalive)
@@ -201,6 +202,14 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     }
 
     /// <inheritdoc/>
+    public void TerminateContext()
+    {
+        if (_contextTerminated) return;
+        _contextTerminated = true;
+        _context.Shutdown(); // Shutdown으로 블로킹 해제, Dispose는 나중에
+    }
+
+    /// <inheritdoc/>
     public void Dispose()
     {
         if (_disposed) return;
@@ -208,7 +217,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         _serverSocket.Dispose();
         _clientSocket.Dispose();
 
-        // Only dispose context if we own it (created it ourselves)
+        // Context는 Shutdown 후에도 Dispose 필요
         if (_ownsContext)
         {
             _context.Dispose();

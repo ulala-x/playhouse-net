@@ -1,5 +1,7 @@
 #nullable enable
 
+using Net.Zmq;
+using Net.Zmq.Core.Native;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.ServerMesh.PlaySocket;
 
@@ -53,6 +55,11 @@ internal sealed class XServerCommunicator : IServerCommunicator
                 {
                     _listener?.OnReceive(packet);
                 }
+            }
+            catch (ZmqException ex) when (ex.ErrorNumber == ZmqConstants.ETERM)
+            {
+                // Context terminated - 정상 종료
+                break;
             }
             catch (Exception ex)
             {

@@ -57,14 +57,18 @@ internal interface IPlaySocket : IDisposable
     void Send(string serverId, RoutePacket packet);
 
     /// <summary>
-    /// Receives a RuntimeRoutePacket (blocking with 1-second timeout).
+    /// Receives a RoutePacket (blocking until message arrives).
     /// </summary>
-    /// <returns>RuntimeRoutePacket if received, null if timed out.</returns>
-    /// <remarks>
-    /// Uses TryReceiveMultipartMessage internally (Kairos pattern).
-    /// Timeout is fixed at 1 second for consistency.
-    /// </remarks>
+    /// <returns>RoutePacket if received, null on error.</returns>
     RoutePacket? Receive();
+
+    /// <summary>
+    /// Terminates the ZMQ context to unblock any waiting operations.
+    /// </summary>
+    /// <remarks>
+    /// Call this before AwaitTermination() to release blocking Receive() calls.
+    /// </remarks>
+    void TerminateContext();
 }
 
 /// <summary>

@@ -1,0 +1,1681 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 16 benchmark(s) in total *****
+// ***** Building 2 exe(s) in Parallel: Start   *****
+// ***** Done, took 00:00:07 (7.3 sec)   *****
+// Found 4 benchmarks:
+//   LatencyBenchmarks.'Client→Server RTT': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+//   LatencyBenchmarks.'Server→Server RTT (via client trigger)': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+//   LatencyBenchmarks.'Sequential 10 messages': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+//   LatencyBenchmarks.'Game Tick Simulation (60 FPS)': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+
+// **************************
+// Benchmark: LatencyBenchmarks.'Client→Server RTT': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 130 133 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks.ClientToServer_RequestReply --job ShortRun --benchmarkId 0 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+OverheadJitting  1: 1 op, 233051.00 ns, 233.0510 us/op
+WorkloadJitting  1: 1 op, 4803806.00 ns, 4.8038 ms/op
+
+OverheadJitting  2: 16 op, 360895.00 ns, 22.5559 us/op
+WorkloadJitting  2: 16 op, 2944890.00 ns, 184.0556 us/op
+
+WorkloadPilot    1: 16 op, 3002080.00 ns, 187.6300 us/op
+WorkloadPilot    2: 32 op, 3789889.00 ns, 118.4340 us/op
+WorkloadPilot    3: 64 op, 9596361.00 ns, 149.9431 us/op
+WorkloadPilot    4: 128 op, 16119360.00 ns, 125.9325 us/op
+WorkloadPilot    5: 256 op, 36598072.00 ns, 142.9612 us/op
+WorkloadPilot    6: 512 op, 79942178.00 ns, 156.1371 us/op
+WorkloadPilot    7: 1024 op, 160728056.00 ns, 156.9610 us/op
+WorkloadPilot    8: 2048 op, 315807167.00 ns, 154.2027 us/op
+WorkloadPilot    9: 4096 op, 387699302.00 ns, 94.6531 us/op
+WorkloadPilot   10: 8192 op, 785941210.00 ns, 95.9401 us/op
+
+OverheadWarmup   1: 8192 op, 18163.00 ns, 2.2172 ns/op
+OverheadWarmup   2: 8192 op, 16387.00 ns, 2.0004 ns/op
+OverheadWarmup   3: 8192 op, 16408.00 ns, 2.0029 ns/op
+OverheadWarmup   4: 8192 op, 16383.00 ns, 1.9999 ns/op
+OverheadWarmup   5: 8192 op, 16431.00 ns, 2.0057 ns/op
+OverheadWarmup   6: 8192 op, 16700.00 ns, 2.0386 ns/op
+OverheadWarmup   7: 8192 op, 16411.00 ns, 2.0033 ns/op
+
+OverheadActual   1: 8192 op, 16437.00 ns, 2.0065 ns/op
+OverheadActual   2: 8192 op, 17403.00 ns, 2.1244 ns/op
+OverheadActual   3: 8192 op, 16474.00 ns, 2.0110 ns/op
+OverheadActual   4: 8192 op, 16419.00 ns, 2.0043 ns/op
+OverheadActual   5: 8192 op, 16369.00 ns, 1.9982 ns/op
+OverheadActual   6: 8192 op, 16801.00 ns, 2.0509 ns/op
+OverheadActual   7: 8192 op, 16521.00 ns, 2.0167 ns/op
+OverheadActual   8: 8192 op, 16394.00 ns, 2.0012 ns/op
+OverheadActual   9: 8192 op, 16441.00 ns, 2.0070 ns/op
+OverheadActual  10: 8192 op, 17650.00 ns, 2.1545 ns/op
+OverheadActual  11: 8192 op, 16370.00 ns, 1.9983 ns/op
+OverheadActual  12: 8192 op, 22784.00 ns, 2.7813 ns/op
+OverheadActual  13: 8192 op, 17016.00 ns, 2.0771 ns/op
+OverheadActual  14: 8192 op, 16506.00 ns, 2.0149 ns/op
+OverheadActual  15: 8192 op, 16482.00 ns, 2.0120 ns/op
+
+WorkloadWarmup   1: 8192 op, 768589317.00 ns, 93.8219 us/op
+WorkloadWarmup   2: 8192 op, 692641305.00 ns, 84.5509 us/op
+WorkloadWarmup   3: 8192 op, 736493843.00 ns, 89.9040 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 8192 op, 729460005.00 ns, 89.0454 us/op
+WorkloadActual   2: 8192 op, 830831786.00 ns, 101.4199 us/op
+WorkloadActual   3: 8192 op, 843582834.00 ns, 102.9764 us/op
+
+// AfterActualRun
+WorkloadResult   1: 8192 op, 729443523.00 ns, 89.0434 us/op
+WorkloadResult   2: 8192 op, 830815304.00 ns, 101.4179 us/op
+WorkloadResult   3: 8192 op, 843566352.00 ns, 102.9744 us/op
+// GC:  7 2 0 118052328 8192
+// Threading:  57387 0 8192
+// Exceptions:  35.4786376953125
+
+// AfterAll
+// Benchmark Process 11971 has exited with code 0.
+
+Mean = 97.812 μs, StdErr = 4.407 μs (4.51%), N = 3, StdDev = 7.634 μs
+Min = 89.043 μs, Q1 = 95.231 μs, Median = 101.418 μs, Q3 = 102.196 μs, Max = 102.974 μs
+IQR = 6.966 μs, LowerFence = 84.782 μs, UpperFence = 112.644 μs
+ConfidenceInterval = [-41.452 μs; 237.076 μs] (CI 99.9%), Margin = 139.264 μs (142.38% of Mean)
+Skewness = -0.37, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 15 (93.8 %) benchmark(s) to run. Estimated finish 2025-12-15 21:18 (0h 3m from now) **
+// **************************
+// Benchmark: LatencyBenchmarks.'Server→Server RTT (via client trigger)': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 134 135 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks.ServerToServer_RequestReply --job ShortRun --benchmarkId 1 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+OverheadJitting  1: 1 op, 255716.00 ns, 255.7160 us/op
+WorkloadJitting  1: 1 op, 11888418.00 ns, 11.8884 ms/op
+
+OverheadJitting  2: 16 op, 369529.00 ns, 23.0956 us/op
+WorkloadJitting  2: 16 op, 8027587.00 ns, 501.7242 us/op
+
+WorkloadPilot    1: 16 op, 8398774.00 ns, 524.9234 us/op
+WorkloadPilot    2: 32 op, 14074715.00 ns, 439.8348 us/op
+WorkloadPilot    3: 64 op, 26861687.00 ns, 419.7139 us/op
+WorkloadPilot    4: 128 op, 75476620.00 ns, 589.6611 us/op
+WorkloadPilot    5: 256 op, 115711530.00 ns, 451.9982 us/op
+WorkloadPilot    6: 512 op, 203641438.00 ns, 397.7372 us/op
+WorkloadPilot    7: 1024 op, 367247112.00 ns, 358.6398 us/op
+WorkloadPilot    8: 2048 op, 747535325.00 ns, 365.0075 us/op
+
+OverheadWarmup   1: 2048 op, 6238.00 ns, 3.0459 ns/op
+OverheadWarmup   2: 2048 op, 4702.00 ns, 2.2959 ns/op
+OverheadWarmup   3: 2048 op, 4944.00 ns, 2.4141 ns/op
+OverheadWarmup   4: 2048 op, 4575.00 ns, 2.2339 ns/op
+OverheadWarmup   5: 2048 op, 4610.00 ns, 2.2510 ns/op
+OverheadWarmup   6: 2048 op, 4628.00 ns, 2.2598 ns/op
+OverheadWarmup   7: 2048 op, 4512.00 ns, 2.2031 ns/op
+
+OverheadActual   1: 2048 op, 5122.00 ns, 2.5010 ns/op
+OverheadActual   2: 2048 op, 24578.00 ns, 12.0010 ns/op
+OverheadActual   3: 2048 op, 4694.00 ns, 2.2920 ns/op
+OverheadActual   4: 2048 op, 4700.00 ns, 2.2949 ns/op
+OverheadActual   5: 2048 op, 4542.00 ns, 2.2178 ns/op
+OverheadActual   6: 2048 op, 5031.00 ns, 2.4565 ns/op
+OverheadActual   7: 2048 op, 4479.00 ns, 2.1870 ns/op
+OverheadActual   8: 2048 op, 4567.00 ns, 2.2300 ns/op
+OverheadActual   9: 2048 op, 4606.00 ns, 2.2490 ns/op
+OverheadActual  10: 2048 op, 4652.00 ns, 2.2715 ns/op
+OverheadActual  11: 2048 op, 4690.00 ns, 2.2900 ns/op
+OverheadActual  12: 2048 op, 5092.00 ns, 2.4863 ns/op
+OverheadActual  13: 2048 op, 4640.00 ns, 2.2656 ns/op
+OverheadActual  14: 2048 op, 4577.00 ns, 2.2349 ns/op
+OverheadActual  15: 2048 op, 4465.00 ns, 2.1802 ns/op
+OverheadActual  16: 2048 op, 5032.00 ns, 2.4570 ns/op
+OverheadActual  17: 2048 op, 4602.00 ns, 2.2471 ns/op
+
+WorkloadWarmup   1: 2048 op, 778125358.00 ns, 379.9440 us/op
+WorkloadWarmup   2: 2048 op, 667644214.00 ns, 325.9982 us/op
+WorkloadWarmup   3: 2048 op, 753932909.00 ns, 368.1313 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 2048 op, 761831904.00 ns, 371.9882 us/op
+WorkloadActual   2: 2048 op, 717624549.00 ns, 350.4026 us/op
+WorkloadActual   3: 2048 op, 703299366.00 ns, 343.4079 us/op
+
+// AfterActualRun
+WorkloadResult   1: 2048 op, 761827252.00 ns, 371.9860 us/op
+WorkloadResult   2: 2048 op, 717619897.00 ns, 350.4003 us/op
+WorkloadResult   3: 2048 op, 703294714.00 ns, 343.4056 us/op
+// GC:  6 2 0 96426720 2048
+// Threading:  18471 1 2048
+// Exceptions:  118.2353515625
+
+// AfterAll
+// Benchmark Process 12120 has exited with code 0.
+
+Mean = 355.264 μs, StdErr = 8.601 μs (2.42%), N = 3, StdDev = 14.898 μs
+Min = 343.406 μs, Q1 = 346.903 μs, Median = 350.400 μs, Q3 = 361.193 μs, Max = 371.986 μs
+IQR = 14.290 μs, LowerFence = 325.468 μs, UpperFence = 382.628 μs
+ConfidenceInterval = [83.469 μs; 627.059 μs] (CI 99.9%), Margin = 271.795 μs (76.51% of Mean)
+Skewness = 0.29, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 14 (87.5 %) benchmark(s) to run. Estimated finish 2025-12-15 21:18 (0h 3m from now) **
+// **************************
+// Benchmark: LatencyBenchmarks.'Sequential 10 messages': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 134 135 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks.Sequential_10_Messages --job ShortRun --benchmarkId 2 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+OverheadJitting  1: 1 op, 188948.00 ns, 188.9480 us/op
+WorkloadJitting  1: 1 op, 7110240.00 ns, 7.1102 ms/op
+
+OverheadJitting  2: 16 op, 339426.00 ns, 21.2141 us/op
+WorkloadJitting  2: 16 op, 25183604.00 ns, 1.5740 ms/op
+
+WorkloadPilot    1: 16 op, 15253521.00 ns, 953.3451 us/op
+WorkloadPilot    2: 32 op, 29762806.00 ns, 930.0877 us/op
+WorkloadPilot    3: 64 op, 42016152.00 ns, 656.5024 us/op
+WorkloadPilot    4: 128 op, 78023041.00 ns, 609.5550 us/op
+WorkloadPilot    5: 256 op, 158647800.00 ns, 619.7180 us/op
+WorkloadPilot    6: 512 op, 324145351.00 ns, 633.0964 us/op
+WorkloadPilot    7: 1024 op, 591634269.00 ns, 577.7678 us/op
+
+OverheadWarmup   1: 1024 op, 4656.00 ns, 4.5469 ns/op
+OverheadWarmup   2: 1024 op, 1887.00 ns, 1.8428 ns/op
+OverheadWarmup   3: 1024 op, 1808.00 ns, 1.7656 ns/op
+OverheadWarmup   4: 1024 op, 2118.00 ns, 2.0684 ns/op
+OverheadWarmup   5: 1024 op, 2429.00 ns, 2.3721 ns/op
+OverheadWarmup   6: 1024 op, 2047.00 ns, 1.9990 ns/op
+OverheadWarmup   7: 1024 op, 1961.00 ns, 1.9150 ns/op
+OverheadWarmup   8: 1024 op, 2035.00 ns, 1.9873 ns/op
+OverheadWarmup   9: 1024 op, 2032.00 ns, 1.9844 ns/op
+
+OverheadActual   1: 1024 op, 2113.00 ns, 2.0635 ns/op
+OverheadActual   2: 1024 op, 2720.00 ns, 2.6563 ns/op
+OverheadActual   3: 1024 op, 2518.00 ns, 2.4590 ns/op
+OverheadActual   4: 1024 op, 2185.00 ns, 2.1338 ns/op
+OverheadActual   5: 1024 op, 1861.00 ns, 1.8174 ns/op
+OverheadActual   6: 1024 op, 1937.00 ns, 1.8916 ns/op
+OverheadActual   7: 1024 op, 2191.00 ns, 2.1396 ns/op
+OverheadActual   8: 1024 op, 2248.00 ns, 2.1953 ns/op
+OverheadActual   9: 1024 op, 1993.00 ns, 1.9463 ns/op
+OverheadActual  10: 1024 op, 1942.00 ns, 1.8965 ns/op
+OverheadActual  11: 1024 op, 1916.00 ns, 1.8711 ns/op
+OverheadActual  12: 1024 op, 1884.00 ns, 1.8398 ns/op
+OverheadActual  13: 1024 op, 2226.00 ns, 2.1738 ns/op
+OverheadActual  14: 1024 op, 2017.00 ns, 1.9697 ns/op
+OverheadActual  15: 1024 op, 2159.00 ns, 2.1084 ns/op
+OverheadActual  16: 1024 op, 2112.00 ns, 2.0625 ns/op
+OverheadActual  17: 1024 op, 2423.00 ns, 2.3662 ns/op
+OverheadActual  18: 1024 op, 2131.00 ns, 2.0811 ns/op
+OverheadActual  19: 1024 op, 4425.00 ns, 4.3213 ns/op
+OverheadActual  20: 1024 op, 2636.00 ns, 2.5742 ns/op
+
+WorkloadWarmup   1: 1024 op, 583670816.00 ns, 569.9910 us/op
+WorkloadWarmup   2: 1024 op, 508362406.00 ns, 496.4477 us/op
+WorkloadWarmup   3: 1024 op, 523289657.00 ns, 511.0251 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1024 op, 494797577.00 ns, 483.2008 us/op
+WorkloadActual   2: 1024 op, 516358993.00 ns, 504.2568 us/op
+WorkloadActual   3: 1024 op, 509442207.00 ns, 497.5022 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1024 op, 494795432.00 ns, 483.1987 us/op
+WorkloadResult   2: 1024 op, 516356848.00 ns, 504.2547 us/op
+WorkloadResult   3: 1024 op, 509440062.00 ns, 497.5001 us/op
+// GC:  5 2 0 85375920 1024
+// Threading:  71684 1 1024
+// Exceptions:  169.26171875
+
+// AfterAll
+// Benchmark Process 12265 has exited with code 0.
+
+Mean = 494.984 μs, StdErr = 6.207 μs (1.25%), N = 3, StdDev = 10.751 μs
+Min = 483.199 μs, Q1 = 490.349 μs, Median = 497.500 μs, Q3 = 500.877 μs, Max = 504.255 μs
+IQR = 10.528 μs, LowerFence = 474.557 μs, UpperFence = 516.669 μs
+ConfidenceInterval = [298.845 μs; 691.124 μs] (CI 99.9%), Margin = 196.140 μs (39.63% of Mean)
+Skewness = -0.22, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 13 (81.2 %) benchmark(s) to run. Estimated finish 2025-12-15 21:18 (0h 2m from now) **
+// **************************
+// Benchmark: LatencyBenchmarks.'Game Tick Simulation (60 FPS)': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 134 135 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks.GameTick_Simulation --job ShortRun --benchmarkId 3 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+[XClientCommunicator] Connected - serverId:bench-1, endpoint:tcp://127.0.0.1:15200
+[XClientCommunicator] Connected - serverId:bench-2, endpoint:tcp://127.0.0.1:15201
+OverheadJitting  1: 1 op, 182800.00 ns, 182.8000 us/op
+WorkloadJitting  1: 1 op, 12840684.00 ns, 12.8407 ms/op
+
+OverheadJitting  2: 16 op, 188743.00 ns, 11.7964 us/op
+WorkloadJitting  2: 16 op, 6632244.00 ns, 414.5153 us/op
+
+WorkloadPilot    1: 16 op, 5900203.00 ns, 368.7627 us/op
+WorkloadPilot    2: 32 op, 12966459.00 ns, 405.2018 us/op
+WorkloadPilot    3: 64 op, 26196976.00 ns, 409.3278 us/op
+WorkloadPilot    4: 128 op, 54548527.00 ns, 426.1604 us/op
+WorkloadPilot    5: 256 op, 110896690.00 ns, 433.1902 us/op
+WorkloadPilot    6: 512 op, 216330653.00 ns, 422.5208 us/op
+WorkloadPilot    7: 1024 op, 397074598.00 ns, 387.7682 us/op
+WorkloadPilot    8: 2048 op, 661212632.00 ns, 322.8577 us/op
+
+OverheadWarmup   1: 2048 op, 5606.00 ns, 2.7373 ns/op
+OverheadWarmup   2: 2048 op, 3343.00 ns, 1.6323 ns/op
+OverheadWarmup   3: 2048 op, 3432.00 ns, 1.6758 ns/op
+OverheadWarmup   4: 2048 op, 3442.00 ns, 1.6807 ns/op
+OverheadWarmup   5: 2048 op, 3245.00 ns, 1.5845 ns/op
+OverheadWarmup   6: 2048 op, 3242.00 ns, 1.5830 ns/op
+OverheadWarmup   7: 2048 op, 3508.00 ns, 1.7129 ns/op
+OverheadWarmup   8: 2048 op, 3172.00 ns, 1.5488 ns/op
+
+OverheadActual   1: 2048 op, 3420.00 ns, 1.6699 ns/op
+OverheadActual   2: 2048 op, 3646.00 ns, 1.7803 ns/op
+OverheadActual   3: 2048 op, 3842.00 ns, 1.8760 ns/op
+OverheadActual   4: 2048 op, 4302.00 ns, 2.1006 ns/op
+OverheadActual   5: 2048 op, 3433.00 ns, 1.6763 ns/op
+OverheadActual   6: 2048 op, 3095.00 ns, 1.5112 ns/op
+OverheadActual   7: 2048 op, 3594.00 ns, 1.7549 ns/op
+OverheadActual   8: 2048 op, 3213.00 ns, 1.5688 ns/op
+OverheadActual   9: 2048 op, 3001.00 ns, 1.4653 ns/op
+OverheadActual  10: 2048 op, 3680.00 ns, 1.7969 ns/op
+OverheadActual  11: 2048 op, 3412.00 ns, 1.6660 ns/op
+OverheadActual  12: 2048 op, 3369.00 ns, 1.6450 ns/op
+OverheadActual  13: 2048 op, 3245.00 ns, 1.5845 ns/op
+OverheadActual  14: 2048 op, 3583.00 ns, 1.7495 ns/op
+OverheadActual  15: 2048 op, 3468.00 ns, 1.6934 ns/op
+OverheadActual  16: 2048 op, 3881.00 ns, 1.8950 ns/op
+OverheadActual  17: 2048 op, 3176.00 ns, 1.5508 ns/op
+OverheadActual  18: 2048 op, 3428.00 ns, 1.6738 ns/op
+OverheadActual  19: 2048 op, 5960.00 ns, 2.9102 ns/op
+OverheadActual  20: 2048 op, 3529.00 ns, 1.7231 ns/op
+
+WorkloadWarmup   1: 2048 op, 787889679.00 ns, 384.7118 us/op
+WorkloadWarmup   2: 2048 op, 679718381.00 ns, 331.8937 us/op
+WorkloadWarmup   3: 2048 op, 633721559.00 ns, 309.4344 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 2048 op, 700368779.00 ns, 341.9769 us/op
+WorkloadActual   2: 2048 op, 735064317.00 ns, 358.9181 us/op
+WorkloadActual   3: 2048 op, 708681139.00 ns, 346.0357 us/op
+
+// AfterActualRun
+WorkloadResult   1: 2048 op, 700365328.50 ns, 341.9753 us/op
+WorkloadResult   2: 2048 op, 735060866.50 ns, 358.9164 us/op
+WorkloadResult   3: 2048 op, 708677688.50 ns, 346.0340 us/op
+// GC:  6 2 0 101670712 2048
+// Threading:  18471 0 2048
+// Exceptions:  125.69091796875
+
+// AfterAll
+// Benchmark Process 12396 has exited with code 0.
+
+Mean = 348.975 μs, StdErr = 5.107 μs (1.46%), N = 3, StdDev = 8.845 μs
+Min = 341.975 μs, Q1 = 344.005 μs, Median = 346.034 μs, Q3 = 352.475 μs, Max = 358.916 μs
+IQR = 8.471 μs, LowerFence = 331.299 μs, UpperFence = 365.181 μs
+ConfidenceInterval = [187.604 μs; 510.346 μs] (CI 99.9%), Margin = 161.371 μs (46.24% of Mean)
+Skewness = 0.3, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 12 (75.0 %) benchmark(s) to run. Estimated finish 2025-12-15 21:18 (0h 2m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks-report.csv
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks-report-github.md
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.LatencyBenchmarks-report.html
+
+// * Detailed results *
+LatencyBenchmarks.'Client→Server RTT': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 97.812 μs, StdErr = 4.407 μs (4.51%), N = 3, StdDev = 7.634 μs
+Min = 89.043 μs, Q1 = 95.231 μs, Median = 101.418 μs, Q3 = 102.196 μs, Max = 102.974 μs
+IQR = 6.966 μs, LowerFence = 84.782 μs, UpperFence = 112.644 μs
+ConfidenceInterval = [-41.452 μs; 237.076 μs] (CI 99.9%), Margin = 139.264 μs (142.38% of Mean)
+Skewness = -0.37, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[82.097 μs ;  95.249 μs) | @
+[95.249 μs ; 109.921 μs) | @@
+---------------------------------------------------
+
+LatencyBenchmarks.'Game Tick Simulation (60 FPS)': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 348.975 μs, StdErr = 5.107 μs (1.46%), N = 3, StdDev = 8.845 μs
+Min = 341.975 μs, Q1 = 344.005 μs, Median = 346.034 μs, Q3 = 352.475 μs, Max = 358.916 μs
+IQR = 8.471 μs, LowerFence = 331.299 μs, UpperFence = 365.181 μs
+ConfidenceInterval = [187.604 μs; 510.346 μs] (CI 99.9%), Margin = 161.371 μs (46.24% of Mean)
+Skewness = 0.3, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[335.955 μs ; 352.054 μs) | @@
+[352.054 μs ; 366.966 μs) | @
+---------------------------------------------------
+
+LatencyBenchmarks.'Server→Server RTT (via client trigger)': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 355.264 μs, StdErr = 8.601 μs (2.42%), N = 3, StdDev = 14.898 μs
+Min = 343.406 μs, Q1 = 346.903 μs, Median = 350.400 μs, Q3 = 361.193 μs, Max = 371.986 μs
+IQR = 14.290 μs, LowerFence = 325.468 μs, UpperFence = 382.628 μs
+ConfidenceInterval = [83.469 μs; 627.059 μs] (CI 99.9%), Margin = 271.795 μs (76.51% of Mean)
+Skewness = 0.29, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[333.345 μs ; 360.461 μs) | @@
+[360.461 μs ; 385.544 μs) | @
+---------------------------------------------------
+
+LatencyBenchmarks.'Sequential 10 messages': ShortRun(IterationCount=3, LaunchCount=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 494.984 μs, StdErr = 6.207 μs (1.25%), N = 3, StdDev = 10.751 μs
+Min = 483.199 μs, Q1 = 490.349 μs, Median = 497.500 μs, Q3 = 500.877 μs, Max = 504.255 μs
+IQR = 10.528 μs, LowerFence = 474.557 μs, UpperFence = 516.669 μs
+ConfidenceInterval = [298.845 μs; 691.124 μs] (CI 99.9%), Margin = 196.140 μs (39.63% of Mean)
+Skewness = -0.22, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[473.415 μs ; 491.094 μs) | @
+[491.094 μs ; 514.039 μs) | @@
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.14.0, Ubuntu 24.04.3 LTS (Noble Numbat)
+Intel Core Ultra 7 265K, 1 CPU, 20 logical and 20 physical cores
+.NET SDK 8.0.122
+  [Host]   : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+  ShortRun : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+
+Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+
+| Method                                   | Mean      | Error     | StdDev    | Ratio | RatioSD | Rank | Gen0   | Completed Work Items | Lock Contentions | Gen1   | Allocated | Alloc Ratio |
+|----------------------------------------- |----------:|----------:|----------:|------:|--------:|-----:|-------:|---------------------:|-----------------:|-------:|----------:|------------:|
+| 'Client→Server RTT'                      |  97.81 μs | 139.26 μs |  7.634 μs |  1.00 |    0.10 |    1 | 0.8545 |               7.0052 |                - | 0.2441 |  14.07 KB |        1.00 |
+| 'Game Tick Simulation (60 FPS)'          | 348.98 μs | 161.37 μs |  8.845 μs |  3.58 |    0.27 |    2 | 2.9297 |               9.0190 |                - | 0.9766 |  48.48 KB |        3.44 |
+| 'Server→Server RTT (via client trigger)' | 355.26 μs | 271.79 μs | 14.898 μs |  3.65 |    0.29 |    2 | 2.9297 |               9.0190 |           0.0005 | 0.9766 |  45.98 KB |        3.27 |
+| 'Sequential 10 messages'                 | 494.98 μs | 196.14 μs | 10.751 μs |  5.08 |    0.37 |    3 | 4.8828 |              70.0039 |           0.0010 | 1.9531 |  81.42 KB |        5.79 |
+// * Config Issues *
+
+// * Warnings *
+Configuration
+  Summary -> The exporter MarkdownExporter-github is already present in configuration. There may be unexpected results.
+  Summary -> The exporter CsvExporter is already present in configuration. There may be unexpected results.
+
+// * Legends *
+  Mean                 : Arithmetic mean of all measurements
+  Error                : Half of 99.9% confidence interval
+  StdDev               : Standard deviation of all measurements
+  Ratio                : Mean of the ratio distribution ([Current]/[Baseline])
+  RatioSD              : Standard deviation of the ratio distribution ([Current]/[Baseline])
+  Rank                 : Relative position of current benchmark mean among all benchmarks (Arabic style)
+  Gen0                 : GC Generation 0 collects per 1000 operations
+  Completed Work Items : The number of work items that have been processed in ThreadPool (per single operation)
+  Lock Contentions     : The number of times there was contention upon trying to take a Monitor's lock (per single operation)
+  Gen1                 : GC Generation 1 collects per 1000 operations
+  Allocated            : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  Alloc Ratio          : Allocated memory ratio distribution ([Current]/[Baseline])
+  1 μs                 : 1 Microsecond (0.000001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+// * Diagnostic Output - ThreadingDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:51 (51.95 sec), executed benchmarks: 4
+
+// Found 6 benchmarks:
+//   MemoryBenchmarks.'Client Packet create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+//   MemoryBenchmarks.'RuntimeRoutePacket (byte[]) create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+//   MemoryBenchmarks.'RuntimeRoutePacket (ByteString) create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+//   MemoryBenchmarks.'GetPayloadBytes() allocation': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+//   MemoryBenchmarks.'RouteHeader serialize': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+//   MemoryBenchmarks.'Protobuf message serialize': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+// **************************
+// Benchmark: MemoryBenchmarks.'Client Packet create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet d15b6330-3309-417e-9e69-d28d13e8c67c.dll --anonymousPipes 140 141 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks.ClientPacket_CreateDispose --job ShortRun --benchmarkId 0 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/d15b6330-3309-417e-9e69-d28d13e8c67c/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+OverheadJitting  1: 1 op, 163123.00 ns, 163.1230 us/op
+WorkloadJitting  1: 1 op, 25484290.00 ns, 25.4843 ms/op
+
+OverheadWarmup   1: 1 op, 412.00 ns, 412.0000 ns/op
+OverheadWarmup   2: 1 op, 299.00 ns, 299.0000 ns/op
+OverheadWarmup   3: 1 op, 260.00 ns, 260.0000 ns/op
+OverheadWarmup   4: 1 op, 181.00 ns, 181.0000 ns/op
+OverheadWarmup   5: 1 op, 273.00 ns, 273.0000 ns/op
+OverheadWarmup   6: 1 op, 207.00 ns, 207.0000 ns/op
+OverheadWarmup   7: 1 op, 198.00 ns, 198.0000 ns/op
+OverheadWarmup   8: 1 op, 185.00 ns, 185.0000 ns/op
+OverheadWarmup   9: 1 op, 190.00 ns, 190.0000 ns/op
+OverheadWarmup  10: 1 op, 176.00 ns, 176.0000 ns/op
+
+OverheadActual   1: 1 op, 279.00 ns, 279.0000 ns/op
+OverheadActual   2: 1 op, 279.00 ns, 279.0000 ns/op
+OverheadActual   3: 1 op, 398.00 ns, 398.0000 ns/op
+OverheadActual   4: 1 op, 256.00 ns, 256.0000 ns/op
+OverheadActual   5: 1 op, 278.00 ns, 278.0000 ns/op
+OverheadActual   6: 1 op, 297.00 ns, 297.0000 ns/op
+OverheadActual   7: 1 op, 368.00 ns, 368.0000 ns/op
+OverheadActual   8: 1 op, 278.00 ns, 278.0000 ns/op
+OverheadActual   9: 1 op, 201.00 ns, 201.0000 ns/op
+OverheadActual  10: 1 op, 434.00 ns, 434.0000 ns/op
+OverheadActual  11: 1 op, 343.00 ns, 343.0000 ns/op
+OverheadActual  12: 1 op, 299.00 ns, 299.0000 ns/op
+OverheadActual  13: 1 op, 341.00 ns, 341.0000 ns/op
+OverheadActual  14: 1 op, 234.00 ns, 234.0000 ns/op
+OverheadActual  15: 1 op, 242.00 ns, 242.0000 ns/op
+OverheadActual  16: 1 op, 249.00 ns, 249.0000 ns/op
+OverheadActual  17: 1 op, 234.00 ns, 234.0000 ns/op
+OverheadActual  18: 1 op, 228.00 ns, 228.0000 ns/op
+OverheadActual  19: 1 op, 296.00 ns, 296.0000 ns/op
+OverheadActual  20: 1 op, 216.00 ns, 216.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 76439.00 ns, 76.4390 us/op
+WorkloadWarmup   2: 1 op, 2808.00 ns, 2.8080 us/op
+WorkloadWarmup   3: 1 op, 1563.00 ns, 1.5630 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 4205.00 ns, 4.2050 us/op
+WorkloadActual   2: 1 op, 1420.00 ns, 1.4200 us/op
+WorkloadActual   3: 1 op, 1660.00 ns, 1.6600 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 3926.50 ns, 3.9265 us/op
+WorkloadResult   2: 1 op, 1141.50 ns, 1.1415 us/op
+WorkloadResult   3: 1 op, 1381.50 ns, 1.3815 us/op
+// GC:  0 0 0 816 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 12530 has exited with code 0.
+
+Mean = 2.150 μs, StdErr = 0.891 μs (41.45%), N = 3, StdDev = 1.543 μs
+Min = 1.141 μs, Q1 = 1.262 μs, Median = 1.381 μs, Q3 = 2.654 μs, Max = 3.926 μs
+IQR = 1.393 μs, LowerFence = -0.827 μs, UpperFence = 4.743 μs
+ConfidenceInterval = [-26.006 μs; 30.306 μs] (CI 99.9%), Margin = 28.156 μs (1309.67% of Mean)
+Skewness = 0.37, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 11 (68.8 %) benchmark(s) to run. Estimated finish 2025-12-15 21:17 (0h 1m from now) **
+// **************************
+// Benchmark: MemoryBenchmarks.'RuntimeRoutePacket (byte[]) create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet d15b6330-3309-417e-9e69-d28d13e8c67c.dll --anonymousPipes 140 141 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks.RuntimeRoutePacket_ByteArray_CreateDispose --job ShortRun --benchmarkId 1 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/d15b6330-3309-417e-9e69-d28d13e8c67c/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+OverheadJitting  1: 1 op, 172852.00 ns, 172.8520 us/op
+WorkloadJitting  1: 1 op, 649991.00 ns, 649.9910 us/op
+
+OverheadWarmup   1: 1 op, 270.00 ns, 270.0000 ns/op
+OverheadWarmup   2: 1 op, 296.00 ns, 296.0000 ns/op
+OverheadWarmup   3: 1 op, 121.00 ns, 121.0000 ns/op
+OverheadWarmup   4: 1 op, 151.00 ns, 151.0000 ns/op
+OverheadWarmup   5: 1 op, 257.00 ns, 257.0000 ns/op
+OverheadWarmup   6: 1 op, 138.00 ns, 138.0000 ns/op
+
+OverheadActual   1: 1 op, 282.00 ns, 282.0000 ns/op
+OverheadActual   2: 1 op, 263.00 ns, 263.0000 ns/op
+OverheadActual   3: 1 op, 283.00 ns, 283.0000 ns/op
+OverheadActual   4: 1 op, 288.00 ns, 288.0000 ns/op
+OverheadActual   5: 1 op, 337.00 ns, 337.0000 ns/op
+OverheadActual   6: 1 op, 279.00 ns, 279.0000 ns/op
+OverheadActual   7: 1 op, 403.00 ns, 403.0000 ns/op
+OverheadActual   8: 1 op, 227.00 ns, 227.0000 ns/op
+OverheadActual   9: 1 op, 276.00 ns, 276.0000 ns/op
+OverheadActual  10: 1 op, 239.00 ns, 239.0000 ns/op
+OverheadActual  11: 1 op, 275.00 ns, 275.0000 ns/op
+OverheadActual  12: 1 op, 294.00 ns, 294.0000 ns/op
+OverheadActual  13: 1 op, 273.00 ns, 273.0000 ns/op
+OverheadActual  14: 1 op, 137.00 ns, 137.0000 ns/op
+OverheadActual  15: 1 op, 163.00 ns, 163.0000 ns/op
+OverheadActual  16: 1 op, 124.00 ns, 124.0000 ns/op
+OverheadActual  17: 1 op, 223.00 ns, 223.0000 ns/op
+OverheadActual  18: 1 op, 260.00 ns, 260.0000 ns/op
+OverheadActual  19: 1 op, 128.00 ns, 128.0000 ns/op
+OverheadActual  20: 1 op, 302.00 ns, 302.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 29298.00 ns, 29.2980 us/op
+WorkloadWarmup   2: 1 op, 1201.00 ns, 1.2010 us/op
+WorkloadWarmup   3: 1 op, 1096.00 ns, 1.0960 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 1682.00 ns, 1.6820 us/op
+WorkloadActual   2: 1 op, 1153.00 ns, 1.1530 us/op
+WorkloadActual   3: 1 op, 4917.00 ns, 4.9170 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 1408.00 ns, 1.4080 us/op
+WorkloadResult   2: 1 op, 879.00 ns, 879.0000 ns/op
+WorkloadResult   3: 1 op, 4643.00 ns, 4.6430 us/op
+// GC:  0 0 0 800 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 12539 has exited with code 0.
+
+Mean = 2.310 μs, StdErr = 1.176 μs (50.93%), N = 3, StdDev = 2.038 μs
+Min = 0.879 μs, Q1 = 1.143 μs, Median = 1.408 μs, Q3 = 3.026 μs, Max = 4.643 μs
+IQR = 1.882 μs, LowerFence = -1.679 μs, UpperFence = 5.848 μs
+ConfidenceInterval = [-34.865 μs; 39.485 μs] (CI 99.9%), Margin = 37.175 μs (1609.30% of Mean)
+Skewness = 0.36, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 10 (62.5 %) benchmark(s) to run. Estimated finish 2025-12-15 21:17 (0h 1m from now) **
+// **************************
+// Benchmark: MemoryBenchmarks.'RuntimeRoutePacket (ByteString) create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet d15b6330-3309-417e-9e69-d28d13e8c67c.dll --anonymousPipes 140 141 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks.RuntimeRoutePacket_ByteString_CreateDispose --job ShortRun --benchmarkId 2 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/d15b6330-3309-417e-9e69-d28d13e8c67c/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+OverheadJitting  1: 1 op, 203353.00 ns, 203.3530 us/op
+WorkloadJitting  1: 1 op, 453389.00 ns, 453.3890 us/op
+
+OverheadWarmup   1: 1 op, 291.00 ns, 291.0000 ns/op
+OverheadWarmup   2: 1 op, 351.00 ns, 351.0000 ns/op
+OverheadWarmup   3: 1 op, 342.00 ns, 342.0000 ns/op
+OverheadWarmup   4: 1 op, 154.00 ns, 154.0000 ns/op
+OverheadWarmup   5: 1 op, 286.00 ns, 286.0000 ns/op
+OverheadWarmup   6: 1 op, 299.00 ns, 299.0000 ns/op
+OverheadWarmup   7: 1 op, 167.00 ns, 167.0000 ns/op
+
+OverheadActual   1: 1 op, 616.00 ns, 616.0000 ns/op
+OverheadActual   2: 1 op, 395.00 ns, 395.0000 ns/op
+OverheadActual   3: 1 op, 363.00 ns, 363.0000 ns/op
+OverheadActual   4: 1 op, 250.00 ns, 250.0000 ns/op
+OverheadActual   5: 1 op, 302.00 ns, 302.0000 ns/op
+OverheadActual   6: 1 op, 393.00 ns, 393.0000 ns/op
+OverheadActual   7: 1 op, 248.00 ns, 248.0000 ns/op
+OverheadActual   8: 1 op, 327.00 ns, 327.0000 ns/op
+OverheadActual   9: 1 op, 232.00 ns, 232.0000 ns/op
+OverheadActual  10: 1 op, 144.00 ns, 144.0000 ns/op
+OverheadActual  11: 1 op, 140.00 ns, 140.0000 ns/op
+OverheadActual  12: 1 op, 158.00 ns, 158.0000 ns/op
+OverheadActual  13: 1 op, 166.00 ns, 166.0000 ns/op
+OverheadActual  14: 1 op, 317.00 ns, 317.0000 ns/op
+OverheadActual  15: 1 op, 240.00 ns, 240.0000 ns/op
+OverheadActual  16: 1 op, 260.00 ns, 260.0000 ns/op
+OverheadActual  17: 1 op, 209.00 ns, 209.0000 ns/op
+OverheadActual  18: 1 op, 272.00 ns, 272.0000 ns/op
+OverheadActual  19: 1 op, 203.00 ns, 203.0000 ns/op
+OverheadActual  20: 1 op, 349.00 ns, 349.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 42536.00 ns, 42.5360 us/op
+WorkloadWarmup   2: 1 op, 2225.00 ns, 2.2250 us/op
+WorkloadWarmup   3: 1 op, 3675.00 ns, 3.6750 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 3278.00 ns, 3.2780 us/op
+WorkloadActual   2: 1 op, 2432.00 ns, 2.4320 us/op
+WorkloadActual   3: 1 op, 3080.00 ns, 3.0800 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 3023.00 ns, 3.0230 us/op
+WorkloadResult   2: 1 op, 2177.00 ns, 2.1770 us/op
+WorkloadResult   3: 1 op, 2825.00 ns, 2.8250 us/op
+// GC:  0 0 0 888 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 12549 has exited with code 0.
+
+Mean = 2.675 μs, StdErr = 0.255 μs (9.55%), N = 3, StdDev = 0.442 μs
+Min = 2.177 μs, Q1 = 2.501 μs, Median = 2.825 μs, Q3 = 2.924 μs, Max = 3.023 μs
+IQR = 0.423 μs, LowerFence = 1.867 μs, UpperFence = 3.558 μs
+ConfidenceInterval = [-5.398 μs; 10.748 μs] (CI 99.9%), Margin = 8.073 μs (301.79% of Mean)
+Skewness = -0.3, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 9 (56.2 %) benchmark(s) to run. Estimated finish 2025-12-15 21:17 (0h 1m from now) **
+// **************************
+// Benchmark: MemoryBenchmarks.'GetPayloadBytes() allocation': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet d15b6330-3309-417e-9e69-d28d13e8c67c.dll --anonymousPipes 140 141 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks.GetPayloadBytes_Allocation --job ShortRun --benchmarkId 3 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/d15b6330-3309-417e-9e69-d28d13e8c67c/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+OverheadJitting  1: 1 op, 224575.00 ns, 224.5750 us/op
+WorkloadJitting  1: 1 op, 462460.00 ns, 462.4600 us/op
+
+OverheadWarmup   1: 1 op, 342.00 ns, 342.0000 ns/op
+OverheadWarmup   2: 1 op, 305.00 ns, 305.0000 ns/op
+OverheadWarmup   3: 1 op, 165.00 ns, 165.0000 ns/op
+OverheadWarmup   4: 1 op, 340.00 ns, 340.0000 ns/op
+OverheadWarmup   5: 1 op, 323.00 ns, 323.0000 ns/op
+OverheadWarmup   6: 1 op, 174.00 ns, 174.0000 ns/op
+OverheadWarmup   7: 1 op, 204.00 ns, 204.0000 ns/op
+OverheadWarmup   8: 1 op, 207.00 ns, 207.0000 ns/op
+OverheadWarmup   9: 1 op, 125.00 ns, 125.0000 ns/op
+
+OverheadActual   1: 1 op, 341.00 ns, 341.0000 ns/op
+OverheadActual   2: 1 op, 353.00 ns, 353.0000 ns/op
+OverheadActual   3: 1 op, 478.00 ns, 478.0000 ns/op
+OverheadActual   4: 1 op, 383.00 ns, 383.0000 ns/op
+OverheadActual   5: 1 op, 324.00 ns, 324.0000 ns/op
+OverheadActual   6: 1 op, 261.00 ns, 261.0000 ns/op
+OverheadActual   7: 1 op, 230.00 ns, 230.0000 ns/op
+OverheadActual   8: 1 op, 130.00 ns, 130.0000 ns/op
+OverheadActual   9: 1 op, 120.00 ns, 120.0000 ns/op
+OverheadActual  10: 1 op, 377.00 ns, 377.0000 ns/op
+OverheadActual  11: 1 op, 196.00 ns, 196.0000 ns/op
+OverheadActual  12: 1 op, 308.00 ns, 308.0000 ns/op
+OverheadActual  13: 1 op, 163.00 ns, 163.0000 ns/op
+OverheadActual  14: 1 op, 169.00 ns, 169.0000 ns/op
+OverheadActual  15: 1 op, 201.00 ns, 201.0000 ns/op
+OverheadActual  16: 1 op, 156.00 ns, 156.0000 ns/op
+OverheadActual  17: 1 op, 146.00 ns, 146.0000 ns/op
+OverheadActual  18: 1 op, 453.00 ns, 453.0000 ns/op
+OverheadActual  19: 1 op, 366.00 ns, 366.0000 ns/op
+OverheadActual  20: 1 op, 352.00 ns, 352.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 53441.00 ns, 53.4410 us/op
+WorkloadWarmup   2: 1 op, 2100.00 ns, 2.1000 us/op
+WorkloadWarmup   3: 1 op, 1384.00 ns, 1.3840 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 2349.00 ns, 2.3490 us/op
+WorkloadActual   2: 1 op, 2221.00 ns, 2.2210 us/op
+WorkloadActual   3: 1 op, 1500.00 ns, 1.5000 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 2064.50 ns, 2.0645 us/op
+WorkloadResult   2: 1 op, 1936.50 ns, 1.9365 us/op
+WorkloadResult   3: 1 op, 1215.50 ns, 1.2155 us/op
+// GC:  0 0 0 856 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 12558 has exited with code 0.
+
+Mean = 1.739 μs, StdErr = 0.264 μs (15.20%), N = 3, StdDev = 0.458 μs
+Min = 1.216 μs, Q1 = 1.576 μs, Median = 1.937 μs, Q3 = 2.001 μs, Max = 2.064 μs
+IQR = 0.424 μs, LowerFence = 0.939 μs, UpperFence = 2.637 μs
+ConfidenceInterval = [-6.612 μs; 10.089 μs] (CI 99.9%), Margin = 8.350 μs (480.23% of Mean)
+Skewness = -0.35, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 8 (50.0 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: MemoryBenchmarks.'RouteHeader serialize': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet d15b6330-3309-417e-9e69-d28d13e8c67c.dll --anonymousPipes 140 141 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks.RouteHeader_Serialize --job ShortRun --benchmarkId 4 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/d15b6330-3309-417e-9e69-d28d13e8c67c/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+OverheadJitting  1: 1 op, 243188.00 ns, 243.1880 us/op
+WorkloadJitting  1: 1 op, 713127.00 ns, 713.1270 us/op
+
+OverheadWarmup   1: 1 op, 791.00 ns, 791.0000 ns/op
+OverheadWarmup   2: 1 op, 228.00 ns, 228.0000 ns/op
+OverheadWarmup   3: 1 op, 371.00 ns, 371.0000 ns/op
+OverheadWarmup   4: 1 op, 442.00 ns, 442.0000 ns/op
+OverheadWarmup   5: 1 op, 430.00 ns, 430.0000 ns/op
+OverheadWarmup   6: 1 op, 418.00 ns, 418.0000 ns/op
+OverheadWarmup   7: 1 op, 363.00 ns, 363.0000 ns/op
+OverheadWarmup   8: 1 op, 366.00 ns, 366.0000 ns/op
+OverheadWarmup   9: 1 op, 275.00 ns, 275.0000 ns/op
+
+OverheadActual   1: 1 op, 387.00 ns, 387.0000 ns/op
+OverheadActual   2: 1 op, 463.00 ns, 463.0000 ns/op
+OverheadActual   3: 1 op, 523.00 ns, 523.0000 ns/op
+OverheadActual   4: 1 op, 382.00 ns, 382.0000 ns/op
+OverheadActual   5: 1 op, 351.00 ns, 351.0000 ns/op
+OverheadActual   6: 1 op, 386.00 ns, 386.0000 ns/op
+OverheadActual   7: 1 op, 228.00 ns, 228.0000 ns/op
+OverheadActual   8: 1 op, 345.00 ns, 345.0000 ns/op
+OverheadActual   9: 1 op, 406.00 ns, 406.0000 ns/op
+OverheadActual  10: 1 op, 197.00 ns, 197.0000 ns/op
+OverheadActual  11: 1 op, 439.00 ns, 439.0000 ns/op
+OverheadActual  12: 1 op, 295.00 ns, 295.0000 ns/op
+OverheadActual  13: 1 op, 214.00 ns, 214.0000 ns/op
+OverheadActual  14: 1 op, 347.00 ns, 347.0000 ns/op
+OverheadActual  15: 1 op, 290.00 ns, 290.0000 ns/op
+OverheadActual  16: 1 op, 218.00 ns, 218.0000 ns/op
+OverheadActual  17: 1 op, 354.00 ns, 354.0000 ns/op
+OverheadActual  18: 1 op, 377.00 ns, 377.0000 ns/op
+OverheadActual  19: 1 op, 234.00 ns, 234.0000 ns/op
+OverheadActual  20: 1 op, 157.00 ns, 157.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 80649.00 ns, 80.6490 us/op
+WorkloadWarmup   2: 1 op, 6054.00 ns, 6.0540 us/op
+WorkloadWarmup   3: 1 op, 5322.00 ns, 5.3220 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 5188.00 ns, 5.1880 us/op
+WorkloadActual   2: 1 op, 5292.00 ns, 5.2920 us/op
+WorkloadActual   3: 1 op, 5545.00 ns, 5.5450 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 4839.00 ns, 4.8390 us/op
+WorkloadResult   2: 1 op, 4943.00 ns, 4.9430 us/op
+WorkloadResult   3: 1 op, 5196.00 ns, 5.1960 us/op
+// GC:  0 0 0 864 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 12567 has exited with code 0.
+
+Mean = 4.993 μs, StdErr = 0.106 μs (2.12%), N = 3, StdDev = 0.184 μs
+Min = 4.839 μs, Q1 = 4.891 μs, Median = 4.943 μs, Q3 = 5.069 μs, Max = 5.196 μs
+IQR = 0.178 μs, LowerFence = 4.623 μs, UpperFence = 5.337 μs
+ConfidenceInterval = [1.643 μs; 8.342 μs] (CI 99.9%), Margin = 3.350 μs (67.09% of Mean)
+Skewness = 0.25, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 7 (43.8 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: MemoryBenchmarks.'Protobuf message serialize': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet d15b6330-3309-417e-9e69-d28d13e8c67c.dll --anonymousPipes 140 141 --benchmarkName PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks.ProtobufMessage_Serialize --job ShortRun --benchmarkId 5 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/d15b6330-3309-417e-9e69-d28d13e8c67c/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+OverheadJitting  1: 1 op, 239702.00 ns, 239.7020 us/op
+WorkloadJitting  1: 1 op, 308105.00 ns, 308.1050 us/op
+
+OverheadWarmup   1: 1 op, 435.00 ns, 435.0000 ns/op
+OverheadWarmup   2: 1 op, 205.00 ns, 205.0000 ns/op
+OverheadWarmup   3: 1 op, 386.00 ns, 386.0000 ns/op
+OverheadWarmup   4: 1 op, 322.00 ns, 322.0000 ns/op
+OverheadWarmup   5: 1 op, 210.00 ns, 210.0000 ns/op
+OverheadWarmup   6: 1 op, 274.00 ns, 274.0000 ns/op
+OverheadWarmup   7: 1 op, 332.00 ns, 332.0000 ns/op
+OverheadWarmup   8: 1 op, 264.00 ns, 264.0000 ns/op
+
+OverheadActual   1: 1 op, 337.00 ns, 337.0000 ns/op
+OverheadActual   2: 1 op, 316.00 ns, 316.0000 ns/op
+OverheadActual   3: 1 op, 318.00 ns, 318.0000 ns/op
+OverheadActual   4: 1 op, 307.00 ns, 307.0000 ns/op
+OverheadActual   5: 1 op, 271.00 ns, 271.0000 ns/op
+OverheadActual   6: 1 op, 174.00 ns, 174.0000 ns/op
+OverheadActual   7: 1 op, 240.00 ns, 240.0000 ns/op
+OverheadActual   8: 1 op, 285.00 ns, 285.0000 ns/op
+OverheadActual   9: 1 op, 182.00 ns, 182.0000 ns/op
+OverheadActual  10: 1 op, 130.00 ns, 130.0000 ns/op
+OverheadActual  11: 1 op, 344.00 ns, 344.0000 ns/op
+OverheadActual  12: 1 op, 148.00 ns, 148.0000 ns/op
+OverheadActual  13: 1 op, 133.00 ns, 133.0000 ns/op
+OverheadActual  14: 1 op, 383.00 ns, 383.0000 ns/op
+OverheadActual  15: 1 op, 195.00 ns, 195.0000 ns/op
+OverheadActual  16: 1 op, 344.00 ns, 344.0000 ns/op
+OverheadActual  17: 1 op, 266.00 ns, 266.0000 ns/op
+OverheadActual  18: 1 op, 295.00 ns, 295.0000 ns/op
+OverheadActual  19: 1 op, 221.00 ns, 221.0000 ns/op
+OverheadActual  20: 1 op, 167.00 ns, 167.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 9003.00 ns, 9.0030 us/op
+WorkloadWarmup   2: 1 op, 6688.00 ns, 6.6880 us/op
+WorkloadWarmup   3: 1 op, 2364.00 ns, 2.3640 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 3761.00 ns, 3.7610 us/op
+WorkloadActual   2: 1 op, 2858.00 ns, 2.8580 us/op
+WorkloadActual   3: 1 op, 2402.00 ns, 2.4020 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 3492.50 ns, 3.4925 us/op
+WorkloadResult   2: 1 op, 2589.50 ns, 2.5895 us/op
+WorkloadResult   3: 1 op, 2133.50 ns, 2.1335 us/op
+// GC:  0 0 0 856 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 12588 has exited with code 0.
+
+Mean = 2.739 μs, StdErr = 0.399 μs (14.58%), N = 3, StdDev = 0.692 μs
+Min = 2.134 μs, Q1 = 2.361 μs, Median = 2.590 μs, Q3 = 3.041 μs, Max = 3.493 μs
+IQR = 0.679 μs, LowerFence = 1.342 μs, UpperFence = 4.060 μs
+ConfidenceInterval = [-9.880 μs; 15.357 μs] (CI 99.9%), Margin = 12.618 μs (460.77% of Mean)
+Skewness = 0.21, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 6 (37.5 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks-report.csv
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks-report-github.md
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.MemoryBenchmarks-report.html
+
+// * Detailed results *
+MemoryBenchmarks.'Client Packet create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 2.150 μs, StdErr = 0.891 μs (41.45%), N = 3, StdDev = 1.543 μs
+Min = 1.141 μs, Q1 = 1.262 μs, Median = 1.381 μs, Q3 = 2.654 μs, Max = 3.926 μs
+IQR = 1.393 μs, LowerFence = -0.827 μs, UpperFence = 4.743 μs
+ConfidenceInterval = [-26.006 μs; 30.306 μs] (CI 99.9%), Margin = 28.156 μs (1309.67% of Mean)
+Skewness = 0.37, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[1.130 μs ; 3.938 μs) | @@@
+---------------------------------------------------
+
+MemoryBenchmarks.'RuntimeRoutePacket (byte[]) create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 2.310 μs, StdErr = 1.176 μs (50.93%), N = 3, StdDev = 2.038 μs
+Min = 0.879 μs, Q1 = 1.143 μs, Median = 1.408 μs, Q3 = 3.026 μs, Max = 4.643 μs
+IQR = 1.882 μs, LowerFence = -1.679 μs, UpperFence = 5.848 μs
+ConfidenceInterval = [-34.865 μs; 39.485 μs] (CI 99.9%), Margin = 37.175 μs (1609.30% of Mean)
+Skewness = 0.36, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[-0.975 μs ; 2.998 μs) | @@
+[ 2.998 μs ; 6.497 μs) | @
+---------------------------------------------------
+
+MemoryBenchmarks.'RuntimeRoutePacket (ByteString) create/dispose': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 2.675 μs, StdErr = 0.255 μs (9.55%), N = 3, StdDev = 0.442 μs
+Min = 2.177 μs, Q1 = 2.501 μs, Median = 2.825 μs, Q3 = 2.924 μs, Max = 3.023 μs
+IQR = 0.423 μs, LowerFence = 1.867 μs, UpperFence = 3.558 μs
+ConfidenceInterval = [-5.398 μs; 10.748 μs] (CI 99.9%), Margin = 8.073 μs (301.79% of Mean)
+Skewness = -0.3, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[1.774 μs ; 2.521 μs) | @
+[2.521 μs ; 3.426 μs) | @@
+---------------------------------------------------
+
+MemoryBenchmarks.'GetPayloadBytes() allocation': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 1.739 μs, StdErr = 0.264 μs (15.20%), N = 3, StdDev = 0.458 μs
+Min = 1.216 μs, Q1 = 1.576 μs, Median = 1.937 μs, Q3 = 2.001 μs, Max = 2.064 μs
+IQR = 0.424 μs, LowerFence = 0.939 μs, UpperFence = 2.637 μs
+ConfidenceInterval = [-6.612 μs; 10.089 μs] (CI 99.9%), Margin = 8.350 μs (480.23% of Mean)
+Skewness = -0.35, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[0.799 μs ; 1.584 μs) | @
+[1.584 μs ; 2.481 μs) | @@
+---------------------------------------------------
+
+MemoryBenchmarks.'RouteHeader serialize': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 4.993 μs, StdErr = 0.106 μs (2.12%), N = 3, StdDev = 0.184 μs
+Min = 4.839 μs, Q1 = 4.891 μs, Median = 4.943 μs, Q3 = 5.069 μs, Max = 5.196 μs
+IQR = 0.178 μs, LowerFence = 4.623 μs, UpperFence = 5.337 μs
+ConfidenceInterval = [1.643 μs; 8.342 μs] (CI 99.9%), Margin = 3.350 μs (67.09% of Mean)
+Skewness = 0.25, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[4.724 μs ; 5.058 μs) | @@
+[5.058 μs ; 5.363 μs) | @
+---------------------------------------------------
+
+MemoryBenchmarks.'Protobuf message serialize': ShortRun(Force=True, InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 2.739 μs, StdErr = 0.399 μs (14.58%), N = 3, StdDev = 0.692 μs
+Min = 2.134 μs, Q1 = 2.361 μs, Median = 2.590 μs, Q3 = 3.041 μs, Max = 3.493 μs
+IQR = 0.679 μs, LowerFence = 1.342 μs, UpperFence = 4.060 μs
+ConfidenceInterval = [-9.880 μs; 15.357 μs] (CI 99.9%), Margin = 12.618 μs (460.77% of Mean)
+Skewness = 0.21, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[1.732 μs ; 2.991 μs) | @@
+[2.991 μs ; 4.122 μs) | @
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.14.0, Ubuntu 24.04.3 LTS (Noble Numbat)
+Intel Core Ultra 7 265K, 1 CPU, 20 logical and 20 physical cores
+.NET SDK 8.0.122
+  [Host]   : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+  ShortRun : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+
+Job=ShortRun  Force=True  InvocationCount=1  
+IterationCount=3  LaunchCount=1  UnrollFactor=1  
+WarmupCount=3  
+
+| Method                                           | Mean     | Error     | StdDev    | Median   | Ratio | RatioSD | Rank | Allocated | Alloc Ratio |
+|------------------------------------------------- |---------:|----------:|----------:|---------:|------:|--------:|-----:|----------:|------------:|
+| 'Client Packet create/dispose'                   | 2.150 μs | 28.156 μs | 1.5433 μs | 1.381 μs |  1.33 |    1.08 |    1 |     816 B |        1.00 |
+| 'RuntimeRoutePacket (byte[]) create/dispose'     | 2.310 μs | 37.175 μs | 2.0377 μs | 1.408 μs |  1.43 |    1.35 |    1 |     800 B |        0.98 |
+| 'RuntimeRoutePacket (ByteString) create/dispose' | 2.675 μs |  8.073 μs | 0.4425 μs | 2.825 μs |  1.65 |    0.79 |    2 |     888 B |        1.09 |
+| 'GetPayloadBytes() allocation'                   | 1.739 μs |  8.350 μs | 0.4577 μs | 1.937 μs |  1.07 |    0.56 |    1 |     856 B |        1.05 |
+| 'RouteHeader serialize'                          | 4.993 μs |  3.350 μs | 0.1836 μs | 4.943 μs |  3.09 |    1.40 |    3 |     864 B |        1.06 |
+| 'Protobuf message serialize'                     | 2.739 μs | 12.618 μs | 0.6916 μs | 2.590 μs |  1.69 |    0.87 |    2 |     856 B |        1.05 |
+
+// * Warnings *
+MinIterationTime
+  MemoryBenchmarks.'Client Packet create/dispose': ShortRun                   -> The minimum observed iteration time is 1.42μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MemoryBenchmarks.'RuntimeRoutePacket (byte[]) create/dispose': ShortRun     -> The minimum observed iteration time is 1.153μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MemoryBenchmarks.'RuntimeRoutePacket (ByteString) create/dispose': ShortRun -> The minimum observed iteration time is 2.432μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MemoryBenchmarks.'GetPayloadBytes() allocation': ShortRun                   -> The minimum observed iteration time is 1.5μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MemoryBenchmarks.'RouteHeader serialize': ShortRun                          -> The minimum observed iteration time is 5.188μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MemoryBenchmarks.'Protobuf message serialize': ShortRun                     -> The minimum observed iteration time is 2.402μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+// * Config Issues *
+
+// * Warnings *
+Configuration
+  Summary -> The exporter MarkdownExporter-github is already present in configuration. There may be unexpected results.
+  Summary -> The exporter CsvExporter is already present in configuration. There may be unexpected results.
+
+// * Legends *
+  Mean        : Arithmetic mean of all measurements
+  Error       : Half of 99.9% confidence interval
+  StdDev      : Standard deviation of all measurements
+  Median      : Value separating the higher half of all measurements (50th percentile)
+  Ratio       : Mean of the ratio distribution ([Current]/[Baseline])
+  RatioSD     : Standard deviation of the ratio distribution ([Current]/[Baseline])
+  Rank        : Relative position of current benchmark mean among all benchmarks (Arabic style)
+  Allocated   : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  Alloc Ratio : Allocated memory ratio distribution ([Current]/[Baseline])
+  1 μs        : 1 Microsecond (0.000001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:00 (0.79 sec), executed benchmarks: 6
+
+// Found 6 benchmarks:
+//   ThroughputBenchmarks.'Sequential send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+//   ThroughputBenchmarks.'Parallel send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+//   ThroughputBenchmarks.'Fire-and-forget send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+//   ThroughputBenchmarks.'Sequential send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+//   ThroughputBenchmarks.'Parallel send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+//   ThroughputBenchmarks.'Fire-and-forget send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+
+// **************************
+// Benchmark: ThroughputBenchmarks.'Sequential send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 133 138 --benchmarkName "PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks.SendMessages_Sequential(MessageCount: 100)" --job ShortRun --benchmarkId 4 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+start client Communicator
+start Server Communicator
+[XClientCommunicator] Connected - serverId:throughput-1, endpoint:tcp://127.0.0.1:15300
+OverheadJitting  1: 1 op, 182298.00 ns, 182.2980 us/op
+WorkloadJitting  1: 1 op, 11120487.00 ns, 11.1205 ms/op
+
+OverheadWarmup   1: 1 op, 622.00 ns, 622.0000 ns/op
+OverheadWarmup   2: 1 op, 288.00 ns, 288.0000 ns/op
+OverheadWarmup   3: 1 op, 364.00 ns, 364.0000 ns/op
+OverheadWarmup   4: 1 op, 285.00 ns, 285.0000 ns/op
+OverheadWarmup   5: 1 op, 510.00 ns, 510.0000 ns/op
+OverheadWarmup   6: 1 op, 291.00 ns, 291.0000 ns/op
+
+OverheadActual   1: 1 op, 292.00 ns, 292.0000 ns/op
+OverheadActual   2: 1 op, 280.00 ns, 280.0000 ns/op
+OverheadActual   3: 1 op, 435.00 ns, 435.0000 ns/op
+OverheadActual   4: 1 op, 312.00 ns, 312.0000 ns/op
+OverheadActual   5: 1 op, 288.00 ns, 288.0000 ns/op
+OverheadActual   6: 1 op, 274.00 ns, 274.0000 ns/op
+OverheadActual   7: 1 op, 272.00 ns, 272.0000 ns/op
+OverheadActual   8: 1 op, 324.00 ns, 324.0000 ns/op
+OverheadActual   9: 1 op, 405.00 ns, 405.0000 ns/op
+OverheadActual  10: 1 op, 276.00 ns, 276.0000 ns/op
+OverheadActual  11: 1 op, 266.00 ns, 266.0000 ns/op
+OverheadActual  12: 1 op, 243.00 ns, 243.0000 ns/op
+OverheadActual  13: 1 op, 251.00 ns, 251.0000 ns/op
+OverheadActual  14: 1 op, 247.00 ns, 247.0000 ns/op
+OverheadActual  15: 1 op, 408.00 ns, 408.0000 ns/op
+OverheadActual  16: 1 op, 332.00 ns, 332.0000 ns/op
+OverheadActual  17: 1 op, 328.00 ns, 328.0000 ns/op
+OverheadActual  18: 1 op, 324.00 ns, 324.0000 ns/op
+OverheadActual  19: 1 op, 282.00 ns, 282.0000 ns/op
+OverheadActual  20: 1 op, 260.00 ns, 260.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 8904929.00 ns, 8.9049 ms/op
+WorkloadWarmup   2: 1 op, 6860756.00 ns, 6.8608 ms/op
+WorkloadWarmup   3: 1 op, 7897485.00 ns, 7.8975 ms/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 5404477.00 ns, 5.4045 ms/op
+WorkloadActual   2: 1 op, 6499374.00 ns, 6.4994 ms/op
+WorkloadActual   3: 1 op, 5742274.00 ns, 5.7423 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 5404192.00 ns, 5.4042 ms/op
+WorkloadResult   2: 1 op, 6499089.00 ns, 6.4991 ms/op
+WorkloadResult   3: 1 op, 5741989.00 ns, 5.7420 ms/op
+// GC:  0 0 0 754832 1
+// Threading:  699 0 1
+// Exceptions:  1409
+
+// AfterAll
+// Benchmark Process 12609 has exited with code 0.
+
+Mean = 5.882 ms, StdErr = 0.324 ms (5.50%), N = 3, StdDev = 0.561 ms
+Min = 5.404 ms, Q1 = 5.573 ms, Median = 5.742 ms, Q3 = 6.121 ms, Max = 6.499 ms
+IQR = 0.547 ms, LowerFence = 4.752 ms, UpperFence = 6.942 ms
+ConfidenceInterval = [-4.347 ms; 16.110 ms] (CI 99.9%), Margin = 10.229 ms (173.91% of Mean)
+Skewness = 0.23, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 5 (31.2 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: ThroughputBenchmarks.'Parallel send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 139 140 --benchmarkName "PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks.SendMessages_Parallel(MessageCount: 100)" --job ShortRun --benchmarkId 5 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:throughput-1, endpoint:tcp://127.0.0.1:15300
+OverheadJitting  1: 1 op, 179414.00 ns, 179.4140 us/op
+WorkloadJitting  1: 1 op, 7787606.00 ns, 7.7876 ms/op
+
+OverheadWarmup   1: 1 op, 344.00 ns, 344.0000 ns/op
+OverheadWarmup   2: 1 op, 354.00 ns, 354.0000 ns/op
+OverheadWarmup   3: 1 op, 289.00 ns, 289.0000 ns/op
+OverheadWarmup   4: 1 op, 241.00 ns, 241.0000 ns/op
+OverheadWarmup   5: 1 op, 470.00 ns, 470.0000 ns/op
+OverheadWarmup   6: 1 op, 252.00 ns, 252.0000 ns/op
+
+OverheadActual   1: 1 op, 265.00 ns, 265.0000 ns/op
+OverheadActual   2: 1 op, 366.00 ns, 366.0000 ns/op
+OverheadActual   3: 1 op, 453.00 ns, 453.0000 ns/op
+OverheadActual   4: 1 op, 278.00 ns, 278.0000 ns/op
+OverheadActual   5: 1 op, 262.00 ns, 262.0000 ns/op
+OverheadActual   6: 1 op, 293.00 ns, 293.0000 ns/op
+OverheadActual   7: 1 op, 219.00 ns, 219.0000 ns/op
+OverheadActual   8: 1 op, 298.00 ns, 298.0000 ns/op
+OverheadActual   9: 1 op, 237.00 ns, 237.0000 ns/op
+OverheadActual  10: 1 op, 263.00 ns, 263.0000 ns/op
+OverheadActual  11: 1 op, 232.00 ns, 232.0000 ns/op
+OverheadActual  12: 1 op, 265.00 ns, 265.0000 ns/op
+OverheadActual  13: 1 op, 289.00 ns, 289.0000 ns/op
+OverheadActual  14: 1 op, 332.00 ns, 332.0000 ns/op
+OverheadActual  15: 1 op, 249.00 ns, 249.0000 ns/op
+OverheadActual  16: 1 op, 233.00 ns, 233.0000 ns/op
+OverheadActual  17: 1 op, 262.00 ns, 262.0000 ns/op
+OverheadActual  18: 1 op, 390.00 ns, 390.0000 ns/op
+OverheadActual  19: 1 op, 280.00 ns, 280.0000 ns/op
+OverheadActual  20: 1 op, 268.00 ns, 268.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 1118674.00 ns, 1.1187 ms/op
+WorkloadWarmup   2: 1 op, 1071765.00 ns, 1.0718 ms/op
+WorkloadWarmup   3: 1 op, 939013.00 ns, 939.0130 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 930338.00 ns, 930.3380 us/op
+WorkloadActual   2: 1 op, 1065987.00 ns, 1.0660 ms/op
+WorkloadActual   3: 1 op, 1241166.00 ns, 1.2412 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 930071.50 ns, 930.0715 us/op
+WorkloadResult   2: 1 op, 1065720.50 ns, 1.0657 ms/op
+WorkloadResult   3: 1 op, 1240899.50 ns, 1.2409 ms/op
+// GC:  0 0 0 460928 1
+// Threading:  331 0 1
+// Exceptions:  181
+
+// AfterAll
+// Benchmark Process 12659 has exited with code 0.
+
+Mean = 1.079 ms, StdErr = 0.090 ms (8.34%), N = 3, StdDev = 0.156 ms
+Min = 0.930 ms, Q1 = 0.998 ms, Median = 1.066 ms, Q3 = 1.153 ms, Max = 1.241 ms
+IQR = 0.155 ms, LowerFence = 0.765 ms, UpperFence = 1.386 ms
+ConfidenceInterval = [-1.764 ms; 3.922 ms] (CI 99.9%), Margin = 2.843 ms (263.51% of Mean)
+Skewness = 0.08, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 4 (25.0 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: ThroughputBenchmarks.'Fire-and-forget send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 139 140 --benchmarkName "PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks.SendMessages_FireAndForget(MessageCount: 100)" --job ShortRun --benchmarkId 6 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:throughput-1, endpoint:tcp://127.0.0.1:15300
+OverheadJitting  1: 1 op, 200430.00 ns, 200.4300 us/op
+WorkloadJitting  1: 1 op, 930362.00 ns, 930.3620 us/op
+
+OverheadWarmup   1: 1 op, 733.00 ns, 733.0000 ns/op
+OverheadWarmup   2: 1 op, 538.00 ns, 538.0000 ns/op
+OverheadWarmup   3: 1 op, 269.00 ns, 269.0000 ns/op
+OverheadWarmup   4: 1 op, 397.00 ns, 397.0000 ns/op
+OverheadWarmup   5: 1 op, 471.00 ns, 471.0000 ns/op
+OverheadWarmup   6: 1 op, 256.00 ns, 256.0000 ns/op
+OverheadWarmup   7: 1 op, 409.00 ns, 409.0000 ns/op
+OverheadWarmup   8: 1 op, 296.00 ns, 296.0000 ns/op
+
+OverheadActual   1: 1 op, 285.00 ns, 285.0000 ns/op
+OverheadActual   2: 1 op, 295.00 ns, 295.0000 ns/op
+OverheadActual   3: 1 op, 303.00 ns, 303.0000 ns/op
+OverheadActual   4: 1 op, 248.00 ns, 248.0000 ns/op
+OverheadActual   5: 1 op, 310.00 ns, 310.0000 ns/op
+OverheadActual   6: 1 op, 274.00 ns, 274.0000 ns/op
+OverheadActual   7: 1 op, 250.00 ns, 250.0000 ns/op
+OverheadActual   8: 1 op, 290.00 ns, 290.0000 ns/op
+OverheadActual   9: 1 op, 282.00 ns, 282.0000 ns/op
+OverheadActual  10: 1 op, 214.00 ns, 214.0000 ns/op
+OverheadActual  11: 1 op, 181.00 ns, 181.0000 ns/op
+OverheadActual  12: 1 op, 176.00 ns, 176.0000 ns/op
+OverheadActual  13: 1 op, 331.00 ns, 331.0000 ns/op
+OverheadActual  14: 1 op, 223.00 ns, 223.0000 ns/op
+OverheadActual  15: 1 op, 268.00 ns, 268.0000 ns/op
+OverheadActual  16: 1 op, 294.00 ns, 294.0000 ns/op
+OverheadActual  17: 1 op, 316.00 ns, 316.0000 ns/op
+OverheadActual  18: 1 op, 224.00 ns, 224.0000 ns/op
+OverheadActual  19: 1 op, 265.00 ns, 265.0000 ns/op
+OverheadActual  20: 1 op, 267.00 ns, 267.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 345426.00 ns, 345.4260 us/op
+WorkloadWarmup   2: 1 op, 458961.00 ns, 458.9610 us/op
+WorkloadWarmup   3: 1 op, 484775.00 ns, 484.7750 us/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 232879.00 ns, 232.8790 us/op
+WorkloadActual   2: 1 op, 480930.00 ns, 480.9300 us/op
+WorkloadActual   3: 1 op, 749872.00 ns, 749.8720 us/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 232608.00 ns, 232.6080 us/op
+WorkloadResult   2: 1 op, 480659.00 ns, 480.6590 us/op
+WorkloadResult   3: 1 op, 749601.00 ns, 749.6010 us/op
+// GC:  0 0 0 90704 1
+// Threading:  6 0 1
+// Exceptions:  68
+
+// AfterAll
+// Benchmark Process 12701 has exited with code 0.
+
+Mean = 487.623 μs, StdErr = 149.284 μs (30.61%), N = 3, StdDev = 258.567 μs
+Min = 232.608 μs, Q1 = 356.634 μs, Median = 480.659 μs, Q3 = 615.130 μs, Max = 749.601 μs
+IQR = 258.497 μs, LowerFence = -31.111 μs, UpperFence = 1,002.875 μs
+ConfidenceInterval = [-4,229.599 μs; 5,204.844 μs] (CI 99.9%), Margin = 4,717.222 μs (967.39% of Mean)
+Skewness = 0.03, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 3 (18.8 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: ThroughputBenchmarks.'Sequential send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 139 140 --benchmarkName "PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks.SendMessages_Sequential(MessageCount: 1000)" --job ShortRun --benchmarkId 7 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+start client Communicator
+start Server Communicator
+[XClientCommunicator] Connected - serverId:throughput-1, endpoint:tcp://127.0.0.1:15300
+OverheadJitting  1: 1 op, 168813.00 ns, 168.8130 us/op
+WorkloadJitting  1: 1 op, 55441233.00 ns, 55.4412 ms/op
+
+OverheadWarmup   1: 1 op, 546.00 ns, 546.0000 ns/op
+OverheadWarmup   2: 1 op, 241.00 ns, 241.0000 ns/op
+OverheadWarmup   3: 1 op, 368.00 ns, 368.0000 ns/op
+OverheadWarmup   4: 1 op, 311.00 ns, 311.0000 ns/op
+OverheadWarmup   5: 1 op, 397.00 ns, 397.0000 ns/op
+OverheadWarmup   6: 1 op, 322.00 ns, 322.0000 ns/op
+
+OverheadActual   1: 1 op, 627.00 ns, 627.0000 ns/op
+OverheadActual   2: 1 op, 401.00 ns, 401.0000 ns/op
+OverheadActual   3: 1 op, 374.00 ns, 374.0000 ns/op
+OverheadActual   4: 1 op, 299.00 ns, 299.0000 ns/op
+OverheadActual   5: 1 op, 282.00 ns, 282.0000 ns/op
+OverheadActual   6: 1 op, 284.00 ns, 284.0000 ns/op
+OverheadActual   7: 1 op, 290.00 ns, 290.0000 ns/op
+OverheadActual   8: 1 op, 220.00 ns, 220.0000 ns/op
+OverheadActual   9: 1 op, 196.00 ns, 196.0000 ns/op
+OverheadActual  10: 1 op, 222.00 ns, 222.0000 ns/op
+OverheadActual  11: 1 op, 245.00 ns, 245.0000 ns/op
+OverheadActual  12: 1 op, 285.00 ns, 285.0000 ns/op
+OverheadActual  13: 1 op, 259.00 ns, 259.0000 ns/op
+OverheadActual  14: 1 op, 268.00 ns, 268.0000 ns/op
+OverheadActual  15: 1 op, 304.00 ns, 304.0000 ns/op
+OverheadActual  16: 1 op, 274.00 ns, 274.0000 ns/op
+OverheadActual  17: 1 op, 269.00 ns, 269.0000 ns/op
+OverheadActual  18: 1 op, 281.00 ns, 281.0000 ns/op
+OverheadActual  19: 1 op, 272.00 ns, 272.0000 ns/op
+OverheadActual  20: 1 op, 200.00 ns, 200.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 52444687.00 ns, 52.4447 ms/op
+WorkloadWarmup   2: 1 op, 57322362.00 ns, 57.3224 ms/op
+WorkloadWarmup   3: 1 op, 60884678.00 ns, 60.8847 ms/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 51144065.00 ns, 51.1441 ms/op
+WorkloadActual   2: 1 op, 60551924.00 ns, 60.5519 ms/op
+WorkloadActual   3: 1 op, 63708604.00 ns, 63.7086 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 51143787.50 ns, 51.1438 ms/op
+WorkloadResult   2: 1 op, 60551646.50 ns, 60.5516 ms/op
+WorkloadResult   3: 1 op, 63708326.50 ns, 63.7083 ms/op
+// GC:  0 0 0 8402568 1
+// Threading:  7003 0 1
+// Exceptions:  16692
+
+// AfterAll
+// Benchmark Process 12749 has exited with code 0.
+
+Mean = 58.468 ms, StdErr = 3.774 ms (6.45%), N = 3, StdDev = 6.536 ms
+Min = 51.144 ms, Q1 = 55.848 ms, Median = 60.552 ms, Q3 = 62.130 ms, Max = 63.708 ms
+IQR = 6.282 ms, LowerFence = 46.424 ms, UpperFence = 71.553 ms
+ConfidenceInterval = [-60.779 ms; 177.715 ms] (CI 99.9%), Margin = 119.247 ms (203.95% of Mean)
+Skewness = -0.29, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 2 (12.5 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: ThroughputBenchmarks.'Parallel send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 139 140 --benchmarkName "PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks.SendMessages_Parallel(MessageCount: 1000)" --job ShortRun --benchmarkId 8 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+start client Communicator
+start Server Communicator
+[XClientCommunicator] Connected - serverId:throughput-1, endpoint:tcp://127.0.0.1:15300
+OverheadJitting  1: 1 op, 175279.00 ns, 175.2790 us/op
+WorkloadJitting  1: 1 op, 11659903.00 ns, 11.6599 ms/op
+
+OverheadWarmup   1: 1 op, 609.00 ns, 609.0000 ns/op
+OverheadWarmup   2: 1 op, 289.00 ns, 289.0000 ns/op
+OverheadWarmup   3: 1 op, 252.00 ns, 252.0000 ns/op
+OverheadWarmup   4: 1 op, 335.00 ns, 335.0000 ns/op
+OverheadWarmup   5: 1 op, 287.00 ns, 287.0000 ns/op
+OverheadWarmup   6: 1 op, 280.00 ns, 280.0000 ns/op
+OverheadWarmup   7: 1 op, 237.00 ns, 237.0000 ns/op
+OverheadWarmup   8: 1 op, 284.00 ns, 284.0000 ns/op
+OverheadWarmup   9: 1 op, 446.00 ns, 446.0000 ns/op
+OverheadWarmup  10: 1 op, 253.00 ns, 253.0000 ns/op
+
+OverheadActual   1: 1 op, 315.00 ns, 315.0000 ns/op
+OverheadActual   2: 1 op, 255.00 ns, 255.0000 ns/op
+OverheadActual   3: 1 op, 288.00 ns, 288.0000 ns/op
+OverheadActual   4: 1 op, 233.00 ns, 233.0000 ns/op
+OverheadActual   5: 1 op, 235.00 ns, 235.0000 ns/op
+OverheadActual   6: 1 op, 299.00 ns, 299.0000 ns/op
+OverheadActual   7: 1 op, 280.00 ns, 280.0000 ns/op
+OverheadActual   8: 1 op, 282.00 ns, 282.0000 ns/op
+OverheadActual   9: 1 op, 285.00 ns, 285.0000 ns/op
+OverheadActual  10: 1 op, 270.00 ns, 270.0000 ns/op
+OverheadActual  11: 1 op, 244.00 ns, 244.0000 ns/op
+OverheadActual  12: 1 op, 259.00 ns, 259.0000 ns/op
+OverheadActual  13: 1 op, 220.00 ns, 220.0000 ns/op
+OverheadActual  14: 1 op, 292.00 ns, 292.0000 ns/op
+OverheadActual  15: 1 op, 245.00 ns, 245.0000 ns/op
+OverheadActual  16: 1 op, 277.00 ns, 277.0000 ns/op
+OverheadActual  17: 1 op, 232.00 ns, 232.0000 ns/op
+OverheadActual  18: 1 op, 395.00 ns, 395.0000 ns/op
+OverheadActual  19: 1 op, 281.00 ns, 281.0000 ns/op
+OverheadActual  20: 1 op, 255.00 ns, 255.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 9650877.00 ns, 9.6509 ms/op
+WorkloadWarmup   2: 1 op, 9122548.00 ns, 9.1225 ms/op
+WorkloadWarmup   3: 1 op, 8189653.00 ns, 8.1897 ms/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 8883247.00 ns, 8.8832 ms/op
+WorkloadActual   2: 1 op, 9371677.00 ns, 9.3717 ms/op
+WorkloadActual   3: 1 op, 7443896.00 ns, 7.4439 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 8882973.50 ns, 8.8830 ms/op
+WorkloadResult   2: 1 op, 9371403.50 ns, 9.3714 ms/op
+WorkloadResult   3: 1 op, 7443622.50 ns, 7.4436 ms/op
+// GC:  0 0 0 3840328 1
+// Threading:  3981 25 1
+// Exceptions:  1469
+
+// AfterAll
+// Benchmark Process 12783 has exited with code 0.
+
+Mean = 8.566 ms, StdErr = 0.579 ms (6.75%), N = 3, StdDev = 1.002 ms
+Min = 7.444 ms, Q1 = 8.163 ms, Median = 8.883 ms, Q3 = 9.127 ms, Max = 9.371 ms
+IQR = 0.964 ms, LowerFence = 6.717 ms, UpperFence = 10.573 ms
+ConfidenceInterval = [-9.718 ms; 26.850 ms] (CI 99.9%), Margin = 18.284 ms (213.45% of Mean)
+Skewness = -0.28, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 1 (6.2 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// **************************
+// Benchmark: ThroughputBenchmarks.'Fire-and-forget send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet 8e2230cc-47fb-4987-974a-42e69c6ce097.dll --anonymousPipes 139 140 --benchmarkName "PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks.SendMessages_FireAndForget(MessageCount: 1000)" --job ShortRun --benchmarkId 9 in /home/ulalax/project/ulalax/playhouse/playhouse-net/tests/PlayHouse.Tests.Performance/bin/Release/net8.0/8e2230cc-47fb-4987-974a-42e69c6ce097/bin/Release/net8.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.14.0
+// Runtime=.NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX2,AES,BMI1,BMI2,FMA,LZCNT,PCLMUL,POPCNT,AvxVnni,SERIALIZE VectorSize=256
+// Job: ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3)
+
+start Server Communicator
+start client Communicator
+[XClientCommunicator] Connected - serverId:throughput-1, endpoint:tcp://127.0.0.1:15300
+OverheadJitting  1: 1 op, 176915.00 ns, 176.9150 us/op
+WorkloadJitting  1: 1 op, 2578356.00 ns, 2.5784 ms/op
+
+OverheadWarmup   1: 1 op, 489.00 ns, 489.0000 ns/op
+OverheadWarmup   2: 1 op, 315.00 ns, 315.0000 ns/op
+OverheadWarmup   3: 1 op, 350.00 ns, 350.0000 ns/op
+OverheadWarmup   4: 1 op, 396.00 ns, 396.0000 ns/op
+OverheadWarmup   5: 1 op, 332.00 ns, 332.0000 ns/op
+OverheadWarmup   6: 1 op, 340.00 ns, 340.0000 ns/op
+OverheadWarmup   7: 1 op, 346.00 ns, 346.0000 ns/op
+OverheadWarmup   8: 1 op, 316.00 ns, 316.0000 ns/op
+
+OverheadActual   1: 1 op, 430.00 ns, 430.0000 ns/op
+OverheadActual   2: 1 op, 520.00 ns, 520.0000 ns/op
+OverheadActual   3: 1 op, 497.00 ns, 497.0000 ns/op
+OverheadActual   4: 1 op, 460.00 ns, 460.0000 ns/op
+OverheadActual   5: 1 op, 560.00 ns, 560.0000 ns/op
+OverheadActual   6: 1 op, 367.00 ns, 367.0000 ns/op
+OverheadActual   7: 1 op, 398.00 ns, 398.0000 ns/op
+OverheadActual   8: 1 op, 319.00 ns, 319.0000 ns/op
+OverheadActual   9: 1 op, 382.00 ns, 382.0000 ns/op
+OverheadActual  10: 1 op, 289.00 ns, 289.0000 ns/op
+OverheadActual  11: 1 op, 637.00 ns, 637.0000 ns/op
+OverheadActual  12: 1 op, 1104.00 ns, 1.1040 us/op
+OverheadActual  13: 1 op, 285.00 ns, 285.0000 ns/op
+OverheadActual  14: 1 op, 377.00 ns, 377.0000 ns/op
+OverheadActual  15: 1 op, 466.00 ns, 466.0000 ns/op
+OverheadActual  16: 1 op, 309.00 ns, 309.0000 ns/op
+OverheadActual  17: 1 op, 298.00 ns, 298.0000 ns/op
+OverheadActual  18: 1 op, 328.00 ns, 328.0000 ns/op
+OverheadActual  19: 1 op, 365.00 ns, 365.0000 ns/op
+OverheadActual  20: 1 op, 378.00 ns, 378.0000 ns/op
+
+WorkloadWarmup   1: 1 op, 4422061.00 ns, 4.4221 ms/op
+WorkloadWarmup   2: 1 op, 5148394.00 ns, 5.1484 ms/op
+WorkloadWarmup   3: 1 op, 5074548.00 ns, 5.0745 ms/op
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 5330240.00 ns, 5.3302 ms/op
+WorkloadActual   2: 1 op, 6425003.00 ns, 6.4250 ms/op
+WorkloadActual   3: 1 op, 4857619.00 ns, 4.8576 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 5329860.00 ns, 5.3299 ms/op
+WorkloadResult   2: 1 op, 6424623.00 ns, 6.4246 ms/op
+WorkloadResult   3: 1 op, 4857239.00 ns, 4.8572 ms/op
+// GC:  0 0 0 2022448 1
+// Threading:  996 0 1
+// Exceptions:  1230
+
+// AfterAll
+// Benchmark Process 12830 has exited with code 0.
+
+Mean = 5.537 ms, StdErr = 0.464 ms (8.38%), N = 3, StdDev = 0.804 ms
+Min = 4.857 ms, Q1 = 5.094 ms, Median = 5.330 ms, Q3 = 5.877 ms, Max = 6.425 ms
+IQR = 0.784 ms, LowerFence = 3.918 ms, UpperFence = 7.053 ms
+ConfidenceInterval = [-9.131 ms; 20.205 ms] (CI 99.9%), Margin = 14.668 ms (264.90% of Mean)
+Skewness = 0.24, Kurtosis = 0.67, MValue = 2
+
+// ** Remained 0 (0.0 %) benchmark(s) to run. Estimated finish 2025-12-15 21:16 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks-report.csv
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks-report-github.md
+  BenchmarkDotNet.Artifacts/results/PlayHouse.Tests.Performance.Benchmarks.ThroughputBenchmarks-report.html
+
+// * Detailed results *
+ThroughputBenchmarks.'Sequential send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 5.882 ms, StdErr = 0.324 ms (5.50%), N = 3, StdDev = 0.561 ms
+Min = 5.404 ms, Q1 = 5.573 ms, Median = 5.742 ms, Q3 = 6.121 ms, Max = 6.499 ms
+IQR = 0.547 ms, LowerFence = 4.752 ms, UpperFence = 6.942 ms
+ConfidenceInterval = [-4.347 ms; 16.110 ms] (CI 99.9%), Margin = 10.229 ms (173.91% of Mean)
+Skewness = 0.23, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[5.063 ms ; 6.083 ms) | @@
+[6.083 ms ; 7.009 ms) | @
+---------------------------------------------------
+
+ThroughputBenchmarks.'Parallel send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 1.079 ms, StdErr = 0.090 ms (8.34%), N = 3, StdDev = 0.156 ms
+Min = 0.930 ms, Q1 = 0.998 ms, Median = 1.066 ms, Q3 = 1.153 ms, Max = 1.241 ms
+IQR = 0.155 ms, LowerFence = 0.765 ms, UpperFence = 1.386 ms
+ConfidenceInterval = [-1.764 ms; 3.922 ms] (CI 99.9%), Margin = 2.843 ms (263.51% of Mean)
+Skewness = 0.08, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[0.856 ms ; 1.140 ms) | @@
+[1.140 ms ; 1.383 ms) | @
+---------------------------------------------------
+
+ThroughputBenchmarks.'Fire-and-forget send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=100]
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 487.623 μs, StdErr = 149.284 μs (30.61%), N = 3, StdDev = 258.567 μs
+Min = 232.608 μs, Q1 = 356.634 μs, Median = 480.659 μs, Q3 = 615.130 μs, Max = 749.601 μs
+IQR = 258.497 μs, LowerFence = -31.111 μs, UpperFence = 1,002.875 μs
+ConfidenceInterval = [-4,229.599 μs; 5,204.844 μs] (CI 99.9%), Margin = 4,717.222 μs (967.39% of Mean)
+Skewness = 0.03, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[121.328 μs ; 591.939 μs) | @@
+[591.939 μs ; 984.906 μs) | @
+---------------------------------------------------
+
+ThroughputBenchmarks.'Sequential send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 58.468 ms, StdErr = 3.774 ms (6.45%), N = 3, StdDev = 6.536 ms
+Min = 51.144 ms, Q1 = 55.848 ms, Median = 60.552 ms, Q3 = 62.130 ms, Max = 63.708 ms
+IQR = 6.282 ms, LowerFence = 46.424 ms, UpperFence = 71.553 ms
+ConfidenceInterval = [-60.779 ms; 177.715 ms] (CI 99.9%), Margin = 119.247 ms (203.95% of Mean)
+Skewness = -0.29, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[45.196 ms ; 56.182 ms) | @
+[56.182 ms ; 69.657 ms) | @@
+---------------------------------------------------
+
+ThroughputBenchmarks.'Parallel send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 8.566 ms, StdErr = 0.579 ms (6.75%), N = 3, StdDev = 1.002 ms
+Min = 7.444 ms, Q1 = 8.163 ms, Median = 8.883 ms, Q3 = 9.127 ms, Max = 9.371 ms
+IQR = 0.964 ms, LowerFence = 6.717 ms, UpperFence = 10.573 ms
+ConfidenceInterval = [-9.718 ms; 26.850 ms] (CI 99.9%), Margin = 18.284 ms (213.45% of Mean)
+Skewness = -0.28, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[6.532 ms ;  8.215 ms) | @
+[8.215 ms ; 10.283 ms) | @@
+---------------------------------------------------
+
+ThroughputBenchmarks.'Fire-and-forget send': ShortRun(InvocationCount=1, IterationCount=3, LaunchCount=1, UnrollFactor=1, WarmupCount=3) [MessageCount=1000]
+Runtime = .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2; GC = Concurrent Workstation
+Mean = 5.537 ms, StdErr = 0.464 ms (8.38%), N = 3, StdDev = 0.804 ms
+Min = 4.857 ms, Q1 = 5.094 ms, Median = 5.330 ms, Q3 = 5.877 ms, Max = 6.425 ms
+IQR = 0.784 ms, LowerFence = 3.918 ms, UpperFence = 7.053 ms
+ConfidenceInterval = [-9.131 ms; 20.205 ms] (CI 99.9%), Margin = 14.668 ms (264.90% of Mean)
+Skewness = 0.24, Kurtosis = 0.67, MValue = 2
+-------------------- Histogram --------------------
+[4.362 ms ; 5.825 ms) | @@
+[5.825 ms ; 7.156 ms) | @
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.14.0, Ubuntu 24.04.3 LTS (Noble Numbat)
+Intel Core Ultra 7 265K, 1 CPU, 20 logical and 20 physical cores
+.NET SDK 8.0.122
+  [Host]   : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+  ShortRun : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+
+Job=ShortRun  InvocationCount=1  IterationCount=3  
+LaunchCount=1  UnrollFactor=1  WarmupCount=3  
+
+| Method                 | MessageCount | Mean        | Error        | StdDev     | Ratio | RatioSD | Rank | Allocated  | Alloc Ratio |
+|----------------------- |------------- |------------:|-------------:|-----------:|------:|--------:|-----:|-----------:|------------:|
+| 'Sequential send'      | 100          |  5,881.8 μs |  10,228.7 μs |   560.7 μs |  1.01 |    0.12 |    3 |  737.14 KB |        1.00 |
+| 'Parallel send'        | 100          |  1,078.9 μs |   2,843.0 μs |   155.8 μs |  0.18 |    0.03 |    2 |  450.13 KB |        0.61 |
+| 'Fire-and-forget send' | 100          |    487.6 μs |   4,717.2 μs |   258.6 μs |  0.08 |    0.04 |    1 |   88.58 KB |        0.12 |
+|                        |              |             |              |            |       |         |      |            |             |
+| 'Sequential send'      | 1000         | 58,467.9 μs | 119,246.6 μs | 6,536.3 μs |  1.01 |    0.14 |    3 | 8205.63 KB |        1.00 |
+| 'Parallel send'        | 1000         |  8,566.0 μs |  18,284.2 μs | 1,002.2 μs |  0.15 |    0.02 |    2 | 3750.32 KB |        0.46 |
+| 'Fire-and-forget send' | 1000         |  5,537.2 μs |  14,668.1 μs |   804.0 μs |  0.10 |    0.02 |    1 | 1975.05 KB |        0.24 |
+
+// * Warnings *
+MinIterationTime
+  ThroughputBenchmarks.'Sequential send': ShortRun      -> The minimum observed iteration time is 5.404ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  ThroughputBenchmarks.'Parallel send': ShortRun        -> The minimum observed iteration time is 930.338μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  ThroughputBenchmarks.'Fire-and-forget send': ShortRun -> The minimum observed iteration time is 232.879μs which is very small. It's recommended to increase it to at least 100ms using more operations.
+  ThroughputBenchmarks.'Sequential send': ShortRun      -> The minimum observed iteration time is 51.144ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  ThroughputBenchmarks.'Parallel send': ShortRun        -> The minimum observed iteration time is 7.444ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  ThroughputBenchmarks.'Fire-and-forget send': ShortRun -> The minimum observed iteration time is 4.858ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+// * Config Issues *
+
+// * Warnings *
+Configuration
+  Summary -> The exporter MarkdownExporter-github is already present in configuration. There may be unexpected results.
+  Summary -> The exporter CsvExporter is already present in configuration. There may be unexpected results.
+
+// * Legends *
+  MessageCount : Value of the 'MessageCount' parameter
+  Mean         : Arithmetic mean of all measurements
+  Error        : Half of 99.9% confidence interval
+  StdDev       : Standard deviation of all measurements
+  Ratio        : Mean of the ratio distribution ([Current]/[Baseline])
+  RatioSD      : Standard deviation of the ratio distribution ([Current]/[Baseline])
+  Rank         : Relative position of current benchmark mean among all benchmarks (Arabic style)
+  Allocated    : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  Alloc Ratio  : Allocated memory ratio distribution ([Current]/[Baseline])
+  1 μs         : 1 Microsecond (0.000001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:12 (12.2 sec), executed benchmarks: 6
+
+Global total time: 00:01:12 (72.34 sec), executed benchmarks: 16
+// * Artifacts cleanup *
+Artifacts cleanup is finished
