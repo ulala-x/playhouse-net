@@ -11,17 +11,12 @@ namespace PlayHouse.Benchmark.Server;
 /// <summary>
 /// 벤치마크용 Stage 구현
 /// </summary>
-public class BenchmarkStageImpl : IStage
+public abstract class BenchmarkStage(IStageSender stageSender) : IStage
 {
-    public IStageSender StageSender { get; }
+    public IStageSender StageSender { get; } = stageSender;
 
     // 응답 페이로드 캐시 (크기별로 재사용)
-    private static readonly ConcurrentDictionary<int, ByteString> _payloadCache = new();
-
-    public BenchmarkStageImpl(IStageSender stageSender)
-    {
-        StageSender = stageSender;
-    }
+    private static readonly ConcurrentDictionary<int, ByteString> PayloadCache = new();
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     {
@@ -107,7 +102,7 @@ public class BenchmarkStageImpl : IStage
     {
         if (size <= 0) return ByteString.Empty;
 
-        return _payloadCache.GetOrAdd(size, s =>
+        return PayloadCache.GetOrAdd(size, s =>
         {
             // 압축 방지를 위해 패턴으로 채움
             var payload = new byte[s];
