@@ -11,7 +11,7 @@ namespace PlayHouse.Benchmark.Server;
 /// <summary>
 /// 벤치마크용 Stage 구현
 /// </summary>
-public abstract class BenchmarkStage(IStageSender stageSender) : IStage
+public class BenchmarkStage(IStageSender stageSender) : IStage
 {
     public IStageSender StageSender { get; } = stageSender;
 

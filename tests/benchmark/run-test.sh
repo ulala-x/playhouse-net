@@ -43,7 +43,7 @@ echo ""
 # 서버 시작
 echo "[2/5] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
 dotnet run --project tests/benchmark/PlayHouse.Benchmark.Server --configuration Release -- \
-    --port $SERVER_PORT \
+    --tcp-port $SERVER_PORT \
     --http-port $HTTP_PORT > /tmp/benchmark-server.log 2>&1 &
 
 SERVER_PID=$!

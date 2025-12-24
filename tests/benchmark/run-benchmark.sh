@@ -24,9 +24,9 @@ echo ""
 
 # 프로젝트 빌드
 echo "[1/4] Building projects..."
-dotnet build tests/PlayHouse.Benchmark.Shared --configuration Release > /dev/null 2>&1
-dotnet build tests/PlayHouse.Benchmark.Server --configuration Release > /dev/null 2>&1
-dotnet build tests/PlayHouse.Benchmark.Client --configuration Release > /dev/null 2>&1
+dotnet build tests/benchmark/PlayHouse.Benchmark.Shared --configuration Release > /dev/null 2>&1
+dotnet build tests/benchmark/PlayHouse.Benchmark.Server --configuration Release > /dev/null 2>&1
+dotnet build tests/benchmark/PlayHouse.Benchmark.Client --configuration Release > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
     echo "Build failed!"
@@ -37,8 +37,8 @@ echo "[1/4] Build completed"
 
 # 서버 시작
 echo "[2/4] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
-dotnet run --project tests/PlayHouse.Benchmark.Server --configuration Release -- \
-    --port $SERVER_PORT \
+dotnet run --project tests/benchmark/PlayHouse.Benchmark.Server --configuration Release -- \
+    --tcp-port $SERVER_PORT \
     --http-port $HTTP_PORT > /tmp/benchmark-server.log 2>&1 &
 
 SERVER_PID=$!
@@ -57,7 +57,7 @@ echo "[2/4] Server started successfully"
 
 # 클라이언트 실행
 echo "[3/4] Running benchmark client..."
-dotnet run --project tests/PlayHouse.Benchmark.Client --configuration Release -- \
+dotnet run --project tests/benchmark/PlayHouse.Benchmark.Client --configuration Release -- \
     --server 127.0.0.1:$SERVER_PORT \
     --connections $CONNECTIONS \
     --messages $MESSAGES \
