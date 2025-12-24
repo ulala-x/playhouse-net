@@ -119,12 +119,9 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
         if (_disposed) return;
         _disposed = true;
 
-        Stop();
-        _messageLoop.AwaitTermination();
-
-        // Give time for sockets to fully close before dispose
-        Thread.Sleep(500);
-
-        _socket.Dispose();
+        Stop();                           // 1. _running = false
+        _socket.TerminateContext();       // 2. 블로킹 해제
+        _messageLoop.AwaitTermination();  // 3. 스레드 종료 대기
+        _socket.Dispose();                // 4. 소켓 정리
     }
 }

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>PlayHouse.Tests.Performance.Benchmarks.ClientToPlayServerBenchmarks-20251224-112344</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Ubuntu 24.04.3 LTS (Noble Numbat)
+Intel Core Ultra 7 265K, 1 CPU, 20 logical and 20 physical cores
+.NET SDK 8.0.122
+  [Host]   : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+  ShortRun : .NET 8.0.22 (8.0.2225.52707), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method             </th><th>ResponseSize</th><th>Mean  </th><th>Error </th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Rank</th><th>Throughput</th><th>Completed Work Items</th><th>Lock Contentions</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>&#39;Single Request-Reply&#39;</td><td>1024</td><td>70.68 &mu;s</td><td>80.38 &mu;s</td><td>4.406 &mu;s</td><td>1.00</td><td>0.08</td><td>1</td><td>0.01 B/s</td><td>7.0037</td><td>-</td><td>0.7324</td><td>0.1221</td><td>-</td><td>11.03 KB</td><td>1.00</td>
+</tr><tr><td>&#39;Sequential 100 Requests&#39;</td><td>1024</td><td>4,267.38 &mu;s</td><td>3,502.72 &mu;s</td><td>191.996 &mu;s</td><td>60.53</td><td>3.96</td><td>3</td><td>0.00 B/s</td><td>700.1563</td><td>0.0156</td><td>70.3125</td><td>15.6250</td><td>-</td><td>1088.92 KB</td><td>98.69</td>
+</tr><tr><td>&#39;Parallel 10 Requests&#39;</td><td>1024</td><td>114.93 &mu;s</td><td>101.75 &mu;s</td><td>5.577 &mu;s</td><td>1.63</td><td>0.11</td><td>2</td><td>0.01 B/s</td><td>43.2229</td><td>0.0028</td><td>7.5684</td><td>1.8311</td><td>-</td><td>113.25 KB</td><td>10.26</td>
+</tr><tr><td>&#39;Single Request-Reply&#39;</td><td>65536</td><td>149.47 &mu;s</td><td>55.82 &mu;s</td><td>3.060 &mu;s</td><td>1.00</td><td>0.03</td><td>1</td><td>0.44 B/s</td><td>7.0100</td><td>0.0002</td><td>33.6914</td><td>11.7188</td><td>-</td><td>515.08 KB</td><td>1.00</td>
+</tr><tr><td>&#39;Sequential 100 Requests&#39;</td><td>65536</td><td>12,044.06 &mu;s</td><td>3,210.43 &mu;s</td><td>175.975 &mu;s</td><td>80.60</td><td>1.76</td><td>3</td><td>0.01 B/s</td><td>700.6719</td><td>0.0313</td><td>3359.3750</td><td>1203.1250</td><td>-</td><td>51490.74 KB</td><td>99.97</td>
+</tr><tr><td>&#39;Parallel 10 Requests&#39;</td><td>65536</td><td>684.28 &mu;s</td><td>182.87 &mu;s</td><td>10.024 &mu;s</td><td>4.58</td><td>0.10</td><td>2</td><td>0.10 B/s</td><td>56.3066</td><td>0.0049</td><td>345.7031</td><td>168.9453</td><td>-</td><td>5153.52 KB</td><td>10.01</td>
+</tr><tr><td>&#39;Single Request-Reply&#39;</td><td>131072</td><td>389.66 &mu;s</td><td>102.22 &mu;s</td><td>5.603 &mu;s</td><td>1.00</td><td>0.02</td><td>1</td><td>0.34 B/s</td><td>8.7637</td><td>-</td><td>291.5039</td><td>291.5039</td><td>291.5039</td><td>1027.44 KB</td><td>1.00</td>
+</tr><tr><td>&#39;Sequential 100 Requests&#39;</td><td>131072</td><td>39,058.65 &mu;s</td><td>42,167.65 &mu;s</td><td>2,311.351 &mu;s</td><td>100.25</td><td>5.29</td><td>3</td><td>0.00 B/s</td><td>857.0714</td><td>-</td><td>29142.8571</td><td>29142.8571</td><td>29142.8571</td><td>102725.9 KB</td><td>99.98</td>
+</tr><tr><td>&#39;Parallel 10 Requests&#39;</td><td>131072</td><td>1,932.76 &mu;s</td><td>866.16 &mu;s</td><td>47.477 &mu;s</td><td>4.96</td><td>0.12</td><td>2</td><td>0.07 B/s</td><td>75.9453</td><td>-</td><td>1664.0625</td><td>1578.1250</td><td>1574.2188</td><td>10297.19 KB</td><td>10.02</td>
+</tr><tr><td>&#39;Single Request-Reply&#39;</td><td>262144</td><td>568.11 &mu;s</td><td>184.53 &mu;s</td><td>10.115 &mu;s</td><td>1.00</td><td>0.02</td><td>1</td><td>0.46 B/s</td><td>10.8623</td><td>-</td><td>465.8203</td><td>448.2422</td><td>448.2422</td><td>2056 KB</td><td>1.00</td>
+</tr><tr><td>&#39;Sequential 100 Requests&#39;</td><td>262144</td><td>52,202.22 &mu;s</td><td>16,966.21 &mu;s</td><td>929.975 &mu;s</td><td>91.91</td><td>2.00</td><td>3</td><td>0.01 B/s</td><td>1083.4000</td><td>-</td><td>44300.0000</td><td>42500.0000</td><td>42500.0000</td><td>205535.87 KB</td><td>99.97</td>
+</tr><tr><td>&#39;Parallel 10 Requests&#39;</td><td>262144</td><td>3,717.72 &mu;s</td><td>1,798.94 &mu;s</td><td>98.606 &mu;s</td><td>6.55</td><td>0.18</td><td>2</td><td>0.07 B/s</td><td>106.8047</td><td>-</td><td>3109.3750</td><td>2945.3125</td><td>2937.5000</td><td>20558.87 KB</td><td>10.00</td>
+</tr></tbody></table>
+</body>
+</html>
