@@ -35,6 +35,17 @@ fi
 
 echo "[1/4] Build completed"
 
+# 기존 서버 프로세스 정리
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+sleep 2
+ZMQ_PORT=16100
+for PORT in $SERVER_PORT $ZMQ_PORT; do
+    if lsof -i :$PORT -t >/dev/null 2>&1; then
+        lsof -i :$PORT -t | xargs kill -9 2>/dev/null
+        sleep 1
+    fi
+done
+
 # 서버 시작
 echo "[2/4] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
 dotnet run --project tests/benchmark/PlayHouse.Benchmark.Server --configuration Release -- \
@@ -71,7 +82,11 @@ CLIENT_EXIT_CODE=$?
 echo ""
 echo "[4/4] Stopping benchmark server..."
 kill $SERVER_PID 2>/dev/null
-wait $SERVER_PID 2>/dev/null
+sleep 2
+if ps -p $SERVER_PID > /dev/null 2>&1; then
+    kill -9 $SERVER_PID 2>/dev/null
+fi
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
 
 echo "[4/4] Server stopped"
 echo ""
