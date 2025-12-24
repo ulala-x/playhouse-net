@@ -139,7 +139,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         else
         {
             _logger?.LogWarning("Stage {StageId} not found for message {MsgId}", stageId, msgId);
-            SendErrorReply(packet, BaseErrorCode.StageNotFound);
+            SendErrorReply(packet, (ushort)ErrorCode.StageNotFound);
             packet.Dispose();
         }
     }
@@ -234,7 +234,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             if (!_producer.IsValidType(req.StageType))
             {
                 _logger?.LogError("Invalid stage type: {StageType}", req.StageType);
-                SendErrorReply(packet, BaseErrorCode.InvalidStageType);
+                SendErrorReply(packet, (ushort)ErrorCode.InvalidStageType);
                 packet.Dispose();
                 return;
             }
@@ -251,7 +251,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             {
                 // Stage already exists - this is an error for CreateStage
                 _logger?.LogWarning("Stage {StageId} already exists", stageId);
-                SendErrorReply(packet, BaseErrorCode.StageAlreadyExists);
+                SendErrorReply(packet, (ushort)ErrorCode.StageAlreadyExists);
                 packet.Dispose();
                 return;
             }
@@ -262,7 +262,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to create Stage {StageId}", stageId);
-            SendErrorReply(packet, BaseErrorCode.InternalError);
+            SendErrorReply(packet, (ushort)ErrorCode.InternalError);
             packet.Dispose();
         }
     }
@@ -279,7 +279,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             if (!_producer.IsValidType(req.StageType))
             {
                 _logger?.LogError("Invalid stage type: {StageType}", req.StageType);
-                SendErrorReply(packet, BaseErrorCode.InvalidStageType);
+                SendErrorReply(packet, (ushort)ErrorCode.InvalidStageType);
                 packet.Dispose();
                 return;
             }
@@ -294,7 +294,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to get or create Stage {StageId}", stageId);
-            SendErrorReply(packet, BaseErrorCode.InternalError);
+            SendErrorReply(packet, (ushort)ErrorCode.InternalError);
             packet.Dispose();
         }
     }

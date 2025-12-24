@@ -270,19 +270,34 @@ internal sealed class XStageSender : XSender, IStageSender
     {
         if (CurrentHeader?.Sid > 0 && _clientReplyHandler != null)
         {
-            // Client request - route through transport
-            _ = _clientReplyHandler.SendClientReplyAsync(
-                CurrentHeader.Sid,
+            // Client request - route through transport with fire-and-forget disposal
+            _ = ReplyAndDisposeAsync(reply);
+        }
+        else
+        {
+            // Server-to-server request - use base implementation
+            base.Reply(reply);
+        }
+    }
+
+    /// <summary>
+    /// Sends client reply and ensures packet disposal after transmission.
+    /// </summary>
+    private async Task ReplyAndDisposeAsync(IPacket reply)
+    {
+        try
+        {
+            await _clientReplyHandler!.SendClientReplyAsync(
+                CurrentHeader!.Sid,
                 reply.MsgId,
                 (ushort)CurrentHeader.MsgSeq,
                 StageId,
                 0,
                 reply.Payload.Data);
         }
-        else
+        finally
         {
-            // Server-to-server request - use base implementation
-            base.Reply(reply);
+            reply.Dispose();  // ArrayPool.Return is called here
         }
     }
 

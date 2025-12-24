@@ -13,6 +13,14 @@ public class BenchmarkProgram
 {
     public static async Task Main(string[] args)
     {
+        // 시나리오 A: Client → PlayServer 벤치마크만 실행
+        if (args.Contains("--scenario-a") || args.Contains("--client-to-play"))
+        {
+            var benchmark = new ClientToPlayServerBenchmarks();
+            await benchmark.RunAsync();
+            return;
+        }
+
         // 시나리오 B: PlayServer → ApiServer 벤치마크만 실행
         if (args.Contains("--scenario-b") || args.Contains("--play-to-api"))
         {

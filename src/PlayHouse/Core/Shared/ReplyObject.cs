@@ -70,7 +70,7 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            _callback(BaseErrorCode.Success, packet);
+            _callback((ushort)ErrorCode.Success, packet);
         }
     }
 
@@ -100,7 +100,7 @@ public sealed class ReplyObject : IDisposable
     /// </summary>
     public void Timeout()
     {
-        CompleteWithError(BaseErrorCode.RequestTimeout);
+        CompleteWithError((ushort)ErrorCode.RequestTimeout);
     }
 
     /// <inheritdoc/>

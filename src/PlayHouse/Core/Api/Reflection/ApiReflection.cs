@@ -62,7 +62,7 @@ internal sealed class ApiReflection
     /// </summary>
     /// <param name="packet">The incoming packet.</param>
     /// <param name="apiSender">The sender context.</param>
-    /// <exception cref="ServiceException.NotRegisterMethod">Thrown when no handler is registered for the message ID.</exception>
+    /// <exception cref="PlayException">Thrown when no handler is registered for the message ID.</exception>
     public async Task CallMethodAsync(IPacket packet, IApiSender apiSender)
     {
         var msgId = packet.MsgId;
@@ -75,7 +75,7 @@ internal sealed class ApiReflection
         else
         {
             _logger?.LogWarning("No handler registered for message: {MsgId}", msgId);
-            throw new ServiceException.NotRegisterMethod($"Not registered handler: {msgId}");
+            throw new PlayException(ErrorCode.HandlerNotFound);
         }
     }
 

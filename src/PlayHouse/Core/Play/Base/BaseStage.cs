@@ -597,7 +597,7 @@ internal sealed class BaseStage
         }
         catch (KeyNotFoundException)
         {
-            return (false, BaseErrorCode.InvalidStageType, null);
+            return (false, (ushort)ErrorCode.InvalidStageType, null);
         }
 
         // 3. OnCreate
@@ -608,14 +608,14 @@ internal sealed class BaseStage
         if (!authResult)
         {
             await actor.OnDestroy();
-            return (false, BaseErrorCode.AuthenticationFailed, null);
+            return (false, (ushort)ErrorCode.AuthenticationFailed, null);
         }
 
         // 5. Validate AccountId
         if (string.IsNullOrEmpty(actorSender.AccountId))
         {
             await actor.OnDestroy();
-            return (false, BaseErrorCode.InvalidAccountId, null);
+            return (false, (ushort)ErrorCode.InvalidAccountId, null);
         }
 
         // 6. OnPostAuthenticate
@@ -626,7 +626,7 @@ internal sealed class BaseStage
         if (!joinResult)
         {
             await actor.OnDestroy();
-            return (false, BaseErrorCode.JoinStageRejected, null);
+            return (false, (ushort)ErrorCode.JoinStageRejected, null);
         }
 
         // 8. Add actor
@@ -636,7 +636,7 @@ internal sealed class BaseStage
         // 9. OnPostJoinStage
         await Stage.OnPostJoinStage(actor);
 
-        return (true, BaseErrorCode.Success, baseActor);
+        return (true, (ushort)ErrorCode.Success, baseActor);
     }
 
     /// <summary>

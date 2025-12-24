@@ -1,0 +1,107 @@
+2025-12-24 20:22:09.009 [INF] ================================================================================
+2025-12-24 20:22:09.020 [INF] PlayHouse Benchmark Client
+2025-12-24 20:22:09.020 [INF] ================================================================================
+2025-12-24 20:22:09.020 [INF] Server: 127.0.0.1:16110
+2025-12-24 20:22:09.022 [INF] HTTP API: 127.0.0.1:5080
+2025-12-24 20:22:09.023 [INF] Mode: "RequestAsync"
+2025-12-24 20:22:09.023 [INF] Connections: 10
+2025-12-24 20:22:09.024 [INF] Messages per connection: 1,000
+2025-12-24 20:22:09.024 [INF] Total messages: 10,000
+2025-12-24 20:22:09.024 [INF] Request size: 64 bytes
+2025-12-24 20:22:09.025 [INF] Response sizes: 256B, 1,500B, 65,536B
+2025-12-24 20:22:09.025 [INF] Label: summary_test
+2025-12-24 20:22:09.025 [INF] Output: /home/ulalax/project/ulalax/playhouse/playhouse-net/benchmark-results
+2025-12-24 20:22:09.025 [INF] ================================================================================
+2025-12-24 20:22:09.026 [INF] 
+2025-12-24 20:22:09.027 [INF] >>> Test 1/3: Response Size = 256 bytes <<<
+2025-12-24 20:22:09.027 [INF] Resetting server metrics...
+2025-12-24 20:22:09.600 [INF] [20:22:09] Starting benchmark...
+2025-12-24 20:22:09.601 [INF]   Mode: "RequestAsync"
+2025-12-24 20:22:09.601 [INF]   Connections: 10
+2025-12-24 20:22:09.601 [INF]   Messages per connection: 1,000
+2025-12-24 20:22:09.601 [INF]   Total messages: 10,000
+2025-12-24 20:22:09.601 [INF]   Request size: 64 bytes
+2025-12-24 20:22:09.601 [INF]   Response size: 256 bytes
+2025-12-24 20:22:09.889 [INF] [20:22:09] Benchmark completed.
+2025-12-24 20:22:09.889 [INF] Waiting for server metrics to stabilize...
+2025-12-24 20:22:10.942 [INF] 
+2025-12-24 20:22:10.942 [INF] >>> Test 2/3: Response Size = 1,500 bytes <<<
+2025-12-24 20:22:10.942 [INF] Resetting server metrics...
+2025-12-24 20:22:11.447 [INF] [20:22:11] Starting benchmark...
+2025-12-24 20:22:11.447 [INF]   Mode: "RequestAsync"
+2025-12-24 20:22:11.447 [INF]   Connections: 10
+2025-12-24 20:22:11.447 [INF]   Messages per connection: 1,000
+2025-12-24 20:22:11.447 [INF]   Total messages: 10,000
+2025-12-24 20:22:11.447 [INF]   Request size: 64 bytes
+2025-12-24 20:22:11.447 [INF]   Response size: 1,500 bytes
+2025-12-24 20:22:11.688 [INF] [20:22:11] Benchmark completed.
+2025-12-24 20:22:11.689 [INF] Waiting for server metrics to stabilize...
+2025-12-24 20:22:12.697 [INF] 
+2025-12-24 20:22:12.697 [INF] >>> Test 3/3: Response Size = 65,536 bytes <<<
+2025-12-24 20:22:12.697 [INF] Resetting server metrics...
+2025-12-24 20:22:13.199 [INF] [20:22:13] Starting benchmark...
+2025-12-24 20:22:13.199 [INF]   Mode: "RequestAsync"
+2025-12-24 20:22:13.199 [INF]   Connections: 10
+2025-12-24 20:22:13.199 [INF]   Messages per connection: 1,000
+2025-12-24 20:22:13.199 [INF]   Total messages: 10,000
+2025-12-24 20:22:13.199 [INF]   Request size: 64 bytes
+2025-12-24 20:22:13.199 [INF]   Response size: 65,536 bytes
+2025-12-24 20:22:13.200 [INF] [20:22:13] Benchmark completed.
+2025-12-24 20:22:13.200 [INF] Waiting for server metrics to stabilize...
+2025-12-24 20:22:13.710 [INF] 
+2025-12-24 20:22:13.711 [INF] ================================================================================
+2025-12-24 20:22:13.711 [INF] Benchmark Results Summary
+2025-12-24 20:22:13.711 [INF] ================================================================================
+2025-12-24 20:22:13.711 [INF] Config: 10 CCU x 1,000 msg, Request: 64B, Mode: "RequestAsync"
+2025-12-24 20:22:13.711 [INF] 
+2025-12-24 20:22:13.711 [INF] RespSize |   Time |   Srv TPS |  Srv P99 |  Srv Mem |     Srv GC |  Cli RTT |   Cli TPS |  Cli Mem |     Cli GC
+2025-12-24 20:22:13.713 [INF] -------- | ------ | --------- | -------- | -------- | ---------- | -------- | --------- | -------- | ----------
+2025-12-24 20:22:13.713 [INF]     256B |  0.29s |    5,507/s |   0.03ms |   20.3MB |      1/0/0 |   0.41ms |    7,484/s |   30.8MB |      2/1/0
+2025-12-24 20:22:13.714 [INF]   1,500B |  0.24s |    5,727/s |   0.03ms |   41.4MB |      3/2/1 |   0.56ms |    8,010/s |   77.8MB |      5/1/1
+2025-12-24 20:22:13.714 [INF]  65,536B |  0.00s |    5,257/s |   0.57ms | 1263.8MB |    92/47/0 |   1.23ms |    7,107/s | 2522.4MB |   178/69/0
+2025-12-24 20:22:13.714 [INF] 
+2025-12-24 20:22:13.714 [INF] --------------------------------------------------------------------------------
+2025-12-24 20:22:13.714 [INF] [Response Size: 256 bytes]
+2025-12-24 20:22:13.714 [INF]   Elapsed: 0.29s
+2025-12-24 20:22:13.714 [INF]   Server:
+2025-12-24 20:22:13.714 [INF]     Processed   : 10,000 messages
+2025-12-24 20:22:13.714 [INF]     Throughput  : 5,507 msg/s (1.84 MB/s)
+2025-12-24 20:22:13.714 [INF]     Latency     : Mean=0.02ms, P50=0.01ms, P95=0.02ms, P99=0.03ms
+2025-12-24 20:22:13.714 [INF]     Memory      : 20.31 MB, GC: Gen0=1, Gen1=0, Gen2=0
+2025-12-24 20:22:13.714 [INF]   Client:
+2025-12-24 20:22:13.715 [INF]     Sent/Recv   : 10,000 / 10,000 messages
+2025-12-24 20:22:13.715 [INF]     RTT Latency : Mean=0.23ms, P50=0.22ms, P95=0.31ms, P99=0.41ms
+2025-12-24 20:22:13.715 [INF]     Throughput  : 7,484 msg/s
+2025-12-24 20:22:13.715 [INF]     Memory      : 30.82 MB, GC: Gen0=2, Gen1=1, Gen2=0
+2025-12-24 20:22:13.715 [INF] --------------------------------------------------------------------------------
+2025-12-24 20:22:13.715 [INF] [Response Size: 1,500 bytes]
+2025-12-24 20:22:13.715 [INF]   Elapsed: 0.24s
+2025-12-24 20:22:13.715 [INF]   Server:
+2025-12-24 20:22:13.715 [INF]     Processed   : 10,000 messages
+2025-12-24 20:22:13.715 [INF]     Throughput  : 5,727 msg/s (8.70 MB/s)
+2025-12-24 20:22:13.715 [INF]     Latency     : Mean=0.01ms, P50=0.01ms, P95=0.02ms, P99=0.03ms
+2025-12-24 20:22:13.715 [INF]     Memory      : 41.38 MB, GC: Gen0=3, Gen1=2, Gen2=1
+2025-12-24 20:22:13.715 [INF]   Client:
+2025-12-24 20:22:13.715 [INF]     Sent/Recv   : 10,000 / 10,000 messages
+2025-12-24 20:22:13.715 [INF]     RTT Latency : Mean=0.24ms, P50=0.23ms, P95=0.37ms, P99=0.56ms
+2025-12-24 20:22:13.715 [INF]     Throughput  : 8,010 msg/s
+2025-12-24 20:22:13.715 [INF]     Memory      : 77.79 MB, GC: Gen0=5, Gen1=1, Gen2=1
+2025-12-24 20:22:13.715 [INF] --------------------------------------------------------------------------------
+2025-12-24 20:22:13.715 [INF] [Response Size: 65,536 bytes]
+2025-12-24 20:22:13.715 [INF]   Elapsed: 0.00s
+2025-12-24 20:22:13.715 [INF]   Server:
+2025-12-24 20:22:13.715 [INF]     Processed   : 10,000 messages
+2025-12-24 20:22:13.715 [INF]     Throughput  : 5,257 msg/s (329.06 MB/s)
+2025-12-24 20:22:13.715 [INF]     Latency     : Mean=0.05ms, P50=0.03ms, P95=0.08ms, P99=0.57ms
+2025-12-24 20:22:13.715 [INF]     Memory      : 1263.77 MB, GC: Gen0=92, Gen1=47, Gen2=0
+2025-12-24 20:22:13.715 [INF]   Client:
+2025-12-24 20:22:13.715 [INF]     Sent/Recv   : 10,000 / 10,000 messages
+2025-12-24 20:22:13.715 [INF]     RTT Latency : Mean=0.39ms, P50=0.31ms, P95=0.85ms, P99=1.23ms
+2025-12-24 20:22:13.715 [INF]     Throughput  : 7,107 msg/s
+2025-12-24 20:22:13.715 [INF]     Memory      : 2522.44 MB, GC: Gen0=178, Gen1=69, Gen2=0
+2025-12-24 20:22:13.715 [INF] ================================================================================
+2025-12-24 20:22:13.728 [INF] 
+2025-12-24 20:22:13.728 [INF] Results saved to:
+2025-12-24 20:22:13.728 [INF]   Log:  benchmark-results/benchmark_20251224_202208_summary_test.log
+2025-12-24 20:22:13.728 [INF]   JSON: benchmark-results/benchmark_20251224_202208_summary_test.json
+2025-12-24 20:22:13.728 [INF]   CSV:  benchmark-results/benchmark_summary.csv

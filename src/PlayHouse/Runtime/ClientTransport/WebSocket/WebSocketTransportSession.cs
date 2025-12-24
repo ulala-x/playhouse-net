@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Buffers;
+using System.IO.Pipelines;
 using System.Net.WebSockets;
 using Microsoft.Extensions.Logging;
 using WS = System.Net.WebSockets.WebSocket;
@@ -67,6 +68,62 @@ internal sealed class WebSocketTransportSession : ITransportSession
         {
             _logger?.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
             await DisconnectAsync();
+        }
+    }
+
+    /// <summary>
+    /// Sends a response packet with ArrayPool optimization.
+    /// WebSocket has its own framing, so we don't need PipeWriter.
+    /// </summary>
+    public ValueTask<FlushResult> SendResponseAsync(
+        string msgId,
+        ushort msgSeq,
+        long stageId,
+        ushort errorCode,
+        ReadOnlySpan<byte> payload)
+    {
+        if (_disposed || _webSocket.State != WebSocketState.Open)
+            return default;
+
+        var size = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: false);
+        var buffer = ArrayPool<byte>.Shared.Rent(size);
+
+        try
+        {
+            // Write response body synchronously (Span can be used here)
+            MessageCodec.WriteResponseBody(buffer.AsSpan(), msgId, msgSeq, stageId, errorCode, payload);
+
+            // Send asynchronously
+            return SendBufferAsync(buffer, size);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error preparing response on WebSocket session {SessionId}", SessionId);
+            ArrayPool<byte>.Shared.Return(buffer);
+            return default;
+        }
+    }
+
+    private async ValueTask<FlushResult> SendBufferAsync(byte[] buffer, int size)
+    {
+        try
+        {
+            await _webSocket.SendAsync(
+                buffer.AsMemory(0, size),
+                WebSocketMessageType.Binary,
+                endOfMessage: true,
+                CancellationToken.None);
+            return default;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error sending response on WebSocket session {SessionId}", SessionId);
+            await DisconnectAsync();
+            return default;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

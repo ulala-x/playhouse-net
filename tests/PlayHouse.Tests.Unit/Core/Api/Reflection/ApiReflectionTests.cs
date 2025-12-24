@@ -108,8 +108,8 @@ public class ApiReflectionTests
         var action = () => reflection.CallMethodAsync(packet, sender);
 
         // Then (결과)
-        await action.Should().ThrowAsync<ServiceException.NotRegisterMethod>()
-            .WithMessage("*UnknownMessage*");
+        await action.Should().ThrowAsync<PlayException>()
+            .Where(e => e.ErrorCode == ErrorCode.HandlerNotFound);
     }
 
     [Fact(DisplayName = "HasHandler - 등록된 핸들러가 있으면 true를 반환한다")]

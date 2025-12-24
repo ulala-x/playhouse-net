@@ -170,26 +170,3 @@ public class PayloadTests
     #endregion
 }
 
-/// <summary>
-/// BaseErrorCode 상수 테스트
-/// </summary>
-public class BaseErrorCodeTests
-{
-    [Fact(DisplayName = "Success는 0이다")]
-    public void BaseErrorCode_Success_IsZero()
-    {
-        BaseErrorCode.Success.Should().Be(0);
-    }
-
-    [Fact(DisplayName = "RequestTimeout은 1이다")]
-    public void BaseErrorCode_RequestTimeout_IsOne()
-    {
-        BaseErrorCode.RequestTimeout.Should().Be(1);
-    }
-
-    [Fact(DisplayName = "ApplicationBase는 1000이다")]
-    public void BaseErrorCode_ApplicationBase_Is1000()
-    {
-        BaseErrorCode.ApplicationBase.Should().Be(1000);
-    }
-}
