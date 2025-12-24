@@ -6,7 +6,7 @@ namespace PlayHouse.Benchmark.Server;
 /// <summary>
 /// 벤치마크용 Actor 구현
 /// </summary>
-public abstract class BenchmarkActor(IActorSender actorSender) : IActor
+public class BenchmarkActor(IActorSender actorSender) : IActor
 {
     private static long _accountIdCounter;
 
