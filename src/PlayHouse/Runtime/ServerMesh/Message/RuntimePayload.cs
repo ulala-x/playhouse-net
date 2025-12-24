@@ -7,7 +7,7 @@ namespace PlayHouse.Runtime.ServerMesh.Message;
 /// <summary>
 /// Payload wrapper for server-to-server message data.
 /// </summary>
-public interface IRuntimePayload : IDisposable
+public interface IPayload : IDisposable
 {
     /// <summary>
     /// Gets the payload data as ReadOnlySpan.
@@ -28,7 +28,7 @@ public interface IRuntimePayload : IDisposable
 /// <summary>
 /// Payload backed by a byte array.
 /// </summary>
-public sealed class ByteArrayPayload : IRuntimePayload
+public sealed class ByteArrayPayload : IPayload
 {
     private readonly byte[] _data;
 
@@ -55,7 +55,7 @@ public sealed class ByteArrayPayload : IRuntimePayload
 /// <summary>
 /// Payload backed by a ByteString (Protobuf).
 /// </summary>
-public sealed class ByteStringPayload : IRuntimePayload
+public sealed class ByteStringPayload : IPayload
 {
     private readonly ByteString _data;
 
@@ -77,11 +77,11 @@ public sealed class ByteStringPayload : IRuntimePayload
 /// <summary>
 /// Empty payload singleton.
 /// </summary>
-public sealed class EmptyRuntimePayload : IRuntimePayload
+public sealed class EmptyPayload : IPayload
 {
-    public static readonly EmptyRuntimePayload Instance = new();
+    public static readonly EmptyPayload Instance = new();
 
-    private EmptyRuntimePayload() { }
+    private EmptyPayload() { }
 
     public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
     public ReadOnlyMemory<byte> Data => ReadOnlyMemory<byte>.Empty;
@@ -93,7 +93,7 @@ public sealed class EmptyRuntimePayload : IRuntimePayload
 /// <summary>
 /// Payload backed by ZMQ frame data (zero-copy when possible).
 /// </summary>
-public sealed class FramePayload : IRuntimePayload
+public sealed class FramePayload : IPayload
 {
     private readonly byte[] _data;
 
@@ -109,5 +109,43 @@ public sealed class FramePayload : IRuntimePayload
     public void Dispose()
     {
         // Nothing to dispose for frame data
+    }
+}
+
+/// <summary>
+/// Payload backed by ReadOnlyMemory (zero-copy, no allocation).
+/// </summary>
+public sealed class MemoryPayload : IPayload
+{
+    private readonly ReadOnlyMemory<byte> _data;
+
+    public MemoryPayload(ReadOnlyMemory<byte> data)
+    {
+        _data = data;  // No copy, just reference
+    }
+
+    public ReadOnlySpan<byte> DataSpan => _data.Span;
+    public ReadOnlyMemory<byte> Data => _data;
+    public int Length => _data.Length;
+
+    public void Dispose() { }
+}
+
+/// <summary>
+/// Payload backed by ZMQ Message (zero-copy, owns message lifetime).
+/// </summary>
+public sealed class ZmqMessagePayload(Net.Zmq.Message message) : IPayload
+{
+    private bool _disposed;
+
+    public ReadOnlySpan<byte> DataSpan => message.Data;
+    public ReadOnlyMemory<byte> Data => message.Data.ToArray();
+    public int Length => message.Size;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        message.Dispose();
     }
 }

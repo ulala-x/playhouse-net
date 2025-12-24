@@ -18,5 +18,5 @@ internal interface IBaseStageCmd
     /// </summary>
     /// <param name="baseStage">The stage context.</param>
     /// <param name="packet">The incoming route packet.</param>
-    Task Execute(BaseStage baseStage, RuntimeRoutePacket packet);
+    Task Execute(BaseStage baseStage, RoutePacket packet);
 }

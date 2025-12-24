@@ -45,13 +45,13 @@ internal sealed class RouteMessage : PlayMessage
     /// <summary>
     /// Gets the wrapped route packet.
     /// </summary>
-    public RuntimeRoutePacket RoutePacket { get; }
+    public RoutePacket RoutePacket { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RouteMessage"/> class.
     /// </summary>
     /// <param name="routePacket">The route packet to wrap.</param>
-    public RouteMessage(RuntimeRoutePacket routePacket)
+    public RouteMessage(RoutePacket routePacket)
         : base(routePacket.StageId)
     {
         RoutePacket = routePacket;

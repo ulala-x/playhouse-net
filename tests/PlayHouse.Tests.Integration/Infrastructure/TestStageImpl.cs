@@ -200,6 +200,14 @@ public class TestStageImpl : IStage
                 await HandleTriggerRequestToApi(actor, packet);
                 break;
 
+            case "BenchmarkRequest":
+                HandleBenchmarkRequest(actor, packet);
+                break;
+
+            case "TriggerBenchmarkApiRequest":
+                await HandleTriggerBenchmarkApi(actor, packet);
+                break;
+
             default:
                 // 기본 성공 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -299,7 +307,7 @@ public class TestStageImpl : IStage
         var timerId = StageSender.AddRepeatTimer(
             TimeSpan.FromMilliseconds(request.InitialDelayMs),
             TimeSpan.FromMilliseconds(request.IntervalMs),
-            async () =>
+            () =>
             {
                 Interlocked.Increment(ref _timerCallbackCount);
                 _timerCallbackCountByStageId.AddOrUpdate(stageId, 1, (_, c) => c + 1);
@@ -311,6 +319,7 @@ public class TestStageImpl : IStage
                     TimerType = "repeat"
                 };
                 actor.ActorSender.SendToClient(CPacket.Of(notify));
+                return Task.CompletedTask;
             });
 
         actor.ActorSender.Reply(CPacket.Of(new StartTimerReply { TimerId = timerId }));
@@ -327,7 +336,7 @@ public class TestStageImpl : IStage
             TimeSpan.FromMilliseconds(request.InitialDelayMs),
             TimeSpan.FromMilliseconds(request.IntervalMs),
             request.Count,
-            async () =>
+            () =>
             {
                 Interlocked.Increment(ref _timerCallbackCount);
                 _timerCallbackCountByStageId.AddOrUpdate(stageId, 1, (_, c) => c + 1);
@@ -339,6 +348,7 @@ public class TestStageImpl : IStage
                     TimerType = "count"
                 };
                 actor.ActorSender.SendToClient(CPacket.Of(notify));
+                return Task.CompletedTask;
             });
 
         actor.ActorSender.Reply(CPacket.Of(new StartTimerReply { TimerId = timerId }));
@@ -363,7 +373,7 @@ public class TestStageImpl : IStage
 
                 return preResult;
             },
-            async (result) =>
+            (result) =>
             {
                 Interlocked.Increment(ref _asyncPostCallbackCount);
                 var postThreadId = Environment.CurrentManagedThreadId;
@@ -380,6 +390,7 @@ public class TestStageImpl : IStage
                 // AsyncBlock의 post 콜백에서는 CurrentHeader가 이미 클리어됨
                 // 따라서 SendToClient로 Push 메시지 전송 (MsgSeq=0)
                 actor.ActorSender.SendToClient(CPacket.Of(reply));
+                return Task.CompletedTask;
             });
 
         // 즉시 수락 응답 전송 (CurrentHeader가 아직 유효할 때)
@@ -474,5 +485,89 @@ public class TestStageImpl : IStage
 
         var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.Data.Span);
         actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToApiReply { ApiResponse = apiReply.Content }));
+    }
+
+    /// <summary>
+    /// 벤치마크 요청 처리 - 지정된 크기의 응답 반환
+    /// </summary>
+    private void HandleBenchmarkRequest(IActor actor, IPacket packet)
+    {
+        var request = BenchmarkRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // 지정된 크기의 페이로드 생성
+        var payload = new byte[request.ResponseSize];
+        // 패턴으로 채우기 (압축 방지)
+        for (int i = 0; i < payload.Length; i++)
+        {
+            payload[i] = (byte)(i % 256);
+        }
+
+        var reply = new BenchmarkReply
+        {
+            Sequence = request.Sequence,
+            ProcessedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Payload = Google.Protobuf.ByteString.CopyFrom(payload)
+        };
+
+        actor.ActorSender.Reply(CPacket.Of(reply));
+    }
+
+    /// <summary>
+    /// 벤치마크 API 요청 트리거 - Stage → API 통신 성능 측정용
+    /// </summary>
+    private async Task HandleTriggerBenchmarkApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerBenchmarkApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // API 서버에 벤치마크 요청 전송
+        const string apiNid = "bench-api-1";
+        var apiRequest = new BenchmarkApiRequest
+        {
+            Sequence = request.Sequence,
+            ResponseSize = request.ResponseSize
+        };
+
+        // 측정 전 상태 기록
+        var gcGen0Before = GC.CollectionCount(0);
+        var gcGen1Before = GC.CollectionCount(1);
+        var gcGen2Before = GC.CollectionCount(2);
+
+        // count만큼 반복하여 측정 데이터 수집
+        var count = request.Count > 0 ? request.Count : 1;
+        var elapsedTicksList = new List<long>(count);
+        var memoryAllocatedList = new List<long>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            var memoryBefore = GC.GetTotalAllocatedBytes(precise: false);
+
+            // ★ Stage→Api 구간만 측정
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiRequest));
+            sw.Stop();
+
+            var memoryAfter = GC.GetTotalAllocatedBytes(precise: false);
+
+            elapsedTicksList.Add(sw.ElapsedTicks);
+            memoryAllocatedList.Add(memoryAfter - memoryBefore);
+        }
+
+        // 측정 후 상태 기록
+        var gcGen0After = GC.CollectionCount(0);
+        var gcGen1After = GC.CollectionCount(1);
+        var gcGen2After = GC.CollectionCount(2);
+
+        // 모든 측정 데이터를 클라이언트에 전달
+        var reply = new TriggerBenchmarkApiReply
+        {
+            Sequence = request.Sequence,
+            GcGen0Count = gcGen0After - gcGen0Before,
+            GcGen1Count = gcGen1After - gcGen1Before,
+            GcGen2Count = gcGen2After - gcGen2Before
+        };
+        reply.ElapsedTicksList.AddRange(elapsedTicksList);
+        reply.MemoryAllocatedList.AddRange(memoryAllocatedList);
+
+        actor.ActorSender.Reply(CPacket.Of(reply));
     }
 }

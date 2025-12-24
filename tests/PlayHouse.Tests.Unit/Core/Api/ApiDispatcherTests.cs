@@ -94,7 +94,7 @@ public class ApiDispatcherTests : IDisposable
             MsgId = "TestMessage",
             From = "test:1"
         };
-        var packet = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
+        var packet = RoutePacket.Of(header, Array.Empty<byte>());
 
         // When (행동)
         _dispatcher.Post(packet);
@@ -115,7 +115,7 @@ public class ApiDispatcherTests : IDisposable
             MsgSeq = 1, // Request (expects reply)
             From = "test:1"
         };
-        var packet = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
+        var packet = RoutePacket.Of(header, Array.Empty<byte>());
 
         // When (행동)
         _dispatcher.Post(packet);
@@ -146,7 +146,7 @@ public class ApiDispatcherTests : IDisposable
 
         const int messageCount = 5;
         var packets = Enumerable.Range(0, messageCount)
-            .Select(i => RuntimeRoutePacket.Of(
+            .Select(i => RoutePacket.Of(
                 new RouteHeader
                 {
                     ServiceId = 1,

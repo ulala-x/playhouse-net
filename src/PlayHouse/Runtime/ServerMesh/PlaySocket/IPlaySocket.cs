@@ -54,7 +54,7 @@ internal interface IPlaySocket : IDisposable
     /// <remarks>
     /// Packet will be disposed after sending. Sends as 3-frame multipart message.
     /// </remarks>
-    void Send(string serverId, RuntimeRoutePacket packet);
+    void Send(string serverId, RoutePacket packet);
 
     /// <summary>
     /// Receives a RuntimeRoutePacket (blocking with 1-second timeout).
@@ -64,7 +64,7 @@ internal interface IPlaySocket : IDisposable
     /// Uses TryReceiveMultipartMessage internally (Kairos pattern).
     /// Timeout is fixed at 1 second for consistency.
     /// </remarks>
-    RuntimeRoutePacket? Receive();
+    RoutePacket? Receive();
 }
 
 /// <summary>

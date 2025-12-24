@@ -89,7 +89,7 @@ internal sealed class BaseStage
     /// Posts a message to the Stage event loop.
     /// </summary>
     /// <param name="packet">The route packet to process.</param>
-    public void Post(RuntimeRoutePacket packet)
+    public void Post(RoutePacket packet)
     {
         _messageQueue.Enqueue(new StageMessage.RouteMessage(packet));
         TryStartProcessing();
@@ -238,7 +238,7 @@ internal sealed class BaseStage
         }
     }
 
-    private async Task DispatchRoutePacketAsync(RuntimeRoutePacket packet)
+    private async Task DispatchRoutePacketAsync(RoutePacket packet)
     {
         // Set current header for reply routing
         StageSender.SetCurrentHeader(packet.Header);
@@ -282,7 +282,7 @@ internal sealed class BaseStage
                msgId == nameof(ReconnectMsg);
     }
 
-    private async Task HandleSystemMessageAsync(string msgId, RuntimeRoutePacket packet)
+    private async Task HandleSystemMessageAsync(string msgId, RoutePacket packet)
     {
         if (_cmdHandler == null)
         {
@@ -325,9 +325,10 @@ internal sealed class BaseStage
         }
     }
 
-    private static IPacket CreateContentPacket(RuntimeRoutePacket packet)
+    private static IPacket CreateContentPacket(RoutePacket packet)
     {
-        return CPacket.Of(packet.MsgId, packet.Payload.DataSpan.ToArray());
+        // Use zero-copy CPacket.Of overload that accepts Runtime.IPayload
+        return CPacket.Of(packet.MsgId, packet.Payload);
     }
 
     /// <summary>
@@ -354,7 +355,9 @@ internal sealed class BaseStage
 
             try
             {
-                var packet = CPacket.Of(msgId, payload.ToArray());
+                // Create packet from ReadOnlyMemory - zero-copy with MemoryPayload
+                var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(payload);
+                var packet = CPacket.Of(msgId, runtimePayload);
                 await Stage.OnDispatch(baseActor.Actor, packet);
             }
             finally
@@ -680,9 +683,9 @@ internal abstract class StageMessage : IDisposable
     /// </summary>
     public sealed class RouteMessage : StageMessage
     {
-        public RuntimeRoutePacket Packet { get; }
+        public RoutePacket Packet { get; }
 
-        public RouteMessage(RuntimeRoutePacket packet)
+        public RouteMessage(RoutePacket packet)
         {
             Packet = packet;
         }

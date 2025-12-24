@@ -14,7 +14,7 @@ public interface IClientCommunicator
     /// </summary>
     /// <param name="targetServerId">Target server ID.</param>
     /// <param name="packet">Packet to send.</param>
-    void Send(string targetServerId, RuntimeRoutePacket packet);
+    void Send(string targetServerId, RoutePacket packet);
 
     /// <summary>
     /// Connects to a remote server.

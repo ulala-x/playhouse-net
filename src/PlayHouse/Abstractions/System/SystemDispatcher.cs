@@ -57,7 +57,7 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
     /// </summary>
     /// <param name="packet">라우트 패킷.</param>
     /// <returns>처리 성공 여부.</returns>
-    public async Task<bool> DispatchAsync(RuntimeRoutePacket packet)
+    public async Task<bool> DispatchAsync(RoutePacket packet)
     {
         var msgId = packet.MsgId;
 

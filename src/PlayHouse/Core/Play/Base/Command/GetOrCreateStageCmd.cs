@@ -20,7 +20,7 @@ internal sealed class GetOrCreateStageCmd : IBaseStageCmd
         _logger = logger;
     }
 
-    public async Task Execute(BaseStage baseStage, RuntimeRoutePacket packet)
+    public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var req = GetOrCreateStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
         _logger?.LogDebug("GetOrCreateStageReq: StageType={StageType}", req.StageType);

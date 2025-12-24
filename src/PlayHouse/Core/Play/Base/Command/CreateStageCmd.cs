@@ -23,7 +23,7 @@ internal sealed class CreateStageCmd : IBaseStageCmd
         _logger = logger;
     }
 
-    public async Task Execute(BaseStage baseStage, RuntimeRoutePacket packet)
+    public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var req = CreateStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
         _logger?.LogDebug("CreateStageReq: StageType={StageType}, PayloadId={PayloadId}",

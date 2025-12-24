@@ -206,7 +206,7 @@ public class PlayDispatcherTests : IDisposable
 
         // Then (결과)
         // 에러 응답이 전송되어야 함 (communicator.Send가 호출됨)
-        _communicator.Received().Send(Arg.Any<string>(), Arg.Any<RuntimeRoutePacket>());
+        _communicator.Received().Send(Arg.Any<string>(), Arg.Any<RoutePacket>());
     }
 
     [Fact(DisplayName = "PostDestroy - Stage를 제거한다")]
@@ -296,7 +296,7 @@ public class PlayDispatcherTests : IDisposable
 
     #region Helper Methods
 
-    private static RuntimeRoutePacket CreateCreateStagePacket(long stageId, string stageType)
+    private static RoutePacket CreateCreateStagePacket(long stageId, string stageType)
     {
         var createReq = new CreateStageReq { StageType = stageType };
         var header = new RouteHeader
@@ -307,10 +307,10 @@ public class PlayDispatcherTests : IDisposable
             From = "test:1"
         };
 
-        return RuntimeRoutePacket.Of(header, createReq.ToByteArray());
+        return RoutePacket.Of(header, createReq.ToByteArray());
     }
 
-    private static RuntimeRoutePacket CreateTestPacket(long stageId, string msgId, ushort msgSeq = 0)
+    private static RoutePacket CreateTestPacket(long stageId, string msgId, ushort msgSeq = 0)
     {
         var header = new RouteHeader
         {
@@ -321,7 +321,7 @@ public class PlayDispatcherTests : IDisposable
             MsgSeq = msgSeq
         };
 
-        return RuntimeRoutePacket.Of(header, Array.Empty<byte>());
+        return RoutePacket.Of(header, Array.Empty<byte>());
     }
 
     #endregion

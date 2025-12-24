@@ -2,6 +2,7 @@
 
 using Google.Protobuf;
 using PlayHouse.Abstractions;
+using RuntimePayload = PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Core.Shared;
 
@@ -45,6 +46,17 @@ public sealed class CPacket : IPacket
     {
         var msgId = typeof(T).Name;
         return new CPacket(msgId, new ProtoPayload(message));
+    }
+
+    /// <summary>
+    /// Creates a packet from a Runtime IPayload (zero-copy for server-to-server).
+    /// </summary>
+    /// <param name="msgId">Message identifier.</param>
+    /// <param name="runtimePayload">Runtime payload instance.</param>
+    /// <returns>A new CPacket instance.</returns>
+    public static CPacket Of(string msgId, RuntimePayload.IPayload runtimePayload)
+    {
+        return new CPacket(msgId, new RuntimePayloadWrapper(runtimePayload));
     }
 
     /// <summary>
@@ -123,4 +135,24 @@ public sealed class EmptyPayload : IPayload
     public ReadOnlyMemory<byte> Data => ReadOnlyMemory<byte>.Empty;
 
     public void Dispose() { }
+}
+
+/// <summary>
+/// Payload wrapper that bridges Runtime.IPayload to Abstractions.IPayload (zero-copy).
+/// </summary>
+public sealed class RuntimePayloadWrapper : IPayload
+{
+    private readonly RuntimePayload.IPayload _runtimePayload;
+
+    public RuntimePayloadWrapper(RuntimePayload.IPayload runtimePayload)
+    {
+        _runtimePayload = runtimePayload;
+    }
+
+    public ReadOnlyMemory<byte> Data => _runtimePayload.Data;
+
+    public void Dispose()
+    {
+        _runtimePayload.Dispose();
+    }
 }

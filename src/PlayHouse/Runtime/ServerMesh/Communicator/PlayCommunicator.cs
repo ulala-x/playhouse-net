@@ -15,7 +15,7 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     private readonly XClientCommunicator _client;
     private readonly XServerCommunicator _server;
     private readonly MessageLoop _messageLoop;
-    private Action<string, RuntimeRoutePacket>? _handler;
+    private Action<string, RoutePacket>? _handler;
     private bool _disposed;
 
     /// <inheritdoc/>
@@ -48,7 +48,7 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     }
 
     /// <inheritdoc/>
-    public void OnReceive(RuntimeRoutePacket packet)
+    public void OnReceive(RoutePacket packet)
     {
         _handler?.Invoke(packet.From, packet);
     }
@@ -70,13 +70,13 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     /// Legacy method for backward compatibility.
     /// </summary>
     [Obsolete("Use Bind(ICommunicateListener) instead")]
-    public void OnReceive(Action<string, RuntimeRoutePacket> handler)
+    public void OnReceive(Action<string, RoutePacket> handler)
     {
         _handler = handler;
     }
 
     /// <inheritdoc/>
-    public void Send(string targetServerId, RuntimeRoutePacket packet) => _client.Send(targetServerId, packet);
+    public void Send(string targetServerId, RoutePacket packet) => _client.Send(targetServerId, packet);
 
     /// <inheritdoc/>
     public void Connect(string targetServerId, string address) => _client.Connect(targetServerId, address);

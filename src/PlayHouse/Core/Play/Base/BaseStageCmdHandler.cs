@@ -36,7 +36,7 @@ internal sealed class BaseStageCmdHandler
     /// <summary>
     /// 시스템 메시지를 처리합니다.
     /// </summary>
-    public async Task<bool> HandleAsync(string msgId, RuntimeRoutePacket packet, BaseStage baseStage)
+    public async Task<bool> HandleAsync(string msgId, RoutePacket packet, BaseStage baseStage)
     {
         if (_commands.TryGetValue(msgId, out var command))
         {
