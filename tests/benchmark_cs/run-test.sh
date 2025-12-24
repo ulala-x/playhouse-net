@@ -28,9 +28,9 @@ echo ""
 echo "[1/5] Building projects..."
 cd /home/ulalax/project/ulalax/playhouse/playhouse-net
 
-dotnet build tests/benchmark/PlayHouse.Benchmark.Shared --configuration Release > /dev/null 2>&1
-dotnet build tests/benchmark/PlayHouse.Benchmark.Server --configuration Release > /dev/null 2>&1
-dotnet build tests/benchmark/PlayHouse.Benchmark.Client --configuration Release > /dev/null 2>&1
+dotnet build tests/benchmark_cs/PlayHouse.Benchmark.Shared --configuration Release > /dev/null 2>&1
+dotnet build tests/benchmark_cs/PlayHouse.Benchmark.Server --configuration Release > /dev/null 2>&1
+dotnet build tests/benchmark_cs/PlayHouse.Benchmark.Client --configuration Release > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
     echo "Build failed!"
@@ -57,7 +57,7 @@ done
 
 # 서버 시작
 echo "[2/5] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
-dotnet run --project tests/benchmark/PlayHouse.Benchmark.Server --configuration Release -- \
+dotnet run --project tests/benchmark_cs/PlayHouse.Benchmark.Server --configuration Release -- \
     --tcp-port $SERVER_PORT \
     --http-port $HTTP_PORT > /tmp/benchmark-server.log 2>&1 &
 
@@ -92,7 +92,7 @@ for RESPONSE_SIZE in "${RESPONSE_SIZES[@]}"; do
     echo "--------------------------------------------------------------------------------"
 
     # 테스트 실행
-    OUTPUT=$(dotnet run --project tests/benchmark/PlayHouse.Benchmark.Client --configuration Release -- \
+    OUTPUT=$(dotnet run --project tests/benchmark_cs/PlayHouse.Benchmark.Client --configuration Release -- \
         --server 127.0.0.1:$SERVER_PORT \
         --connections $CCU \
         --messages $MSG_PER_CONN \
