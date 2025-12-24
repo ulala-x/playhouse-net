@@ -40,6 +40,21 @@ fi
 echo "[1/5] Build completed"
 echo ""
 
+# 기존 서버 프로세스 정리
+echo "[2/5] Cleaning up existing server processes..."
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+sleep 2
+
+# 포트가 사용 중인지 확인 (TCP: 16110, ZMQ: 16100)
+ZMQ_PORT=16100
+for PORT in $SERVER_PORT $ZMQ_PORT; do
+    if lsof -i :$PORT -t >/dev/null 2>&1; then
+        echo "      Port $PORT still in use, force killing..."
+        lsof -i :$PORT -t | xargs kill -9 2>/dev/null
+        sleep 1
+    fi
+done
+
 # 서버 시작
 echo "[2/5] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
 dotnet run --project tests/benchmark/PlayHouse.Benchmark.Server --configuration Release -- \
@@ -121,7 +136,16 @@ echo ""
 # 서버 종료
 echo "[4/5] Stopping benchmark server..."
 kill $SERVER_PID 2>/dev/null
-wait $SERVER_PID 2>/dev/null
+sleep 2
+
+# 서버가 아직 실행 중이면 강제 종료
+if ps -p $SERVER_PID > /dev/null 2>&1; then
+    echo "      Server still running, force killing..."
+    kill -9 $SERVER_PID 2>/dev/null
+fi
+
+# 좀비 프로세스 정리
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
 
 echo "[4/5] Server stopped"
 echo ""
