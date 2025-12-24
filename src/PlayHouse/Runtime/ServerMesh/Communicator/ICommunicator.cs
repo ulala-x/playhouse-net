@@ -29,11 +29,6 @@ public interface IClientCommunicator
     /// <param name="targetServerId">Target server ID.</param>
     /// <param name="endpoint">Connection endpoint.</param>
     void Disconnect(string targetServerId, string endpoint);
-
-    /// <summary>
-    /// Stops the communicator.
-    /// </summary>
-    void Stop();
 }
 
 /// <summary>
@@ -46,11 +41,6 @@ public interface IServerCommunicator
     /// </summary>
     /// <param name="listener">Listener to handle incoming packets.</param>
     void Bind(ICommunicateListener listener);
-
-    /// <summary>
-    /// Stops the communicator.
-    /// </summary>
-    void Stop();
 }
 
 /// <summary>
@@ -73,4 +63,9 @@ public interface ICommunicator : IClientCommunicator, IServerCommunicator, IDisp
     /// Starts both server and client communication.
     /// </summary>
     void Start();
+
+    /// <summary>
+    /// Stops both server and client communication.
+    /// </summary>
+    void Stop();
 }
