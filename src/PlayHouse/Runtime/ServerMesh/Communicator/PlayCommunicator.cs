@@ -1,5 +1,6 @@
 #nullable enable
 
+using Net.Zmq;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.ServerMesh.PlaySocket;
 
@@ -7,19 +8,22 @@ namespace PlayHouse.Runtime.ServerMesh.Communicator;
 
 /// <summary>
 /// Facade for bidirectional server-to-server communication.
-/// Internally uses XClientCommunicator + XServerCommunicator + MessageLoop.
+/// Internally uses XClientCommunicator + XServerCommunicator with integrated thread management.
 /// </summary>
 internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
 {
-    private readonly IPlaySocket _socket;
+    private readonly Context _context;
+    private readonly IPlaySocket _serverSocket;  // For Bind + Receive
+    private readonly IPlaySocket _clientSocket;  // For Connect + Send
     private readonly XClientCommunicator _client;
     private readonly XServerCommunicator _server;
-    private readonly MessageLoop _messageLoop;
+    private Thread? _serverThread;
+    private Thread? _clientThread;
     private Action<string, RoutePacket>? _handler;
     private bool _disposed;
 
     /// <inheritdoc/>
-    public string ServerId => _socket.ServerId;
+    public string ServerId => _serverSocket.ServerId;
 
     /// <inheritdoc/>
     public bool IsRunning { get; private set; }
@@ -27,24 +31,17 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     /// <summary>
     /// Initializes a new instance of the <see cref="PlayCommunicator"/> class.
     /// </summary>
-    /// <param name="socket">The underlying socket.</param>
-    public PlayCommunicator(IPlaySocket socket)
-    {
-        _socket = socket;
-        _server = new XServerCommunicator(socket);
-        _client = new XClientCommunicator(socket);
-        _messageLoop = new MessageLoop(_server, _client);
-    }
-
-    /// <summary>
-    /// Creates a PlayCommunicator from ServerConfig.
-    /// </summary>
     /// <param name="config">Server configuration.</param>
-    /// <returns>A new PlayCommunicator instance.</returns>
-    public static PlayCommunicator Create(ServerConfig config)
+    public PlayCommunicator(ServerConfig config)
     {
-        var socket = ZmqPlaySocket.Create(config);
-        return new PlayCommunicator(socket);
+        _context = new Context();
+
+        var socketConfig = PlaySocketConfig.FromServerConfig(config);
+        _serverSocket = new ZmqPlaySocket(config.ServerId, _context, socketConfig);
+        _clientSocket = new ZmqPlaySocket(config.ServerId, _context, socketConfig);
+
+        _server = new XServerCommunicator(_serverSocket, config.BindEndpoint);
+        _client = new XClientCommunicator(_clientSocket);
     }
 
     /// <inheritdoc/>
@@ -54,25 +51,9 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     }
 
     /// <inheritdoc/>
-    public void Bind(string address)
-    {
-        // Socket binding is handled internally by XServerCommunicator
-        // Address configuration should be done via ServerConfig/socket constructor
-    }
-
-    /// <inheritdoc/>
     public void Bind(ICommunicateListener listener)
     {
         _handler = (senderServerId, packet) => listener.OnReceive(packet);
-    }
-
-    /// <summary>
-    /// Legacy method for backward compatibility.
-    /// </summary>
-    [Obsolete("Use Bind(ICommunicateListener) instead")]
-    public void OnReceive(Action<string, RoutePacket> handler)
-    {
-        _handler = handler;
     }
 
     /// <inheritdoc/>
@@ -85,22 +66,25 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     public void Disconnect(string targetServerId, string endpoint) => _client.Disconnect(targetServerId, endpoint);
 
     /// <inheritdoc/>
-    public void Communicate()
-    {
-        // MessageLoop manages threads internally
-        // This method is a no-op for ICommunicator interface compatibility
-    }
-
-    /// <inheritdoc/>
     public void Start()
     {
         if (IsRunning) return;
 
-        // Bind the underlying socket first
-        _socket.Bind();
-
+        // Bind is handled by XServerCommunicator
         _server.Bind(this);
-        _messageLoop.Start();
+
+        _serverThread = new Thread(() => _server.Communicate())
+        {
+            Name = "server:Communicator"
+        };
+
+        _clientThread = new Thread(() => _client.Communicate())
+        {
+            Name = "client:Communicator"
+        };
+
+        _serverThread.Start();
+        _clientThread.Start();
         IsRunning = true;
     }
 
@@ -110,7 +94,17 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
         if (!IsRunning) return;
 
         IsRunning = false;
-        _messageLoop.Stop();
+        _server.Stop();
+        _client.Stop();
+    }
+
+    /// <summary>
+    /// Waits for both communication threads to terminate.
+    /// </summary>
+    private void AwaitTermination()
+    {
+        _clientThread?.Join();
+        _serverThread?.Join();
     }
 
     /// <inheritdoc/>
@@ -119,9 +113,11 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
         if (_disposed) return;
         _disposed = true;
 
-        Stop();                           // 1. _running = false
-        _socket.TerminateContext();       // 2. 블로킹 해제
-        _messageLoop.AwaitTermination();  // 3. 스레드 종료 대기
-        _socket.Dispose();                // 4. 소켓 정리
+        Stop();                  // 1. _running = false
+        _context.Shutdown();     // 2. 블로킹 해제
+        AwaitTermination();      // 3. 스레드 종료 대기
+        _serverSocket.Dispose(); // 4. 서버 소켓 정리
+        _clientSocket.Dispose(); // 5. 클라이언트 소켓 정리
+        _context.Dispose();      // 6. Context 정리
     }
 }

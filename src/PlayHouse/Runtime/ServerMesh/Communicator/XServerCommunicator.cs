@@ -14,6 +14,7 @@ namespace PlayHouse.Runtime.ServerMesh.Communicator;
 internal sealed class XServerCommunicator : IServerCommunicator
 {
     private readonly IPlaySocket _socket;
+    private readonly string _bindEndpoint;
     private ICommunicateListener? _listener;
     private volatile bool _running = true;
 
@@ -24,9 +25,11 @@ internal sealed class XServerCommunicator : IServerCommunicator
     /// Initializes a new instance of the <see cref="XServerCommunicator"/> class.
     /// </summary>
     /// <param name="socket">The underlying socket.</param>
-    public XServerCommunicator(IPlaySocket socket)
+    /// <param name="bindEndpoint">Endpoint to bind to.</param>
+    public XServerCommunicator(IPlaySocket socket, string bindEndpoint)
     {
         _socket = socket;
+        _bindEndpoint = bindEndpoint;
     }
 
     /// <summary>
@@ -36,8 +39,7 @@ internal sealed class XServerCommunicator : IServerCommunicator
     public void Bind(ICommunicateListener listener)
     {
         _listener = listener;
-        // Note: Bind address should be configured in socket constructor or separately
-        // For now, assuming socket has default bind configuration
+        _socket.Bind(_bindEndpoint);
     }
 
     /// <summary>
@@ -61,9 +63,9 @@ internal sealed class XServerCommunicator : IServerCommunicator
                 // Context terminated - 정상 종료
                 break;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.Error.WriteLine($"[XServerCommunicator] Receive error: {ex.Message}");
+                // Ignore receive errors during normal operation
             }
         }
     }

@@ -27,12 +27,10 @@ internal interface IPlaySocket : IDisposable
     string EndPoint { get; }
 
     /// <summary>
-    /// Binds the socket to the configured endpoint for receiving messages.
+    /// Binds the socket to the specified endpoint for receiving messages.
     /// </summary>
-    /// <remarks>
-    /// Uses the endpoint specified in constructor. No address parameter needed (Kairos pattern).
-    /// </remarks>
-    void Bind();
+    /// <param name="endpoint">Bind endpoint address (e.g., "tcp://*:5555").</param>
+    void Bind(string endpoint);
 
     /// <summary>
     /// Connects to a remote socket.
@@ -61,14 +59,6 @@ internal interface IPlaySocket : IDisposable
     /// </summary>
     /// <returns>RoutePacket if received, null on error.</returns>
     RoutePacket? Receive();
-
-    /// <summary>
-    /// Terminates the ZMQ context to unblock any waiting operations.
-    /// </summary>
-    /// <remarks>
-    /// Call this before AwaitTermination() to release blocking Receive() calls.
-    /// </remarks>
-    void TerminateContext();
 }
 
 /// <summary>

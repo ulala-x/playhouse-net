@@ -24,11 +24,6 @@ public interface IClientCommunicator
     void Connect(string targetServerId, string address);
 
     /// <summary>
-    /// Communicates with remote servers. Called from external thread.
-    /// </summary>
-    void Communicate();
-
-    /// <summary>
     /// Disconnects from a remote server.
     /// </summary>
     /// <param name="targetServerId">Target server ID.</param>
@@ -53,11 +48,6 @@ public interface IServerCommunicator
     void Bind(ICommunicateListener listener);
 
     /// <summary>
-    /// Communicates with remote servers. Called from external thread.
-    /// </summary>
-    void Communicate();
-
-    /// <summary>
     /// Stops the communicator.
     /// </summary>
     void Stop();
@@ -80,8 +70,7 @@ public interface ICommunicator : IClientCommunicator, IServerCommunicator, IDisp
     bool IsRunning { get; }
 
     /// <summary>
-    /// Binds to the specified address for receiving messages.
+    /// Starts both server and client communication.
     /// </summary>
-    /// <param name="address">Bind address.</param>
-    void Bind(string address);
+    void Start();
 }
