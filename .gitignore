@@ -65,4 +65,4 @@ _legacy_code/
 .claude/agents/
 
 # Windows special files
-nul
+nulBenchmarkDotNet.Artifacts/
