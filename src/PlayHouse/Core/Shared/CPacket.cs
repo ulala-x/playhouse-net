@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Buffers;
 using Google.Protobuf;
 using PlayHouse.Abstractions;
 using RuntimePayload = PlayHouse.Runtime.ServerMesh.Message;
@@ -102,25 +103,49 @@ public sealed class BytePayload : IPayload
 
 /// <summary>
 /// Payload implementation backed by a Protobuf message.
+/// Uses ArrayPool for memory-efficient serialization.
 /// </summary>
 public sealed class ProtoPayload : IPayload
 {
     private readonly IMessage _proto;
-    private byte[]? _cachedData;
+    private byte[]? _rentedBuffer;
+    private int _actualSize;
 
     public ProtoPayload(IMessage proto)
     {
         _proto = proto;
     }
 
-    public ReadOnlyMemory<byte> Data => _cachedData ??= _proto.ToByteArray();
+    public ReadOnlyMemory<byte> Data
+    {
+        get
+        {
+            if (_rentedBuffer == null)
+            {
+                _actualSize = _proto.CalculateSize();
+                _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
+
+                // Protobuf WriteTo with MemoryStream wrapper
+                using var stream = new MemoryStream(_rentedBuffer, 0, _actualSize, writable: true);
+                _proto.WriteTo(stream);
+            }
+            return new ReadOnlyMemory<byte>(_rentedBuffer, 0, _actualSize);
+        }
+    }
 
     /// <summary>
     /// Gets the underlying Protobuf message.
     /// </summary>
     public IMessage GetProto() => _proto;
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        if (_rentedBuffer != null)
+        {
+            ArrayPool<byte>.Shared.Return(_rentedBuffer);
+            _rentedBuffer = null;
+        }
+    }
 }
 
 /// <summary>

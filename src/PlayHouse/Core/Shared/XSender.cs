@@ -271,7 +271,7 @@ public abstract class XSender : ISender
             }
             else if (t.IsFaulted)
             {
-                replyObject.CompleteWithError(BaseErrorCode.RequestTimeout);
+                replyObject.CompleteWithError((ushort)ErrorCode.RequestTimeout);
             }
         }, TaskContinuationOptions.ExecuteSynchronously);
     }

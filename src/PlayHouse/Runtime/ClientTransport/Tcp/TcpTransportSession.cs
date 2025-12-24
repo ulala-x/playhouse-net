@@ -19,6 +19,7 @@ internal sealed class TcpTransportSession : ITransportSession
     private readonly Socket _socket;
     private readonly Stream _stream;
     private readonly Pipe _receivePipe;
+    private readonly Pipe _sendPipe;
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
@@ -26,6 +27,7 @@ internal sealed class TcpTransportSession : ITransportSession
     private readonly CancellationTokenSource _cts;
     private readonly Task _receiveTask;
     private readonly Task _processTask;
+    private readonly Task _sendTask;
 
     private DateTime _lastActivity;
     private bool _disposed;
@@ -59,16 +61,18 @@ internal sealed class TcpTransportSession : ITransportSession
         // Configure socket
         ConfigureSocket();
 
-        // Configure pipe
+        // Configure pipes
         var pipeOptions = new PipeOptions(
             pauseWriterThreshold: options.PauseWriterThreshold,
             resumeWriterThreshold: options.ResumeWriterThreshold,
             useSynchronizationContext: false);
         _receivePipe = new Pipe(pipeOptions);
+        _sendPipe = new Pipe(pipeOptions);
 
         // Start I/O tasks
         _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
         _processTask = Task.Run(() => ProcessMessagesAsync(_cts.Token));
+        _sendTask = Task.Run(() => SendLoopAsync(_cts.Token));
 
         _logger?.LogDebug("TCP session {SessionId} started", sessionId);
     }
@@ -89,6 +93,36 @@ internal sealed class TcpTransportSession : ITransportSession
         }
     }
 
+    /// <summary>
+    /// Sends a response directly to PipeWriter (zero-copy).
+    /// </summary>
+    public ValueTask<FlushResult> SendResponseAsync(
+        string msgId,
+        ushort msgSeq,
+        long stageId,
+        ushort errorCode,
+        ReadOnlySpan<byte> payload)
+    {
+        if (_disposed) return ValueTask.FromResult(default(FlushResult));
+
+        var writer = _sendPipe.Writer;
+        var totalSize = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: true);
+
+        // PipeWriter에서 메모리 획득 (내부적으로 ArrayPool 사용)
+        var memory = writer.GetMemory(totalSize);
+        var span = memory.Span;
+
+        // Length prefix (4 bytes)
+        var bodySize = totalSize - 4;
+        BinaryPrimitives.WriteInt32LittleEndian(span, bodySize);
+
+        // Body 작성
+        MessageCodec.WriteResponseBody(span[4..], msgId, msgSeq, stageId, errorCode, payload);
+
+        writer.Advance(totalSize);
+        return writer.FlushAsync();
+    }
+
     public async ValueTask DisconnectAsync()
     {
         if (_disposed) return;
@@ -104,9 +138,12 @@ internal sealed class TcpTransportSession : ITransportSession
         {
             _cts.Cancel();
 
+            // Complete send pipe
+            await _sendPipe.Writer.CompleteAsync();
+
             // Wait for tasks with timeout
             var timeout = Task.Delay(TimeSpan.FromSeconds(5));
-            var completed = Task.WhenAll(_receiveTask, _processTask);
+            var completed = Task.WhenAll(_receiveTask, _processTask, _sendTask);
             await Task.WhenAny(completed, timeout);
         }
         catch (OperationCanceledException) { }
@@ -170,6 +207,44 @@ internal sealed class TcpTransportSession : ITransportSession
         finally
         {
             await writer.CompleteAsync();
+        }
+    }
+
+    /// <summary>
+    /// Send loop that reads from send pipe and writes to network stream.
+    /// </summary>
+    private async Task SendLoopAsync(CancellationToken ct)
+    {
+        var reader = _sendPipe.Reader;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var result = await reader.ReadAsync(ct);
+                var buffer = result.Buffer;
+
+                if (buffer.Length > 0)
+                {
+                    foreach (var segment in buffer)
+                    {
+                        await _stream.WriteAsync(segment, ct);
+                    }
+                    await _stream.FlushAsync(ct);
+                }
+
+                reader.AdvanceTo(buffer.End);
+
+                if (result.IsCompleted) break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error in send loop for session {SessionId}", SessionId);
+        }
+        finally
+        {
+            await reader.CompleteAsync();
         }
     }
 

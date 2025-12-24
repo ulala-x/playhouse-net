@@ -95,31 +95,23 @@ internal sealed class ApiDispatcher : IDisposable
                 var contentsPacket = CreateContentsPacket(packet);
                 await _apiReflection.CallMethodAsync(contentsPacket, apiSender);
             }
-            catch (ServiceException.NotRegisterMethod e)
+            catch (PlayException e)
             {
-                _logger?.LogError(e, "Handler not registered for message: {MsgId}", header.MsgId);
+                _logger?.LogError(e, "PlayException occurred - ErrorCode: {ErrorCode}, MsgId: {MsgId}",
+                    e.ErrorCode, header.MsgId);
 
                 if (header.MsgSeq > 0)
                 {
-                    apiSender.Reply(BaseErrorCode.HandlerNotFound);
-                }
-            }
-            catch (ServiceException.NotRegisterInstance e)
-            {
-                _logger?.LogError(e, "Controller instance not registered");
-
-                if (header.MsgSeq > 0)
-                {
-                    apiSender.Reply(BaseErrorCode.SystemError);
+                    apiSender.Reply((ushort)e.ErrorCode);
                 }
             }
             catch (Exception e)
             {
-                _logger?.LogError(e, "Packet processing failed - msgId: {MsgId}", header.MsgId);
+                _logger?.LogError(e, "Unexpected exception - msgId: {MsgId}", header.MsgId);
 
                 if (header.MsgSeq > 0)
                 {
-                    apiSender.Reply(BaseErrorCode.UncheckedContentsError);
+                    apiSender.Reply((ushort)ErrorCode.UncheckedContentsError);
                 }
             }
             finally

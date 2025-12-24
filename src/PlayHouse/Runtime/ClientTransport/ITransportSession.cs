@@ -1,5 +1,7 @@
 #nullable enable
 
+using System.IO.Pipelines;
+
 namespace PlayHouse.Runtime.ClientTransport;
 
 /// <summary>
@@ -44,6 +46,22 @@ public interface ITransportSession : IAsyncDisposable
     /// <param name="data">The data to send.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends a response packet with zero-copy optimization.
+    /// </summary>
+    /// <param name="msgId">Message identifier.</param>
+    /// <param name="msgSeq">Message sequence number.</param>
+    /// <param name="stageId">Stage identifier.</param>
+    /// <param name="errorCode">Error code (0 for success).</param>
+    /// <param name="payload">Message payload.</param>
+    /// <returns>Flush result from the underlying transport.</returns>
+    ValueTask<FlushResult> SendResponseAsync(
+        string msgId,
+        ushort msgSeq,
+        long stageId,
+        ushort errorCode,
+        ReadOnlySpan<byte> payload);
 
     /// <summary>
     /// Gracefully disconnects the session.

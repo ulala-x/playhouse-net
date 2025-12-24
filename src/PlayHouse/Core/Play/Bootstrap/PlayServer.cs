@@ -316,9 +316,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         // HeartBeat 요청 처리
         if (msgId == "@Heart@Beat@")
         {
-            var response = TcpTransportSession.CreateResponsePacket(
-                msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
-            await session.SendAsync(response);
+            // Use new zero-copy API
+            await session.SendResponseAsync(msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
             return;
         }
 
@@ -356,7 +355,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                 // 간단한 인증 플로우: Stage 없이 인증만 처리
                 session.IsAuthenticated = true;
                 session.AccountId = GenerateAccountId(); // 임시 AccountId 생성
-                await SendAuthReplyAsync(session, msgSeq, 0, BaseErrorCode.Success, session.AccountId);
+                await SendAuthReplyAsync(session, msgSeq, 0, (ushort)ErrorCode.Success, session.AccountId);
                 return;
             }
 
@@ -368,7 +367,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
             if (baseStage == null)
             {
                 _logger?.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.StageCreationFailed);
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
                 return;
             }
 
@@ -381,7 +380,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                 if (!createSuccess)
                 {
                     _logger?.LogError("Failed to initialize stage {StageId}", targetStageId);
-                    await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.StageCreationFailed);
+                    await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
                     return;
                 }
             }
@@ -404,7 +403,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     catch (KeyNotFoundException)
                     {
                         _logger?.LogError("Actor factory not found for stage type: {StageType}", _options.DefaultStageType);
-                        return (false, BaseErrorCode.InvalidStageType, (BaseActor?)null);
+                        return (false, (ushort)ErrorCode.InvalidStageType, (BaseActor?)null);
                     }
 
                     // 4. Actor 콜백 순차 호출
@@ -417,7 +416,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     {
                         _logger?.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
-                        return (false, BaseErrorCode.AuthenticationFailed, (BaseActor?)null);
+                        return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null);
                     }
 
                     // 5. AccountId 검증
@@ -425,7 +424,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     {
                         _logger?.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
-                        return (false, BaseErrorCode.InvalidAccountId, (BaseActor?)null);
+                        return (false, (ushort)ErrorCode.InvalidAccountId, (BaseActor?)null);
                     }
 
                     // 6. 세션에 인증 정보 설정
@@ -434,12 +433,12 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     session.StageId = targetStageId;
                     await actor.Actor.OnPostAuthenticate();
 
-                    return (true, BaseErrorCode.Success, actor);
+                    return (true, (ushort)ErrorCode.Success, actor);
                 }
                 catch (Exception ex)
                 {
                     _logger?.LogError(ex, "Error during actor authentication callbacks");
-                    return (false, BaseErrorCode.InternalError, (BaseActor?)null);
+                    return (false, (ushort)ErrorCode.InternalError, (BaseActor?)null);
                 }
             });
 
@@ -464,23 +463,23 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
             {
                 _logger?.LogError("Join actor timeout for session {SessionId}, accountId {AccountId}",
                     session.SessionId, actor.ActorSender.AccountId);
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.InternalError);
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.InternalError);
                 return;
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Failed to join actor for session {SessionId}", session.SessionId);
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.InternalError);
+                await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.InternalError);
                 return;
             }
 
             // 8. Actor가 완전히 조인된 후 클라이언트에 응답
-            await SendAuthReplyAsync(session, msgSeq, targetStageId, BaseErrorCode.Success, actor.ActorSender.AccountId);
+            await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.Success, actor.ActorSender.AccountId);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Authentication failed for session {SessionId}", session.SessionId);
-            await SendAuthReplyAsync(session, msgSeq, stageId, BaseErrorCode.InternalError);
+            await SendAuthReplyAsync(session, msgSeq, stageId, (ushort)ErrorCode.InternalError);
         }
     }
 
@@ -493,20 +492,21 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     {
         var reply = new Proto.AuthenticateReply
         {
-            Authenticated = errorCode == BaseErrorCode.Success,
+            Authenticated = errorCode == (ushort)ErrorCode.Success,
             StageId = (int)stageId,
             AccountId = long.TryParse(accountId, out var id) ? id : 0,
-            ErrorMessage = errorCode == BaseErrorCode.Success ? "" : $"Error code: {errorCode}"
+            ErrorMessage = errorCode == (ushort)ErrorCode.Success ? "" : $"Error code: {errorCode}"
         };
 
-        var response = TcpTransportSession.CreateResponsePacket(
+        var replyBytes = reply.ToByteArray();
+
+        // Use new zero-copy API
+        await session.SendResponseAsync(
             _options.AuthenticateMessageId.Replace("Request", "Reply"),
             msgSeq,
             stageId,
             errorCode,
-            reply.ToByteArray());
-
-        await session.SendAsync(response);
+            replyBytes);
     }
 
     private long GenerateStageId()
@@ -550,9 +550,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         var session = _transportServer?.GetSession(sessionId);
         if (session?.IsConnected == true)
         {
-            var response = TcpTransportSession.CreateResponsePacket(
-                msgId, 0, stageId, 0, payload.Span);
-            await session.SendAsync(response);
+            // Use new zero-copy API
+            await session.SendResponseAsync(msgId, 0, stageId, 0, payload.Span);
         }
     }
 
@@ -625,9 +624,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         var session = _transportServer?.GetSession(sessionId);
         if (session?.IsConnected == true)
         {
-            var response = TcpTransportSession.CreateResponsePacket(
-                msgId, msgSeq, stageId, errorCode, payload.Span);
-            await session.SendAsync(response);
+            // Use new zero-copy API - PipeWriter for TCP, ArrayPool for WebSocket
+            await session.SendResponseAsync(msgId, msgSeq, stageId, errorCode, payload.Span);
         }
         else
         {
