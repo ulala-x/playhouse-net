@@ -14,7 +14,7 @@ namespace PlayHouse.Runtime.ServerMesh.Message;
 /// - Frame 1: RouteHeader (Protobuf)
 /// - Frame 2: Payload (binary)
 /// </remarks>
-public sealed class RuntimeRoutePacket : IDisposable
+public sealed class RoutePacket : IDisposable
 {
     /// <summary>
     /// Gets the route header containing routing metadata.
@@ -24,11 +24,11 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <summary>
     /// Gets the payload data.
     /// </summary>
-    public IRuntimePayload Payload { get; }
+    public IPayload Payload { get; }
 
     private bool _disposed;
 
-    private RuntimeRoutePacket(RouteHeader header, IRuntimePayload payload)
+    private RoutePacket(RouteHeader header, IPayload payload)
     {
         Header = header;
         Payload = payload;
@@ -43,7 +43,7 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <param name="payloadBytes">Payload bytes from Frame 2.</param>
     /// <param name="senderNid">Sender NID from Frame 0 (optional, sets Header.From).</param>
     /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RuntimeRoutePacket FromFrames(byte[] headerBytes, byte[] payloadBytes, string? senderNid = null)
+    public static RoutePacket FromFrames(byte[] headerBytes, byte[] payloadBytes, string? senderNid = null)
     {
         var header = RouteHeader.Parser.ParseFrom(headerBytes);
 
@@ -54,7 +54,30 @@ public sealed class RuntimeRoutePacket : IDisposable
         }
 
         var payload = new FramePayload(payloadBytes);
-        return new RuntimeRoutePacket(header, payload);
+        return new RoutePacket(header, payload);
+    }
+
+    /// <summary>
+    /// Creates a route packet from received frames with ZMQ Message payload.
+    /// </summary>
+    /// <param name="headerBytes">RouteHeader bytes from Frame 1.</param>
+    /// <param name="payloadMessage">ZMQ Message containing payload (ownership transferred).</param>
+    /// <param name="senderNid">Sender NID from Frame 0 (optional, sets Header.From).</param>
+    /// <returns>A new RuntimeRoutePacket.</returns>
+    public static RoutePacket FromFrames(
+        ReadOnlySpan<byte> headerBytes,
+        Net.Zmq.Message payloadMessage,
+        string? senderNid = null)
+    {
+        var header = RouteHeader.Parser.ParseFrom(headerBytes);
+
+        if (senderNid != null)
+        {
+            header.From = senderNid;
+        }
+
+        var payload = new ZmqMessagePayload(payloadMessage);
+        return new RoutePacket(header, payload);
     }
 
     /// <summary>
@@ -66,7 +89,7 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="serviceId">Service ID.</param>
     /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RuntimeRoutePacket Of<T>(T message, string from, ushort msgSeq, ushort serviceId)
+    public static RoutePacket Of<T>(T message, string from, ushort msgSeq, ushort serviceId)
         where T : IMessage
     {
         var header = new RouteHeader
@@ -77,7 +100,7 @@ public sealed class RuntimeRoutePacket : IDisposable
             From = from
         };
         var payload = new ByteStringPayload(message.ToByteString());
-        return new RuntimeRoutePacket(header, payload);
+        return new RoutePacket(header, payload);
     }
 
     /// <summary>
@@ -86,9 +109,9 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <param name="header">Route header.</param>
     /// <param name="payload">Payload bytes.</param>
     /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RuntimeRoutePacket Of(RouteHeader header, byte[] payload)
+    public static RoutePacket Of(RouteHeader header, byte[] payload)
     {
-        return new RuntimeRoutePacket(header, new ByteArrayPayload(payload));
+        return new RoutePacket(header, new ByteArrayPayload(payload));
     }
 
     /// <summary>
@@ -97,9 +120,20 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <param name="header">Route header.</param>
     /// <param name="payload">Payload as ByteString.</param>
     /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RuntimeRoutePacket Of(RouteHeader header, ByteString payload)
+    public static RoutePacket Of(RouteHeader header, ByteString payload)
     {
-        return new RuntimeRoutePacket(header, new ByteStringPayload(payload));
+        return new RoutePacket(header, new ByteStringPayload(payload));
+    }
+
+    /// <summary>
+    /// Creates a route packet with custom header and IPayload (zero-copy).
+    /// </summary>
+    /// <param name="header">Route header.</param>
+    /// <param name="payload">Payload instance.</param>
+    /// <returns>A new RuntimeRoutePacket.</returns>
+    public static RoutePacket Of(RouteHeader header, IPayload payload)
+    {
+        return new RoutePacket(header, payload);
     }
 
     /// <summary>
@@ -107,9 +141,9 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// </summary>
     /// <param name="header">Route header.</param>
     /// <returns>A new RuntimeRoutePacket with empty payload.</returns>
-    public static RuntimeRoutePacket Empty(RouteHeader header)
+    public static RoutePacket Empty(RouteHeader header)
     {
-        return new RuntimeRoutePacket(header, EmptyRuntimePayload.Instance);
+        return new RoutePacket(header, EmptyPayload.Instance);
     }
 
     #endregion
@@ -122,7 +156,7 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <typeparam name="T">Protobuf message type.</typeparam>
     /// <param name="message">Reply message.</param>
     /// <returns>A new reply RuntimeRoutePacket.</returns>
-    public RuntimeRoutePacket CreateReply<T>(T message) where T : IMessage
+    public RoutePacket CreateReply<T>(T message) where T : IMessage
     {
         var replyHeader = new RouteHeader
         {
@@ -132,7 +166,7 @@ public sealed class RuntimeRoutePacket : IDisposable
             From = Header.From,  // Will be overwritten by sender
             ErrorCode = 0
         };
-        return new RuntimeRoutePacket(replyHeader, new ByteStringPayload(message.ToByteString()));
+        return new RoutePacket(replyHeader, new ByteStringPayload(message.ToByteString()));
     }
 
     /// <summary>
@@ -140,7 +174,7 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// </summary>
     /// <param name="errorCode">Error code.</param>
     /// <returns>A new error reply RuntimeRoutePacket.</returns>
-    public RuntimeRoutePacket CreateErrorReply(ushort errorCode)
+    public RoutePacket CreateErrorReply(ushort errorCode)
     {
         var replyHeader = new RouteHeader
         {
@@ -150,7 +184,7 @@ public sealed class RuntimeRoutePacket : IDisposable
             From = Header.From,
             ErrorCode = errorCode
         };
-        return new RuntimeRoutePacket(replyHeader, EmptyRuntimePayload.Instance);
+        return new RoutePacket(replyHeader, EmptyPayload.Instance);
     }
 
     /// <summary>
@@ -163,8 +197,8 @@ public sealed class RuntimeRoutePacket : IDisposable
     /// <param name="payload">Reply payload bytes.</param>
     /// <param name="errorCode">Error code (0 for success).</param>
     /// <returns>A new reply RuntimeRoutePacket.</returns>
-    public static RuntimeRoutePacket CreateReply(
-        RuntimeRoutePacket request,
+    public static RoutePacket CreateReply(
+        RoutePacket request,
         string from,
         ushort serviceId,
         string msgId,
@@ -181,7 +215,7 @@ public sealed class RuntimeRoutePacket : IDisposable
             StageId = request.Header.StageId,
             AccountId = request.Header.AccountId
         };
-        return new RuntimeRoutePacket(replyHeader, new ByteArrayPayload(payload));
+        return new RoutePacket(replyHeader, new ByteArrayPayload(payload));
     }
 
     #endregion

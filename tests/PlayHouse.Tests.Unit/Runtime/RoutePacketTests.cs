@@ -9,7 +9,7 @@ namespace PlayHouse.Tests.Unit.Runtime;
 /// <summary>
 /// RuntimeRoutePacket 단위 테스트
 /// </summary>
-public class RuntimeRoutePacketTests
+public class RoutePacketTests
 {
     #region 패킷 생성
 
@@ -30,7 +30,7 @@ public class RuntimeRoutePacketTests
         var payloadBytes = new byte[] { 1, 2, 3, 4, 5 };
 
         // When
-        var packet = RuntimeRoutePacket.FromFrames(headerBytes, payloadBytes);
+        var packet = RoutePacket.FromFrames(headerBytes, payloadBytes);
 
         // Then
         packet.MsgSeq.Should().Be(100);
@@ -54,7 +54,7 @@ public class RuntimeRoutePacketTests
         var payloadBytes = new byte[] { 10, 20, 30 };
 
         // When
-        var packet = RuntimeRoutePacket.Of(header, payloadBytes);
+        var packet = RoutePacket.Of(header, payloadBytes);
 
         // Then
         packet.Header.Should().Be(header);
@@ -72,7 +72,7 @@ public class RuntimeRoutePacketTests
         };
 
         // When
-        var packet = RuntimeRoutePacket.Empty(header);
+        var packet = RoutePacket.Empty(header);
 
         // Then
         packet.Payload.Length.Should().Be(0);
@@ -93,7 +93,7 @@ public class RuntimeRoutePacketTests
             ServiceId = 1,
             MsgId = "Request"
         };
-        var request = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
+        var request = RoutePacket.Of(header, Array.Empty<byte>());
 
         // When
         var reply = request.CreateErrorReply(404);
@@ -117,7 +117,7 @@ public class RuntimeRoutePacketTests
             MsgSeq = 999,
             MsgId = "TestSerialization"
         };
-        var packet = RuntimeRoutePacket.Of(header, Array.Empty<byte>());
+        var packet = RoutePacket.Of(header, Array.Empty<byte>());
 
         // When
         var bytes = packet.SerializeHeader();
@@ -137,7 +137,7 @@ public class RuntimeRoutePacketTests
         // Given
         var expectedPayload = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
         var header = new RouteHeader { MsgSeq = 1 };
-        var packet = RuntimeRoutePacket.Of(header, expectedPayload);
+        var packet = RoutePacket.Of(header, expectedPayload);
 
         // When
         var bytes = packet.GetPayloadBytes();
@@ -155,7 +155,7 @@ public class RuntimeRoutePacketTests
     {
         // Given
         var header = new RouteHeader { ErrorCode = 100 };
-        var packet = RuntimeRoutePacket.Empty(header);
+        var packet = RoutePacket.Empty(header);
 
         // Then
         packet.IsError.Should().BeTrue();
@@ -166,7 +166,7 @@ public class RuntimeRoutePacketTests
     {
         // Given
         var header = new RouteHeader { ErrorCode = 0 };
-        var packet = RuntimeRoutePacket.Empty(header);
+        var packet = RoutePacket.Empty(header);
 
         // Then
         packet.IsError.Should().BeFalse();
@@ -181,7 +181,7 @@ public class RuntimeRoutePacketTests
     {
         // Given
         var header = new RouteHeader { MsgSeq = 1 };
-        var packet = RuntimeRoutePacket.Of(header, new byte[] { 1, 2, 3 });
+        var packet = RoutePacket.Of(header, new byte[] { 1, 2, 3 });
 
         // When
         packet.Dispose();
@@ -236,8 +236,8 @@ public class RuntimePayloadTests
     public void EmptyRuntimePayload_Instance_IsSingleton()
     {
         // When
-        var first = EmptyRuntimePayload.Instance;
-        var second = EmptyRuntimePayload.Instance;
+        var first = EmptyPayload.Instance;
+        var second = EmptyPayload.Instance;
 
         // Then
         first.Should().BeSameAs(second);
@@ -247,7 +247,7 @@ public class RuntimePayloadTests
     public void EmptyRuntimePayload_Length_IsZero()
     {
         // When
-        var payload = EmptyRuntimePayload.Instance;
+        var payload = EmptyPayload.Instance;
 
         // Then
         payload.Length.Should().Be(0);

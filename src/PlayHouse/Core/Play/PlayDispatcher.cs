@@ -112,7 +112,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
     #region Message Processing
 
-    private void ProcessRoute(RuntimeRoutePacket packet)
+    private void ProcessRoute(RoutePacket packet)
     {
         var stageId = packet.StageId;
         var msgId = packet.MsgId;
@@ -225,7 +225,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     /// <summary>
     /// Handles CreateStageReq - creates a new Stage only if it doesn't exist.
     /// </summary>
-    private void HandleCreateStage(long stageId, RuntimeRoutePacket packet)
+    private void HandleCreateStage(long stageId, RoutePacket packet)
     {
         try
         {
@@ -270,7 +270,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     /// <summary>
     /// Handles GetOrCreateStageReq - gets existing Stage or creates new one.
     /// </summary>
-    private void HandleGetOrCreateStage(long stageId, RuntimeRoutePacket packet)
+    private void HandleGetOrCreateStage(long stageId, RoutePacket packet)
     {
         try
         {
@@ -355,7 +355,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
     #region Error Handling
 
-    private void SendErrorReply(RuntimeRoutePacket packet, ushort errorCode)
+    private void SendErrorReply(RoutePacket packet, ushort errorCode)
     {
         if (packet.MsgSeq == 0) return; // Not a request
 

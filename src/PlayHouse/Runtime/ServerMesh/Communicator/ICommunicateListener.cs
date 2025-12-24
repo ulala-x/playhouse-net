@@ -13,5 +13,5 @@ public interface ICommunicateListener
     /// Called when a packet is received from a remote server.
     /// </summary>
     /// <param name="routePacket">The received route packet.</param>
-    void OnReceive(RuntimeRoutePacket routePacket);
+    void OnReceive(RoutePacket routePacket);
 }

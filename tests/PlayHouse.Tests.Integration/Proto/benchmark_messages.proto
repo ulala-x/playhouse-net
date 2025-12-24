@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package playhouse.tests.integration;
+
+option csharp_namespace = "PlayHouse.Tests.Integration.Proto";
+
+// ============================================
+// Benchmark Messages
+// ============================================
+
+// 벤치마크 요청 (고정 작은 사이즈)
+message BenchmarkRequest {
+    int32 sequence = 1;
+    int32 response_size = 2;  // 응답 페이로드 크기 지정 (bytes)
+}
+
+// 벤치마크 응답 (가변 사이즈)
+message BenchmarkReply {
+    int32 sequence = 1;
+    int64 processed_at = 2;
+    bytes payload = 3;  // 1KB, 64KB, 128KB, 256KB
+}
+
+// Stage → API 트리거 요청
+message TriggerBenchmarkApiRequest {
+    int32 sequence = 1;
+    int32 response_size = 2;  // API 응답 페이로드 크기 지정 (bytes)
+    int32 count = 3;          // Stage에서 ApiServer로 반복 요청할 횟수
+}
+
+// Stage → API 트리거 응답
+message TriggerBenchmarkApiReply {
+    int32 sequence = 1;
+    repeated int64 elapsed_ticks_list = 2;     // Stage→Api 구간 측정 시간 목록 (Stopwatch ticks)
+    repeated int64 memory_allocated_list = 3;  // 메모리 할당량 목록 (bytes)
+    int32 gc_gen0_count = 4;                   // GC Gen0 수집 횟수
+    int32 gc_gen1_count = 5;                   // GC Gen1 수집 횟수
+    int32 gc_gen2_count = 6;                   // GC Gen2 수집 횟수
+}
+
+// API 직접 요청
+message BenchmarkApiRequest {
+    int32 sequence = 1;
+    int32 response_size = 2;  // 응답 페이로드 크기 지정 (bytes)
+}
+
+// API 직접 응답
+message BenchmarkApiReply {
+    int32 sequence = 1;
+    bytes payload = 2;
+}

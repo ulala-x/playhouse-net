@@ -248,7 +248,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     }
 
     /// <inheritdoc/>
-    public void OnReceive(RuntimeRoutePacket packet)
+    public void OnReceive(RoutePacket packet)
     {
         // 응답 패킷인 경우 RequestCache에서 처리
         // IsReply 플래그로 응답/요청을 구분 (MsgSeq만으로는 구분 불가)
@@ -666,7 +666,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
 
         public string ServerId => _communicator.ServerId;
 
-        public void Send(string targetNid, RuntimeRoutePacket packet)
+        public void Send(string targetNid, RoutePacket packet)
         {
             _communicator.Send(targetNid, packet);
         }

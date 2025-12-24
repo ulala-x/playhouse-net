@@ -18,7 +18,7 @@ internal sealed class DisconnectNoticeCmd : IBaseStageCmd
         _logger = logger;
     }
 
-    public async Task Execute(BaseStage baseStage, RuntimeRoutePacket packet)
+    public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var msg = DisconnectNoticeMsg.Parser.ParseFrom(packet.Payload.DataSpan);
         _logger?.LogDebug("DisconnectNoticeMsg: AccountId={AccountId}, Sid={Sid}", msg.AccountId, msg.Sid);

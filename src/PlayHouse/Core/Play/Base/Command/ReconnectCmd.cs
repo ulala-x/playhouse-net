@@ -19,7 +19,7 @@ internal sealed class ReconnectCmd : IBaseStageCmd
         _logger = logger;
     }
 
-    public async Task Execute(BaseStage baseStage, RuntimeRoutePacket packet)
+    public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var msg = ReconnectMsg.Parser.ParseFrom(packet.Payload.DataSpan);
         _logger?.LogDebug("ReconnectMsg: AccountId={AccountId}, Sid={Sid}, SessionNid={SessionNid}",

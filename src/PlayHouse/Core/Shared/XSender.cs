@@ -6,6 +6,7 @@ using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
+using IPayload = PlayHouse.Abstractions.IPayload;
 
 namespace PlayHouse.Core.Shared;
 
@@ -240,14 +241,18 @@ public abstract class XSender : ISender
 
     private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        var packet = RuntimeRoutePacket.Of(header, payload.Data.ToArray());
+        // Create RuntimePayload from Abstractions.IPayload - zero-copy with MemoryPayload
+        var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(payload.Data);
+        var packet = RoutePacket.Of(header, runtimePayload);
         _communicator.Send(targetServerId, packet);
         packet.Dispose();
     }
 
     private void SendReplyInternal(string targetServerId, RouteHeader header, ReadOnlyMemory<byte> payload)
     {
-        var packet = RuntimeRoutePacket.Of(header, payload.ToArray());
+        // Create RuntimePayload from ReadOnlyMemory - zero-copy with MemoryPayload
+        var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(payload);
+        var packet = RoutePacket.Of(header, runtimePayload);
         _communicator.Send(targetServerId, packet);
         packet.Dispose();
     }

@@ -38,9 +38,10 @@ public class TestApiController : IApiController
         register.Add(typeof(TriggerSendToApiServerRequest).Name!, HandleSendToApiServer);
         register.Add(typeof(TriggerRequestToApiServerRequest).Name!, HandleRequestToApiServer);
         register.Add(typeof(InterApiMessage).Name!, HandleInterApiMessage);
+        register.Add(typeof(BenchmarkApiRequest).Name!, HandleBenchmarkApi);
     }
 
-    private async Task HandleApiEcho(IPacket packet, IApiSender sender)
+    private Task HandleApiEcho(IPacket packet, IApiSender sender)
     {
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
@@ -48,6 +49,7 @@ public class TestApiController : IApiController
         var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.Data.Span);
         var reply = new ApiEchoReply { Content = $"Echo: {request.Content}" };
         sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
     }
 
     private async Task HandleCreateStage(IPacket packet, IApiSender sender)
@@ -96,7 +98,7 @@ public class TestApiController : IApiController
         sender.Reply(CPacket.Of(reply));
     }
 
-    private async Task HandleSendToApiServer(IPacket packet, IApiSender sender)
+    private Task HandleSendToApiServer(IPacket packet, IApiSender sender)
     {
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
@@ -113,6 +115,7 @@ public class TestApiController : IApiController
 
         var reply = new TriggerSendToApiServerReply { Success = true };
         sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
     }
 
     private async Task HandleRequestToApiServer(IPacket packet, IApiSender sender)
@@ -138,7 +141,7 @@ public class TestApiController : IApiController
         sender.Reply(CPacket.Of(reply));
     }
 
-    private async Task HandleInterApiMessage(IPacket packet, IApiSender sender)
+    private Task HandleInterApiMessage(IPacket packet, IApiSender sender)
     {
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
@@ -151,5 +154,52 @@ public class TestApiController : IApiController
             Response = $"Processed: {request.Content} from {request.FromApiNid}"
         };
         sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 벤치마크용 페이로드 사전 할당 (메모리 할당 오염 방지)
+    /// </summary>
+    private static readonly Dictionary<int, Google.Protobuf.ByteString> PreallocatedPayloads = new()
+    {
+        { 1024, CreatePayload(1024) },
+        { 65536, CreatePayload(65536) },
+        { 131072, CreatePayload(131072) },
+        { 262144, CreatePayload(262144) }
+    };
+
+    private static Google.Protobuf.ByteString CreatePayload(int size)
+    {
+        var payload = new byte[size];
+        for (int i = 0; i < payload.Length; i++)
+        {
+            payload[i] = (byte)(i % 256);
+        }
+        return Google.Protobuf.ByteString.CopyFrom(payload);
+    }
+
+    /// <summary>
+    /// 벤치마크 API 요청 처리 - 지정된 크기의 응답 반환
+    /// </summary>
+    private Task HandleBenchmarkApi(IPacket packet, IApiSender sender)
+    {
+        ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+
+        var request = BenchmarkApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+
+        // 사전 할당된 페이로드 사용 (메모리 할당 오염 방지)
+        var payload = PreallocatedPayloads.TryGetValue(request.ResponseSize, out var p)
+            ? p
+            : CreatePayload(request.ResponseSize);
+
+        var reply = new BenchmarkApiReply
+        {
+            Sequence = request.Sequence,
+            Payload = payload
+        };
+
+        sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
     }
 }

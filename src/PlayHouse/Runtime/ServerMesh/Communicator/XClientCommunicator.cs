@@ -29,7 +29,7 @@ internal sealed class XClientCommunicator : IClientCommunicator
     }
 
     /// <inheritdoc/>
-    public void Send(string targetServerId, RuntimeRoutePacket packet)
+    public void Send(string targetServerId, RoutePacket packet)
     {
         _queue.Add(() =>
         {

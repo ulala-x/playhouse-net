@@ -2,7 +2,6 @@
 
 using System.Text;
 using Net.Zmq;
-using PlayHouse.Runtime.Proto;
 using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
@@ -24,6 +23,8 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     private readonly Socket _serverSocket;  // For Bind + Receive
     private readonly Socket _clientSocket;  // For Connect + Send
     private readonly byte[] _serverIdBytes; // Cached UTF-8 encoded ServerId
+    private readonly byte[] _recvServerIdBuffer = new byte[1024];      // 1KB - for Recv
+    private readonly byte[] _recvHeaderBuffer = new byte[65536];       // 64KB - for Recv
     private bool _disposed;
 
     /// <inheritdoc/>
@@ -132,69 +133,63 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     }
 
     /// <inheritdoc/>
-    public void Send(string serverId, RuntimeRoutePacket packet)
+    public void Send(string serverId, RoutePacket packet)
     {
         ThrowIfDisposed();
 
         // Note: No lock needed - Action queue in XClientCommunicator provides serialization
         using (packet)
         {
-            using var message = new MultipartMessage();
-
-            // Frame 0: Target ServerId
-            message.Add(Encoding.UTF8.GetBytes(serverId));
-
-            // Frame 1: RouteHeader
-            var headerBytes = packet.SerializeHeader();
-            message.Add(headerBytes);
-
-            // Frame 2: Payload
-            var payloadBytes = packet.GetPayloadBytes();
-            message.Add(payloadBytes);
-
             try
             {
-                _clientSocket.SendMultipart(message);
+                // Frame 0: Target ServerId (SendMore)
+                _clientSocket.Send(Encoding.UTF8.GetBytes(serverId), SendFlags.SendMore);
+
+                // Frame 1: RouteHeader (SendMore)
+                var headerBytes = packet.SerializeHeader();
+                _clientSocket.Send(headerBytes, SendFlags.SendMore);
+
+                // Frame 2: Payload (마지막 프레임) - Zero-copy with ReadOnlySpan
+                _clientSocket.Send(packet.Payload.DataSpan);
             }
             catch (Exception ex)
             {
                 // RouterMandatory causes send to fail if target not connected
-                // Log error or throw depending on requirements
                 Console.Error.WriteLine($"[ZmqPlaySocket] Failed to send to {serverId}, MsgId: {packet.MsgId}, Error: {ex.Message}");
             }
         }
     }
 
     /// <inheritdoc/>
-    public RuntimeRoutePacket? Receive()
+    public RoutePacket? Receive()
     {
         ThrowIfDisposed();
 
-        if (!_serverSocket.TryRecvMultipart(out var message) || message == null)
+        // Frame 0: Sender ServerId (고정 버퍼)
+        int serverIdLen = _serverSocket.Recv(_recvServerIdBuffer);
+        if (serverIdLen <= 0)
         {
             return null;
         }
 
-        using (message)
+        var senderServerId = Encoding.UTF8.GetString(_recvServerIdBuffer, 0, serverIdLen);
+
+        // Frame 1: RouteHeader (고정 버퍼)
+        int headerLen = _serverSocket.Recv(_recvHeaderBuffer);
+        if (headerLen <= 0)
         {
-            if (message.Count < 3)
-            {
-                Console.Error.WriteLine($"[ZmqPlaySocket] Invalid message frame count: {message.Count}");
-                return null;
-            }
-
-            // Frame 0: Sender ServerId
-            var senderServerId = Encoding.UTF8.GetString(message[0].ToArray());
-
-            // Frame 1: RouteHeader
-            var headerBytes = message[1].ToArray();
-
-            // Frame 2: Payload
-            var payloadBytes = message[2].ToArray();
-
-            // Create packet with sender ServerId set in header (Kairos pattern)
-            return RuntimeRoutePacket.FromFrames(headerBytes, payloadBytes, senderServerId);
+            return null;
         }
+
+        // Frame 2: Payload (Message로 수신 - dispose 하지 않음, RoutePacket이 관리)
+        var payloadMessage = new Net.Zmq.Message();
+        _serverSocket.Recv(payloadMessage);
+
+        // RoutePacket 생성 (Message 수명 관리 위임)
+        return RoutePacket.FromFrames(
+            _recvHeaderBuffer.AsSpan(0, headerLen),
+            payloadMessage,
+            senderServerId);
     }
 
     private void ThrowIfDisposed()

@@ -80,7 +80,7 @@ public sealed class ServerAddressResolver : IDisposable
     /// 서버 목록을 즉시 갱신합니다.
     /// </summary>
     /// <returns>변경된 서버 목록.</returns>
-    public async Task<IReadOnlyList<ServerChange>> RefreshAsync()
+    public async Task RefreshAsync()
     {
         try
         {
@@ -101,13 +101,10 @@ public sealed class ServerAddressResolver : IDisposable
             {
                 OnServerListChanged?.Invoke(changes);
             }
-
-            return changes;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[ServerAddressResolver] Refresh failed: {ex.Message}");
-            return Array.Empty<ServerChange>();
+            await Console.Error.WriteLineAsync($"[ServerAddressResolver] Refresh failed: {ex.Message}");
         }
     }
 

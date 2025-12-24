@@ -231,7 +231,7 @@ internal sealed class XStageSender : XSender, IStageSender
             Sid = sid
         };
 
-        var routePacket = RuntimeRoutePacket.Of(header, packet.Payload.Data.ToArray());
+        var routePacket = RoutePacket.Of(header, packet.Payload.Data.ToArray());
         _communicator.Send(sessionServerId, routePacket);
         routePacket.Dispose();
     }

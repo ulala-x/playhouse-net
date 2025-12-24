@@ -10,13 +10,9 @@ namespace PlayHouse.Tests.Performance.Infrastructure;
 public static class BenchmarkServerFixture
 {
     /// <summary>
-    /// 벤치마크용 단일 PlayServer 생성
+    /// 시나리오 A: Client Connector ↔ PlayServer 벤치마크용 서버
     /// </summary>
-    public static PlayServer CreatePlayServer(
-        string serverId,
-        string bindEndpoint,
-        int tcpPort,
-        int requestTimeoutMs = 30000)
+    public static PlayServer CreateClientToPlayServerFixture()
     {
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
@@ -25,10 +21,10 @@ public static class BenchmarkServerFixture
         return new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = serverId;
-                options.BindEndpoint = bindEndpoint;
-                options.TcpPort = tcpPort;
-                options.RequestTimeoutMs = requestTimeoutMs;
+                options.ServerId = "bench-play-1";
+                options.BindEndpoint = "tcp://127.0.0.1:16100";
+                options.TcpPort = 16110;
+                options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
@@ -39,20 +35,21 @@ public static class BenchmarkServerFixture
     }
 
     /// <summary>
-    /// 벤치마크용 듀얼 PlayServer 생성 (서버간 통신 테스트용)
+    /// 시나리오 B: PlayServer ↔ ApiServer 벤치마크용 서버
     /// </summary>
-    public static (PlayServer serverA, PlayServer serverB) CreateDualPlayServer()
+    public static (PlayServer playServer, ApiServer apiServer) CreatePlayToApiFixture()
     {
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
         TestSystemController.Reset();
+        TestApiController.ResetAll();
 
-        var serverA = new PlayServerBootstrap()
+        var playServer = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = "bench-a";
-                options.BindEndpoint = "tcp://127.0.0.1:15200";
-                options.TcpPort = 15210;
+                options.ServerId = "bench-play-1";
+                options.BindEndpoint = "tcp://127.0.0.1:16200";
+                options.TcpPort = 16210;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
@@ -62,21 +59,17 @@ public static class BenchmarkServerFixture
             .UseSystemController<TestSystemController>()
             .Build();
 
-        var serverB = new PlayServerBootstrap()
+        var apiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = "bench-b";
-                options.BindEndpoint = "tcp://127.0.0.1:15201";
-                options.TcpPort = 0;
+                options.ServerId = "bench-api-1";
+                options.BindEndpoint = "tcp://127.0.0.1:16201";
                 options.RequestTimeoutMs = 30000;
-                options.AuthenticateMessageId = "AuthenticateRequest";
-                options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseController<TestApiController>()
             .UseSystemController<TestSystemController>()
             .Build();
 
-        return (serverA, serverB);
+        return (playServer, apiServer);
     }
 }

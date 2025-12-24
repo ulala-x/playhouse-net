@@ -65,14 +65,15 @@ internal sealed class ApiDispatcher : IDisposable
     /// Each packet is processed in a separate Task, making this fully stateless.
     /// The packet is owned by the caller and will be moved for processing.
     /// </remarks>
-    public void Post(RuntimeRoutePacket packet)
+    public void Post(RoutePacket packet)
     {
         var clonedHeader = packet.Header.Clone();
-        var payloadBytes = packet.GetPayloadBytes();
+        // Create payload - zero-copy with MemoryPayload when possible
+        var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(packet.Payload.Data);
 
         Task.Run(async () =>
         {
-            var processPacket = RuntimeRoutePacket.Of(clonedHeader, payloadBytes);
+            var processPacket = RoutePacket.Of(clonedHeader, runtimePayload);
             await DispatchAsync(processPacket);
         });
     }
@@ -81,7 +82,7 @@ internal sealed class ApiDispatcher : IDisposable
     /// Processes a packet asynchronously.
     /// </summary>
     /// <param name="packet">The packet to process.</param>
-    private async Task DispatchAsync(RuntimeRoutePacket packet)
+    private async Task DispatchAsync(RoutePacket packet)
     {
         using (packet)
         {
@@ -129,11 +130,12 @@ internal sealed class ApiDispatcher : IDisposable
     }
 
     /// <summary>
-    /// Creates a contents packet from a route packet.
+    /// Creates a contents packet from a route packet (zero-copy).
     /// </summary>
-    private static IPacket CreateContentsPacket(RuntimeRoutePacket packet)
+    private static IPacket CreateContentsPacket(RoutePacket packet)
     {
-        return CPacket.Of(packet.MsgId, packet.Payload.DataSpan.ToArray());
+        // Use zero-copy CPacket.Of overload that accepts Runtime.IPayload
+        return CPacket.Of(packet.MsgId, packet.Payload);
     }
 
     #region Metrics

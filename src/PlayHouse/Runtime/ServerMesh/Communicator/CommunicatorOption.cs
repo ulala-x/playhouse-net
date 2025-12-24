@@ -35,12 +35,12 @@ public sealed class CommunicatorOption
     /// <summary>
     /// 송신 High Water Mark.
     /// </summary>
-    public int SendHighWatermark { get; set; } = 1000;
+    public int SendHighWatermark { get; set; } = 10000;
 
     /// <summary>
     /// 수신 High Water Mark.
     /// </summary>
-    public int ReceiveHighWatermark { get; set; } = 1000;
+    public int ReceiveHighWatermark { get; set; } = 10000;
 
     /// <summary>
     /// TCP Keepalive 활성화 여부.
