@@ -256,7 +256,7 @@ static void LogResults(
     {
         var srvTps = result.ServerMetrics?.ThroughputMessagesPerSec ?? 0;
         var srvP99 = result.ServerMetrics?.LatencyP99Ms ?? 0;
-        var srvMem = result.ServerMetrics?.MemoryAllocatedMB ?? 0;
+        var srvMem = result.ServerMetrics?.MemoryAllocatedMb ?? 0;
         var srvGc = result.ServerMetrics != null
             ? $"{result.ServerMetrics.GcGen0Count}/{result.ServerMetrics.GcGen1Count}/{result.ServerMetrics.GcGen2Count}"
             : "-";
@@ -283,12 +283,12 @@ static void LogResults(
             Log.Information("  Server:");
             Log.Information("    Processed   : {Processed:N0} messages", result.ServerMetrics.ProcessedMessages);
             Log.Information("    Throughput  : {TPS:N0} msg/s ({MBps:F2} MB/s)",
-                result.ServerMetrics.ThroughputMessagesPerSec, result.ServerMetrics.ThroughputMBPerSec);
+                result.ServerMetrics.ThroughputMessagesPerSec, result.ServerMetrics.ThroughputMbPerSec);
             Log.Information("    Latency     : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
                 result.ServerMetrics.LatencyMeanMs, result.ServerMetrics.LatencyP50Ms,
                 result.ServerMetrics.LatencyP95Ms, result.ServerMetrics.LatencyP99Ms);
             Log.Information("    Memory      : {Memory:F2} MB, GC: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}",
-                result.ServerMetrics.MemoryAllocatedMB,
+                result.ServerMetrics.MemoryAllocatedMb,
                 result.ServerMetrics.GcGen0Count, result.ServerMetrics.GcGen1Count, result.ServerMetrics.GcGen2Count);
         }
         else
@@ -349,12 +349,12 @@ static async Task SaveResultsToFile(
             {
                 ProcessedMessages = r.ServerMetrics.ProcessedMessages,
                 ThroughputMsgPerSec = r.ServerMetrics.ThroughputMessagesPerSec,
-                ThroughputMBPerSec = r.ServerMetrics.ThroughputMBPerSec,
+                ThroughputMBPerSec = r.ServerMetrics.ThroughputMbPerSec,
                 LatencyMeanMs = r.ServerMetrics.LatencyMeanMs,
                 LatencyP50Ms = r.ServerMetrics.LatencyP50Ms,
                 LatencyP95Ms = r.ServerMetrics.LatencyP95Ms,
                 LatencyP99Ms = r.ServerMetrics.LatencyP99Ms,
-                MemoryAllocatedMB = r.ServerMetrics.MemoryAllocatedMB,
+                MemoryAllocatedMB = r.ServerMetrics.MemoryAllocatedMb,
                 GcGen0 = r.ServerMetrics.GcGen0Count,
                 GcGen1 = r.ServerMetrics.GcGen1Count,
                 GcGen2 = r.ServerMetrics.GcGen2Count
@@ -398,9 +398,9 @@ static async Task SaveResultsToFile(
 
         if (r.ServerMetrics != null)
         {
-            csvBuilder.Append($"{r.ServerMetrics.ProcessedMessages},{r.ServerMetrics.ThroughputMessagesPerSec:F0},{r.ServerMetrics.ThroughputMBPerSec:F2}," +
+            csvBuilder.Append($"{r.ServerMetrics.ProcessedMessages},{r.ServerMetrics.ThroughputMessagesPerSec:F0},{r.ServerMetrics.ThroughputMbPerSec:F2}," +
                 $"{r.ServerMetrics.LatencyMeanMs:F2},{r.ServerMetrics.LatencyP50Ms:F2},{r.ServerMetrics.LatencyP95Ms:F2},{r.ServerMetrics.LatencyP99Ms:F2}," +
-                $"{r.ServerMetrics.MemoryAllocatedMB:F2},{r.ServerMetrics.GcGen0Count},{r.ServerMetrics.GcGen1Count},{r.ServerMetrics.GcGen2Count},");
+                $"{r.ServerMetrics.MemoryAllocatedMb:F2},{r.ServerMetrics.GcGen0Count},{r.ServerMetrics.GcGen1Count},{r.ServerMetrics.GcGen2Count},");
         }
         else
         {

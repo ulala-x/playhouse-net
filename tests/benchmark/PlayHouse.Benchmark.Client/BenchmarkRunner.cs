@@ -12,42 +12,20 @@ namespace PlayHouse.Benchmark.Client;
 /// <summary>
 /// 벤치마크 시나리오를 실행합니다.
 /// </summary>
-public class BenchmarkRunner
+public class BenchmarkRunner(
+    string serverHost,
+    int serverPort,
+    int connections,
+    int messagesPerConnection,
+    int requestSize,
+    int responseSize,
+    BenchmarkMode mode,
+    ClientMetricsCollector metricsCollector)
 {
-    private readonly string _serverHost;
-    private readonly int _serverPort;
-    private readonly int _connections;
-    private readonly int _messagesPerConnection;
-    private readonly int _requestSize;
-    private readonly int _responseSize;
-    private readonly BenchmarkMode _mode;
-    private readonly ClientMetricsCollector _metricsCollector;
-
     // 재사용 버퍼
-    private readonly ByteString _requestPayload;
+    private readonly ByteString _requestPayload = CreatePayload(requestSize);
 
-    public BenchmarkRunner(
-        string serverHost,
-        int serverPort,
-        int connections,
-        int messagesPerConnection,
-        int requestSize,
-        int responseSize,
-        BenchmarkMode mode,
-        ClientMetricsCollector metricsCollector)
-    {
-        _serverHost = serverHost;
-        _serverPort = serverPort;
-        _connections = connections;
-        _messagesPerConnection = messagesPerConnection;
-        _requestSize = requestSize;
-        _responseSize = responseSize;
-        _mode = mode;
-        _metricsCollector = metricsCollector;
-
-        // 요청 페이로드 미리 생성 (재사용)
-        _requestPayload = CreatePayload(requestSize);
-    }
+    // 요청 페이로드 미리 생성 (재사용)
 
     /// <summary>
     /// 지정된 크기의 페이로드를 생성합니다. (압축 방지를 위해 패턴으로 채움)
@@ -67,18 +45,18 @@ public class BenchmarkRunner
     public async Task RunAsync()
     {
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
-        Log.Information("  Mode: {Mode}", _mode);
-        Log.Information("  Connections: {Connections:N0}", _connections);
-        Log.Information("  Messages per connection: {Messages:N0}", _messagesPerConnection);
-        Log.Information("  Total messages: {Total:N0}", _connections * _messagesPerConnection);
-        Log.Information("  Request size: {RequestSize:N0} bytes", _requestSize);
-        Log.Information("  Response size: {ResponseSize:N0} bytes", _responseSize);
+        Log.Information("  Mode: {Mode}", mode);
+        Log.Information("  Connections: {Connections:N0}", connections);
+        Log.Information("  Messages per connection: {Messages:N0}", messagesPerConnection);
+        Log.Information("  Total messages: {Total:N0}", connections * messagesPerConnection);
+        Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
+        Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
 
-        _metricsCollector.Reset();
+        metricsCollector.Reset();
 
         var tasks = new List<Task>();
 
-        for (int i = 0; i < _connections; i++)
+        for (int i = 0; i < connections; i++)
         {
             var connectionId = i;
             tasks.Add(Task.Run(async () => await RunConnectionAsync(connectionId)));
@@ -97,7 +75,7 @@ public class BenchmarkRunner
         var stageId = 1000 + connectionId; // 각 연결마다 고유 StageId
 
         // 연결
-        var connected = await connector.ConnectAsync(_serverHost, _serverPort, stageId);
+        var connected = await connector.ConnectAsync(serverHost, serverPort, stageId);
         if (!connected)
         {
             Log.Warning("[Connection {ConnectionId}] Failed to connect", connectionId);
@@ -120,7 +98,7 @@ public class BenchmarkRunner
         }
 
         // 모드에 따라 메시지 전송
-        if (_mode == BenchmarkMode.RequestAsync)
+        if (mode == BenchmarkMode.RequestAsync)
         {
             await RunRequestAsyncMode(connector, connectionId);
         }
@@ -137,11 +115,11 @@ public class BenchmarkRunner
         // 요청 객체 재사용
         var request = new BenchmarkRequest
         {
-            ResponseSize = _responseSize,
+            ResponseSize = responseSize,
             Payload = _requestPayload
         };
 
-        for (int i = 0; i < _messagesPerConnection; i++)
+        for (int i = 0; i < messagesPerConnection; i++)
         {
             // 변경되는 필드만 업데이트
             request.Sequence = i;
@@ -149,14 +127,14 @@ public class BenchmarkRunner
 
             using var packet = new ClientPacket(request);
 
-            _metricsCollector.RecordSent();
+            metricsCollector.RecordSent();
 
             var sw = Stopwatch.StartNew();
             try
             {
                 var response = await connector.RequestAsync(packet);
                 sw.Stop();
-                _metricsCollector.RecordReceived(sw.ElapsedTicks);
+                metricsCollector.RecordReceived(sw.ElapsedTicks);
             }
             catch
             {
@@ -184,12 +162,12 @@ public class BenchmarkRunner
                 if (timestamps.TryGetValue(reply.Sequence, out var startTicks))
                 {
                     var elapsed = Stopwatch.GetTimestamp() - startTicks;
-                    _metricsCollector.RecordReceived(elapsed);
+                    metricsCollector.RecordReceived(elapsed);
                 }
 
                 receivedCount++;
 
-                if (receivedCount >= _messagesPerConnection)
+                if (receivedCount >= messagesPerConnection)
                 {
                     tcs.TrySetResult();
                 }
@@ -202,12 +180,12 @@ public class BenchmarkRunner
         // 요청 객체 재사용
         var request = new BenchmarkRequest
         {
-            ResponseSize = _responseSize,
+            ResponseSize = responseSize,
             Payload = _requestPayload
         };
 
         // 메시지 전송
-        for (int i = 0; i < _messagesPerConnection; i++)
+        for (int i = 0; i < messagesPerConnection; i++)
         {
             request.Sequence = i;
             request.ClientTimestamp = Stopwatch.GetTimestamp();
@@ -216,7 +194,7 @@ public class BenchmarkRunner
 
             timestamps[i] = Stopwatch.GetTimestamp();
             connector.Send(packet);
-            _metricsCollector.RecordSent();
+            metricsCollector.RecordSent();
         }
 
         // 모든 응답 수신 대기 (최대 30초)
@@ -230,7 +208,7 @@ public class BenchmarkRunner
         catch (TaskCanceledException)
         {
             Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
-                connectionId, receivedCount, _messagesPerConnection);
+                connectionId, receivedCount, messagesPerConnection);
         }
     }
 }

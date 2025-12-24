@@ -102,8 +102,8 @@ try
             options.AuthenticateMessageId = "Authenticate";
             options.DefaultStageType = "BenchmarkStage";
         })
-        .UseStage<BenchmarkStageImpl>("BenchmarkStage")
-        .UseActor<BenchmarkActorImpl>()
+        .UseStage<BenchmarkStage>("BenchmarkStage")
+        .UseActor<BenchmarkActor>()
         .Build();
 
     // HTTP API 서버 구성
