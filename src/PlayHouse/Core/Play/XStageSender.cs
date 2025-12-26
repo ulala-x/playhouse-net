@@ -231,6 +231,7 @@ internal sealed class XStageSender : XSender, IStageSender
             Sid = sid
         };
 
+        // Note: ProtoPayload now serializes eagerly in constructor (no lazy serialization).
         // Zero-copy: RoutePacket references the payload without copying
         // RoutePacket.Of(header, IPayload) sets ownsPayload=false, original packet retains ownership
         var routePacket = RoutePacket.Of(header, packet.Payload);
