@@ -82,32 +82,33 @@ public class CPacketTests
 /// </summary>
 public class PayloadTests
 {
-    #region BytePayload
+    #region MemoryPayload
 
-    [Fact(DisplayName = "BytePayload는 바이트 배열을 래핑한다")]
-    public void BytePayload_FromArray_ReturnsSameData()
+    [Fact(DisplayName = "MemoryPayload는 바이트 배열을 래핑한다")]
+    public void MemoryPayload_FromArray_ReturnsSameData()
     {
         // Given
         var data = new byte[] { 10, 20, 30 };
 
         // When
-        var payload = new BytePayload(data);
+        var payload = new MemoryPayload(data);
 
         // Then
         payload.DataSpan.ToArray().Should().BeEquivalentTo(data);
     }
 
-    [Fact(DisplayName = "BytePayload는 ReadOnlySpan에서 복사하여 생성할 수 있다")]
-    public void BytePayload_FromSpan_CopiesData()
+    [Fact(DisplayName = "MemoryPayload는 ReadOnlyMemory에서 생성할 수 있다")]
+    public void MemoryPayload_FromMemory_ReturnsCorrectData()
     {
         // Given
-        ReadOnlySpan<byte> span = stackalloc byte[] { 1, 2, 3 };
+        ReadOnlyMemory<byte> memory = new byte[] { 1, 2, 3 };
 
         // When
-        var payload = new BytePayload(span);
+        var payload = new MemoryPayload(memory);
 
         // Then
         payload.DataSpan.Length.Should().Be(3);
+        payload.DataSpan.ToArray().Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
     }
 
     #endregion
