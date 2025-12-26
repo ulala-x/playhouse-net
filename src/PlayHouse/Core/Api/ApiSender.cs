@@ -98,9 +98,10 @@ internal class ApiSender : XSender, IApiSender
         var reply = await RequestToStage(playNid, stageId, routePacket);
         var res = CreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 
+        // Zero-copy: use ByteString.Memory directly
         return new CreateStageResult(
             res.Result,
-            CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
+            CPacket.Of(res.PayloadId, new MemoryPayload(res.Payload.Memory)));
     }
 
     /// <inheritdoc/>
@@ -128,10 +129,11 @@ internal class ApiSender : XSender, IApiSender
         // - Result=true, IsCreated=false: Stage already existed
         // - Result=true, IsCreated=true: New stage created successfully
         // - Result=false, IsCreated=false: Creation failed
+        // Zero-copy: use ByteString.Memory directly
         return new GetOrCreateStageResult(
             res.Result,
             res.IsCreated,
-            CPacket.Of(res.PayloadId, res.Payload.ToByteArray()));
+            CPacket.Of(res.PayloadId, new MemoryPayload(res.Payload.Memory)));
     }
 
     #endregion

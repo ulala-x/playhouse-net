@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace PlayHouse.Runtime.ClientTransport;
@@ -26,6 +27,19 @@ internal static class MessageCodec
     /// Response header size after MsgId: MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) = 16 bytes
     /// </summary>
     public const int ResponseHeaderSize = 16;
+
+    /// <summary>
+    /// Cache for UTF-8 encoded message IDs to avoid repeated allocations.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, byte[]> _msgIdCache = new();
+
+    /// <summary>
+    /// Gets the UTF-8 bytes for a message ID, using cache when possible.
+    /// </summary>
+    private static byte[] GetMsgIdBytes(string msgId)
+    {
+        return _msgIdCache.GetOrAdd(msgId, static id => Encoding.UTF8.GetBytes(id));
+    }
 
     /// <summary>
     /// Parses a message body (without length prefix).
@@ -92,7 +106,7 @@ internal static class MessageCodec
         ushort errorCode,
         ReadOnlySpan<byte> payload)
     {
-        var msgIdBytes = Encoding.UTF8.GetBytes(msgId);
+        var msgIdBytes = GetMsgIdBytes(msgId);
         int offset = 0;
 
         // MsgIdLen (1 byte)
@@ -135,7 +149,7 @@ internal static class MessageCodec
         ushort errorCode,
         ReadOnlySpan<byte> payload)
     {
-        var msgIdBytes = Encoding.UTF8.GetBytes(msgId);
+        var msgIdBytes = GetMsgIdBytes(msgId);
         var bodySize = 1 + msgIdBytes.Length + ResponseHeaderSize + payload.Length;
         var buffer = new byte[4 + bodySize];
 
@@ -158,7 +172,7 @@ internal static class MessageCodec
         ushort errorCode,
         ReadOnlySpan<byte> payload)
     {
-        var msgIdBytes = Encoding.UTF8.GetBytes(msgId);
+        var msgIdBytes = GetMsgIdBytes(msgId);
         var size = 1 + msgIdBytes.Length + ResponseHeaderSize + payload.Length;
         var buffer = new byte[size];
 
