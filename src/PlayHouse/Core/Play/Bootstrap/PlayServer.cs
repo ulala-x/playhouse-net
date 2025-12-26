@@ -253,12 +253,15 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         // IsReply 플래그로 응답/요청을 구분 (MsgSeq만으로는 구분 불가)
         if (packet.Header.IsReply && packet.MsgSeq > 0)
         {
-            var response = CPacket.Of(packet.MsgId, packet.GetPayloadBytes());
+            // Zero-copy: Transfer payload ownership from RoutePacket to CPacket
+            var response = CPacket.Of(packet.MsgId, packet.Payload);
             if (_requestCache?.TryComplete(packet.MsgSeq, response) == true)
             {
-                packet.Dispose();
+                // CPacket now owns the payload - don't dispose RoutePacket
+                // RoutePacket will be GC'd, CPacket.Dispose() will free the payload
                 return;
             }
+            // TryComplete failed - RoutePacket still owns payload, will go to dispatcher
         }
 
         // Stage로 라우팅
@@ -409,7 +412,8 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
                     // 4. Actor 콜백 순차 호출
                     await actor.Actor.OnCreate();
 
-                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, payload.ToArray());
+                    // Zero-copy: wrap ReadOnlyMemory<byte> in MemoryPayload
+                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, new MemoryPayload(payload));
                     var authResult = await actor.Actor.OnAuthenticate(authPacket);
 
                     if (!authResult)

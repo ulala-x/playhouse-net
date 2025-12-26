@@ -1,5 +1,7 @@
 using FluentAssertions;
 using Google.Protobuf;
+using PlayHouse.Abstractions;
+using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using Xunit;
@@ -199,30 +201,30 @@ public class RoutePacketTests
 /// </summary>
 public class RuntimePayloadTests
 {
-    #region ByteArrayPayload
+    #region BytePayload
 
-    [Fact(DisplayName = "ByteArrayPayload는 바이트 배열을 래핑한다")]
-    public void ByteArrayPayload_WrapsByteArray_ReturnsSameData()
+    [Fact(DisplayName = "BytePayload는 바이트 배열을 래핑한다")]
+    public void BytePayload_WrapsByteArray_ReturnsSameData()
     {
         // Given
         var data = new byte[] { 1, 2, 3, 4, 5 };
 
         // When
-        var payload = new ByteArrayPayload(data);
+        var payload = new BytePayload(data);
 
         // Then
         payload.DataSpan.ToArray().Should().BeEquivalentTo(data);
         ((IPayload)payload).Length.Should().Be(5);
     }
 
-    [Fact(DisplayName = "ByteArrayPayload는 ReadOnlySpan으로부터 생성할 수 있다")]
-    public void ByteArrayPayload_FromSpan_CopiesData()
+    [Fact(DisplayName = "BytePayload는 ReadOnlySpan으로부터 생성할 수 있다")]
+    public void BytePayload_FromSpan_CopiesData()
     {
         // Given
         ReadOnlySpan<byte> span = stackalloc byte[] { 10, 20, 30 };
 
         // When
-        var payload = new ByteArrayPayload(span);
+        var payload = new BytePayload(span);
 
         // Then
         payload.DataSpan.ToArray().Should().BeEquivalentTo(new byte[] { 10, 20, 30 });

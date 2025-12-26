@@ -97,6 +97,12 @@ public sealed class PlaySocketConfig
     public int Linger { get; set; } = 0;
 
     /// <summary>
+    /// Gets or sets the receive timeout in milliseconds.
+    /// -1 means infinite (block forever).
+    /// </summary>
+    public int ReceiveTimeout { get; set; } = -1;
+
+    /// <summary>
     /// Creates a default configuration.
     /// </summary>
     public static PlaySocketConfig Default => new();

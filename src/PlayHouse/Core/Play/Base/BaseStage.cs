@@ -327,7 +327,7 @@ internal sealed class BaseStage
 
     private static IPacket CreateContentPacket(RoutePacket packet)
     {
-        // Use zero-copy CPacket.Of overload that accepts Runtime.IPayload
+        // Zero-copy: Share payload reference - handler reads synchronously before RoutePacket disposal
         return CPacket.Of(packet.MsgId, packet.Payload);
     }
 
@@ -356,8 +356,7 @@ internal sealed class BaseStage
             try
             {
                 // Create packet from ReadOnlyMemory - zero-copy with MemoryPayload
-                var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(payload);
-                var packet = CPacket.Of(msgId, runtimePayload);
+                var packet = CPacket.Of(msgId, new MemoryPayload(payload));
                 await Stage.OnDispatch(baseActor.Actor, packet);
             }
             finally

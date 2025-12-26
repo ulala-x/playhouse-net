@@ -122,11 +122,11 @@ internal sealed class ApiDispatcher : IDisposable
     }
 
     /// <summary>
-    /// Creates a contents packet from a route packet (zero-copy).
+    /// Creates a contents packet from a route packet.
     /// </summary>
     private static IPacket CreateContentsPacket(RoutePacket packet)
     {
-        // Use zero-copy CPacket.Of overload that accepts Runtime.IPayload
+        // Zero-copy: Share payload reference - handler reads synchronously before RoutePacket disposal
         return CPacket.Of(packet.MsgId, packet.Payload);
     }
 

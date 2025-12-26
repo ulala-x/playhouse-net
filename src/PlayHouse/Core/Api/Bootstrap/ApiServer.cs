@@ -178,12 +178,15 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         // IsReply 플래그로 응답/요청을 구분 (MsgSeq만으로는 구분 불가)
         if (packet.Header.IsReply && packet.MsgSeq > 0)
         {
-            var response = CPacket.Of(packet.MsgId, packet.GetPayloadBytes());
+            // Zero-copy: Transfer payload ownership from RoutePacket to CPacket
+            var response = CPacket.Of(packet.MsgId, packet.Payload);
             if (_requestCache?.TryComplete(packet.MsgSeq, response) == true)
             {
-                packet.Dispose();
+                // CPacket now owns the payload - don't dispose RoutePacket
+                // RoutePacket will be GC'd, CPacket.Dispose() will free the payload
                 return;
             }
+            // TryComplete failed - RoutePacket still owns payload, will go to dispatcher
         }
 
         // API Handler로 라우팅

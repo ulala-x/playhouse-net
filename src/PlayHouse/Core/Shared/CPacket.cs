@@ -1,10 +1,10 @@
 #nullable enable
 
 using System.Buffers;
+using System.IO;
 using Google.Protobuf;
 using Net.Zmq;
 using PlayHouse.Abstractions;
-using RuntimePayload = PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Core.Shared;
 
@@ -51,14 +51,14 @@ public sealed class CPacket : IPacket
     }
 
     /// <summary>
-    /// Creates a packet from a Runtime IPayload (zero-copy for server-to-server).
+    /// Creates a packet from an IPayload (zero-copy).
     /// </summary>
     /// <param name="msgId">Message identifier.</param>
-    /// <param name="runtimePayload">Runtime payload instance.</param>
+    /// <param name="payload">Payload instance.</param>
     /// <returns>A new CPacket instance.</returns>
-    public static CPacket Of(string msgId, RuntimePayload.IPayload runtimePayload)
+    public static CPacket Of(string msgId, IPayload payload)
     {
-        return new CPacket(msgId, new RuntimePayloadWrapper(runtimePayload));
+        return new CPacket(msgId, payload);
     }
 
     /// <summary>
@@ -128,31 +128,39 @@ public sealed class ProtoPayload : IPayload
     }
 
     /// <summary>
-    /// Gets a ZMQ Message for zero-copy sending.
+    /// Gets a ZMQ Message for zero-copy sending (internal use only).
     /// Uses MessagePool.Shared for efficient memory management.
     /// </summary>
     /// <returns>A pooled ZMQ Message containing the serialized protobuf data.</returns>
-    public Net.Zmq.Message GetZmqMessage()
+    internal Net.Zmq.Message GetZmqMessage()
     {
         if (_zmqMessage == null)
         {
             _actualSize = _proto.CalculateSize();
             _zmqMessage = MessagePool.Shared.Rent(_actualSize);
 
-            // Serialize to ArrayPool buffer, then copy to ZMQ Message
-            var tempBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
-            try
+            // Serialize directly to ZMQ Message buffer (zero-copy, no temp allocation)
+            unsafe
             {
-                using var stream = new MemoryStream(tempBuffer, 0, _actualSize, writable: true);
-                _proto.WriteTo(stream);
-                tempBuffer.AsSpan(0, _actualSize).CopyTo(_zmqMessage.Data);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(tempBuffer);
+                fixed (byte* ptr = _zmqMessage.Data)
+                {
+                    using var stream = new UnmanagedMemoryStream(ptr, 0, _actualSize, FileAccess.Write);
+                    _proto.WriteTo(stream);
+                }
             }
         }
         return _zmqMessage;
+    }
+
+    /// <summary>
+    /// Gets the actual payload data span for ZMQ sending.
+    /// This returns only the valid data, not the full buffer.
+    /// </summary>
+    /// <returns>A ReadOnlySpan containing exactly _actualSize bytes of serialized data.</returns>
+    internal ReadOnlySpan<byte> GetZmqPayloadSpan()
+    {
+        GetZmqMessage(); // Ensure _zmqMessage and _actualSize are set
+        return _zmqMessage!.Data.Slice(0, _actualSize);
     }
 
     /// <summary>
@@ -202,27 +210,3 @@ public sealed class EmptyPayload : IPayload
     public void Dispose() { }
 }
 
-/// <summary>
-/// Payload wrapper that bridges Runtime.IPayload to Abstractions.IPayload (zero-copy).
-/// </summary>
-public sealed class RuntimePayloadWrapper : IPayload
-{
-    private readonly RuntimePayload.IPayload _runtimePayload;
-
-    public RuntimePayloadWrapper(RuntimePayload.IPayload runtimePayload)
-    {
-        _runtimePayload = runtimePayload;
-    }
-
-    public ReadOnlySpan<byte> DataSpan => _runtimePayload.DataSpan;
-
-    /// <summary>
-    /// Gets the underlying runtime payload for conversion purposes.
-    /// </summary>
-    internal RuntimePayload.IPayload GetUnderlyingPayload() => _runtimePayload;
-
-    public void Dispose()
-    {
-        _runtimePayload.Dispose();
-    }
-}

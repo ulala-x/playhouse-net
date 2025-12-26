@@ -6,7 +6,6 @@ using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
-using IPayload = PlayHouse.Abstractions.IPayload;
 
 namespace PlayHouse.Core.Shared;
 
@@ -243,35 +242,18 @@ public abstract class XSender : ISender
 
     private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Create RuntimePayload from Abstractions.IPayload
-        var runtimePayload = ToRuntimePayload(payload);
-        var packet = RoutePacket.Of(header, runtimePayload);
+        // Note: Packet ownership is transferred to the queue.
+        // ZmqPlaySocket.Send() will dispose the packet after sending.
+        var packet = RoutePacket.Of(header, payload);
         _communicator.Send(targetServerId, packet);
-        packet.Dispose();
     }
 
     private void SendReplyInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Create RuntimePayload from Abstractions.IPayload
-        var runtimePayload = ToRuntimePayload(payload);
-        var packet = RoutePacket.Of(header, runtimePayload);
+        // Note: Packet ownership is transferred to the queue.
+        // ZmqPlaySocket.Send() will dispose the packet after sending.
+        var packet = RoutePacket.Of(header, payload);
         _communicator.Send(targetServerId, packet);
-        packet.Dispose();
-    }
-
-    /// <summary>
-    /// Converts Abstractions.IPayload to Runtime.IPayload (zero-copy when possible).
-    /// </summary>
-    private static Runtime.ServerMesh.Message.IPayload ToRuntimePayload(IPayload payload)
-    {
-        // If already a RuntimePayloadWrapper, extract underlying payload (zero-copy)
-        if (payload is RuntimePayloadWrapper wrapper)
-        {
-            return wrapper.GetUnderlyingPayload();
-        }
-
-        // Otherwise, copy DataSpan to byte array
-        return new Runtime.ServerMesh.Message.ByteArrayPayload(payload.DataSpan);
     }
 
     private void RegisterReply(ReplyObject replyObject)
