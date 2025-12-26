@@ -18,6 +18,54 @@ namespace PlayHouse.Runtime.ClientTransport.WebSocket;
 /// </remarks>
 internal sealed class WebSocketTransportSession : ITransportSession
 {
+    /// <summary>
+    /// Pooled buffer for collecting fragmented WebSocket messages.
+    /// Uses ArrayPool to avoid allocations.
+    /// </summary>
+    private sealed class PooledBuffer : IDisposable
+    {
+        private byte[] _buffer;
+        private int _position;
+
+        public PooledBuffer(int initialSize)
+        {
+            _buffer = ArrayPool<byte>.Shared.Rent(initialSize);
+            _position = 0;
+        }
+
+        public void Write(ReadOnlySpan<byte> data)
+        {
+            EnsureCapacity(_position + data.Length);
+            data.CopyTo(_buffer.AsSpan(_position));
+            _position += data.Length;
+        }
+
+        public ReadOnlyMemory<byte> GetMemory() => _buffer.AsMemory(0, _position);
+
+        public int Length => _position;
+
+        private void EnsureCapacity(int requiredSize)
+        {
+            if (_buffer.Length >= requiredSize)
+                return;
+
+            var newSize = Math.Max(_buffer.Length * 2, requiredSize);
+            var newBuffer = ArrayPool<byte>.Shared.Rent(newSize);
+            _buffer.AsSpan(0, _position).CopyTo(newBuffer);
+            ArrayPool<byte>.Shared.Return(_buffer);
+            _buffer = newBuffer;
+        }
+
+        public void Dispose()
+        {
+            if (_buffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(_buffer);
+                _buffer = null!;
+            }
+        }
+    }
+
     private readonly WS _webSocket;
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
@@ -181,7 +229,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
         {
             while (!ct.IsCancellationRequested && _webSocket.State == WebSocketState.Open)
             {
-                using var ms = new MemoryStream();
+                using var pooledBuffer = new PooledBuffer(_options.ReceiveBufferSize);
                 ValueWebSocketReceiveResult result;
 
                 do
@@ -199,12 +247,12 @@ internal sealed class WebSocketTransportSession : ITransportSession
                         return;
                     }
 
-                    ms.Write(buffer, 0, result.Count);
+                    pooledBuffer.Write(buffer.AsSpan(0, result.Count));
 
-                    if (ms.Length > _options.MaxPacketSize)
+                    if (pooledBuffer.Length > _options.MaxPacketSize)
                     {
                         _logger?.LogWarning("WebSocket session {SessionId} message too large: {Size}",
-                            SessionId, ms.Length);
+                            SessionId, pooledBuffer.Length);
 
                         await _webSocket.CloseAsync(
                             WebSocketCloseStatus.MessageTooBig,
@@ -216,11 +264,11 @@ internal sealed class WebSocketTransportSession : ITransportSession
                 while (!result.EndOfMessage);
 
                 // Process complete message
-                if (ms.Length > 0)
+                if (pooledBuffer.Length > 0)
                 {
                     try
                     {
-                        var data = ms.ToArray();
+                        var data = pooledBuffer.GetMemory();
                         ParseAndDispatch(data);
                     }
                     catch (Exception ex)
@@ -250,14 +298,14 @@ internal sealed class WebSocketTransportSession : ITransportSession
     /// Parses a message from the WebSocket frame data using shared codec.
     /// WebSocket doesn't need length prefix (frames are self-delimiting).
     /// </summary>
-    private void ParseAndDispatch(byte[] data)
+    private void ParseAndDispatch(ReadOnlyMemory<byte> data)
     {
-        if (!MessageCodec.TryParseMessage(data, out var msgId, out var msgSeq, out var stageId, out var payloadOffset))
+        if (!MessageCodec.TryParseMessage(data.Span, out var msgId, out var msgSeq, out var stageId, out var payloadOffset))
         {
             throw new InvalidDataException("Invalid message format");
         }
 
-        var payload = data.AsMemory(payloadOffset);
+        var payload = data.Slice(payloadOffset);
         _onMessage(this, msgId, msgSeq, stageId, payload);
     }
 

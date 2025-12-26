@@ -260,9 +260,16 @@ public sealed class RoutePacket : IDisposable
     }
 
     /// <summary>
+    /// Gets the payload data as a ReadOnlySpan for zero-copy access.
+    /// </summary>
+    /// <returns>Payload data as ReadOnlySpan.</returns>
+    public ReadOnlySpan<byte> GetPayloadSpan() => Payload.DataSpan;
+
+    /// <summary>
     /// Gets the payload bytes for sending.
     /// </summary>
     /// <returns>Payload bytes.</returns>
+    [Obsolete("Use GetPayloadSpan() for zero-copy access")]
     public byte[] GetPayloadBytes()
     {
         return Payload.DataSpan.ToArray();

@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Buffers;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Abstractions.System;
@@ -502,15 +503,24 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
             ErrorMessage = errorCode == (ushort)ErrorCode.Success ? "" : $"Error code: {errorCode}"
         };
 
-        var replyBytes = reply.ToByteArray();
+        // Zero-copy: use ArrayPool instead of ToByteArray()
+        var size = reply.CalculateSize();
+        var buffer = ArrayPool<byte>.Shared.Rent(size);
+        try
+        {
+            reply.WriteTo(buffer.AsSpan(0, size));
 
-        // Use new zero-copy API
-        await session.SendResponseAsync(
-            _options.AuthenticateMessageId.Replace("Request", "Reply"),
-            msgSeq,
-            stageId,
-            errorCode,
-            replyBytes);
+            await session.SendResponseAsync(
+                _options.AuthenticateMessageId.Replace("Request", "Reply"),
+                msgSeq,
+                stageId,
+                errorCode,
+                buffer.AsSpan(0, size));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     private long GenerateStageId()

@@ -29,7 +29,8 @@ internal sealed class CreateStageCmd : IBaseStageCmd
         _logger?.LogDebug("CreateStageReq: StageType={StageType}, PayloadId={PayloadId}",
             req.StageType, req.PayloadId);
 
-        var contentPacket = CPacket.Of(req.PayloadId, req.Payload.ToByteArray());
+        // Zero-copy: use ByteString.Memory directly
+        var contentPacket = CPacket.Of(req.PayloadId, new MemoryPayload(req.Payload.Memory));
 
         var (success, replyPacket) = await baseStage.CreateStage(req.StageType, contentPacket);
 

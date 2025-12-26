@@ -29,19 +29,14 @@ public interface IPayload : IDisposable
 /// <summary>
 /// Payload backed by ZMQ Message (zero-copy, owns message lifetime).
 /// </summary>
-public sealed class ZmqPayload : IPayload
+public sealed class ZmqPayload(Net.Zmq.Message message) : IPayload
 {
     private bool _disposed;
 
     /// <summary>
     /// Gets the underlying ZMQ Message.
     /// </summary>
-    public Net.Zmq.Message Message { get; }
-
-    public ZmqPayload(Net.Zmq.Message message)
-    {
-        Message = message;
-    }
+    public Net.Zmq.Message Message { get; } = message;
 
     public ReadOnlySpan<byte> DataSpan => Message.Data;
 
@@ -56,16 +51,9 @@ public sealed class ZmqPayload : IPayload
 /// <summary>
 /// Payload backed by ReadOnlyMemory (zero-copy, no allocation).
 /// </summary>
-public sealed class MemoryPayload : IPayload
+public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IPayload
 {
-    private readonly ReadOnlyMemory<byte> _data;
-
-    public MemoryPayload(ReadOnlyMemory<byte> data)
-    {
-        _data = data;
-    }
-
-    public ReadOnlySpan<byte> DataSpan => _data.Span;
+    public ReadOnlySpan<byte> DataSpan => data.Span;
 
     public void Dispose() { }
 }
@@ -74,17 +62,11 @@ public sealed class MemoryPayload : IPayload
 /// Payload implementation backed by a Protobuf message.
 /// Uses ArrayPool for memory-efficient serialization.
 /// </summary>
-public sealed class ProtoPayload : IPayload
+public sealed class ProtoPayload(IMessage proto) : IPayload
 {
-    private readonly IMessage _proto;
     private byte[]? _rentedBuffer;
     private Net.Zmq.Message? _zmqMessage;
     private int _actualSize;
-
-    public ProtoPayload(IMessage proto)
-    {
-        _proto = proto;
-    }
 
     public ReadOnlySpan<byte> DataSpan
     {
@@ -100,11 +82,11 @@ public sealed class ProtoPayload : IPayload
     /// Uses MessagePool.Shared for efficient memory management.
     /// </summary>
     /// <returns>A pooled ZMQ Message containing the serialized protobuf data.</returns>
-    internal Net.Zmq.Message GetZmqMessage()
+    private void GetZmqMessage()
     {
         if (_zmqMessage == null)
         {
-            _actualSize = _proto.CalculateSize();
+            _actualSize = proto.CalculateSize();
             _zmqMessage = Net.Zmq.MessagePool.Shared.Rent(_actualSize);
 
             // Serialize directly to ZMQ Message buffer (zero-copy, no temp allocation)
@@ -113,11 +95,10 @@ public sealed class ProtoPayload : IPayload
                 fixed (byte* ptr = _zmqMessage.Data)
                 {
                     using var stream = new UnmanagedMemoryStream(ptr, 0, _actualSize, FileAccess.Write);
-                    _proto.WriteTo(stream);
+                    proto.WriteTo(stream);
                 }
             }
         }
-        return _zmqMessage;
     }
 
     /// <summary>
@@ -134,18 +115,18 @@ public sealed class ProtoPayload : IPayload
     /// <summary>
     /// Gets the underlying Protobuf message.
     /// </summary>
-    public IMessage GetProto() => _proto;
+    public IMessage GetProto() => proto;
 
     private void EnsureArrayPoolBuffer()
     {
         if (_rentedBuffer == null)
         {
-            _actualSize = _proto.CalculateSize();
+            _actualSize = proto.CalculateSize();
             _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
 
             // Serialize directly to ArrayPool buffer (zero-copy)
             using var stream = new MemoryStream(_rentedBuffer, 0, _actualSize, writable: true);
-            _proto.WriteTo(stream);
+            proto.WriteTo(stream);
         }
     }
 

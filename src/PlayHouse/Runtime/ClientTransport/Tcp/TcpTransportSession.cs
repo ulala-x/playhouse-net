@@ -330,14 +330,41 @@ internal sealed class TcpTransportSession : ITransportSession
 
         // Extract packet data and parse using shared codec
         var packetBuffer = buffer.Slice(4, packetLength);
-        var packetData = packetBuffer.ToArray();
 
-        if (!MessageCodec.TryParseMessage(packetData, out msgId, out msgSeq, out stageId, out var payloadOffset))
+        // Zero-copy optimization: avoid ToArray() when possible
+        if (packetBuffer.IsSingleSegment)
         {
-            throw new InvalidDataException("Invalid message format");
+            // Single segment: use directly without copying
+            var span = packetBuffer.FirstSpan;
+            if (!MessageCodec.TryParseMessage(span, out msgId, out msgSeq, out stageId, out var payloadOffset))
+            {
+                throw new InvalidDataException("Invalid message format");
+            }
+            payload = packetBuffer.First.Slice(payloadOffset);
         }
+        else
+        {
+            // Multiple segments (rare): use ArrayPool
+            var rentedBuffer = ArrayPool<byte>.Shared.Rent((int)packetLength);
+            try
+            {
+                packetBuffer.CopyTo(rentedBuffer);
+                if (!MessageCodec.TryParseMessage(rentedBuffer.AsSpan(0, (int)packetLength), out msgId, out msgSeq, out stageId, out var payloadOffset))
+                {
+                    throw new InvalidDataException("Invalid message format");
+                }
 
-        payload = packetData.AsMemory(payloadOffset);
+                // Must copy payload since rentedBuffer will be returned
+                var payloadLength = (int)packetLength - payloadOffset;
+                var payloadCopy = new byte[payloadLength];
+                rentedBuffer.AsSpan(payloadOffset, payloadLength).CopyTo(payloadCopy);
+                payload = payloadCopy;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rentedBuffer);
+            }
+        }
 
         // Advance buffer
         buffer = buffer.Slice(4 + packetLength);

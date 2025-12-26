@@ -2,6 +2,7 @@
 
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
+using PlayHouse.Abstractions;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
@@ -30,7 +31,8 @@ internal sealed class GetOrCreateStageCmd : IBaseStageCmd
         // Stage가 아직 생성되지 않았으면 생성
         if (!baseStage.IsCreated)
         {
-            var createPacket = CPacket.Of(req.CreatePayloadId, req.CreatePayload.ToByteArray());
+            // Zero-copy: use ByteString.Memory directly
+            var createPacket = CPacket.Of(req.CreatePayloadId, new MemoryPayload(req.CreatePayload.Memory));
             var (createSuccess, createReply) = await baseStage.CreateStage(req.StageType, createPacket);
 
             if (!createSuccess)
