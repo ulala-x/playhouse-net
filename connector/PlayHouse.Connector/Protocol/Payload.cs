@@ -81,3 +81,23 @@ public sealed class ProtoPayload : IPayload
         _cachedData = null;
     }
 }
+
+/// <summary>
+/// ReadOnlyMemory 기반 페이로드 (Zero-Copy)
+/// </summary>
+public sealed class MemoryPayload : IPayload
+{
+    private readonly ReadOnlyMemory<byte> _data;
+
+    public MemoryPayload(ReadOnlyMemory<byte> data)
+    {
+        _data = data;
+    }
+
+    public ReadOnlySpan<byte> DataSpan => _data.Span;
+
+    public void Dispose()
+    {
+        // Nothing to dispose
+    }
+}

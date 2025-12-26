@@ -2,11 +2,10 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using PlayHouse.Connector.Infrastructure.Buffers;
 
 namespace PlayHouse.Connector.Network;
 
@@ -24,7 +23,7 @@ internal sealed class WebSocketConnection : IConnection
 
     private const int ReceiveBufferSize = 65536;
 
-    public event EventHandler<byte[]>? DataReceived;
+    public event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
     public event EventHandler<Exception?>? Disconnected;
 
     public bool IsConnected => _isConnected;
@@ -149,7 +148,7 @@ internal sealed class WebSocketConnection : IConnection
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
-        var messageBuffer = new List<byte>();
+        using var messageBuffer = new PooledBuffer();
 
         try
         {
@@ -174,15 +173,14 @@ internal sealed class WebSocketConnection : IConnection
 
                         if (result.Count > 0)
                         {
-                            messageBuffer.AddRange(buffer.Take(result.Count));
+                            messageBuffer.Append(new ReadOnlySpan<byte>(buffer, 0, result.Count));
                         }
                     }
                     while (!result.EndOfMessage);
 
-                    if (messageBuffer.Count > 0)
+                    if (messageBuffer.Size > 0)
                     {
-                        var data = messageBuffer.ToArray();
-                        DataReceived?.Invoke(this, data);
+                        DataReceived?.Invoke(this, messageBuffer.AsMemory());
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

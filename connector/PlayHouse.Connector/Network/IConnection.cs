@@ -17,7 +17,7 @@ public interface IConnection : IAsyncDisposable
     /// <summary>
     /// Raised when data is received from the server.
     /// </summary>
-    event EventHandler<byte[]>? DataReceived;
+    event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
 
     /// <summary>
     /// Raised when the connection is disconnected.
