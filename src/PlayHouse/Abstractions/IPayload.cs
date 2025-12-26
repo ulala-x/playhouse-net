@@ -59,31 +59,37 @@ public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IPayload
 
 /// <summary>
 /// Payload implementation backed by a Protobuf message.
-/// IMPORTANT: Serializes eagerly in constructor using ArrayPool for best performance.
-/// This distributes serialization work across caller threads, avoiding ZMQ thread bottleneck.
+/// TEST: Lazy serialization using ArrayPool (serializes on first DataSpan access).
 /// </summary>
 public sealed class ProtoPayload : IPayload
 {
-    private readonly IMessage _proto;
     private byte[]? _rentedBuffer;
-    private readonly int _actualSize;
+    private int _actualSize;
+    private readonly IMessage _proto;
 
     /// <summary>
-    /// Creates a ProtoPayload with eager serialization using ArrayPool.
+    /// Payload implementation backed by a Protobuf message.
+    /// TEST: Lazy serialization using ArrayPool (serializes on first DataSpan access).
     /// </summary>
     public ProtoPayload(IMessage proto)
     {
         _proto = proto;
-
-        // IMPORTANT: Eager serialization on caller thread using ArrayPool.
-        // ArrayPool is faster than MessagePool (ZMQ native memory) for allocation.
-        // This distributes serialization work across multiple Stage/API threads.
-        _actualSize = proto.CalculateSize();
-        _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
-        proto.WriteTo(_rentedBuffer.AsSpan(0, _actualSize));
+        _ = DataSpan;
     }
 
-    public ReadOnlySpan<byte> DataSpan => _rentedBuffer.AsSpan(0, _actualSize);
+    public ReadOnlySpan<byte> DataSpan
+    {
+        get
+        {
+            if (_rentedBuffer == null)
+            {
+                _actualSize = _proto.CalculateSize();
+                _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
+                _proto.WriteTo(_rentedBuffer.AsSpan(0, _actualSize));
+            }
+            return _rentedBuffer.AsSpan(0, _actualSize);
+        }
+    }
 
     /// <summary>
     /// Gets the underlying Protobuf message.
