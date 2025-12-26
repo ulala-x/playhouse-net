@@ -255,7 +255,7 @@ internal sealed class XStageSender : XSender, IStageSender
                 (ushort)CurrentHeader.MsgSeq,
                 StageId,
                 errorCode,
-                Shared.EmptyPayload.Instance);
+                Abstractions.EmptyPayload.Instance);
         }
         else
         {

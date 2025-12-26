@@ -56,8 +56,8 @@ public sealed class RoutePacket : IDisposable
             header.From = senderNid;
         }
 
-        // Legacy support - create BytePayload from byte array
-        var payload = new Core.Shared.BytePayload(payloadBytes);
+        // Legacy support - create MemoryPayload from byte array
+        var payload = new MemoryPayload(payloadBytes);
         return new RoutePacket(header, payload);
     }
 
@@ -124,7 +124,7 @@ public sealed class RoutePacket : IDisposable
             MsgId = typeof(T).Name,
             From = from
         };
-        var payload = new Core.Shared.ProtoPayload(message);
+        var payload = new ProtoPayload(message);
         return new RoutePacket(header, payload);
     }
 
@@ -136,7 +136,7 @@ public sealed class RoutePacket : IDisposable
     /// <returns>A new RuntimeRoutePacket.</returns>
     public static RoutePacket Of(RouteHeader header, byte[] payload)
     {
-        return new RoutePacket(header, new Core.Shared.BytePayload(payload));
+        return new RoutePacket(header, new MemoryPayload(payload));
     }
 
     /// <summary>
@@ -147,7 +147,7 @@ public sealed class RoutePacket : IDisposable
     /// <returns>A new RuntimeRoutePacket.</returns>
     public static RoutePacket Of(RouteHeader header, ByteString payload)
     {
-        return new RoutePacket(header, new Core.Shared.BytePayload(payload.Span));
+        return new RoutePacket(header, new MemoryPayload(payload.Memory));
     }
 
     /// <summary>
@@ -171,7 +171,7 @@ public sealed class RoutePacket : IDisposable
     /// <returns>A new RuntimeRoutePacket with empty payload.</returns>
     public static RoutePacket Empty(RouteHeader header)
     {
-        return new RoutePacket(header, Core.Shared.EmptyPayload.Instance);
+        return new RoutePacket(header, EmptyPayload.Instance);
     }
 
     #endregion
@@ -194,7 +194,7 @@ public sealed class RoutePacket : IDisposable
             From = Header.From,  // Will be overwritten by sender
             ErrorCode = 0
         };
-        return new RoutePacket(replyHeader, new Core.Shared.ProtoPayload(message));
+        return new RoutePacket(replyHeader, new ProtoPayload(message));
     }
 
     /// <summary>
@@ -212,7 +212,7 @@ public sealed class RoutePacket : IDisposable
             From = Header.From,
             ErrorCode = errorCode
         };
-        return new RoutePacket(replyHeader, Core.Shared.EmptyPayload.Instance);
+        return new RoutePacket(replyHeader, EmptyPayload.Instance);
     }
 
     /// <summary>
@@ -243,7 +243,7 @@ public sealed class RoutePacket : IDisposable
             StageId = request.Header.StageId,
             AccountId = request.Header.AccountId
         };
-        return new RoutePacket(replyHeader, new Core.Shared.BytePayload(payload));
+        return new RoutePacket(replyHeader, new MemoryPayload(payload));
     }
 
     #endregion

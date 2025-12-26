@@ -201,30 +201,30 @@ public class RoutePacketTests
 /// </summary>
 public class RuntimePayloadTests
 {
-    #region BytePayload
+    #region MemoryPayload
 
-    [Fact(DisplayName = "BytePayload는 바이트 배열을 래핑한다")]
-    public void BytePayload_WrapsByteArray_ReturnsSameData()
+    [Fact(DisplayName = "MemoryPayload는 바이트 배열을 래핑한다")]
+    public void MemoryPayload_WrapsByteArray_ReturnsSameData()
     {
         // Given
         var data = new byte[] { 1, 2, 3, 4, 5 };
 
         // When
-        var payload = new BytePayload(data);
+        var payload = new MemoryPayload(data);
 
         // Then
         payload.DataSpan.ToArray().Should().BeEquivalentTo(data);
         ((IPayload)payload).Length.Should().Be(5);
     }
 
-    [Fact(DisplayName = "BytePayload는 ReadOnlySpan으로부터 생성할 수 있다")]
-    public void BytePayload_FromSpan_CopiesData()
+    [Fact(DisplayName = "MemoryPayload는 ReadOnlyMemory로부터 생성할 수 있다")]
+    public void MemoryPayload_FromMemory_ReturnsCorrectData()
     {
         // Given
-        ReadOnlySpan<byte> span = stackalloc byte[] { 10, 20, 30 };
+        ReadOnlyMemory<byte> memory = new byte[] { 10, 20, 30 };
 
         // When
-        var payload = new BytePayload(span);
+        var payload = new MemoryPayload(memory);
 
         // Then
         payload.DataSpan.ToArray().Should().BeEquivalentTo(new byte[] { 10, 20, 30 });
@@ -232,10 +232,10 @@ public class RuntimePayloadTests
 
     #endregion
 
-    #region EmptyRuntimePayload
+    #region EmptyPayload
 
-    [Fact(DisplayName = "EmptyRuntimePayload는 싱글톤이다")]
-    public void EmptyRuntimePayload_Instance_IsSingleton()
+    [Fact(DisplayName = "EmptyPayload는 싱글톤이다")]
+    public void EmptyPayload_Instance_IsSingleton()
     {
         // When
         var first = EmptyPayload.Instance;
@@ -245,8 +245,8 @@ public class RuntimePayloadTests
         first.Should().BeSameAs(second);
     }
 
-    [Fact(DisplayName = "EmptyRuntimePayload의 길이는 0이다")]
-    public void EmptyRuntimePayload_Length_IsZero()
+    [Fact(DisplayName = "EmptyPayload의 길이는 0이다")]
+    public void EmptyPayload_Length_IsZero()
     {
         // When
         var payload = EmptyPayload.Instance;
