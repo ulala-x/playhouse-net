@@ -372,14 +372,4 @@ internal sealed class TcpTransportSession : ITransportSession
         return true;
     }
 
-    /// <summary>
-    /// Creates a response packet (TCP: with 4-byte length prefix).
-    /// </summary>
-    internal static byte[] CreateResponsePacket(
-        string msgId,
-        ushort msgSeq,
-        long stageId,
-        ushort errorCode,
-        ReadOnlySpan<byte> payload)
-        => MessageCodec.CreateTcpResponsePacket(msgId, msgSeq, stageId, errorCode, payload);
 }

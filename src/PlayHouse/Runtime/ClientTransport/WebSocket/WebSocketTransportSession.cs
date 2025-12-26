@@ -309,14 +309,4 @@ internal sealed class WebSocketTransportSession : ITransportSession
         _onMessage(this, msgId, msgSeq, stageId, payload);
     }
 
-    /// <summary>
-    /// Creates a response packet (WebSocket: no length prefix).
-    /// </summary>
-    internal static byte[] CreateResponsePacket(
-        string msgId,
-        ushort msgSeq,
-        long stageId,
-        ushort errorCode,
-        ReadOnlySpan<byte> payload)
-        => MessageCodec.CreateWebSocketResponsePacket(msgId, msgSeq, stageId, errorCode, payload);
 }

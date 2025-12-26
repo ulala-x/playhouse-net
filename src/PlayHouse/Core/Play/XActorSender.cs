@@ -4,7 +4,6 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Runtime.ClientTransport;
-using PlayHouse.Runtime.ClientTransport.Tcp;
 
 namespace PlayHouse.Core.Play;
 
@@ -83,13 +82,12 @@ internal sealed class XActorSender : IActorSender
         {
             if (_transportSession.IsConnected)
             {
-                var response = TcpTransportSession.CreateResponsePacket(
+                _ = _transportSession.SendResponseAsync(
                     packet.MsgId,
                     0,  // msgSeq = 0 for push messages
                     _baseStage.StageId,
                     0,  // errorCode = 0
                     packet.Payload.DataSpan);
-                _ = _transportSession.SendAsync(response);
                 return;
             }
             // Session exists but disconnected - skip sending
