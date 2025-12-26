@@ -139,45 +139,4 @@ internal static class MessageCodec
         return offset;
     }
 
-    /// <summary>
-    /// Creates a TCP response packet (with 4-byte length prefix).
-    /// </summary>
-    public static byte[] CreateTcpResponsePacket(
-        string msgId,
-        ushort msgSeq,
-        long stageId,
-        ushort errorCode,
-        ReadOnlySpan<byte> payload)
-    {
-        var msgIdBytes = GetMsgIdBytes(msgId);
-        var bodySize = 1 + msgIdBytes.Length + ResponseHeaderSize + payload.Length;
-        var buffer = new byte[4 + bodySize];
-
-        // Length prefix (4 bytes)
-        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(0), bodySize);
-
-        // Body
-        WriteResponseBody(buffer.AsSpan(4), msgId, msgSeq, stageId, errorCode, payload);
-
-        return buffer;
-    }
-
-    /// <summary>
-    /// Creates a WebSocket response packet (no length prefix).
-    /// </summary>
-    public static byte[] CreateWebSocketResponsePacket(
-        string msgId,
-        ushort msgSeq,
-        long stageId,
-        ushort errorCode,
-        ReadOnlySpan<byte> payload)
-    {
-        var msgIdBytes = GetMsgIdBytes(msgId);
-        var size = 1 + msgIdBytes.Length + ResponseHeaderSize + payload.Length;
-        var buffer = new byte[size];
-
-        WriteResponseBody(buffer.AsSpan(), msgId, msgSeq, stageId, errorCode, payload);
-
-        return buffer;
-    }
 }
