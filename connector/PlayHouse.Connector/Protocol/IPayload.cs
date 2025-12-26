@@ -10,12 +10,12 @@ namespace PlayHouse.Connector.Protocol;
 public interface IPayload : IDisposable
 {
     /// <summary>
-    /// 페이로드 데이터
-    /// </summary>
-    ReadOnlyMemory<byte> Data { get; }
-
-    /// <summary>
     /// 페이로드 데이터 Span
     /// </summary>
-    ReadOnlySpan<byte> DataSpan => Data.Span;
+    ReadOnlySpan<byte> DataSpan { get; }
+
+    /// <summary>
+    /// 페이로드 길이
+    /// </summary>
+    int Length => DataSpan.Length;
 }

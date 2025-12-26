@@ -116,7 +116,7 @@ public class MessagingTests : IAsyncLifetime
         receivedResponse.Should().NotBeNull("응답 패킷을 받아야 함");
         receivedResponse!.MsgId.Should().EndWith("EchoReply", "응답 메시지 ID가 EchoReply로 끝나야 함");
 
-        var echoReply = EchoReply.Parser.ParseFrom(receivedResponse.Payload.Data.Span);
+        var echoReply = EchoReply.Parser.ParseFrom(receivedResponse.Payload.DataSpan);
         echoReply.Content.Should().Be("Callback Test", "에코 내용이 동일해야 함");
         echoReply.Sequence.Should().Be(42, "시퀀스 번호가 동일해야 함");
     }
@@ -170,7 +170,7 @@ public class MessagingTests : IAsyncLifetime
         response.Should().NotBeNull("응답을 받아야 함");
         response.MsgId.Should().EndWith("EchoReply", "응답 메시지 ID가 EchoReply로 끝나야 함");
 
-        var echoReply = EchoReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var echoReply = EchoReply.Parser.ParseFrom(response.Payload.DataSpan);
         echoReply.Content.Should().Be("Hello, Server!", "에코 내용이 동일해야 함");
         echoReply.Sequence.Should().Be(99, "시퀀스 번호가 동일해야 함");
         // Note: ProcessedAt은 Stage에서 처리될 때만 설정됨.
@@ -269,7 +269,7 @@ public class MessagingTests : IAsyncLifetime
         var (stageId, packet) = _receivedMessages.First();
         packet.MsgId.Should().EndWith("BroadcastNotify", "메시지 ID가 BroadcastNotify로 끝나야 함");
 
-        var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.Data.Span);
+        var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.DataSpan);
         parsed.EventType.Should().Be("system");
         parsed.Data.Should().Be("Welcome!");
     }
@@ -325,7 +325,7 @@ public class MessagingTests : IAsyncLifetime
             using var packet = new Packet(request);
 
             var response = await _connector.RequestAsync(packet);
-            var reply = EchoReply.Parser.ParseFrom(response.Payload.Data.Span);
+            var reply = EchoReply.Parser.ParseFrom(response.Payload.DataSpan);
 
             reply.Content.Should().Be($"Message {i}", $"메시지 {i}의 응답이 올바라야 함");
             reply.Sequence.Should().Be(i, $"시퀀스 {i}가 올바라야 함");

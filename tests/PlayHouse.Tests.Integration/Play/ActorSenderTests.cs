@@ -86,7 +86,7 @@ public class ActorSenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("GetAccountIdReply", "응답 메시지를 받아야 함");
-        var reply = GetAccountIdReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = GetAccountIdReply.Parser.ParseFrom(response.Payload.DataSpan);
 
         // AccountId는 인증 후 서버가 자동으로 할당 (TestActorImpl에서는 자동 증가 카운터 사용)
         reply.AccountId.Should().NotBeNullOrEmpty("AccountId가 설정되어야 함");
@@ -119,7 +119,7 @@ public class ActorSenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("LeaveStageReply", "응답 메시지를 받아야 함");
-        var reply = LeaveStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = LeaveStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Success.Should().BeTrue("LeaveStage가 성공해야 함");
     }
 
@@ -149,7 +149,7 @@ public class ActorSenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("EchoReply", "응답 메시지를 받아야 함");
-        var reply = EchoReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = EchoReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Content.Should().Be("Reply Test", "에코 내용이 동일해야 함");
         reply.Sequence.Should().Be(99, "시퀀스 번호가 동일해야 함");
     }

@@ -229,7 +229,7 @@ public class TestStageImpl : IStage
             Interlocked.Increment(ref _interStageMessageCount);
             InterStageReceivedMsgIds.Add(packet.MsgId);
 
-            var request = InterStageMessage.Parser.ParseFrom(packet.Payload.Data.Span);
+            var request = InterStageMessage.Parser.ParseFrom(packet.Payload.DataSpan);
             // InterStageReply로 응답 (RequestToStage인 경우)
             StageSender.Reply(CPacket.Of(new InterStageReply { Response = $"Echo: {request.Content}" }));
         }
@@ -239,7 +239,7 @@ public class TestStageImpl : IStage
 
     private Task HandleEchoRequest(IActor actor, IPacket packet)
     {
-        var echoRequest = EchoRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var echoRequest = EchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var echoReply = new EchoReply
         {
             Content = echoRequest.Content,
@@ -253,7 +253,7 @@ public class TestStageImpl : IStage
 
     private Task HandleBroadcastTrigger(IActor actor, IPacket packet)
     {
-        var trigger = BroadcastNotify.Parser.ParseFrom(packet.Payload.Data.Span);
+        var trigger = BroadcastNotify.Parser.ParseFrom(packet.Payload.DataSpan);
         var pushMessage = new BroadcastNotify
         {
             EventType = trigger.EventType,
@@ -300,7 +300,7 @@ public class TestStageImpl : IStage
 
     private Task HandleStartRepeatTimer(IActor actor, IPacket packet)
     {
-        var request = StartRepeatTimerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = StartRepeatTimerRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var tickNumber = 0;
         var stageId = StageSender.StageId;
 
@@ -328,7 +328,7 @@ public class TestStageImpl : IStage
 
     private Task HandleStartCountTimer(IActor actor, IPacket packet)
     {
-        var request = StartCountTimerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = StartCountTimerRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var tickNumber = 0;
         var stageId = StageSender.StageId;
 
@@ -357,7 +357,7 @@ public class TestStageImpl : IStage
 
     private void HandleAsyncBlock(IActor actor, IPacket packet)
     {
-        var request = AsyncBlockRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = AsyncBlockRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         long preThreadId = 0;
         string preResult = "";
 
@@ -399,7 +399,7 @@ public class TestStageImpl : IStage
 
     private void HandleCloseStage(IActor actor, IPacket packet)
     {
-        var request = CloseStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = CloseStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         actor.ActorSender.Reply(CPacket.Of(new CloseStageReply { Success = true }));
         StageSender.CloseStage();
     }
@@ -415,7 +415,7 @@ public class TestStageImpl : IStage
 
     private void HandleLeaveStage(IActor actor, IPacket packet)
     {
-        var request = LeaveStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = LeaveStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         // 먼저 Reply를 보낸 후 LeaveStage 호출 (순서 중요)
         actor.ActorSender.Reply(CPacket.Of(new LeaveStageReply { Success = true }));
         actor.ActorSender.LeaveStage();
@@ -423,7 +423,7 @@ public class TestStageImpl : IStage
 
     private void HandleTriggerSendToStage(IActor actor, IPacket packet)
     {
-        var request = TriggerSendToStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerSendToStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // Stage간 메시지 전송
         var interStageMsg = new InterStageMessage
@@ -442,7 +442,7 @@ public class TestStageImpl : IStage
 
     private async Task HandleTriggerRequestToStage(IActor actor, IPacket packet)
     {
-        var request = TriggerRequestToStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerRequestToStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         var interStageMsg = new InterStageMessage
         {
@@ -458,13 +458,13 @@ public class TestStageImpl : IStage
             CPacket.Of(interStageMsg));
 
         // Stage B의 응답을 클라이언트에 전달
-        var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToStageReply { Response = interStageReply.Response }));
     }
 
     private void HandleTriggerSendToApi(IActor actor, IPacket packet)
     {
-        var request = TriggerSendToApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerSendToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // API Server ServerId는 "1"
         const string apiNid = "1";
@@ -476,14 +476,14 @@ public class TestStageImpl : IStage
 
     private async Task HandleTriggerRequestToApi(IActor actor, IPacket packet)
     {
-        var request = TriggerRequestToApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerRequestToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // API Server ServerId는 "1"
         const string apiNid = "1";
         var apiMsg = new ApiEchoRequest { Content = request.Query };
         var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
 
-        var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
         actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToApiReply { ApiResponse = apiReply.Content }));
     }
 
@@ -492,7 +492,7 @@ public class TestStageImpl : IStage
     /// </summary>
     private void HandleBenchmarkRequest(IActor actor, IPacket packet)
     {
-        var request = BenchmarkRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = BenchmarkRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 지정된 크기의 페이로드 생성
         var payload = new byte[request.ResponseSize];
@@ -517,7 +517,7 @@ public class TestStageImpl : IStage
     /// </summary>
     private async Task HandleTriggerBenchmarkApi(IActor actor, IPacket packet)
     {
-        var request = TriggerBenchmarkApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerBenchmarkApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // API 서버에 벤치마크 요청 전송
         const string apiNid = "bench-api-1";

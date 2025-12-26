@@ -46,7 +46,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var reply = new ApiEchoReply { Content = $"Echo: {request.Content}" };
         sender.Reply(CPacket.Of(reply));
         return Task.CompletedTask;
@@ -57,7 +57,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = TriggerCreateStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerCreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // PlayServer ServerId는 "1"
         const string playNid = "1";
@@ -79,7 +79,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = TriggerGetOrCreateStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerGetOrCreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // PlayServer ServerId는 "1"
         const string playNid = "1";
@@ -103,7 +103,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = TriggerSendToApiServerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerSendToApiServerRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // SendToApi (비동기, 응답 없음)
         var message = new InterApiMessage
@@ -123,7 +123,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = TriggerRequestToApiServerRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerRequestToApiServerRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // RequestToApi (동기, 응답 있음)
         var message = new InterApiMessage
@@ -132,7 +132,7 @@ public class TestApiController : IApiController
             Content = request.Query
         };
         var responsePacket = await sender.RequestToApi(request.TargetApiNid, CPacket.Of(message));
-        var response = InterApiReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
+        var response = InterApiReply.Parser.ParseFrom(responsePacket.Payload.DataSpan);
 
         var reply = new TriggerRequestToApiServerReply
         {
@@ -146,7 +146,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = InterApiMessage.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = InterApiMessage.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 다른 API 서버에서 온 메시지 처리
         var reply = new InterApiReply
@@ -186,7 +186,7 @@ public class TestApiController : IApiController
         ReceivedMsgIds.Add(packet.MsgId);
         Interlocked.Increment(ref _onDispatchCallCount);
 
-        var request = BenchmarkApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = BenchmarkApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 사전 할당된 페이로드 사용 (메모리 할당 오염 방지)
         var payload = PreallocatedPayloads.TryGetValue(request.ResponseSize, out var p)

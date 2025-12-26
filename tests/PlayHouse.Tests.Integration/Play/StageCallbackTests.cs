@@ -186,7 +186,7 @@ public class StageCallbackTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("CloseStageReply", "응답 메시지를 받아야 함");
-        var reply = CloseStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = CloseStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Success.Should().BeTrue("Stage 닫기가 성공해야 함");
 
         // Then - E2E 검증: 콜백 호출 검증

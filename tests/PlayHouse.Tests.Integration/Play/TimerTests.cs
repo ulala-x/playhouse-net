@@ -89,7 +89,7 @@ public class TimerTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("StartTimerReply", "응답 메시지를 받아야 함");
-        var reply = StartTimerReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = StartTimerReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.TimerId.Should().BeGreaterThan(0, "TimerId가 할당되어야 함");
 
         // Timer Tick 대기 (최소 3회 이상 실행되도록)
@@ -98,7 +98,7 @@ public class TimerTests : IAsyncLifetime
         // Then - E2E 검증: Push 메시지 검증
         var timerTicks = _receivedMessages
             .Where(m => m.packet.MsgId.EndsWith("TimerTickNotify"))
-            .Select(m => TimerTickNotify.Parser.ParseFrom(m.packet.Payload.Data.Span))
+            .Select(m => TimerTickNotify.Parser.ParseFrom(m.packet.Payload.DataSpan))
             .ToList();
 
         timerTicks.Should().HaveCountGreaterOrEqualTo(3, "타이머가 최소 3회 이상 실행되어야 함");
@@ -145,7 +145,7 @@ public class TimerTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("StartTimerReply", "응답 메시지를 받아야 함");
-        var reply = StartTimerReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = StartTimerReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.TimerId.Should().BeGreaterThan(0, "TimerId가 할당되어야 함");
 
         // Timer Tick 대기 (5회 실행 + 여유 시간)
@@ -154,7 +154,7 @@ public class TimerTests : IAsyncLifetime
         // Then - E2E 검증: Push 메시지 검증
         var timerTicks = _receivedMessages
             .Where(m => m.packet.MsgId.EndsWith("TimerTickNotify"))
-            .Select(m => TimerTickNotify.Parser.ParseFrom(m.packet.Payload.Data.Span))
+            .Select(m => TimerTickNotify.Parser.ParseFrom(m.packet.Payload.DataSpan))
             .ToList();
 
         timerTicks.Should().HaveCount(5, "타이머가 정확히 5회만 실행되어야 함");

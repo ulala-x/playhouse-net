@@ -46,7 +46,7 @@ public class BenchmarkApiController : IApiController
     /// </summary>
     private Task HandleSSBenchmark(IPacket packet, IApiSender sender)
     {
-        var request = SSBenchmarkRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = SSBenchmarkRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 캐시된 페이로드 사용 (첫 번째 요청 시 생성, 이후 재사용)
         var payload = GetOrCreatePayload(request.ResponseSize);

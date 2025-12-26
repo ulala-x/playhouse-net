@@ -154,7 +154,7 @@ public class ApiToApiTests : IAsyncLifetime
             "response should be ApiEchoReply");
 
         // 2. 응답 내용 검증
-        var response = ApiEchoReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
+        var response = ApiEchoReply.Parser.ParseFrom(responsePacket.Payload.DataSpan);
         response.Content.Should().Contain(testContent,
             "response should contain the original content");
 
@@ -194,7 +194,7 @@ public class ApiToApiTests : IAsyncLifetime
             Content = contentAtoB
         };
         var responseFromB = await _apiServerA!.ApiSender!.RequestToApi("2", CPacket.Of(messageAtoB));
-        var replyFromB = InterApiReply.Parser.ParseFrom(responseFromB.Payload.Data.Span);
+        var replyFromB = InterApiReply.Parser.ParseFrom(responseFromB.Payload.DataSpan);
 
         replyFromB.Response.Should().Contain(contentAtoB, "response from B should contain A's content");
 
@@ -205,7 +205,7 @@ public class ApiToApiTests : IAsyncLifetime
             Content = contentBtoA
         };
         var responseFromA = await _apiServerB!.ApiSender!.RequestToApi("1", CPacket.Of(messageBtoA));
-        var replyFromA = InterApiReply.Parser.ParseFrom(responseFromA.Payload.Data.Span);
+        var replyFromA = InterApiReply.Parser.ParseFrom(responseFromA.Payload.DataSpan);
 
         replyFromA.Response.Should().Contain(contentBtoA, "response from A should contain B's content");
 
@@ -251,7 +251,7 @@ public class ApiToApiTests : IAsyncLifetime
         // Then
         // 1. 트리거 응답 검증
         responsePacket.MsgId.Should().Be(typeof(TriggerRequestToApiServerReply).Name);
-        var triggerReply = TriggerRequestToApiServerReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
+        var triggerReply = TriggerRequestToApiServerReply.Parser.ParseFrom(responsePacket.Payload.DataSpan);
 
         // 2. ApiServer B로부터 받은 응답이 포함됨
         triggerReply.Response.Should().Contain(testQuery,
@@ -302,7 +302,7 @@ public class ApiToApiTests : IAsyncLifetime
         // Then
         // 1. 트리거 응답 검증
         responsePacket.MsgId.Should().Be(typeof(TriggerSendToApiServerReply).Name);
-        var triggerReply = TriggerSendToApiServerReply.Parser.ParseFrom(responsePacket.Payload.Data.Span);
+        var triggerReply = TriggerSendToApiServerReply.Parser.ParseFrom(responsePacket.Payload.DataSpan);
         triggerReply.Success.Should().BeTrue("trigger should succeed");
 
         // 2. ApiServer B의 HandleInterApiMessage 콜백 호출됨

@@ -42,11 +42,11 @@ public static class PacketExtensions
             }
             // If types don't match, deserialize from bytes
             var parser = new MessageParser<T>(() => new T());
-            return parser.ParseFrom(protoPayload.Data.Span);
+            return parser.ParseFrom(protoPayload.DataSpan);
         }
 
         // For BytePayload or other IPayload implementations, deserialize from bytes
-        if (packet.Payload.Data.Length == 0)
+        if (packet.Payload.DataSpan.Length == 0)
         {
             throw new InvalidOperationException(
                 $"Cannot parse empty payload as {typeof(T).Name}. " +
@@ -54,7 +54,7 @@ public static class PacketExtensions
         }
 
         var messageParser = new MessageParser<T>(() => new T());
-        return messageParser.ParseFrom(packet.Payload.Data.Span);
+        return messageParser.ParseFrom(packet.Payload.DataSpan);
     }
 
     /// <summary>

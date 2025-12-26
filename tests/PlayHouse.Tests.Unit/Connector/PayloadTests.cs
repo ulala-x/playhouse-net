@@ -34,7 +34,7 @@ public class PayloadTests
         var payload = EmptyPayload.Instance;
 
         // When (행동)
-        var data = payload.Data;
+        var data = payload.DataSpan;
 
         // Then (결과)
         data.Length.Should().Be(0, "빈 데이터여야 함");
@@ -69,7 +69,7 @@ public class PayloadTests
 
         // When (행동)
         using var payload = new BytePayload(testData);
-        var data = payload.Data.ToArray();
+        var data = payload.DataSpan.ToArray();
 
         // Then (결과)
         data.Should().Equal(testData, "저장한 데이터가 동일해야 함");
@@ -85,7 +85,7 @@ public class PayloadTests
         using var payload = new BytePayload(emptyData);
 
         // Then (결과)
-        payload.Data.Length.Should().Be(0, "빈 배열도 저장 가능해야 함");
+        payload.DataSpan.Length.Should().Be(0, "빈 배열도 저장 가능해야 함");
     }
 
     [Fact(DisplayName = "BytePayload - null 배열은 예외를 발생시킨다")]
@@ -129,7 +129,7 @@ public class PayloadTests
 
         // When (행동)
         using var payload = new ProtoPayload(message);
-        var data = payload.Data;
+        var data = payload.DataSpan;
 
         // Then (결과)
         data.Length.Should().BeGreaterThan(0, "직렬화된 데이터가 있어야 함");
@@ -143,7 +143,7 @@ public class PayloadTests
         using var payload = new ProtoPayload(originalMessage);
 
         // When (행동)
-        var deserializedMessage = StringValue.Parser.ParseFrom(payload.Data.Span);
+        var deserializedMessage = StringValue.Parser.ParseFrom(payload.DataSpan);
 
         // Then (결과)
         deserializedMessage.Value.Should().Be("Hello, Protobuf!", "역직렬화한 값이 원본과 같아야 함");
@@ -157,7 +157,7 @@ public class PayloadTests
         using var payload = new ProtoPayload(timestamp);
 
         // When (행동)
-        var deserialized = Timestamp.Parser.ParseFrom(payload.Data.Span);
+        var deserialized = Timestamp.Parser.ParseFrom(payload.DataSpan);
 
         // Then (결과)
         deserialized.Seconds.Should().Be(timestamp.Seconds, "타임스탬프 초가 같아야 함");
@@ -182,12 +182,9 @@ public class PayloadTests
         // When & Then
         foreach (var payload in payloads)
         {
-            // Data 속성 접근 가능
-            var data = payload.Data;
-            data.Should().NotBeNull("Data 속성이 null이 아니어야 함");
-
             // DataSpan 속성 접근 가능
             var span = payload.DataSpan;
+            span.Length.Should().BeGreaterThanOrEqualTo(0, "DataSpan 길이가 0 이상이어야 함");
 
             // Dispose 가능
             payload.Dispose();

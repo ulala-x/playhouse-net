@@ -15,14 +15,9 @@ public interface IPayload : IDisposable
     ReadOnlySpan<byte> DataSpan { get; }
 
     /// <summary>
-    /// Gets the payload data as ReadOnlyMemory.
-    /// </summary>
-    ReadOnlyMemory<byte> Data { get; }
-
-    /// <summary>
     /// Gets the length of the payload.
     /// </summary>
-    int Length { get; }
+    int Length => DataSpan.Length;
 }
 
 /// <summary>
@@ -43,8 +38,6 @@ public sealed class ByteArrayPayload : IPayload
     }
 
     public ReadOnlySpan<byte> DataSpan => _data;
-    public ReadOnlyMemory<byte> Data => _data;
-    public int Length => _data.Length;
 
     public void Dispose()
     {
@@ -65,8 +58,6 @@ public sealed class ByteStringPayload : IPayload
     }
 
     public ReadOnlySpan<byte> DataSpan => _data.Span;
-    public ReadOnlyMemory<byte> Data => _data.Memory;
-    public int Length => _data.Length;
 
     public void Dispose()
     {
@@ -84,8 +75,6 @@ public sealed class EmptyPayload : IPayload
     private EmptyPayload() { }
 
     public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
-    public ReadOnlyMemory<byte> Data => ReadOnlyMemory<byte>.Empty;
-    public int Length => 0;
 
     public void Dispose() { }
 }
@@ -103,8 +92,6 @@ public sealed class FramePayload : IPayload
     }
 
     public ReadOnlySpan<byte> DataSpan => _data;
-    public ReadOnlyMemory<byte> Data => _data;
-    public int Length => _data.Length;
 
     public void Dispose()
     {
@@ -125,8 +112,6 @@ public sealed class MemoryPayload : IPayload
     }
 
     public ReadOnlySpan<byte> DataSpan => _data.Span;
-    public ReadOnlyMemory<byte> Data => _data;
-    public int Length => _data.Length;
 
     public void Dispose() { }
 }
@@ -139,8 +124,6 @@ public sealed class ZmqMessagePayload(Net.Zmq.Message message) : IPayload
     private bool _disposed;
 
     public ReadOnlySpan<byte> DataSpan => message.Data;
-    public ReadOnlyMemory<byte> Data => message.Data.ToArray();
-    public int Length => message.Size;
 
     public void Dispose()
     {

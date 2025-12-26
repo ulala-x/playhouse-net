@@ -25,7 +25,7 @@ public class CPacketTests
 
         // Then
         packet.MsgId.Should().Be(msgId);
-        packet.Payload.Data.ToArray().Should().BeEquivalentTo(data);
+        packet.Payload.DataSpan.ToArray().Should().BeEquivalentTo(data);
     }
 
     [Fact(DisplayName = "Of<T>(message)로 Protobuf 메시지에서 패킷을 생성할 수 있다")]
@@ -39,7 +39,7 @@ public class CPacketTests
 
         // Then
         packet.MsgId.Should().Contain("StringValue");
-        packet.Payload.Data.Length.Should().BeGreaterThan(0);
+        packet.Payload.DataSpan.Length.Should().BeGreaterThan(0);
     }
 
     [Fact(DisplayName = "Empty(msgId)로 빈 패킷을 생성할 수 있다")]
@@ -53,7 +53,7 @@ public class CPacketTests
 
         // Then
         packet.MsgId.Should().Be(msgId);
-        packet.Payload.Data.Length.Should().Be(0);
+        packet.Payload.DataSpan.Length.Should().Be(0);
     }
 
     #endregion
@@ -94,7 +94,7 @@ public class PayloadTests
         var payload = new BytePayload(data);
 
         // Then
-        payload.Data.ToArray().Should().BeEquivalentTo(data);
+        payload.DataSpan.ToArray().Should().BeEquivalentTo(data);
     }
 
     [Fact(DisplayName = "BytePayload는 ReadOnlySpan에서 복사하여 생성할 수 있다")]
@@ -107,7 +107,7 @@ public class PayloadTests
         var payload = new BytePayload(span);
 
         // Then
-        payload.Data.Length.Should().Be(3);
+        payload.DataSpan.Length.Should().Be(3);
     }
 
     #endregion
@@ -124,7 +124,7 @@ public class PayloadTests
         var payload = new ProtoPayload(message);
 
         // Then
-        payload.Data.Length.Should().BeGreaterThan(0);
+        payload.DataSpan.Length.Should().BeGreaterThan(0);
         payload.GetProto().Should().Be(message);
     }
 
@@ -135,8 +135,8 @@ public class PayloadTests
         var payload = new ProtoPayload(new StringValue { Value = "test" });
 
         // When
-        var first = payload.Data;
-        var second = payload.Data;
+        var first = payload.DataSpan;
+        var second = payload.DataSpan;
 
         // Then
         first.ToArray().Should().BeEquivalentTo(second.ToArray());
@@ -164,7 +164,7 @@ public class PayloadTests
         var payload = EmptyPayload.Instance;
 
         // Then
-        payload.Data.Length.Should().Be(0);
+        payload.DataSpan.Length.Should().Be(0);
     }
 
     #endregion

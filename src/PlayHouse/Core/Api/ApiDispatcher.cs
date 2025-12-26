@@ -68,8 +68,8 @@ internal sealed class ApiDispatcher : IDisposable
     public void Post(RoutePacket packet)
     {
         var clonedHeader = packet.Header.Clone();
-        // Create payload - zero-copy with MemoryPayload when possible
-        var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(packet.Payload.Data);
+        // Keep the original payload reference (it's already a Runtime.IPayload)
+        var runtimePayload = packet.Payload;
 
         Task.Run(async () =>
         {

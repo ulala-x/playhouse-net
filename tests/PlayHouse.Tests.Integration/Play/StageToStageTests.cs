@@ -153,7 +153,7 @@ public class ISenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("TriggerSendToStageReply");
-        var reply = TriggerSendToStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = TriggerSendToStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Success.Should().BeTrue("SendToStage가 성공해야 함");
 
         // Then - E2E 검증: Stage B에서 메시지 수신 확인
@@ -199,7 +199,7 @@ public class ISenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("TriggerRequestToStageReply");
-        var reply = TriggerRequestToStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = TriggerRequestToStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Response.Should().Contain("Query from Stage A",
             "Stage B의 에코 응답이 포함되어야 함");
     }
@@ -243,7 +243,7 @@ public class ISenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("TriggerSendToStageReply");
-        var reply = TriggerSendToStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = TriggerSendToStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Success.Should().BeTrue("SendToStage가 성공해야 함");
 
         // Then - E2E 검증: Stage B에서 메시지 수신 확인
@@ -285,7 +285,7 @@ public class ISenderTests : IAsyncLifetime
 
         // Then - E2E 검증: 응답 검증
         response.MsgId.Should().EndWith("TriggerRequestToStageReply");
-        var reply = TriggerRequestToStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = TriggerRequestToStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Response.Should().Contain("Query from Stage A (same server)",
             "같은 서버의 Stage B의 에코 응답이 포함되어야 함");
     }

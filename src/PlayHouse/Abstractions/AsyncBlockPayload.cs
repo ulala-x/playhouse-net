@@ -34,14 +34,9 @@ internal sealed class AsyncBlockPayload : IPayload
     }
 
     /// <summary>
-    /// Gets an empty read-only memory segment. Async block payloads don't carry byte data.
+    /// Gets an empty read-only span. Async block payloads don't carry byte data.
     /// </summary>
-    public ReadOnlyMemory<byte> Data => ReadOnlyMemory<byte>.Empty;
-
-    /// <summary>
-    /// Gets the length of the payload, which is always 0 for async block payloads.
-    /// </summary>
-    public int Length => 0;
+    public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
 
     /// <summary>
     /// Disposes the payload. This is a no-op for async block payloads.

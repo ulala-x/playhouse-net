@@ -12,12 +12,12 @@ namespace PlayHouse.Abstractions;
 public interface IPayload : IDisposable
 {
     /// <summary>
-    /// Gets the payload data as a read-only memory segment.
-    /// </summary>
-    ReadOnlyMemory<byte> Data { get; }
-
-    /// <summary>
     /// Gets the payload data as a read-only span.
     /// </summary>
-    ReadOnlySpan<byte> DataSpan => Data.Span;
+    ReadOnlySpan<byte> DataSpan { get; }
+
+    /// <summary>
+    /// Gets the length of the payload.
+    /// </summary>
+    int Length => DataSpan.Length;
 }

@@ -88,7 +88,7 @@ public class SelfConnectionTests : IAsyncLifetime
         response.Should().NotBeNull("응답을 받아야 함");
         response.MsgId.Should().Be(typeof(ApiEchoReply).Name, "ApiEchoReply여야 함");
 
-        var reply = ApiEchoReply.Parser.ParseFrom(response.Payload.Data.Span);
+        var reply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
         reply.Content.Should().Contain(testContent, "에코 응답이어야 함");
     }
 }

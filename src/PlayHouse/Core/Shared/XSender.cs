@@ -195,7 +195,7 @@ public abstract class XSender : ISender
             IsReply = true
         };
 
-        SendReplyInternal(CurrentHeader.From, replyHeader, ReadOnlyMemory<byte>.Empty);
+        SendReplyInternal(CurrentHeader.From, replyHeader, EmptyPayload.Instance);
     }
 
     /// <inheritdoc/>
@@ -221,7 +221,7 @@ public abstract class XSender : ISender
             IsReply = true
         };
 
-        SendReplyInternal(CurrentHeader.From, replyHeader, reply.Payload.Data);
+        SendReplyInternal(CurrentHeader.From, replyHeader, reply.Payload);
     }
 
     #endregion
@@ -243,20 +243,35 @@ public abstract class XSender : ISender
 
     private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Create RuntimePayload from Abstractions.IPayload - zero-copy with MemoryPayload
-        var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(payload.Data);
+        // Create RuntimePayload from Abstractions.IPayload
+        var runtimePayload = ToRuntimePayload(payload);
         var packet = RoutePacket.Of(header, runtimePayload);
         _communicator.Send(targetServerId, packet);
         packet.Dispose();
     }
 
-    private void SendReplyInternal(string targetServerId, RouteHeader header, ReadOnlyMemory<byte> payload)
+    private void SendReplyInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Create RuntimePayload from ReadOnlyMemory - zero-copy with MemoryPayload
-        var runtimePayload = new Runtime.ServerMesh.Message.MemoryPayload(payload);
+        // Create RuntimePayload from Abstractions.IPayload
+        var runtimePayload = ToRuntimePayload(payload);
         var packet = RoutePacket.Of(header, runtimePayload);
         _communicator.Send(targetServerId, packet);
         packet.Dispose();
+    }
+
+    /// <summary>
+    /// Converts Abstractions.IPayload to Runtime.IPayload (zero-copy when possible).
+    /// </summary>
+    private static Runtime.ServerMesh.Message.IPayload ToRuntimePayload(IPayload payload)
+    {
+        // If already a RuntimePayloadWrapper, extract underlying payload (zero-copy)
+        if (payload is RuntimePayloadWrapper wrapper)
+        {
+            return wrapper.GetUnderlyingPayload();
+        }
+
+        // Otherwise, copy DataSpan to byte array
+        return new Runtime.ServerMesh.Message.ByteArrayPayload(payload.DataSpan);
     }
 
     private void RegisterReply(ReplyObject replyObject)
