@@ -95,6 +95,26 @@ public class PooledBuffer : IDisposable
     }
 
     /// <summary>
+    ///     Get a span of bytes from the current buffer with specified offset and length
+    /// </summary>
+    public Span<byte> AsSpan(int offset, int length)
+    {
+        if (offset < 0 || length < 0 || offset + length > Size)
+        {
+            throw new ArgumentOutOfRangeException("Invalid offset or length");
+        }
+        return new Span<byte>(_data, Offset + offset, length);
+    }
+
+    /// <summary>
+    ///     Get a ReadOnlyMemory of bytes from the current buffer
+    /// </summary>
+    public ReadOnlyMemory<byte> AsMemory()
+    {
+        return new ReadOnlyMemory<byte>(_data, Offset, Size);
+    }
+
+    /// <summary>
     ///     Get a string from the current buffer
     /// </summary>
     public override string ToString()
@@ -130,7 +150,7 @@ public class PooledBuffer : IDisposable
         if (offset + size > Size)
             throw new ArgumentException("Invalid offset & size!", nameof(offset));
 
-        Array.Copy(_data!, offset + size, _data!, offset, Size - size - offset);
+        new ReadOnlySpan<byte>(_data, offset + size, Size - size - offset).CopyTo(new Span<byte>(_data, offset, Size - size - offset));
         Size -= size;
         if (Offset >= offset + size)
             Offset -= size;
@@ -154,7 +174,7 @@ public class PooledBuffer : IDisposable
         if (capacity > Capacity)
         {
             var data = _arrayPool.Rent(Math.Max(capacity, 2 * Capacity));
-            Array.Copy(_data!, 0, data, 0, Size);
+            new ReadOnlySpan<byte>(_data, 0, Size).CopyTo(new Span<byte>(data, 0, Size));
             _arrayPool.Return(_data!);
             _data = data;
         }
@@ -206,7 +226,7 @@ public class PooledBuffer : IDisposable
     public long Append(byte[] buffer)
     {
         Reserve(Size + buffer.Length);
-        Array.Copy(buffer, 0, _data!, Size, buffer.Length);
+        new ReadOnlySpan<byte>(buffer).CopyTo(new Span<byte>(_data, Size, buffer.Length));
         Size += buffer.Length;
         return buffer.Length;
     }
@@ -221,7 +241,7 @@ public class PooledBuffer : IDisposable
     public long Append(byte[] buffer, int offset, int size)
     {
         Reserve(Size + size);
-        Array.Copy(buffer, offset, _data!, Size, size);
+        new ReadOnlySpan<byte>(buffer, offset, size).CopyTo(new Span<byte>(_data, Size, size));
         Size += size;
         return size;
     }

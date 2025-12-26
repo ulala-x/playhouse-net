@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PlayHouse.Connector.Infrastructure.Buffers;
 using PlayHouse.Connector.Network;
 using PlayHouse.Connector.Protocol;
 
@@ -29,7 +30,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private bool _debugMode;
 
     // 패킷 버퍼
-    private readonly List<byte> _receiveBuffer = new();
+    private readonly PooledBuffer _receiveBuffer = new();
     private int _expectedPacketSize = -1;
 
     // HeartBeat & IdleTimeout
@@ -282,17 +283,17 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     private byte[] EncodePacket(IPacket packet, ushort msgSeq, long stageId)
     {
-        var msgIdBytes = Encoding.UTF8.GetBytes(packet.MsgId);
-        if (msgIdBytes.Length > 255)
+        var msgIdByteCount = Encoding.UTF8.GetByteCount(packet.MsgId);
+        if (msgIdByteCount > 255)
         {
             throw new ArgumentException($"Message ID too long: {packet.MsgId}");
         }
 
-        var payloadBytes = packet.Payload.DataSpan.ToArray();
+        var payloadSpan = packet.Payload.DataSpan;
 
         // 스펙에 따라 ServiceId 제거
         // MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + Payload
-        var contentSize = 1 + msgIdBytes.Length + 2 + 8 + payloadBytes.Length;
+        var contentSize = 1 + msgIdByteCount + 2 + 8 + payloadSpan.Length;
         var buffer = new byte[4 + contentSize];
 
         int offset = 0;
@@ -302,11 +303,11 @@ internal sealed class ClientNetwork : IAsyncDisposable
         offset += 4;
 
         // MsgIdLen (1 byte)
-        buffer[offset++] = (byte)msgIdBytes.Length;
+        buffer[offset++] = (byte)msgIdByteCount;
 
-        // MsgId (N bytes)
-        msgIdBytes.CopyTo(buffer, offset);
-        offset += msgIdBytes.Length;
+        // MsgId (N bytes) - direct encoding to buffer
+        Encoding.UTF8.GetBytes(packet.MsgId, buffer.AsSpan(offset, msgIdByteCount));
+        offset += msgIdByteCount;
 
         // MsgSeq (2 bytes, little-endian)
         BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset), msgSeq);
@@ -316,8 +317,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
         BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(offset), stageId);
         offset += 8;
 
-        // Payload
-        payloadBytes.CopyTo(buffer, offset);
+        // Payload - direct copy from span
+        payloadSpan.CopyTo(buffer.AsSpan(offset));
 
         return buffer;
     }
@@ -326,12 +327,12 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     #region Packet Decoding
 
-    private void OnDataReceived(object? sender, byte[] data)
+    private void OnDataReceived(object? sender, ReadOnlyMemory<byte> data)
     {
         // 데이터 수신 시 타이머 리셋
         _lastReceivedTime.Restart();
 
-        _receiveBuffer.AddRange(data);
+        _receiveBuffer.Append(data.Span);
         ProcessReceiveBuffer();
     }
 
@@ -341,28 +342,28 @@ internal sealed class ClientNetwork : IAsyncDisposable
         {
             if (_expectedPacketSize == -1)
             {
-                if (_receiveBuffer.Count < 4)
+                if (_receiveBuffer.Size < 4)
                 {
                     break;
                 }
 
-                _expectedPacketSize = BinaryPrimitives.ReadInt32LittleEndian(_receiveBuffer.GetRange(0, 4).ToArray());
+                _expectedPacketSize = BinaryPrimitives.ReadInt32LittleEndian(_receiveBuffer.AsSpan(0, 4));
 
                 if (_expectedPacketSize <= 0 || _expectedPacketSize > 10 * 1024 * 1024)
                 {
                     throw new InvalidOperationException($"Invalid packet size: {_expectedPacketSize}");
                 }
 
-                _receiveBuffer.RemoveRange(0, 4);
+                _receiveBuffer.Remove(0, 4);
             }
 
-            if (_receiveBuffer.Count < _expectedPacketSize)
+            if (_receiveBuffer.Size < _expectedPacketSize)
             {
                 break;
             }
 
-            var packetData = _receiveBuffer.GetRange(0, _expectedPacketSize).ToArray();
-            _receiveBuffer.RemoveRange(0, _expectedPacketSize);
+            var packetData = _receiveBuffer.AsSpan(0, _expectedPacketSize).ToArray();
+            _receiveBuffer.Remove(0, _expectedPacketSize);
             _expectedPacketSize = -1;
 
             try
@@ -406,14 +407,17 @@ internal sealed class ClientNetwork : IAsyncDisposable
         offset += 4;
 
         // Payload (with optional decompression)
-        byte[] payload;
+        ReadOnlyMemory<byte> payload;
         if (originalSize > 0)
         {
-            payload = K4os.Compression.LZ4.LZ4Pickler.Unpickle(data.AsSpan(offset).ToArray());
+            // Decompression requires ToArray()
+            var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(data.AsSpan(offset).ToArray());
+            payload = new ReadOnlyMemory<byte>(decompressed);
         }
         else
         {
-            payload = data.AsSpan(offset).ToArray();
+            // Zero-copy: slice the original array
+            payload = new ReadOnlyMemory<byte>(data, offset, data.Length - offset);
         }
 
         return new ParsedPacket
@@ -434,7 +438,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
             return;
         }
 
-        var packet = new Packet(parsed.MsgId, parsed.Payload);
+        var packet = new Packet(parsed.MsgId, new MemoryPayload(parsed.Payload));
 
         // Response 처리 (MsgSeq > 0)
         if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
@@ -535,7 +539,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
         public ushort MsgSeq { get; init; }
         public long StageId { get; init; }
         public ushort ErrorCode { get; init; }
-        public byte[] Payload { get; init; } = Array.Empty<byte>();
+        public ReadOnlyMemory<byte> Payload { get; init; }
     }
 }
 

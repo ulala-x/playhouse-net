@@ -26,7 +26,7 @@ internal sealed class TcpConnection : IConnection
     private const int SendBufferSize = 65536;
     private const int ReceiveBufferSize = 65536;
 
-    public event EventHandler<byte[]>? DataReceived;
+    public event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
     public event EventHandler<Exception?>? Disconnected;
 
     public bool IsConnected => _isConnected;
@@ -171,11 +171,11 @@ internal sealed class TcpConnection : IConnection
                         break;
                     }
 
-                    // Copy data to avoid buffer reuse issues
+                    // Create a copy for the consumer to own
                     var data = new byte[bytesRead];
-                    Array.Copy(buffer, 0, data, 0, bytesRead);
+                    new ReadOnlySpan<byte>(buffer, 0, bytesRead).CopyTo(data);
 
-                    DataReceived?.Invoke(this, data);
+                    DataReceived?.Invoke(this, new ReadOnlyMemory<byte>(data));
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
