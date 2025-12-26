@@ -3,8 +3,6 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Net.Zmq;
-using PlayHouse.Abstractions;
-using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
@@ -118,23 +116,8 @@ internal sealed class ZmqPlaySocket : IPlaySocket
                 var headerBytes = packet.SerializeHeader();
                 _socket.Send(headerBytes, SendFlags.SendMore);
 
-                // Frame 2: Payload (마지막 프레임) - Type-based optimization
-                if (packet.Payload is ProtoPayload proto)
-                {
-                    // ProtoPayload: Use correctly-sized payload span (not full buffer)
-                    var payloadSpan = proto.GetZmqPayloadSpan();
-                    _socket.Send(payloadSpan);
-                }
-                else if (packet.Payload is ZmqPayload zmq)
-                {
-                    // ZmqPayload: Use underlying Message for zero-copy
-                    _socket.Send(zmq.Message.Data);
-                }
-                else
-                {
-                    // EmptyPayload or BytePayload: Use DataSpan
-                    _socket.Send(packet.Payload.DataSpan);
-                }
+                // Frame 2: Payload (마지막 프레임) - Simple and fast
+                _socket.Send(packet.Payload.DataSpan);
             }
             catch (Exception ex)
             {

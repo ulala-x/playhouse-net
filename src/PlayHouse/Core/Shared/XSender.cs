@@ -242,7 +242,8 @@ public abstract class XSender : ISender
 
     private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Note: Packet ownership is transferred to the queue.
+        // Note: ProtoPayload now serializes eagerly in constructor (no lazy serialization).
+        // Packet ownership is transferred to the queue.
         // ZmqPlaySocket.Send() will dispose the packet after sending.
         var packet = RoutePacket.Of(header, payload);
         _communicator.Send(targetServerId, packet);
@@ -250,7 +251,8 @@ public abstract class XSender : ISender
 
     private void SendReplyInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Note: Packet ownership is transferred to the queue.
+        // Note: ProtoPayload now serializes eagerly in constructor (no lazy serialization).
+        // Packet ownership is transferred to the queue.
         // ZmqPlaySocket.Send() will dispose the packet after sending.
         var packet = RoutePacket.Of(header, payload);
         _communicator.Send(targetServerId, packet);

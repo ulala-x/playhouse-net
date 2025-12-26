@@ -1,7 +1,6 @@
 #nullable enable
 
 using System.Buffers;
-using System.IO;
 using Google.Protobuf;
 
 namespace PlayHouse.Abstractions;
@@ -60,75 +59,36 @@ public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IPayload
 
 /// <summary>
 /// Payload implementation backed by a Protobuf message.
-/// Uses ArrayPool for memory-efficient serialization.
+/// IMPORTANT: Serializes eagerly in constructor using ArrayPool for best performance.
+/// This distributes serialization work across caller threads, avoiding ZMQ thread bottleneck.
 /// </summary>
-public sealed class ProtoPayload(IMessage proto) : IPayload
+public sealed class ProtoPayload : IPayload
 {
+    private readonly IMessage _proto;
     private byte[]? _rentedBuffer;
-    private Net.Zmq.Message? _zmqMessage;
-    private int _actualSize;
-
-    public ReadOnlySpan<byte> DataSpan
-    {
-        get
-        {
-            EnsureArrayPoolBuffer();
-            return new ReadOnlySpan<byte>(_rentedBuffer, 0, _actualSize);
-        }
-    }
+    private readonly int _actualSize;
 
     /// <summary>
-    /// Gets a ZMQ Message for zero-copy sending (internal use only).
-    /// Uses MessagePool.Shared for efficient memory management.
+    /// Creates a ProtoPayload with eager serialization using ArrayPool.
     /// </summary>
-    /// <returns>A pooled ZMQ Message containing the serialized protobuf data.</returns>
-    private void GetZmqMessage()
+    public ProtoPayload(IMessage proto)
     {
-        if (_zmqMessage == null)
-        {
-            _actualSize = proto.CalculateSize();
-            _zmqMessage = Net.Zmq.MessagePool.Shared.Rent(_actualSize);
+        _proto = proto;
 
-            // Serialize directly to ZMQ Message buffer (zero-copy, no temp allocation)
-            unsafe
-            {
-                fixed (byte* ptr = _zmqMessage.Data)
-                {
-                    using var stream = new UnmanagedMemoryStream(ptr, 0, _actualSize, FileAccess.Write);
-                    proto.WriteTo(stream);
-                }
-            }
-        }
+        // IMPORTANT: Eager serialization on caller thread using ArrayPool.
+        // ArrayPool is faster than MessagePool (ZMQ native memory) for allocation.
+        // This distributes serialization work across multiple Stage/API threads.
+        _actualSize = proto.CalculateSize();
+        _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
+        proto.WriteTo(_rentedBuffer.AsSpan(0, _actualSize));
     }
 
-    /// <summary>
-    /// Gets the actual payload data span for ZMQ sending.
-    /// This returns only the valid data, not the full buffer.
-    /// </summary>
-    /// <returns>A ReadOnlySpan containing exactly _actualSize bytes of serialized data.</returns>
-    internal ReadOnlySpan<byte> GetZmqPayloadSpan()
-    {
-        GetZmqMessage(); // Ensure _zmqMessage and _actualSize are set
-        return _zmqMessage!.Data.Slice(0, _actualSize);
-    }
+    public ReadOnlySpan<byte> DataSpan => _rentedBuffer.AsSpan(0, _actualSize);
 
     /// <summary>
     /// Gets the underlying Protobuf message.
     /// </summary>
-    public IMessage GetProto() => proto;
-
-    private void EnsureArrayPoolBuffer()
-    {
-        if (_rentedBuffer == null)
-        {
-            _actualSize = proto.CalculateSize();
-            _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
-
-            // Serialize directly to ArrayPool buffer (zero-copy)
-            using var stream = new MemoryStream(_rentedBuffer, 0, _actualSize, writable: true);
-            proto.WriteTo(stream);
-        }
-    }
+    public IMessage GetProto() => _proto;
 
     public void Dispose()
     {
@@ -136,11 +96,6 @@ public sealed class ProtoPayload(IMessage proto) : IPayload
         {
             ArrayPool<byte>.Shared.Return(_rentedBuffer);
             _rentedBuffer = null;
-        }
-        if (_zmqMessage != null)
-        {
-            _zmqMessage.Dispose(); // Return to MessagePool
-            _zmqMessage = null;
         }
     }
 }
