@@ -25,12 +25,12 @@ public sealed class RoutePacket : IDisposable
     /// <summary>
     /// Gets the payload data.
     /// </summary>
-    public Abstractions.IPayload Payload { get; }
+    public IPayload Payload { get; }
 
     private readonly bool _ownsPayload;
     private bool _disposed;
 
-    private RoutePacket(RouteHeader header, Abstractions.IPayload payload, bool ownsPayload = true)
+    private RoutePacket(RouteHeader header, IPayload payload, bool ownsPayload = true)
     {
         Header = header;
         Payload = payload;
@@ -61,30 +61,7 @@ public sealed class RoutePacket : IDisposable
         return new RoutePacket(header, payload);
     }
 
-    /// <summary>
-    /// Creates a route packet from received frames with ZMQ Message payload.
-    /// </summary>
-    /// <param name="headerBytes">RouteHeader bytes from Frame 1.</param>
-    /// <param name="payloadMessage">ZMQ Message containing payload (ownership transferred).</param>
-    /// <param name="senderNid">Sender NID from Frame 0 (optional, sets Header.From).</param>
-    /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RoutePacket FromFrames(
-        ReadOnlySpan<byte> headerBytes,
-        Net.Zmq.Message payloadMessage,
-        string? senderNid = null)
-    {
-        var header = RouteHeader.Parser.ParseFrom(headerBytes);
-
-        if (senderNid != null)
-        {
-            header.From = senderNid;
-        }
-
-        var payload = new ZmqPayload(payloadMessage);
-        return new RoutePacket(header, payload);
-    }
-
-    /// <summary>
+   /// <summary>
     /// Creates a route packet from a parsed RouteHeader and ZMQ Message payload.
     /// </summary>
     /// <param name="header">Already parsed RouteHeader.</param>
@@ -105,30 +82,7 @@ public sealed class RoutePacket : IDisposable
         return new RoutePacket(header, payload);
     }
 
-    /// <summary>
-    /// Creates a route packet from a Protobuf message.
-    /// </summary>
-    /// <typeparam name="T">Protobuf message type.</typeparam>
-    /// <param name="message">The message to wrap.</param>
-    /// <param name="from">Sender NID.</param>
-    /// <param name="msgSeq">Message sequence number.</param>
-    /// <param name="serviceId">Service ID.</param>
-    /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RoutePacket Of<T>(T message, string from, ushort msgSeq, ushort serviceId)
-        where T : IMessage
-    {
-        var header = new RouteHeader
-        {
-            MsgSeq = msgSeq,
-            ServiceId = serviceId,
-            MsgId = typeof(T).Name,
-            From = from
-        };
-        var payload = new ProtoPayload(message);
-        return new RoutePacket(header, payload);
-    }
-
-    /// <summary>
+   /// <summary>
     /// Creates a route packet with custom header.
     /// </summary>
     /// <param name="header">Route header.</param>
@@ -140,24 +94,13 @@ public sealed class RoutePacket : IDisposable
     }
 
     /// <summary>
-    /// Creates a route packet with custom header and ByteString payload.
-    /// </summary>
-    /// <param name="header">Route header.</param>
-    /// <param name="payload">Payload as ByteString.</param>
-    /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RoutePacket Of(RouteHeader header, ByteString payload)
-    {
-        return new RoutePacket(header, new MemoryPayload(payload.Memory));
-    }
-
-    /// <summary>
     /// Creates a route packet with custom header and IPayload (shared reference).
     /// Used for sending - does NOT own the payload.
     /// </summary>
     /// <param name="header">Route header.</param>
     /// <param name="payload">Payload instance (caller retains ownership).</param>
     /// <returns>A new RuntimeRoutePacket that does not own the payload.</returns>
-    public static RoutePacket Of(RouteHeader header, Abstractions.IPayload payload)
+    public static RoutePacket Of(RouteHeader header, IPayload payload)
     {
         // For sending: RoutePacket does NOT own the payload
         // The original packet (CPacket) retains ownership and handles disposal
@@ -178,25 +121,7 @@ public sealed class RoutePacket : IDisposable
 
     #region Reply Factory Methods
 
-    /// <summary>
-    /// Creates a reply packet for this request.
-    /// </summary>
-    /// <typeparam name="T">Protobuf message type.</typeparam>
-    /// <param name="message">Reply message.</param>
-    /// <returns>A new reply RuntimeRoutePacket.</returns>
-    public RoutePacket CreateReply<T>(T message) where T : IMessage
-    {
-        var replyHeader = new RouteHeader
-        {
-            MsgSeq = Header.MsgSeq,  // Same sequence for matching
-            ServiceId = Header.ServiceId,
-            MsgId = typeof(T).Name,
-            From = Header.From,  // Will be overwritten by sender
-            ErrorCode = 0
-        };
-        return new RoutePacket(replyHeader, new ProtoPayload(message));
-    }
-
+    
     /// <summary>
     /// Creates an error reply packet for this request.
     /// </summary>
@@ -213,37 +138,6 @@ public sealed class RoutePacket : IDisposable
             ErrorCode = errorCode
         };
         return new RoutePacket(replyHeader, EmptyPayload.Instance);
-    }
-
-    /// <summary>
-    /// Creates a reply packet from a request packet (static factory).
-    /// </summary>
-    /// <param name="request">Original request packet.</param>
-    /// <param name="from">Sender NID.</param>
-    /// <param name="serviceId">Service ID.</param>
-    /// <param name="msgId">Reply message ID.</param>
-    /// <param name="payload">Reply payload bytes.</param>
-    /// <param name="errorCode">Error code (0 for success).</param>
-    /// <returns>A new reply RuntimeRoutePacket.</returns>
-    public static RoutePacket CreateReply(
-        RoutePacket request,
-        string from,
-        ushort serviceId,
-        string msgId,
-        byte[] payload,
-        ushort errorCode = 0)
-    {
-        var replyHeader = new RouteHeader
-        {
-            MsgSeq = request.Header.MsgSeq,
-            ServiceId = serviceId,
-            MsgId = msgId,
-            From = from,
-            ErrorCode = errorCode,
-            StageId = request.Header.StageId,
-            AccountId = request.Header.AccountId
-        };
-        return new RoutePacket(replyHeader, new MemoryPayload(payload));
     }
 
     #endregion
@@ -264,16 +158,6 @@ public sealed class RoutePacket : IDisposable
     /// </summary>
     /// <returns>Payload data as ReadOnlySpan.</returns>
     public ReadOnlySpan<byte> GetPayloadSpan() => Payload.DataSpan;
-
-    /// <summary>
-    /// Gets the payload bytes for sending.
-    /// </summary>
-    /// <returns>Payload bytes.</returns>
-    [Obsolete("Use GetPayloadSpan() for zero-copy access")]
-    public byte[] GetPayloadBytes()
-    {
-        return Payload.DataSpan.ToArray();
-    }
 
     #endregion
 
