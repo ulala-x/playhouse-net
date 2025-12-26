@@ -1,13 +1,13 @@
 using System.Diagnostics;
 using Google.Protobuf;
-using PlayHouse.Benchmark.Shared.Proto;
+using PlayHouse.Benchmark.SS.Shared.Proto;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
 using Serilog;
 using ClientConnector = PlayHouse.Connector.Connector;
 using ClientPacket = PlayHouse.Connector.Protocol.Packet;
 
-namespace PlayHouse.Benchmark.Client;
+namespace PlayHouse.Benchmark.SS.Client;
 
 /// <summary>
 /// 벤치마크 시나리오를 실행합니다.
@@ -20,12 +20,13 @@ public class BenchmarkRunner(
     int requestSize,
     int responseSize,
     BenchmarkMode mode,
+    long initialStageId,
+    long targetStageId,
+    string targetNid,
     ClientMetricsCollector metricsCollector)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
-
-    // 요청 페이로드 미리 생성 (재사용)
 
     /// <summary>
     /// 지정된 크기의 페이로드를 생성합니다. (압축 방지를 위해 패턴으로 채움)
@@ -52,6 +53,12 @@ public class BenchmarkRunner(
         Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
         Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
 
+        if (mode == BenchmarkMode.PlayToStage)
+        {
+            Log.Information("  Target Stage ID: {TargetStageId}", targetStageId);
+            Log.Information("  Target NID: {TargetNid}", targetNid);
+        }
+
         metricsCollector.Reset();
 
         var tasks = new List<Task>();
@@ -72,7 +79,7 @@ public class BenchmarkRunner(
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 
-        var stageId = 1000 + connectionId; // 각 연결마다 고유 StageId
+        var stageId = initialStageId + connectionId; // 각 연결마다 고유 StageId
 
         // 연결
         var connected = await connector.ConnectAsync(serverHost, serverPort, stageId);
@@ -85,7 +92,7 @@ public class BenchmarkRunner(
         // 인증
         try
         {
-            using (var authPacket = ClientPacket.Empty("AuthenticateRequest"))
+            using (var authPacket = ClientPacket.Empty("Authenticate"))
             {
                 var authReply = await connector.AuthenticateAsync(authPacket);
                 Log.Information("[Connection {ConnectionId}] Authentication succeeded. Reply: {MsgId}", connectionId, authReply.MsgId);
@@ -98,23 +105,35 @@ public class BenchmarkRunner(
             return;
         }
 
-        // 모드에 따라 메시지 전송
-        if (mode == BenchmarkMode.RequestAsync)
+        // 메시지 수가 0이면 연결만 유지 (Stage 생성 목적)
+        if (messagesPerConnection == 0)
         {
-            await RunRequestAsyncMode(connector, connectionId);
+            Log.Information("[Connection {ConnectionId}] Stage {StageId} created, maintaining connection...", connectionId, stageId);
+            // 무한 대기 (외부에서 종료될 때까지)
+            while (true)
+            {
+                await Task.Delay(1000);
+                connector.MainThreadAction(); // 콜백 처리
+            }
+        }
+
+        // 모드에 따라 메시지 전송
+        if (mode == BenchmarkMode.PlayToApi)
+        {
+            await RunPlayToApiMode(connector, connectionId);
         }
         else
         {
-            await RunSendOnReceiveMode(connector, connectionId);
+            await RunPlayToStageMode(connector, connectionId);
         }
 
         connector.Disconnect();
     }
 
-    private async Task RunRequestAsyncMode(ClientConnector connector, int connectionId)
+    private async Task RunPlayToApiMode(ClientConnector connector, int connectionId)
     {
         // 요청 객체 재사용
-        var request = new BenchmarkRequest
+        var request = new TriggerApiRequest
         {
             ResponseSize = responseSize,
             Payload = _requestPayload
@@ -130,18 +149,22 @@ public class BenchmarkRunner(
 
             metricsCollector.RecordSent();
 
-            var sw = Stopwatch.StartNew();
+            var e2eStopwatch = Stopwatch.StartNew();
             try
             {
                 var response = await connector.RequestAsync(packet);
-                sw.Stop();
+                e2eStopwatch.Stop();
 
-                if (response.MsgId != "BenchmarkReply")
+                if (response.MsgId != "TriggerApiReply")
                 {
                     Log.Warning("[Connection {ConnectionId}] Unexpected response: {MsgId}", connectionId, response.MsgId);
                 }
 
-                metricsCollector.RecordReceived(sw.ElapsedTicks);
+                // 응답 파싱하여 SS Latency 추출
+                var reply = TriggerApiReply.Parser.ParseFrom(response.Payload.Data.Span);
+                var ssElapsedTicks = reply.SsElapsedTicks;
+
+                metricsCollector.RecordReceived(e2eStopwatch.ElapsedTicks, ssElapsedTicks);
             }
             catch (Exception ex)
             {
@@ -153,75 +176,64 @@ public class BenchmarkRunner(
         }
     }
 
-    private async Task RunSendOnReceiveMode(ClientConnector connector, int connectionId)
+    private async Task RunPlayToStageMode(ClientConnector connector, int connectionId)
     {
-        var receivedCount = 0;
-        var timestamps = new Dictionary<int, long>();
-        var tcs = new TaskCompletionSource();
-
-        // OnReceive 콜백 설정
-        connector.OnReceive += (long stageId, IPacket packet) =>
-        {
-            if (packet.MsgId == "BenchmarkReply")
-            {
-                var reply = BenchmarkReply.Parser.ParseFrom(packet.Payload.Data.Span);
-
-                if (timestamps.TryGetValue(reply.Sequence, out var startTicks))
-                {
-                    var elapsed = Stopwatch.GetTimestamp() - startTicks;
-                    metricsCollector.RecordReceived(elapsed);
-                }
-
-                receivedCount++;
-
-                if (receivedCount >= messagesPerConnection)
-                {
-                    tcs.TrySetResult();
-                }
-            }
-        };
-
-        // 콜백 처리 타이머 시작
-        using var callbackTimer = new Timer(_ => connector.MainThreadAction(), null, 0, 1);
-
         // 요청 객체 재사용
-        var request = new BenchmarkRequest
+        var request = new TriggerStageRequest
         {
             ResponseSize = responseSize,
+            TargetStageId = targetStageId,
+            TargetNid = targetNid,
             Payload = _requestPayload
         };
 
-        // 메시지 전송
         for (int i = 0; i < messagesPerConnection; i++)
         {
+            // 변경되는 필드만 업데이트
             request.Sequence = i;
             request.ClientTimestamp = Stopwatch.GetTimestamp();
 
             using var packet = new ClientPacket(request);
 
-            timestamps[i] = Stopwatch.GetTimestamp();
-            connector.Send(packet);
             metricsCollector.RecordSent();
-        }
 
-        // 모든 응답 수신 대기 (최대 30초)
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        cts.Token.Register(() => tcs.TrySetCanceled());
+            var e2eStopwatch = Stopwatch.StartNew();
+            try
+            {
+                var response = await connector.RequestAsync(packet);
+                e2eStopwatch.Stop();
 
-        try
-        {
-            await tcs.Task;
-        }
-        catch (TaskCanceledException)
-        {
-            Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
-                connectionId, receivedCount, messagesPerConnection);
+                if (response.MsgId != "TriggerStageReply")
+                {
+                    Log.Warning("[Connection {ConnectionId}] Unexpected response: {MsgId}", connectionId, response.MsgId);
+                }
+
+                // 응답 파싱하여 SS Latency 추출
+                var reply = TriggerStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+                var ssElapsedTicks = reply.SsElapsedTicks;
+
+                metricsCollector.RecordReceived(e2eStopwatch.ElapsedTicks, ssElapsedTicks);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
+            }
+
+            // 콜백 처리
+            connector.MainThreadAction();
         }
     }
 }
 
 public enum BenchmarkMode
 {
-    RequestAsync,
-    SendOnReceive
+    /// <summary>
+    /// Stage → API 통신 측정
+    /// </summary>
+    PlayToApi,
+
+    /// <summary>
+    /// Stage → Stage 통신 측정
+    /// </summary>
+    PlayToStage
 }

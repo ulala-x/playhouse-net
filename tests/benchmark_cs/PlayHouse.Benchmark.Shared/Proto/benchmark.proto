@@ -22,3 +22,14 @@ message BenchmarkReply {
     int64 server_timestamp = 2;   // 서버 처리 시각 (ticks)
     bytes payload = 3;            // 가변 크기 페이로드
 }
+
+// 인증 요청
+message AuthenticateRequest {
+    string client_version = 1;    // 클라이언트 버전 (선택)
+}
+
+// 인증 응답
+message AuthenticateReply {
+    bool success = 1;             // 인증 성공 여부
+    string account_id = 2;        // 할당된 계정 ID
+}
