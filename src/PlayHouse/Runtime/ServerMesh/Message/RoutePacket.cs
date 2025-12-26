@@ -1,6 +1,7 @@
 #nullable enable
 
 using Google.Protobuf;
+using PlayHouse.Abstractions;
 using PlayHouse.Runtime.Proto;
 
 namespace PlayHouse.Runtime.ServerMesh.Message;
@@ -24,14 +25,16 @@ public sealed class RoutePacket : IDisposable
     /// <summary>
     /// Gets the payload data.
     /// </summary>
-    public IPayload Payload { get; }
+    public Abstractions.IPayload Payload { get; }
 
+    private readonly bool _ownsPayload;
     private bool _disposed;
 
-    private RoutePacket(RouteHeader header, IPayload payload)
+    private RoutePacket(RouteHeader header, Abstractions.IPayload payload, bool ownsPayload = true)
     {
         Header = header;
         Payload = payload;
+        _ownsPayload = ownsPayload;
     }
 
     #region Factory Methods
@@ -53,7 +56,8 @@ public sealed class RoutePacket : IDisposable
             header.From = senderNid;
         }
 
-        var payload = new FramePayload(payloadBytes);
+        // Legacy support - create BytePayload from byte array
+        var payload = new Core.Shared.BytePayload(payloadBytes);
         return new RoutePacket(header, payload);
     }
 
@@ -76,7 +80,7 @@ public sealed class RoutePacket : IDisposable
             header.From = senderNid;
         }
 
-        var payload = new ZmqMessagePayload(payloadMessage);
+        var payload = new ZmqPayload(payloadMessage);
         return new RoutePacket(header, payload);
     }
 
@@ -97,7 +101,7 @@ public sealed class RoutePacket : IDisposable
             header.From = senderNid;
         }
 
-        var payload = new ZmqMessagePayload(payloadMessage);
+        var payload = new ZmqPayload(payloadMessage);
         return new RoutePacket(header, payload);
     }
 
@@ -120,7 +124,7 @@ public sealed class RoutePacket : IDisposable
             MsgId = typeof(T).Name,
             From = from
         };
-        var payload = new ByteStringPayload(message.ToByteString());
+        var payload = new Core.Shared.ProtoPayload(message);
         return new RoutePacket(header, payload);
     }
 
@@ -132,7 +136,7 @@ public sealed class RoutePacket : IDisposable
     /// <returns>A new RuntimeRoutePacket.</returns>
     public static RoutePacket Of(RouteHeader header, byte[] payload)
     {
-        return new RoutePacket(header, new ByteArrayPayload(payload));
+        return new RoutePacket(header, new Core.Shared.BytePayload(payload));
     }
 
     /// <summary>
@@ -143,18 +147,21 @@ public sealed class RoutePacket : IDisposable
     /// <returns>A new RuntimeRoutePacket.</returns>
     public static RoutePacket Of(RouteHeader header, ByteString payload)
     {
-        return new RoutePacket(header, new ByteStringPayload(payload));
+        return new RoutePacket(header, new Core.Shared.BytePayload(payload.Span));
     }
 
     /// <summary>
-    /// Creates a route packet with custom header and IPayload (zero-copy).
+    /// Creates a route packet with custom header and IPayload (shared reference).
+    /// Used for sending - does NOT own the payload.
     /// </summary>
     /// <param name="header">Route header.</param>
-    /// <param name="payload">Payload instance.</param>
-    /// <returns>A new RuntimeRoutePacket.</returns>
-    public static RoutePacket Of(RouteHeader header, IPayload payload)
+    /// <param name="payload">Payload instance (caller retains ownership).</param>
+    /// <returns>A new RuntimeRoutePacket that does not own the payload.</returns>
+    public static RoutePacket Of(RouteHeader header, Abstractions.IPayload payload)
     {
-        return new RoutePacket(header, payload);
+        // For sending: RoutePacket does NOT own the payload
+        // The original packet (CPacket) retains ownership and handles disposal
+        return new RoutePacket(header, payload, ownsPayload: false);
     }
 
     /// <summary>
@@ -164,7 +171,7 @@ public sealed class RoutePacket : IDisposable
     /// <returns>A new RuntimeRoutePacket with empty payload.</returns>
     public static RoutePacket Empty(RouteHeader header)
     {
-        return new RoutePacket(header, EmptyPayload.Instance);
+        return new RoutePacket(header, Core.Shared.EmptyPayload.Instance);
     }
 
     #endregion
@@ -187,7 +194,7 @@ public sealed class RoutePacket : IDisposable
             From = Header.From,  // Will be overwritten by sender
             ErrorCode = 0
         };
-        return new RoutePacket(replyHeader, new ByteStringPayload(message.ToByteString()));
+        return new RoutePacket(replyHeader, new Core.Shared.ProtoPayload(message));
     }
 
     /// <summary>
@@ -205,7 +212,7 @@ public sealed class RoutePacket : IDisposable
             From = Header.From,
             ErrorCode = errorCode
         };
-        return new RoutePacket(replyHeader, EmptyPayload.Instance);
+        return new RoutePacket(replyHeader, Core.Shared.EmptyPayload.Instance);
     }
 
     /// <summary>
@@ -236,7 +243,7 @@ public sealed class RoutePacket : IDisposable
             StageId = request.Header.StageId,
             AccountId = request.Header.AccountId
         };
-        return new RoutePacket(replyHeader, new ByteArrayPayload(payload));
+        return new RoutePacket(replyHeader, new Core.Shared.BytePayload(payload));
     }
 
     #endregion
@@ -312,6 +319,13 @@ public sealed class RoutePacket : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        Payload.Dispose();
+
+        // Only dispose payload if we own it
+        // For sending: ownsPayload=false, original packet retains ownership
+        // For receiving: ownsPayload=true (default), we own the ZmqPayload
+        if (_ownsPayload)
+        {
+            Payload.Dispose();
+        }
     }
 }

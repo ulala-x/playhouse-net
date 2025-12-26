@@ -231,9 +231,10 @@ internal sealed class XStageSender : XSender, IStageSender
             Sid = sid
         };
 
-        var routePacket = RoutePacket.Of(header, packet.Payload.DataSpan.ToArray());
+        // Zero-copy: RoutePacket references the payload without copying
+        // RoutePacket.Of(header, IPayload) sets ownsPayload=false, original packet retains ownership
+        var routePacket = RoutePacket.Of(header, packet.Payload);
         _communicator.Send(sessionServerId, routePacket);
-        routePacket.Dispose();
     }
 
     #endregion

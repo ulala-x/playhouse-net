@@ -94,7 +94,7 @@ internal class ApiSender : XSender, IApiSender
             Payload = ByteString.CopyFrom(packet.Payload.DataSpan)
         };
 
-        var routePacket = CPacket.Of(nameof(CreateStageReq), req.ToByteArray());
+        var routePacket = CPacket.Of(req);
         var reply = await RequestToStage(playNid, stageId, routePacket);
         var res = CreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 
@@ -120,7 +120,7 @@ internal class ApiSender : XSender, IApiSender
             JoinPayload = ByteString.CopyFrom(joinPacket.Payload.DataSpan)
         };
 
-        var routePacket = CPacket.Of(nameof(GetOrCreateStageReq), req.ToByteArray());
+        var routePacket = CPacket.Of(req);
         var reply = await RequestToStage(playNid, stageId, routePacket);
         var res = GetOrCreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
 

@@ -1,7 +1,10 @@
 #nullable enable
 
+using System.Collections.Concurrent;
 using System.Text;
 using Net.Zmq;
+using PlayHouse.Abstractions;
+using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
@@ -20,6 +23,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     private readonly byte[] _serverIdBytes; // Cached UTF-8 encoded ServerId
     private readonly byte[] _recvServerIdBuffer = new byte[1024];      // 1KB - for Recv
     private readonly byte[] _recvHeaderBuffer = new byte[65536];       // 64KB - for Recv
+    private readonly ConcurrentDictionary<string, byte[]> _serverIdCache = new(); // Cache for target ServerId
     private bool _disposed;
     private string? _boundEndpoint;
 
@@ -60,7 +64,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         socket.SetOption(SocketOption.Immediate, 0); // DelayAttachOnConnect equivalent
         socket.SetOption(SocketOption.Sndhwm, config.SendHighWatermark);
         socket.SetOption(SocketOption.Rcvhwm, config.ReceiveHighWatermark);
-        socket.SetOption(SocketOption.Rcvtimeo, -1); // 무한 대기, Context.Shutdown()로 해제
+        socket.SetOption(SocketOption.Rcvtimeo, config.ReceiveTimeout); // 무한 대기, Context.Shutdown()로 해제
         socket.SetOption(SocketOption.Linger, config.Linger);
 
         if (config.TcpKeepalive)
@@ -106,20 +110,36 @@ internal sealed class ZmqPlaySocket : IPlaySocket
                 // Set PayloadSize in header for MessagePool.Rent on receiver side
                 packet.Header.PayloadSize = (uint)packet.Payload.Length;
 
-                // Frame 0: Target ServerId (SendMore)
-                _socket.Send(Encoding.UTF8.GetBytes(serverId), SendFlags.SendMore);
+                // Frame 0: Target ServerId (SendMore) - Cached
+                var serverIdBytes = _serverIdCache.GetOrAdd(serverId, static id => Encoding.UTF8.GetBytes(id));
+                _socket.Send(serverIdBytes, SendFlags.SendMore);
 
                 // Frame 1: RouteHeader (SendMore)
                 var headerBytes = packet.SerializeHeader();
                 _socket.Send(headerBytes, SendFlags.SendMore);
 
-                // Frame 2: Payload (마지막 프레임) - Zero-copy with ReadOnlySpan
-                _socket.Send(packet.Payload.DataSpan);
+                // Frame 2: Payload (마지막 프레임) - Type-based optimization
+                if (packet.Payload is ProtoPayload proto)
+                {
+                    // ProtoPayload: Use correctly-sized payload span (not full buffer)
+                    var payloadSpan = proto.GetZmqPayloadSpan();
+                    _socket.Send(payloadSpan);
+                }
+                else if (packet.Payload is ZmqPayload zmq)
+                {
+                    // ZmqPayload: Use underlying Message for zero-copy
+                    _socket.Send(zmq.Message.Data);
+                }
+                else
+                {
+                    // EmptyPayload or BytePayload: Use DataSpan
+                    _socket.Send(packet.Payload.DataSpan);
+                }
             }
             catch (Exception ex)
             {
                 // RouterMandatory causes send to fail if target not connected
-                Console.Error.WriteLine($"[ZmqPlaySocket] Failed to send to {serverId}, MsgId: {packet.MsgId}, Error: {ex.Message}");
+                Console.Error.WriteLine($"[ZmqPlaySocket] Failed to send to {serverId}: {ex.Message}");
             }
         }
     }
@@ -133,6 +153,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         int serverIdLen = _socket.Recv(_recvServerIdBuffer);
         if (serverIdLen <= 0)
         {
+            // Timeout or error - return null
             return null;
         }
 

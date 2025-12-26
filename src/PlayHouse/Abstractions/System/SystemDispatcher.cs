@@ -15,7 +15,7 @@ namespace PlayHouse.Abstractions.System;
 /// </remarks>
 public sealed class SystemDispatcher : ISystemHandlerRegister
 {
-    private readonly ConcurrentDictionary<string, Func<byte[], Task>> _handlers = new();
+    private readonly ConcurrentDictionary<string, Func<IPayload, Task>> _handlers = new();
     private readonly ILogger? _logger;
 
     /// <summary>
@@ -45,7 +45,8 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
         _handlers[msgId] = async (payload) =>
         {
             var message = new TMessage();
-            message.MergeFrom(payload);
+            // Zero-copy: parse directly from DataSpan without ToArray()
+            message.MergeFrom(payload.DataSpan);
             await handler(message);
         };
 
@@ -65,7 +66,8 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
         {
             try
             {
-                await handler(packet.Payload.DataSpan.ToArray());
+                // Zero-copy: pass IPayload directly without ToArray()
+                await handler(packet.Payload);
                 return true;
             }
             catch (Exception ex)

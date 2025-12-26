@@ -63,9 +63,10 @@ internal sealed class XServerCommunicator : IServerCommunicator
                 // Context terminated - 정상 종료
                 break;
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore receive errors during normal operation
+                // Log receive errors for debugging
+                Console.Error.WriteLine($"[XServerCommunicator] Receive error on server {ServerId}: {ex.Message}");
             }
         }
     }

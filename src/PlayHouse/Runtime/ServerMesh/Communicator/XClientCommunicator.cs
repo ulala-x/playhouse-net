@@ -53,8 +53,9 @@ internal sealed class XClientCommunicator : IClientCommunicator
             {
                 _socket.Connect(address);
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[XClientCommunicator] Connect failed to {address}: {ex.Message}");
                 _connected.TryRemove(address, out _);
                 throw;
             }
