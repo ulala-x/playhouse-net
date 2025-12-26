@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
-using PlayHouse.Benchmark.Server;
+using PlayHouse.Benchmark.SS.PlayServer;
 using PlayHouse.Bootstrap;
 using Serilog;
 using Serilog.Events;
@@ -25,31 +25,71 @@ var httpPortOption = new Option<int>(
     description: "HTTP API port for metrics",
     getDefaultValue: () => 5080);
 
+var serverIdOption = new Option<string>(
+    name: "--server-id",
+    description: "Server ID (NID) for this PlayServer",
+    getDefaultValue: () => "play-1");
+
+var apiNidOption = new Option<string>(
+    name: "--api-nid",
+    description: "API Server NID (for play-to-api mode)",
+    getDefaultValue: () => "api-1");
+
+var apiPortOption = new Option<int>(
+    name: "--api-port",
+    description: "API Server ZMQ port (for play-to-api mode)",
+    getDefaultValue: () => 16201);
+
 var logDirOption = new Option<string>(
     name: "--log-dir",
     description: "Directory for log files",
     getDefaultValue: () => "logs");
 
-var rootCommand = new RootCommand("PlayHouse Benchmark Server")
+var targetNidOption = new Option<string>(
+    name: "--target-nid",
+    description: "Target PlayServer NID (for play-to-stage mode)",
+    getDefaultValue: () => "");
+
+var targetPortOption = new Option<int>(
+    name: "--target-port",
+    description: "Target PlayServer ZMQ port (for play-to-stage mode)",
+    getDefaultValue: () => 0);
+
+var rootCommand = new RootCommand("PlayHouse Benchmark Server (Server-to-Server)")
 {
     tcpPortOption,
     zmqPortOption,
     httpPortOption,
-    logDirOption
+    serverIdOption,
+    apiNidOption,
+    apiPortOption,
+    logDirOption,
+    targetNidOption,
+    targetPortOption
 };
 
 var tcpPort = 0;
 var zmqPort = 0;
 var httpPort = 0;
+var serverId = "play-1";
+var apiNid = "api-1";
+var apiPort = 16201;
 var logDir = "logs";
+var targetNid = "";
+var targetPort = 0;
 
-rootCommand.SetHandler((tcp, zmq, http, logDirectory) =>
+rootCommand.SetHandler((context) =>
 {
-    tcpPort = tcp;
-    zmqPort = zmq;
-    httpPort = http;
-    logDir = logDirectory;
-}, tcpPortOption, zmqPortOption, httpPortOption, logDirOption);
+    tcpPort = context.ParseResult.GetValueForOption(tcpPortOption);
+    zmqPort = context.ParseResult.GetValueForOption(zmqPortOption);
+    httpPort = context.ParseResult.GetValueForOption(httpPortOption);
+    serverId = context.ParseResult.GetValueForOption(serverIdOption)!;
+    apiNid = context.ParseResult.GetValueForOption(apiNidOption)!;
+    apiPort = context.ParseResult.GetValueForOption(apiPortOption);
+    logDir = context.ParseResult.GetValueForOption(logDirOption)!;
+    targetNid = context.ParseResult.GetValueForOption(targetNidOption)!;
+    targetPort = context.ParseResult.GetValueForOption(targetPortOption);
+});
 
 await rootCommand.InvokeAsync(args);
 
@@ -58,6 +98,7 @@ if (tcpPort == 0)
     tcpPort = 16110;
     zmqPort = 16100;
     httpPort = 5080;
+    apiPort = 16201;
 }
 
 // 로그 디렉토리 생성
@@ -65,14 +106,14 @@ Directory.CreateDirectory(logDir);
 
 // Serilog 설정
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
+    .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.File(
-        Path.Combine(logDir, "benchmark-server-.log"),
+        Path.Combine(logDir, "benchmark-ss-playserver-.log"),
         rollingInterval: RollingInterval.Day,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
         retainedFileCountLimit: 30)
@@ -81,8 +122,10 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     Log.Information("================================================================================");
-    Log.Information("PlayHouse Benchmark Server");
+    Log.Information("PlayHouse Benchmark Server (Server-to-Server)");
     Log.Information("================================================================================");
+    Log.Information("Server ID: {ServerId}", serverId);
+    Log.Information("API Server NID: {ApiNid}", apiNid);
     Log.Information("ZMQ Port (server-to-server): {ZmqPort}", zmqPort);
     Log.Information("TCP Port (client connections): {TcpPort}", tcpPort);
     Log.Information("HTTP API Port: {HttpPort}", httpPort);
@@ -103,10 +146,10 @@ try
         .Configure(options =>
         {
             options.ServiceType = ServiceType.Play;
-            options.ServerId = "bench-1";
-            options.BindEndpoint = $"tcp://0.0.0.0:{zmqPort}";
+            options.ServerId = serverId;
+            options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
             options.TcpPort = tcpPort;
-            options.AuthenticateMessageId = "AuthenticateRequest";
+            options.AuthenticateMessageId = "Authenticate";
             options.DefaultStageType = "BenchmarkStage";
         })
         .UseLogger(logger)
@@ -128,7 +171,20 @@ try
 
     // PlayServer 시작
     await playServer.StartAsync();
-    Log.Information("PlayServer started (ZMQ: {ZmqPort}, TCP: {TcpPort})", zmqPort, tcpPort);
+    Log.Information("PlayServer started (ID: {ServerId}, ZMQ: {ZmqPort}, TCP: {TcpPort})", serverId, zmqPort, tcpPort);
+
+    // ApiServer에 수동 연결 (프로세스 간 TestSystemController 공유 불가로 수동 연결 필요)
+    var apiEndpoint = $"tcp://127.0.0.1:{apiPort}";
+    playServer.Connect(apiNid, apiEndpoint);
+    Log.Information("Connected to ApiServer (NID: {ApiNid}, Endpoint: {ApiEndpoint})", apiNid, apiEndpoint);
+
+    // 다른 PlayServer에 연결 (play-to-stage 모드)
+    if (!string.IsNullOrEmpty(targetNid) && targetPort > 0)
+    {
+        var targetEndpoint = $"tcp://127.0.0.1:{targetPort}";
+        playServer.Connect(targetNid, targetEndpoint);
+        Log.Information("Connected to target PlayServer (NID: {TargetNid}, Endpoint: {TargetEndpoint})", targetNid, targetEndpoint);
+    }
 
     // HTTP API 서버 시작
     await app.StartAsync();

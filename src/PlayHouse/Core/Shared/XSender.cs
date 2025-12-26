@@ -23,7 +23,9 @@ public abstract class XSender : ISender
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly int _requestTimeoutMs;
-    private int _msgSeqCounter;
+
+    // 전역 MsgSeq 카운터 - 모든 XSender 인스턴스가 공유하여 RequestCache 키 충돌 방지
+    private static int _globalMsgSeqCounter;
 
     /// <summary>
     /// Gets the current RouteHeader for reply routing.
@@ -83,14 +85,14 @@ public abstract class XSender : ISender
     /// <returns>A new sequence number (1-65535).</returns>
     protected ushort NextMsgSeq()
     {
-        var seq = Interlocked.Increment(ref _msgSeqCounter);
+        var seq = Interlocked.Increment(ref _globalMsgSeqCounter);
         // Wrap around at 65535 and skip 0 (0 means no reply expected)
         if (seq > 65535)
         {
-            Interlocked.CompareExchange(ref _msgSeqCounter, 1, seq);
-            seq = Interlocked.Increment(ref _msgSeqCounter);
+            Interlocked.CompareExchange(ref _globalMsgSeqCounter, 1, seq);
+            seq = Interlocked.Increment(ref _globalMsgSeqCounter);
         }
-        if (seq == 0) seq = Interlocked.Increment(ref _msgSeqCounter);
+        if (seq == 0) seq = Interlocked.Increment(ref _globalMsgSeqCounter);
         return (ushort)seq;
     }
 

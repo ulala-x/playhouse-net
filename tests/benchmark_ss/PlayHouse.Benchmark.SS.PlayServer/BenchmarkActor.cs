@@ -1,12 +1,10 @@
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
-using PlayHouse.Benchmark.Shared.Proto;
-using PlayHouse.Core.Shared;
 
-namespace PlayHouse.Benchmark.Server;
+namespace PlayHouse.Benchmark.SS.PlayServer;
 
 /// <summary>
-/// 벤치마크용 Actor 구현
+/// 벤치마크용 Actor 구현 (Server-to-Server 벤치마크)
 /// </summary>
 public class BenchmarkActor(IActorSender actorSender) : IActor
 {
