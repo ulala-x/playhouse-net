@@ -39,7 +39,7 @@ public class PacketTests
 
         // Then (결과)
         packet.MsgId.Should().Be(expectedMsgId, "MsgId는 Protobuf 메시지 Descriptor.Name이어야 함");
-        packet.Payload.Data.Length.Should().BeGreaterThan(0, "Payload 데이터가 있어야 함");
+        packet.Payload.DataSpan.Length.Should().BeGreaterThan(0, "Payload 데이터가 있어야 함");
     }
 
     [Fact(DisplayName = "Packet - MsgId와 byte 배열로 생성한다")]
@@ -54,7 +54,7 @@ public class PacketTests
 
         // Then (결과)
         packet.MsgId.Should().Be(msgId, "MsgId가 설정되어야 함");
-        packet.Payload.Data.ToArray().Should().Equal(data, "바이트 데이터가 저장되어야 함");
+        packet.Payload.DataSpan.ToArray().Should().Equal(data, "바이트 데이터가 저장되어야 함");
     }
 
     [Fact(DisplayName = "Packet.Empty - 빈 Payload를 가진 Packet을 생성한다")]
@@ -68,7 +68,7 @@ public class PacketTests
 
         // Then (결과)
         packet.MsgId.Should().Be(msgId, "MsgId가 설정되어야 함");
-        packet.Payload.Data.Length.Should().Be(0, "빈 Payload여야 함");
+        packet.Payload.DataSpan.Length.Should().Be(0, "빈 Payload여야 함");
     }
 
     [Fact(DisplayName = "Packet - Dispose 후 Payload도 정리된다")]
@@ -146,7 +146,7 @@ public class PacketTests
         using var packet = new Packet(original);
 
         // When (행동)
-        var deserialized = Int32Value.Parser.ParseFrom(packet.Payload.Data.Span);
+        var deserialized = Int32Value.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // Then (결과)
         deserialized.Value.Should().Be(42, "역직렬화 값이 원본과 같아야 함");

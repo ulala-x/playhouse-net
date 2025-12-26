@@ -169,6 +169,10 @@ try
     var app = builder.Build();
     app.MapControllers();
 
+    // MessagePool Prewarm (런타임 할당 방지)
+    Net.Zmq.MessagePool.Shared.Prewarm(Net.Zmq.MessageSize.K2, 500);
+    Log.Information("MessagePool prewarmed: K2 x 500");
+
     // PlayServer 시작
     await playServer.StartAsync();
     Log.Information("PlayServer started (ID: {ServerId}, ZMQ: {ZmqPort}, TCP: {TcpPort})", serverId, zmqPort, tcpPort);

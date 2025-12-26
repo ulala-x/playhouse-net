@@ -88,7 +88,7 @@ public class PushTests : IAsyncLifetime
         var (stageId, packet) = _receivedMessages.First();
         packet.MsgId.Should().EndWith("BroadcastNotify", "메시지 ID가 BroadcastNotify로 끝나야 함");
 
-        var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.Data.Span);
+        var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.DataSpan);
         parsed.EventType.Should().Be("system");
         parsed.Data.Should().Be("Welcome!");
     }

@@ -161,7 +161,7 @@ public class BenchmarkRunner(
                 }
 
                 // 응답 파싱하여 SS Latency 추출
-                var reply = TriggerApiReply.Parser.ParseFrom(response.Payload.Data.Span);
+                var reply = TriggerApiReply.Parser.ParseFrom(response.Payload.DataSpan);
                 var ssElapsedTicks = reply.SsElapsedTicks;
 
                 metricsCollector.RecordReceived(e2eStopwatch.ElapsedTicks, ssElapsedTicks);
@@ -209,7 +209,7 @@ public class BenchmarkRunner(
                 }
 
                 // 응답 파싱하여 SS Latency 추출
-                var reply = TriggerStageReply.Parser.ParseFrom(response.Payload.Data.Span);
+                var reply = TriggerStageReply.Parser.ParseFrom(response.Payload.DataSpan);
                 var ssElapsedTicks = reply.SsElapsedTicks;
 
                 metricsCollector.RecordReceived(e2eStopwatch.ElapsedTicks, ssElapsedTicks);

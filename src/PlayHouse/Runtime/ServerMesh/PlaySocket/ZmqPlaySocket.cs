@@ -103,6 +103,9 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         {
             try
             {
+                // Set PayloadSize in header for MessagePool.Rent on receiver side
+                packet.Header.PayloadSize = (uint)packet.Payload.Length;
+
                 // Frame 0: Target ServerId (SendMore)
                 _socket.Send(Encoding.UTF8.GetBytes(serverId), SendFlags.SendMore);
 
@@ -142,13 +145,17 @@ internal sealed class ZmqPlaySocket : IPlaySocket
             return null;
         }
 
-        // Frame 2: Payload (Message로 수신 - dispose 하지 않음, RoutePacket이 관리)
-        var payloadMessage = new Net.Zmq.Message();
-        _socket.Recv(payloadMessage);
+        // Parse header to get payload_size
+        var header = PlayHouse.Runtime.Proto.RouteHeader.Parser.ParseFrom(_recvHeaderBuffer.AsSpan(0, headerLen));
+
+        // Frame 2: Payload - Use MessagePool.Rent with payload_size from header
+        var payloadSize = (int)header.PayloadSize;
+        var payloadMessage = MessagePool.Shared.Rent(payloadSize);
+        _socket.Recv(payloadMessage, payloadSize);
 
         // RoutePacket 생성 (Message 수명 관리 위임)
         return RoutePacket.FromFrames(
-            _recvHeaderBuffer.AsSpan(0, headerLen),
+            header,
             payloadMessage,
             senderServerId);
     }

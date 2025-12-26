@@ -92,7 +92,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     /// </summary>
     private async Task HandleTriggerApiRequest(IActor actor, IPacket packet, Stopwatch totalSw)
     {
-        var request = TriggerApiRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // API 서버에 요청 전송 및 SS 구간 측정
         var ssRequest = new SSBenchmarkRequest
@@ -122,7 +122,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         actor.ActorSender.Reply(CPacket.Of(reply));
 
         // 메트릭 기록 (SS 구간만)
-        var messageSize = packet.Payload.Data.Length + reply.CalculateSize();
+        var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
         ServerMetricsCollector.Instance.RecordMessage(ssSw.ElapsedTicks, messageSize);
     }
 
@@ -131,7 +131,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     /// </summary>
     private async Task HandleTriggerStageRequest(IActor actor, IPacket packet, Stopwatch totalSw)
     {
-        var request = TriggerStageRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = TriggerStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 다른 Stage에 요청 전송 및 SS 구간 측정
         var ssRequest = new SSBenchmarkRequest
@@ -164,7 +164,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         actor.ActorSender.Reply(CPacket.Of(reply));
 
         // 메트릭 기록 (SS 구간만)
-        var messageSize = packet.Payload.Data.Length + reply.CalculateSize();
+        var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
         ServerMetricsCollector.Instance.RecordMessage(ssSw.ElapsedTicks, messageSize);
     }
 
@@ -173,7 +173,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     /// </summary>
     private void HandleSSBenchmarkRequest(IPacket packet)
     {
-        var request = SSBenchmarkRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = SSBenchmarkRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 캐시된 페이로드 사용
         var payload = GetOrCreatePayload(request.ResponseSize);

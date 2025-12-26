@@ -88,7 +88,7 @@ internal sealed class XActorSender : IActorSender
                     0,  // msgSeq = 0 for push messages
                     _baseStage.StageId,
                     0,  // errorCode = 0
-                    packet.Payload.Data.Span);
+                    packet.Payload.DataSpan);
                 _ = _transportSession.SendAsync(response);
                 return;
             }

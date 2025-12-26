@@ -107,7 +107,7 @@ public class AsyncBlockTests : IAsyncLifetime
         // Then - E2E 검증: Push 메시지 검증
         var asyncReplies = _receivedMessages
             .Where(m => m.packet.MsgId.EndsWith("AsyncBlockReply"))
-            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.packet.Payload.Data.Span))
+            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.packet.Payload.DataSpan))
             .ToList();
 
         asyncReplies.Should().HaveCount(1, "AsyncBlockReply를 1개 받아야 함");
@@ -171,7 +171,7 @@ public class AsyncBlockTests : IAsyncLifetime
         // Then - E2E 검증: Push 메시지 검증
         var asyncReplies = _receivedMessages
             .Where(m => m.packet.MsgId.EndsWith("AsyncBlockReply"))
-            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.packet.Payload.Data.Span))
+            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.packet.Payload.DataSpan))
             .ToList();
 
         asyncReplies.Should().HaveCount(requestCount, $"AsyncBlockReply를 {requestCount}개 받아야 함");

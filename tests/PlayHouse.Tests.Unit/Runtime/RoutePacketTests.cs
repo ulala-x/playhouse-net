@@ -212,7 +212,7 @@ public class RuntimePayloadTests
 
         // Then
         payload.DataSpan.ToArray().Should().BeEquivalentTo(data);
-        payload.Length.Should().Be(5);
+        ((IPayload)payload).Length.Should().Be(5);
     }
 
     [Fact(DisplayName = "ByteArrayPayload는 ReadOnlySpan으로부터 생성할 수 있다")]
@@ -250,7 +250,7 @@ public class RuntimePayloadTests
         var payload = EmptyPayload.Instance;
 
         // Then
-        payload.Length.Should().Be(0);
+        ((IPayload)payload).Length.Should().Be(0);
         payload.DataSpan.IsEmpty.Should().BeTrue();
     }
 

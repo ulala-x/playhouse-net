@@ -95,6 +95,10 @@ try
         .UseController<BenchmarkApiController>()
         .Build();
 
+    // MessagePool Prewarm (런타임 할당 방지)
+    Net.Zmq.MessagePool.Shared.Prewarm(Net.Zmq.MessageSize.K2, 500);
+    Log.Information("MessagePool prewarmed: K2 x 500");
+
     // ApiServer 시작
     await apiServer.StartAsync();
     Log.Information("API Server started (ZMQ: {ZmqPort})", zmqPort);

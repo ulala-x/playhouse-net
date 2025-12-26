@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using Google.Protobuf;
+using Net.Zmq;
 using PlayHouse.Abstractions;
 using RuntimePayload = PlayHouse.Runtime.ServerMesh.Message;
 
@@ -96,7 +97,7 @@ public sealed class BytePayload : IPayload
         _data = data.ToArray();
     }
 
-    public ReadOnlyMemory<byte> Data => _data;
+    public ReadOnlySpan<byte> DataSpan => _data;
 
     public void Dispose() { }
 }
@@ -109,6 +110,7 @@ public sealed class ProtoPayload : IPayload
 {
     private readonly IMessage _proto;
     private byte[]? _rentedBuffer;
+    private Net.Zmq.Message? _zmqMessage;
     private int _actualSize;
 
     public ProtoPayload(IMessage proto)
@@ -116,21 +118,41 @@ public sealed class ProtoPayload : IPayload
         _proto = proto;
     }
 
-    public ReadOnlyMemory<byte> Data
+    public ReadOnlySpan<byte> DataSpan
     {
         get
         {
-            if (_rentedBuffer == null)
-            {
-                _actualSize = _proto.CalculateSize();
-                _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
-
-                // Protobuf WriteTo with MemoryStream wrapper
-                using var stream = new MemoryStream(_rentedBuffer, 0, _actualSize, writable: true);
-                _proto.WriteTo(stream);
-            }
-            return new ReadOnlyMemory<byte>(_rentedBuffer, 0, _actualSize);
+            EnsureArrayPoolBuffer();
+            return new ReadOnlySpan<byte>(_rentedBuffer, 0, _actualSize);
         }
+    }
+
+    /// <summary>
+    /// Gets a ZMQ Message for zero-copy sending.
+    /// Uses MessagePool.Shared for efficient memory management.
+    /// </summary>
+    /// <returns>A pooled ZMQ Message containing the serialized protobuf data.</returns>
+    public Net.Zmq.Message GetZmqMessage()
+    {
+        if (_zmqMessage == null)
+        {
+            _actualSize = _proto.CalculateSize();
+            _zmqMessage = MessagePool.Shared.Rent(_actualSize);
+
+            // Serialize to ArrayPool buffer, then copy to ZMQ Message
+            var tempBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
+            try
+            {
+                using var stream = new MemoryStream(tempBuffer, 0, _actualSize, writable: true);
+                _proto.WriteTo(stream);
+                tempBuffer.AsSpan(0, _actualSize).CopyTo(_zmqMessage.Data);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(tempBuffer);
+            }
+        }
+        return _zmqMessage;
     }
 
     /// <summary>
@@ -138,12 +160,30 @@ public sealed class ProtoPayload : IPayload
     /// </summary>
     public IMessage GetProto() => _proto;
 
+    private void EnsureArrayPoolBuffer()
+    {
+        if (_rentedBuffer == null)
+        {
+            _actualSize = _proto.CalculateSize();
+            _rentedBuffer = ArrayPool<byte>.Shared.Rent(_actualSize);
+
+            // Serialize directly to ArrayPool buffer (zero-copy)
+            using var stream = new MemoryStream(_rentedBuffer, 0, _actualSize, writable: true);
+            _proto.WriteTo(stream);
+        }
+    }
+
     public void Dispose()
     {
         if (_rentedBuffer != null)
         {
             ArrayPool<byte>.Shared.Return(_rentedBuffer);
             _rentedBuffer = null;
+        }
+        if (_zmqMessage != null)
+        {
+            _zmqMessage.Dispose(); // Return to MessagePool
+            _zmqMessage = null;
         }
     }
 }
@@ -157,7 +197,7 @@ public sealed class EmptyPayload : IPayload
 
     private EmptyPayload() { }
 
-    public ReadOnlyMemory<byte> Data => ReadOnlyMemory<byte>.Empty;
+    public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
 
     public void Dispose() { }
 }
@@ -174,7 +214,12 @@ public sealed class RuntimePayloadWrapper : IPayload
         _runtimePayload = runtimePayload;
     }
 
-    public ReadOnlyMemory<byte> Data => _runtimePayload.Data;
+    public ReadOnlySpan<byte> DataSpan => _runtimePayload.DataSpan;
+
+    /// <summary>
+    /// Gets the underlying runtime payload for conversion purposes.
+    /// </summary>
+    internal RuntimePayload.IPayload GetUnderlyingPayload() => _runtimePayload;
 
     public void Dispose()
     {

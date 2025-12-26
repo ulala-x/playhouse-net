@@ -41,6 +41,9 @@ message RouteHeader {
 
     // Is this a reply packet? (true = reply, false = request)
     bool is_reply = 9;
+
+    // Payload size in bytes (for MessagePool.Rent)
+    uint32 payload_size = 10;
 }
 
 // ============================================

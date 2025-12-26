@@ -288,7 +288,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
             throw new ArgumentException($"Message ID too long: {packet.MsgId}");
         }
 
-        var payloadBytes = packet.Payload.Data.ToArray();
+        var payloadBytes = packet.Payload.DataSpan.ToArray();
 
         // 스펙에 따라 ServiceId 제거
         // MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + Payload

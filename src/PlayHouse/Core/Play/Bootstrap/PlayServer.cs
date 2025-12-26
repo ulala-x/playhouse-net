@@ -619,13 +619,13 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     }
 
     /// <inheritdoc/>
-    public async ValueTask SendClientReplyAsync(long sessionId, string msgId, ushort msgSeq, long stageId, ushort errorCode, ReadOnlyMemory<byte> payload)
+    public async ValueTask SendClientReplyAsync(long sessionId, string msgId, ushort msgSeq, long stageId, ushort errorCode, Abstractions.IPayload payload)
     {
         var session = _transportServer?.GetSession(sessionId);
         if (session?.IsConnected == true)
         {
             // Use new zero-copy API - PipeWriter for TCP, ArrayPool for WebSocket
-            await session.SendResponseAsync(msgId, msgSeq, stageId, errorCode, payload.Span);
+            await session.SendResponseAsync(msgId, msgSeq, stageId, errorCode, payload.DataSpan);
         }
         else
         {

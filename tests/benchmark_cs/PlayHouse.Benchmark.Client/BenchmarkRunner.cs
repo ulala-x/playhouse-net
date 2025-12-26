@@ -164,7 +164,7 @@ public class BenchmarkRunner(
         {
             if (packet.MsgId == "BenchmarkReply")
             {
-                var reply = BenchmarkReply.Parser.ParseFrom(packet.Payload.Data.Span);
+                var reply = BenchmarkReply.Parser.ParseFrom(packet.Payload.DataSpan);
 
                 if (timestamps.TryGetValue(reply.Sequence, out var startTicks))
                 {

@@ -217,7 +217,7 @@ internal sealed class XStageSender : XSender, IStageSender
                 0,  // msgSeq = 0 for push messages
                 StageId,
                 0,  // errorCode = 0
-                packet.Payload.Data);
+                packet.Payload);
             return;
         }
 
@@ -231,7 +231,7 @@ internal sealed class XStageSender : XSender, IStageSender
             Sid = sid
         };
 
-        var routePacket = RoutePacket.Of(header, packet.Payload.Data.ToArray());
+        var routePacket = RoutePacket.Of(header, packet.Payload.DataSpan.ToArray());
         _communicator.Send(sessionServerId, routePacket);
         routePacket.Dispose();
     }
@@ -254,7 +254,7 @@ internal sealed class XStageSender : XSender, IStageSender
                 (ushort)CurrentHeader.MsgSeq,
                 StageId,
                 errorCode,
-                ReadOnlyMemory<byte>.Empty);
+                Shared.EmptyPayload.Instance);
         }
         else
         {
@@ -293,7 +293,7 @@ internal sealed class XStageSender : XSender, IStageSender
                 (ushort)CurrentHeader.MsgSeq,
                 StageId,
                 0,
-                reply.Payload.Data);
+                reply.Payload);
         }
         finally
         {

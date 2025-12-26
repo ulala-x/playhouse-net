@@ -14,7 +14,7 @@ public sealed class EmptyPayload : IPayload
 
     private EmptyPayload() { }
 
-    public ReadOnlyMemory<byte> Data => ReadOnlyMemory<byte>.Empty;
+    public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
 
     public void Dispose()
     {
@@ -39,7 +39,7 @@ public sealed class BytePayload : IPayload
         _data = data.ToArray();
     }
 
-    public ReadOnlyMemory<byte> Data => _data;
+    public ReadOnlySpan<byte> DataSpan => _data;
 
     public void Dispose()
     {
@@ -61,7 +61,7 @@ public sealed class ProtoPayload : IPayload
         _proto = proto ?? throw new ArgumentNullException(nameof(proto));
     }
 
-    public ReadOnlyMemory<byte> Data
+    public ReadOnlySpan<byte> DataSpan
     {
         get
         {

@@ -75,7 +75,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
     private void HandleBenchmarkRequest(IActor actor, IPacket packet, Stopwatch sw)
     {
-        var request = BenchmarkRequest.Parser.ParseFrom(packet.Payload.Data.Span);
+        var request = BenchmarkRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 캐시된 페이로드 사용 (없으면 생성)
         var payload = GetOrCreatePayload(request.ResponseSize);
@@ -91,7 +91,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         // 메트릭 기록
         sw.Stop();
-        var messageSize = packet.Payload.Data.Length + reply.CalculateSize();
+        var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
         ServerMetricsCollector.Instance.RecordMessage(sw.ElapsedTicks, messageSize);
     }
 

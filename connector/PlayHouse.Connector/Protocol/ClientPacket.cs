@@ -51,7 +51,7 @@ public class PooledByteBufferPayload : IPayload
         _buffer.Dispose();
     }
 
-    public ReadOnlyMemory<byte> Data => _buffer.AsMemory();
+    public ReadOnlySpan<byte> DataSpan => _buffer.AsMemory().Span;
 
     public PooledByteBuffer GetBuffer()
     {
@@ -114,7 +114,7 @@ public class ClientPacket : IBasePacket
             throw new Exception($"MsgId size is over : {msgIdLength}");
         }
 
-        var body = Payload.Data;
+        var body = Payload.DataSpan;
         int bodySize = body.Length;
 
         if (bodySize > Network.PacketConst.MaxBodySize)
