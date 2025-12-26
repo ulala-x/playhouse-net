@@ -142,7 +142,7 @@ public class RoutePacketTests
         var packet = RoutePacket.Of(header, expectedPayload);
 
         // When
-        var bytes = packet.GetPayloadBytes();
+        var bytes = packet.GetPayloadSpan().ToArray();
 
         // Then
         bytes.Should().BeEquivalentTo(expectedPayload);

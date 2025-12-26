@@ -117,7 +117,8 @@ internal sealed class ZmqPlaySocket : IPlaySocket
                 _socket.Send(headerBytes, SendFlags.SendMore);
 
                 // Frame 2: Payload (마지막 프레임) - Simple and fast
-                _socket.Send(packet.Payload.DataSpan);
+                Net.Zmq.Message message = MessagePool.Shared.Rent(packet.Payload.DataSpan);
+                _socket.Send(message);
             }
             catch (Exception ex)
             {
