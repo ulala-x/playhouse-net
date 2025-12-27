@@ -96,19 +96,13 @@ public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IPayload
 /// - S2C path: Uses ArrayPool via DataSpan (lazy serialization)
 /// - S2S path: Uses MessagePool via MakeMessage() (direct serialization)
 /// </summary>
-public sealed class ProtoPayload : IMessagePayload
+public sealed class ProtoPayload(IMessage proto) : IMessagePayload
 {
-    private readonly IMessage _proto;
     private byte[]? _rentedBuffer;
     private int _actualSize = -1;
     private Message? _message;
-    
-    public ProtoPayload(IMessage proto)
-    {
-        _proto = proto;
-    }
 
-   /// <summary>
+    /// <summary>
     /// S2C path: Lazy serialization to ArrayPool buffer.
     /// </summary>
     public ReadOnlySpan<byte> DataSpan
@@ -118,7 +112,7 @@ public sealed class ProtoPayload : IMessagePayload
             if (_rentedBuffer == null)
             {
                 _rentedBuffer = ArrayPool<byte>.Shared.Rent(Length);
-                _proto.WriteTo(_rentedBuffer.AsSpan(0, Length));
+                proto.WriteTo(_rentedBuffer.AsSpan(0, Length));
             }
             return _rentedBuffer.AsSpan(0, Length);
         }
@@ -130,7 +124,7 @@ public sealed class ProtoPayload : IMessagePayload
         {
             if (_actualSize < 0)
             {
-                 _actualSize = _proto.CalculateSize();
+                 _actualSize = proto.CalculateSize();
             }
             return _actualSize;
         }
@@ -139,7 +133,7 @@ public sealed class ProtoPayload : IMessagePayload
     /// <summary>
     /// Gets the underlying Protobuf message.
     /// </summary>
-    public IMessage GetProto() => _proto;
+    public IMessage GetProto() => proto;
 
     public Message Message => _message!;
 
@@ -150,11 +144,10 @@ public sealed class ProtoPayload : IMessagePayload
     {
         if (_message == null)
         {
-            _message = MessagePool.Shared.Rent(DataSpan);
-            //_message = MessagePool.Shared.Rent(Length);
-            //_proto.WriteTo(_message.Data);
-            //_message.SetActualDataSize(Length);
-            //_proto.WriteTo(_message.Data.Slice(0, Length));
+            //_message = MessagePool.Shared.Rent(DataSpan);
+             _message = MessagePool.Shared.Rent(Length);
+             proto.WriteTo(_message.Data.Slice(0,Length));
+             _message.SetActualDataSize(Length);
         }
     }
 
