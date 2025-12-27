@@ -38,6 +38,8 @@ internal sealed class AsyncBlockPayload : IPayload
     /// </summary>
     public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
 
+    public int Length => DataSpan.Length;
+
     /// <summary>
     /// Disposes the payload. This is a no-op for async block payloads.
     /// </summary>

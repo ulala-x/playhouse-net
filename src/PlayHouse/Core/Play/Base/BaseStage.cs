@@ -339,7 +339,7 @@ internal sealed class BaseStage
         if (_actors.TryGetValue(accountId, out var baseActor))
         {
             // Create RouteHeader for client message reply routing
-            var header = new Runtime.Proto.RouteHeader
+            var header = new RouteHeader
             {
                 MsgSeq = msgSeq,
                 ServiceId = 1, // TODO: Get from config
