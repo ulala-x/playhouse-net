@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Net.Zmq;
+using PlayHouse.Abstractions;
 using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Runtime.ServerMesh.PlaySocket;
@@ -117,8 +118,15 @@ internal sealed class ZmqPlaySocket : IPlaySocket
                 _socket.Send(headerBytes, SendFlags.SendMore);
 
                 // Frame 2: Payload (마지막 프레임) - Simple and fast
-                Net.Zmq.Message message = MessagePool.Shared.Rent(packet.Payload.DataSpan);
-                _socket.Send(message);
+                 if (packet.Payload is IMessagePayload msgPayload)
+                 {
+                     //msgPayload.MakeMessage();
+                     _socket.Send(msgPayload.Message);    
+                 }
+                 else
+                 {
+                     _socket.Send(packet.Payload.DataSpan);    
+                 }
             }
             catch (Exception ex)
             {
@@ -151,7 +159,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         }
 
         // Parse header to get payload_size
-        var header = PlayHouse.Runtime.Proto.RouteHeader.Parser.ParseFrom(_recvHeaderBuffer.AsSpan(0, headerLen));
+        var header = Proto.RouteHeader.Parser.ParseFrom(_recvHeaderBuffer.AsSpan(0, headerLen));
 
         // Frame 2: Payload - Use MessagePool.Rent with payload_size from header
         var payloadSize = (int)header.PayloadSize;
