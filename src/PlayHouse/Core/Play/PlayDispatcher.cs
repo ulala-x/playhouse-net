@@ -218,6 +218,28 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
     }
 
+    /// <summary>
+    /// Routes a client message directly to Stage without creating ClientRouteMessage object.
+    /// This avoids heap allocation for every client message.
+    /// </summary>
+    /// <param name="stageId">Target stage ID.</param>
+    /// <param name="accountId">Account ID for actor routing.</param>
+    /// <param name="msgId">Message ID.</param>
+    /// <param name="msgSeq">Message sequence number.</param>
+    /// <param name="sid">Session ID.</param>
+    /// <param name="payload">Message payload.</param>
+    public void RouteClientMessage(long stageId, string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+    {
+        if (_stages.TryGetValue(stageId, out var baseStage))
+        {
+            baseStage.PostClientRoute(accountId, msgId, msgSeq, sid, payload);
+        }
+        else
+        {
+            _logger?.LogWarning("Stage {StageId} not found for client message {MsgId}", stageId, msgId);
+        }
+    }
+
     #endregion
 
     #region Stage Creation

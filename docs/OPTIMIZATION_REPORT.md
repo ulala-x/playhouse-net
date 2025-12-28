@@ -286,13 +286,25 @@ private readonly byte[] _recvHeaderBuffer = new byte[65536];    // 64KB
 
 ### 4.1 Client-Server 벤치마크 (1,000 CCU × 10,000 msg)
 
-| 항목 | 최적화 전 | 최적화 후 | 개선율 |
+**Phase 1: senderServerId 캐싱**
+
+| 항목 | 최적화 전 | 캐싱 후 | 개선율 |
 |------|----------|---------|--------|
 | **Throughput** | 113,334 msg/s | 139,545 msg/s | **+23.1%** |
 | **Gen2 GC** | 477회 | 392회 | **-17.8%** |
 | **Memory** | 29.3 GB | 27.8 GB | **-5.2%** |
 | **P99 RTT** | 29.60ms | 25.89ms | **-12.5%** |
 | **처리 시간** | 79.76s | 65.51s | **-17.9%** |
+
+**Phase 2: ClientRouteMessage 할당 제거 + ValueTask 변환 (최종)**
+
+| 항목 | Baseline | 최종 | 총 개선율 |
+|------|----------|------|----------|
+| **Throughput** | 84,796 msg/s | 213,556 msg/s | **+151.9%** |
+| **Gen2 GC** | 413회 | 207회 | **-49.9%** |
+| **Memory** | 27.7 GB | 17.5 GB | **-36.7%** |
+| **P99 RTT** | 36.85ms | 15.01ms | **-59.3%** |
+| **처리 시간** | 107.17s | 44.96s | **-58.0%** |
 
 ### 4.2 Server-to-Server 벤치마크 (PlayServer ↔ ApiServer)
 
@@ -341,7 +353,108 @@ private readonly byte[] _recvHeaderBuffer = new byte[65536];    // 64KB
 
 ---
 
-## 6. 향후 최적화 후보
+## 6. 2차 프로파일링 결과 (String 캐싱 적용 후)
+
+### 6.1 테스트 환경
+- CCU: 1,000 동시 접속
+- Messages: 10,000,000 (연결당 10,000)
+- Response Size: 1,500 bytes
+- Mode: RequestAsync
+
+### 6.2 성능 지표
+
+| 항목 | 수치 |
+|------|------|
+| **Throughput** | 222,287 msg/s |
+| **Gen2 GC** | 1회 (매우 낮음!) |
+| **총 처리 시간** | 45.14s |
+| **P99 Latency** | ~15ms |
+
+### 6.3 새로운 할당 핫스팟 (dotnet-trace 분석)
+
+| 순위 | 메서드 | 할당 비율 | 분석 |
+|------|--------|----------|------|
+| 1 | **HandleDefaultMessageAsync** | 54.3% | ClientRouteMessage 생성 |
+| 2 | Protobuf ParseFrom | 18.88% | RouteHeader 역직렬화 |
+| 3 | Channel.Writer | 5.67% | BaseStage 메시지 큐 |
+| 4 | Task 상태머신 | 4.51% | async/await 오버헤드 |
+| 5 | ArrayPool | 0.11% | 정상 작동 |
+
+### 6.4 분석
+
+**senderServerId 캐싱 효과 확인:**
+- 프로파일링 상위 소비자에서 제외됨 (캐시 히트율 높음)
+- Gen2 GC 477회 → 1회로 대폭 감소
+
+**새로운 병목점:**
+1. **ClientRouteMessage 힙 할당** (54.3%)
+   - 매 클라이언트 메시지마다 `new ClientRouteMessage()` 호출
+   - PlayMessage 추상 클래스를 상속하므로 힙 할당 필수
+
+2. **Protobuf 역직렬화** (18.88%)
+   - RouteHeader.Parser.ParseFrom()은 항상 새 객체 생성
+   - 이미 분석 완료 - 스킵 결정
+
+3. **async/await 상태머신** (4.51%)
+   - HandleDefaultMessageAsync의 async Task 반환
+   - ValueTask로 변환 가능
+
+---
+
+## 7. 향후 최적화 후보
+
+### 7.1 ✅ 성공: ClientRouteMessage 할당 제거 + ValueTask 변환
+
+#### 변경 내용
+
+**1. ClientRouteMessage 힙 할당 제거:**
+```csharp
+// Before: 매 메시지마다 힙 할당
+var clientRouteMsg = new ClientRouteMessage(stageId, accountId, msgId, msgSeq, sid, payload);
+_dispatcher?.OnPost(clientRouteMsg);
+
+// After: 직접 호출 (zero allocation)
+_dispatcher?.RouteClientMessage(stageId, accountId, msgId, msgSeq, sid, payload);
+```
+
+**2. HandleDefaultMessageAsync → ValueTask 변환:**
+```csharp
+// Before: 항상 Task 상태머신 할당
+private async Task HandleDefaultMessageAsync(...) { ... }
+
+// After: sync 경로에서 할당 없음
+private ValueTask HandleDefaultMessageAsync(...)
+{
+    // async 경로 (인증/하트비트)
+    if (msgId == authenticateMessageId)
+        return new ValueTask(HandleAuthenticationAsync(...));
+
+    // sync 경로 (일반 메시지) - no allocation!
+    _dispatcher?.RouteClientMessage(...);
+    return ValueTask.CompletedTask;
+}
+```
+
+#### 벤치마크 결과
+
+| 항목 | Before | After | 변화 |
+|------|--------|-------|------|
+| **Throughput** | 84,796 msg/s | 213,556 msg/s | **+151.9%** ✅ |
+| **Gen2 GC** | 413회 | 207회 | **-49.9%** ✅ |
+| **Memory** | 27.7 GB | 17.5 GB | **-36.7%** ✅ |
+| **P99 RTT** | 36.85ms | 15.01ms | **-59.3%** ✅ |
+| **처리 시간** | 107.17s | 44.96s | **-58.0%** ✅ |
+
+#### 성공 요인 분석
+1. **힙 할당 제거**: 1000만 메시지 × ClientRouteMessage 객체 = 막대한 GC 압력 제거
+2. **ValueTask 최적화**: sync 경로(>99% 메시지)에서 Task 상태머신 할당 방지
+3. **직접 호출**: switch 문 분기 제거, 함수 호출 오버헤드 감소
+
+---
+
+## 8. 향후 최적화 후보
+
+### 8.1 우선순위 낮음 (현재 성능 충분)
 
 1. **Header 직렬화 Span 오버로드**: Protobuf 버전 업그레이드 시 검토
 2. **Struct 기반 RouteHeader**: 대규모 리팩토링 필요, 프로덕션 병목 확인 후

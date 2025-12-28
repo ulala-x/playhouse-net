@@ -300,49 +300,50 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
         }
 
         // 기본 핸들러: 에코 및 인증 처리
+        // Note: Ignore returned ValueTask for fire-and-forget behavior
         _ = HandleDefaultMessageAsync(session, msgId, msgSeq, stageId, payload);
     }
 
-    private async Task HandleDefaultMessageAsync(
+    /// <summary>
+    /// Handles default message processing for client messages.
+    /// </summary>
+    /// <remarks>
+    /// Uses ValueTask to avoid Task allocation on sync path (normal message routing).
+    /// Only authentication and heartbeat paths are async.
+    /// </remarks>
+    private ValueTask HandleDefaultMessageAsync(
         ITransportSession session,
         string msgId,
         ushort msgSeq,
         long stageId,
         ReadOnlyMemory<byte> payload)
     {
-        // 인증 요청 처리
+        // 인증 요청 처리 (async path)
         if (msgId == _options.AuthenticateMessageId)
         {
-            await HandleAuthenticationAsync(session, msgSeq, stageId, payload);
-            return;
+            return new ValueTask(HandleAuthenticationAsync(session, msgSeq, stageId, payload));
         }
 
-        // HeartBeat 요청 처리
+        // HeartBeat 요청 처리 (async path)
         if (msgId == "@Heart@Beat@")
         {
             // Use new zero-copy API
-            await session.SendResponseAsync(msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
-            return;
+            return new ValueTask(session.SendResponseAsync(msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty).AsTask());
         }
 
-        // 인증된 세션의 일반 메시지 처리
+        // 인증된 세션의 일반 메시지 처리 (sync path - no allocation)
         if (session.IsAuthenticated && !string.IsNullOrEmpty(session.AccountId))
         {
-            // ClientRouteMessage로 라우팅
-            var clientRouteMsg = new ClientRouteMessage(
-                stageId,
-                session.AccountId,
-                msgId,
-                msgSeq,
-                session.SessionId,
-                payload);
-            _dispatcher?.OnPost(clientRouteMsg);
+            // Direct routing without ClientRouteMessage allocation (perf: avoid heap alloc per message)
+            _dispatcher?.RouteClientMessage(stageId, session.AccountId, msgId, msgSeq, session.SessionId, payload);
         }
         else
         {
             _logger?.LogWarning("Unauthenticated session {SessionId} tried to send message: {MsgId}",
                 session.SessionId, msgId);
         }
+
+        return ValueTask.CompletedTask;
     }
 
     private async Task HandleAuthenticationAsync(
