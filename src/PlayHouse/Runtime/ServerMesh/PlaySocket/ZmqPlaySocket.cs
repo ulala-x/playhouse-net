@@ -23,6 +23,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     private readonly byte[] _recvServerIdBuffer = new byte[1024];      // 1KB - for Recv
     private readonly byte[] _recvHeaderBuffer = new byte[65536];       // 64KB - for Recv
     private readonly ConcurrentDictionary<string, byte[]> _serverIdCache = new(); // Cache for target ServerId
+    private readonly ConcurrentDictionary<int, string> _receivedServerIdCache = new(); // Cache for received ServerId
     private bool _disposed;
     private string? _boundEndpoint;
 
@@ -149,7 +150,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
             return null;
         }
 
-        var senderServerId = Encoding.UTF8.GetString(_recvServerIdBuffer, 0, serverIdLen);
+        var senderServerId = GetOrCacheServerId(_recvServerIdBuffer, serverIdLen);
 
         // Frame 1: RouteHeader (고정 버퍼)
         int headerLen = _socket.Recv(_recvHeaderBuffer);
@@ -171,6 +172,28 @@ internal sealed class ZmqPlaySocket : IPlaySocket
             header,
             payloadMessage,
             senderServerId);
+    }
+
+    /// <summary>
+    /// Gets or caches server ID string to avoid repeated string allocations.
+    /// </summary>
+    private string GetOrCacheServerId(byte[] buffer, int length)
+    {
+        // FNV-1a hash for cache key
+        int hash = unchecked((int)2166136261);
+        for (int i = 0; i < length; i++)
+        {
+            hash = unchecked((hash ^ buffer[i]) * 16777619);
+        }
+
+        if (_receivedServerIdCache.TryGetValue(hash, out var cached))
+        {
+            return cached;
+        }
+
+        var newId = Encoding.UTF8.GetString(buffer, 0, length);
+        _receivedServerIdCache.TryAdd(hash, newId);
+        return newId;
     }
 
     private void ThrowIfDisposed()
