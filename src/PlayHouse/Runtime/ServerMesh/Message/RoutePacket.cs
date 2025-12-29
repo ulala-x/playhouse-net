@@ -62,15 +62,17 @@ public sealed class RoutePacket : IDisposable
     }
 
    /// <summary>
-    /// Creates a route packet from a parsed RouteHeader and ZMQ Message payload.
+    /// Creates a route packet from a parsed RouteHeader and ArrayPool buffer payload.
     /// </summary>
     /// <param name="header">Already parsed RouteHeader.</param>
-    /// <param name="payloadMessage">ZMQ Message containing payload (ownership transferred).</param>
+    /// <param name="payloadBuffer">Rented buffer from ArrayPool (ownership transferred).</param>
+    /// <param name="payloadSize">Actual size of payload data in the buffer.</param>
     /// <param name="senderNid">Sender NID from Frame 0 (optional, sets Header.From).</param>
     /// <returns>A new RuntimeRoutePacket.</returns>
     public static RoutePacket FromFrames(
         RouteHeader header,
-        Net.Zmq.Message payloadMessage,
+        byte[] payloadBuffer,
+        int payloadSize,
         string? senderNid = null)
     {
         if (senderNid != null)
@@ -78,7 +80,7 @@ public sealed class RoutePacket : IDisposable
             header.From = senderNid;
         }
 
-        var payload = new ZmqPayload(payloadMessage);
+        var payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
         return new RoutePacket(header, payload);
     }
 

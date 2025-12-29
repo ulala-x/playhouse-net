@@ -32,12 +32,6 @@ internal sealed class XClientCommunicator : IClientCommunicator
     /// <inheritdoc/>
     public void Send(string targetServerId, RoutePacket packet)
     {
-
-        if (packet.Payload is IMessagePayload msgPayload )
-        {
-            msgPayload.MakeMessage();
-        }
-        
         _queue.Add(() =>
         {
             // Send using new IPlaySocket.Send(serverId, packet) signature

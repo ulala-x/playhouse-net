@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
 using Net.Zmq;
@@ -118,16 +119,8 @@ internal sealed class ZmqPlaySocket : IPlaySocket
                 var headerBytes = packet.SerializeHeader();
                 _socket.Send(headerBytes, SendFlags.SendMore);
 
-                // Frame 2: Payload (마지막 프레임) - Simple and fast
-                 if (packet.Payload is IMessagePayload msgPayload)
-                 {
-                     //msgPayload.MakeMessage();
-                     _socket.Send(msgPayload.Message);    
-                 }
-                 else
-                 {
-                     _socket.Send(packet.Payload.DataSpan);    
-                 }
+                // Frame 2: Payload (마지막 프레임) - Always use DataSpan
+                _socket.Send(packet.Payload.DataSpan);
             }
             catch (Exception ex)
             {
@@ -162,15 +155,16 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         // Parse header to get payload_size
         var header = Proto.RouteHeader.Parser.ParseFrom(_recvHeaderBuffer.AsSpan(0, headerLen));
 
-        // Frame 2: Payload - Use MessagePool.Rent with payload_size from header
+        // Frame 2: Payload - Use ArrayPool.Rent with payload_size from header
         var payloadSize = (int)header.PayloadSize;
-        var payloadMessage = MessagePool.Shared.Rent(payloadSize);
-        _socket.Recv(payloadMessage, payloadSize);
+        var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
+        _socket.Recv(payloadBuffer.AsSpan(0, payloadSize));
 
-        // RoutePacket 생성 (Message 수명 관리 위임)
+        // RoutePacket 생성 (ArrayPool buffer 수명 관리 위임)
         return RoutePacket.FromFrames(
             header,
-            payloadMessage,
+            payloadBuffer,
+            payloadSize,
             senderServerId);
     }
 

@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Buffers;
 using FluentAssertions;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;

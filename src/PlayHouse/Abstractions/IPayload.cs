@@ -2,7 +2,6 @@
 
 using System.Buffers;
 using Google.Protobuf;
-using Net.Zmq;
 
 namespace PlayHouse.Abstractions;
 
@@ -26,40 +25,39 @@ public interface IPayload : IDisposable
     int Length { get; }
 }
 
-
-public interface IMessagePayload : IPayload
-{
-    /// <summary>
-    /// Gets the pre-created ZMQ Message for zero-copy send.
-    /// </summary>
-    Message Message { get; }
-
-    /// <summary>
-    /// Creates the ZMQ Message from MessagePool and serializes data into it.
-    /// Should be called before Send() to avoid copying on send thread.
-    /// </summary>
-    void MakeMessage();
-}
-
 /// <summary>
-/// Payload backed by ZMQ Message (zero-copy, owns message lifetime).
+/// Payload backed by ArrayPool buffer (receive path, owns buffer lifetime).
 /// </summary>
-public sealed class ZmqPayload(Message message) : IPayload
+public sealed class ArrayPoolPayload : IPayload
 {
+    private byte[]? _rentedBuffer;
+    private readonly int _actualSize;
     private bool _disposed;
 
     /// <summary>
-    /// Gets the underlying ZMQ Message.
+    /// Initializes a new instance from ArrayPool.
     /// </summary>
-    private Message Message { get; } = message;
+    /// <param name="rentedBuffer">Rented buffer from ArrayPool.</param>
+    /// <param name="actualSize">Actual data size in the buffer.</param>
+    public ArrayPoolPayload(byte[] rentedBuffer, int actualSize)
+    {
+        _rentedBuffer = rentedBuffer;
+        _actualSize = actualSize;
+    }
 
-    public ReadOnlySpan<byte> DataSpan => Message.Data;
-    public int Length => DataSpan.Length;
+    public ReadOnlySpan<byte> DataSpan => _rentedBuffer.AsSpan(0, _actualSize);
+    public int Length => _actualSize;
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        Message.Dispose();
+
+        if (_rentedBuffer != null)
+        {
+            ArrayPool<byte>.Shared.Return(_rentedBuffer);
+            _rentedBuffer = null;
+        }
     }
 }
 
@@ -93,17 +91,15 @@ public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IPayload
 
 /// <summary>
 /// Payload implementation backed by a Protobuf message.
-/// - S2C path: Uses ArrayPool via DataSpan (lazy serialization)
-/// - S2S path: Uses MessagePool via MakeMessage() (direct serialization)
+/// Uses ArrayPool for serialization (lazy, on-demand).
 /// </summary>
-public sealed class ProtoPayload(IMessage proto) : IMessagePayload
+public sealed class ProtoPayload(IMessage proto) : IPayload
 {
     private byte[]? _rentedBuffer;
     private int _actualSize = -1;
-    private Message? _message;
 
     /// <summary>
-    /// S2C path: Lazy serialization to ArrayPool buffer.
+    /// Lazy serialization to ArrayPool buffer.
     /// </summary>
     public ReadOnlySpan<byte> DataSpan
     {
@@ -135,22 +131,6 @@ public sealed class ProtoPayload(IMessage proto) : IMessagePayload
     /// </summary>
     public IMessage GetProto() => proto;
 
-    public Message Message => _message!;
-
-    /// <summary>
-    /// S2S path: Direct serialization to MessagePool (no DataSpan copy).
-    /// </summary>
-    public void MakeMessage()
-    {
-        if (_message == null)
-        {
-            //_message = MessagePool.Shared.Rent(DataSpan);
-             _message = MessagePool.Shared.Rent(Length);
-             proto.WriteTo(_message.Data.Slice(0,Length));
-             _message.SetActualDataSize(Length);
-        }
-    }
-
     public void Dispose()
     {
         if (_rentedBuffer != null)
@@ -158,8 +138,6 @@ public sealed class ProtoPayload(IMessage proto) : IMessagePayload
             ArrayPool<byte>.Shared.Return(_rentedBuffer);
             _rentedBuffer = null;
         }
-
-        _message?.Dispose();
     }
 }
 
