@@ -39,8 +39,13 @@ var modeOption = new Option<string>(
 
 var httpPortOption = new Option<int>(
     name: "--http-port",
-    description: "Server HTTP API port for metrics",
+    description: "PlayServer HTTP API port for metrics",
     getDefaultValue: () => 5080);
+
+var apiHttpPortOption = new Option<int>(
+    name: "--api-http-port",
+    description: "ApiServer HTTP API port for shutdown",
+    getDefaultValue: () => 5081);
 
 var stageIdOption = new Option<long>(
     name: "--stage-id",
@@ -76,6 +81,7 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark Client")
     responseSizeOption,
     modeOption,
     httpPortOption,
+    apiHttpPortOption,
     stageIdOption,
     targetStageIdOption,
     targetNidOption,
@@ -92,13 +98,14 @@ rootCommand.SetHandler(async (context) =>
     var responseSizes = context.ParseResult.GetValueForOption(responseSizeOption)!;
     var mode = context.ParseResult.GetValueForOption(modeOption)!;
     var httpPort = context.ParseResult.GetValueForOption(httpPortOption);
+    var apiHttpPort = context.ParseResult.GetValueForOption(apiHttpPortOption);
     var stageId = context.ParseResult.GetValueForOption(stageIdOption);
     var targetStageId = context.ParseResult.GetValueForOption(targetStageIdOption);
     var targetNid = context.ParseResult.GetValueForOption(targetNidOption)!;
     var outputDir = context.ParseResult.GetValueForOption(outputDirOption)!;
     var label = context.ParseResult.GetValueForOption(labelOption)!;
 
-    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, httpPort, stageId, targetStageId, targetNid, outputDir, label);
+    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
 });
 
 return await rootCommand.InvokeAsync(args);
@@ -111,6 +118,7 @@ static async Task RunBenchmarkAsync(
     string responseSizesStr,
     string mode,
     int httpPort,
+    int apiHttpPort,
     long stageId,
     long targetStageId,
     string targetNid,
@@ -200,7 +208,7 @@ static async Task RunBenchmarkAsync(
             benchmarkMode == BenchmarkMode.ApiToApi)
         {
             await RunInternalBenchmarkAsync(host, port, messages, requestSize, responseSizesStr,
-                benchmarkMode, targetStageId, targetNid, outputDir, runTimestamp, label);
+                benchmarkMode, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
             return;
         }
 
@@ -271,6 +279,9 @@ static async Task RunBenchmarkAsync(
 
         // 결과 파일 저장
         await SaveResultsToFile(outputDir, runTimestamp, label, connections, messages, requestSize, benchmarkMode, allResults);
+
+        // 서버 종료 요청
+        await ShutdownServersAsync(host, httpPort, apiHttpPort, benchmarkMode);
     }
     catch (Exception ex)
     {
@@ -381,7 +392,9 @@ static async Task RunInternalBenchmarkAsync(
     string targetNid,
     string outputDir,
     DateTime runTimestamp,
-    string label)
+    string label,
+    int httpPort,
+    int apiHttpPort)
 {
     var responseSizes = responseSizesStr
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -465,6 +478,9 @@ static async Task RunInternalBenchmarkAsync(
 
     // 결과 파일 저장
     await SaveInternalBenchmarkResults(outputDir, runTimestamp, label, iterations, requestSize, allResults);
+
+    // 서버 종료 요청
+    await ShutdownServersAsync(host, httpPort, apiHttpPort, mode);
 }
 
 /// <summary>
@@ -711,6 +727,45 @@ static async Task SaveResultsToFile(
     Log.Information("  Log:  {LogPath}", Path.Combine(outputDir, $"benchmark_ss_{timestamp}{labelSuffix}.log"));
     Log.Information("  JSON: {JsonPath}", jsonPath);
     Log.Information("  CSV:  {CsvPath}", csvPath);
+}
+
+/// <summary>
+/// 서버 종료 요청
+/// </summary>
+static async Task ShutdownServersAsync(string host, int httpPort, int apiHttpPort, BenchmarkMode mode)
+{
+    Log.Information("");
+    Log.Information("Sending shutdown requests to servers...");
+
+    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+    // PlayServer 종료 요청 (모든 모드에서 필요)
+    try
+    {
+        await httpClient.PostAsync($"http://{host}:{httpPort}/benchmark/shutdown", null);
+        Log.Information("  PlayServer shutdown initiated (port {Port})", httpPort);
+    }
+    catch (Exception)
+    {
+        // 서버가 이미 종료되었거나 연결 실패 - 무시
+    }
+
+    // ApiServer 종료 요청 (PlayToApi, StageToApi, ApiToApi 모드에서 필요)
+    if (mode == BenchmarkMode.PlayToApi ||
+        mode == BenchmarkMode.StageToApi ||
+        mode == BenchmarkMode.ApiToApi ||
+        mode == BenchmarkMode.All)
+    {
+        try
+        {
+            await httpClient.PostAsync($"http://{host}:{apiHttpPort}/benchmark/shutdown", null);
+            Log.Information("  ApiServer shutdown initiated (port {Port})", apiHttpPort);
+        }
+        catch (Exception)
+        {
+            // 서버가 이미 종료되었거나 연결 실패 - 무시
+        }
+    }
 }
 
 /// <summary>

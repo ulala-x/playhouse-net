@@ -36,8 +36,13 @@ fi
 echo "[1/4] Build completed"
 
 # 기존 서버 프로세스 정리
-pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+echo "[2/4] Cleaning up existing servers..."
+echo "  Checking for existing servers..."
+curl -s -X POST http://localhost:$HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 && echo "  Sent shutdown to port $HTTP_PORT" || true
 sleep 2
+
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+sleep 1
 ZMQ_PORT=16100
 for PORT in $SERVER_PORT $ZMQ_PORT; do
     if lsof -i :$PORT -t >/dev/null 2>&1; then
@@ -47,7 +52,7 @@ for PORT in $SERVER_PORT $ZMQ_PORT; do
 done
 
 # 서버 시작
-echo "[2/4] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
+echo "[3/4] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PORT)..."
 dotnet run --project tests/benchmark_cs/PlayHouse.Benchmark.Server --configuration Release -- \
     --tcp-port $SERVER_PORT \
     --http-port $HTTP_PORT > /tmp/benchmark-server.log 2>&1 &
@@ -64,10 +69,10 @@ if ! ps -p $SERVER_PID > /dev/null; then
     exit 1
 fi
 
-echo "[2/4] Server started successfully"
+echo "[3/4] Server started successfully"
 
 # 클라이언트 실행
-echo "[3/4] Running benchmark client..."
+echo "[4/4] Running benchmark client..."
 dotnet run --project tests/benchmark_cs/PlayHouse.Benchmark.Client --configuration Release -- \
     --server 127.0.0.1:$SERVER_PORT \
     --connections $CONNECTIONS \
@@ -78,17 +83,14 @@ dotnet run --project tests/benchmark_cs/PlayHouse.Benchmark.Client --configurati
 
 CLIENT_EXIT_CODE=$?
 
-# 서버 종료
+# 클라이언트가 서버 종료를 처리하므로 여기서는 대기만 수행
 echo ""
-echo "[4/4] Stopping benchmark server..."
-kill $SERVER_PID 2>/dev/null
-sleep 2
-if ps -p $SERVER_PID > /dev/null 2>&1; then
-    kill -9 $SERVER_PID 2>/dev/null
-fi
-pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+echo "Waiting for server shutdown..."
+sleep 3
 
-echo "[4/4] Server stopped"
+# 혹시 남아있는 프로세스 정리
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null || true
+
 echo ""
 echo "================================================================================"
 echo "Benchmark completed"

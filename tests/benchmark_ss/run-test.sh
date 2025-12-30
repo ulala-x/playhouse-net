@@ -40,9 +40,14 @@ echo ""
 
 # 기존 서버 프로세스 정리
 echo "[2/4] Cleaning up existing server processes..."
+echo "  Checking for existing servers..."
+curl -s -X POST http://localhost:5080/benchmark/shutdown > /dev/null 2>&1 && echo "  Sent shutdown to port 5080" || true
+curl -s -X POST http://localhost:5081/benchmark/shutdown > /dev/null 2>&1 && echo "  Sent shutdown to port 5081" || true
+sleep 2
+
 pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null
 pkill -f "PlayHouse.Benchmark.SS.ApiServer" 2>/dev/null
-sleep 2
+sleep 1
 
 # 포트가 사용 중인지 확인 (PlayServer: 16110, 16100, 5080, 16120, 16200, 5081, ApiServer: 16201)
 ALL_PORTS=(16110 16100 5080 16120 16200 5081 16201)
@@ -89,12 +94,15 @@ for RESPONSE_SIZE in "${RESPONSE_SIZES[@]}"; do
     sleep 2
 done
 
-# 포트 정리
+# 포트 정리 (클라이언트가 종료 처리했으므로 간단한 대기만)
 echo ""
-echo "Cleaning up ports before Play-to-Stage tests..."
-pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null
-pkill -f "PlayHouse.Benchmark.SS.ApiServer" 2>/dev/null
+echo "Waiting for servers shutdown before Play-to-Stage tests..."
 sleep 3
+
+# 혹시 남아있는 프로세스 정리
+pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null || true
+pkill -f "PlayHouse.Benchmark.SS.ApiServer" 2>/dev/null || true
+sleep 1
 
 for PORT in "${ALL_PORTS[@]}"; do
     if lsof -i :$PORT -t >/dev/null 2>&1; then
@@ -134,11 +142,13 @@ echo ""
 echo "[3/4] All tests completed"
 echo ""
 
-# 최종 정리
+# 최종 정리 (클라이언트가 종료 처리했으므로 간단한 대기만)
 echo "[4/4] Final cleanup..."
-pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null
-pkill -f "PlayHouse.Benchmark.SS.ApiServer" 2>/dev/null
-sleep 2
+sleep 3
+
+# 혹시 남아있는 프로세스 정리
+pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null || true
+pkill -f "PlayHouse.Benchmark.SS.ApiServer" 2>/dev/null || true
 
 for PORT in "${ALL_PORTS[@]}"; do
     if lsof -i :$PORT -t >/dev/null 2>&1; then

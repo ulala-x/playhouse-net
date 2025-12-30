@@ -227,6 +227,20 @@ static async Task RunBenchmarkAsync(
 
         // 결과 파일 저장
         await SaveResultsToFile(outputDir, runTimestamp, label, connections, messages, requestSize, benchmarkMode, allResults);
+
+        // 서버 종료 요청
+        Log.Information("");
+        Log.Information("Sending shutdown request to server...");
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        try
+        {
+            await httpClient.PostAsync($"http://{host}:{httpPort}/benchmark/shutdown", null);
+            Log.Information("Server shutdown initiated");
+        }
+        catch (Exception)
+        {
+            // 서버가 이미 종료되었거나 연결 실패 - 무시
+        }
     }
     catch (Exception ex)
     {
@@ -465,6 +479,20 @@ static async Task RunBothModesAsync(
     // 결과 파일 저장
     await SaveComparisonResults(outputDir, runTimestamp, label, connections, messages, requestSize,
         responseSizes, resultsRequestAsync, resultsRequestCallback);
+
+    // 서버 종료 요청
+    Log.Information("");
+    Log.Information("Sending shutdown request to server...");
+    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    try
+    {
+        await httpClient.PostAsync($"http://{host}:{httpPort}/benchmark/shutdown", null);
+        Log.Information("Server shutdown initiated");
+    }
+    catch (Exception)
+    {
+        // 서버가 이미 종료되었거나 연결 실패 - 무시
+    }
 }
 
 /// <summary>
