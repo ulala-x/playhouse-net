@@ -37,28 +37,6 @@ public class Header
     }
 }
 
-public class PooledByteBufferPayload : IPayload
-{
-    private readonly PooledByteBuffer _buffer;
-
-    public PooledByteBufferPayload(PooledByteBuffer buffer)
-    {
-        _buffer = buffer;
-    }
-
-    public void Dispose()
-    {
-        _buffer.Dispose();
-    }
-
-    public ReadOnlySpan<byte> DataSpan => _buffer.AsMemory().Span;
-
-    public PooledByteBuffer GetBuffer()
-    {
-        return _buffer;
-    }
-}
-
 public class ClientPacket : IBasePacket
 {
     public IPayload Payload;
@@ -106,7 +84,7 @@ public class ClientPacket : IBasePacket
     /// 8byte  stageId
     /// ToServer Header Size = 4+1+2+8+N = 15 + n
     /// </summary>
-    internal void GetBytes(PooledByteBuffer buffer)
+    internal void GetBytes(PacketBuffer buffer)
     {
         int msgIdLength = Header.MsgId.Length;
         if (msgIdLength > Network.PacketConst.MsgIdLimit)
@@ -123,12 +101,11 @@ public class ClientPacket : IBasePacket
         }
 
         buffer.WriteInt32(bodySize); // body size 4byte
-        // ServiceId 제거
-        buffer.Write(Header.MsgId); // msgId string
-        buffer.WriteInt16(Header.MsgSeq); // msgseq
-        buffer.WriteInt64(Header.StageId);
+        buffer.WriteString(Header.MsgId); // msgId string with length prefix
+        buffer.WriteUInt16(Header.MsgSeq); // msgseq
+        buffer.WriteInt64(Header.StageId); // stageId
 
-        buffer.Write(Payload.DataSpan);
+        buffer.WriteBytes(Payload.DataSpan); // payload
     }
 
     internal void SetMsgSeq(ushort seq)
