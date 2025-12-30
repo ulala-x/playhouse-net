@@ -1,6 +1,7 @@
 #nullable enable
 
 using PlayHouse.Bootstrap;
+using PlayHouse.Core.Api.Bootstrap;
 using Xunit;
 
 namespace PlayHouse.Tests.Integration.Infrastructure.Fixtures;

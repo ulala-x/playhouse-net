@@ -52,3 +52,47 @@ message SSBenchmarkReply {
     int32 sequence = 1;
     bytes payload = 2;
 }
+
+// ============================================
+// 서버 내부 반복 벤치마크 (New)
+// ============================================
+
+// 서버 간 호출 유형
+enum SSCallType {
+    STAGE_TO_API = 0;
+    STAGE_TO_STAGE = 1;
+    API_TO_API = 2;
+}
+
+// 통신 모드
+enum SSCommMode {
+    REQUEST_ASYNC = 0;
+    REQUEST_CALLBACK = 1;
+}
+
+// 벤치마크 시작 요청 (클라이언트 → 서버 트리거)
+message StartSSBenchmarkRequest {
+    int32 iterations = 1;
+    int32 request_size = 2;
+    int32 response_size = 3;
+    SSCallType call_type = 4;
+    SSCommMode comm_mode = 5;
+    string target_nid = 6;       // StageToStage용
+    int64 target_stage_id = 7;   // StageToStage용
+    string target_api_nid = 8;   // ApiToApi용
+}
+
+// 벤치마크 결과 응답 (서버 → 클라이언트)
+message StartSSBenchmarkReply {
+    SSCallType call_type = 1;
+    SSCommMode comm_mode = 2;
+    int32 total_iterations = 3;
+    int32 success_count = 4;
+    int32 failed_count = 5;
+    double elapsed_seconds = 6;
+    double throughput_per_sec = 7;
+    double latency_mean_ms = 8;
+    double latency_p50_ms = 9;
+    double latency_p95_ms = 10;
+    double latency_p99_ms = 11;
+}

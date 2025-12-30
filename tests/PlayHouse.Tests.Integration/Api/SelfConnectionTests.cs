@@ -2,6 +2,7 @@
 
 using FluentAssertions;
 using PlayHouse.Bootstrap;
+using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Core.Shared;
 using PlayHouse.Tests.Integration.Infrastructure;
 using PlayHouse.Tests.Integration.Proto;

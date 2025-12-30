@@ -1,6 +1,7 @@
 #nullable enable
 
 using PlayHouse.Abstractions.Api;
+using PlayHouse.Core.Api.Bootstrap;
 
 namespace PlayHouse.Bootstrap;
 

@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text;
 using System.Text.Json;
 using PlayHouse.Benchmark.SS.Client;
+using PlayHouse.Benchmark.SS.Shared.Proto;
 using Serilog;
 using Serilog.Events;
 
@@ -33,8 +34,8 @@ var responseSizeOption = new Option<string>(
 
 var modeOption = new Option<string>(
     name: "--mode",
-    description: "Benchmark mode: play-to-api or play-to-stage",
-    getDefaultValue: () => "play-to-api");
+    description: "Benchmark mode: play-to-api, play-to-stage, stage-to-api, stage-to-stage, api-to-api, or all",
+    getDefaultValue: () => "all");
 
 var httpPortOption = new Option<int>(
     name: "--http-port",
@@ -161,7 +162,11 @@ static async Task RunBenchmarkAsync(
         {
             "play-to-api" => BenchmarkMode.PlayToApi,
             "play-to-stage" => BenchmarkMode.PlayToStage,
-            _ => BenchmarkMode.PlayToApi
+            "stage-to-api" => BenchmarkMode.StageToApi,
+            "stage-to-stage" => BenchmarkMode.StageToStage,
+            "api-to-api" => BenchmarkMode.ApiToApi,
+            "all" => BenchmarkMode.All,
+            _ => BenchmarkMode.All
         };
 
         // 배너 출력
@@ -188,6 +193,18 @@ static async Task RunBenchmarkAsync(
         Log.Information("Output: {OutputDir}", Path.GetFullPath(outputDir));
         Log.Information("================================================================================");
 
+        // 신규 내부 반복 모드 처리
+        if (benchmarkMode == BenchmarkMode.All ||
+            benchmarkMode == BenchmarkMode.StageToApi ||
+            benchmarkMode == BenchmarkMode.StageToStage ||
+            benchmarkMode == BenchmarkMode.ApiToApi)
+        {
+            await RunInternalBenchmarkAsync(host, port, messages, requestSize, responseSizesStr,
+                benchmarkMode, targetStageId, targetNid, outputDir, runTimestamp, label);
+            return;
+        }
+
+        // 구 방식 (PlayToApi, PlayToStage)
         var serverMetricsClient = new ServerMetricsClient(host, httpPort);
 
         // 각 응답 크기별 결과 저장
@@ -348,6 +365,237 @@ static void LogResults(
     }
 
     Log.Information("================================================================================");
+}
+
+/// <summary>
+/// 신규 내부 반복 벤치마크 실행 (서버 측에서 반복)
+/// </summary>
+static async Task RunInternalBenchmarkAsync(
+    string host,
+    int port,
+    int iterations,
+    int requestSize,
+    string responseSizesStr,
+    BenchmarkMode mode,
+    long targetStageId,
+    string targetNid,
+    string outputDir,
+    DateTime runTimestamp,
+    string label)
+{
+    var responseSizes = responseSizesStr
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(s => int.TryParse(s, out var v) ? v : 256)
+        .ToArray();
+
+    if (responseSizes.Length == 0)
+    {
+        responseSizes = new[] { 256 };
+    }
+
+    // 테스트할 조합 결정
+    var testCases = new List<(SSCallType CallType, SSCommMode CommMode, string Name)>();
+
+    if (mode == BenchmarkMode.All)
+    {
+        // 3가지 호출 유형 x 2가지 통신 모드 = 6가지 테스트
+        testCases.Add((SSCallType.StageToApi, SSCommMode.RequestAsync, "Stage → API (RequestAsync)"));
+        testCases.Add((SSCallType.StageToApi, SSCommMode.RequestCallback, "Stage → API (RequestCallback)"));
+        testCases.Add((SSCallType.StageToStage, SSCommMode.RequestAsync, "Stage → Stage (RequestAsync)"));
+        testCases.Add((SSCallType.StageToStage, SSCommMode.RequestCallback, "Stage → Stage (RequestCallback)"));
+        testCases.Add((SSCallType.ApiToApi, SSCommMode.RequestAsync, "API → API (RequestAsync)"));
+        testCases.Add((SSCallType.ApiToApi, SSCommMode.RequestCallback, "API → API (RequestCallback)"));
+    }
+    else if (mode == BenchmarkMode.StageToApi)
+    {
+        testCases.Add((SSCallType.StageToApi, SSCommMode.RequestAsync, "Stage → API (RequestAsync)"));
+        testCases.Add((SSCallType.StageToApi, SSCommMode.RequestCallback, "Stage → API (RequestCallback)"));
+    }
+    else if (mode == BenchmarkMode.StageToStage)
+    {
+        testCases.Add((SSCallType.StageToStage, SSCommMode.RequestAsync, "Stage → Stage (RequestAsync)"));
+        testCases.Add((SSCallType.StageToStage, SSCommMode.RequestCallback, "Stage → Stage (RequestCallback)"));
+    }
+    else if (mode == BenchmarkMode.ApiToApi)
+    {
+        testCases.Add((SSCallType.ApiToApi, SSCommMode.RequestAsync, "API → API (RequestAsync)"));
+        testCases.Add((SSCallType.ApiToApi, SSCommMode.RequestCallback, "API → API (RequestCallback)"));
+    }
+
+    var allResults = new Dictionary<string, List<StartSSBenchmarkReply>>();
+
+    foreach (var (callType, commMode, name) in testCases)
+    {
+        Log.Information("");
+        Log.Information(">>> Testing: {Name} <<<", name);
+
+        var results = new List<StartSSBenchmarkReply>();
+
+        foreach (var responseSize in responseSizes)
+        {
+            if (responseSizes.Length > 1)
+            {
+                Log.Information("  Response Size: {ResponseSize:N0} bytes", responseSize);
+            }
+
+            var reply = await BenchmarkRunner.RunInternalBenchmarkAsync(
+                host, port, iterations, requestSize, responseSize,
+                callType, commMode, 1000, targetStageId, targetNid, "api-2");
+
+            if (reply != null)
+            {
+                results.Add(reply);
+                Log.Information("  Success: {Success}/{Total}, TPS: {TPS:N0}/s, P99: {P99:F2}ms",
+                    reply.SuccessCount, reply.TotalIterations, reply.ThroughputPerSec, reply.LatencyP99Ms);
+            }
+            else
+            {
+                Log.Warning("  Failed to execute benchmark");
+            }
+
+            await Task.Delay(500); // 잠시 대기
+        }
+
+        allResults[name] = results;
+    }
+
+    // 비교 결과 출력
+    Log.Information("");
+    LogInternalBenchmarkComparison(iterations, requestSize, responseSizes, allResults);
+
+    // 결과 파일 저장
+    await SaveInternalBenchmarkResults(outputDir, runTimestamp, label, iterations, requestSize, allResults);
+}
+
+/// <summary>
+/// 내부 반복 벤치마크 비교 결과 출력
+/// </summary>
+static void LogInternalBenchmarkComparison(
+    int iterations,
+    int requestSize,
+    int[] responseSizes,
+    Dictionary<string, List<StartSSBenchmarkReply>> allResults)
+{
+    Log.Information("================================================================================");
+    Log.Information("Server-to-Server Benchmark Results");
+    Log.Information("================================================================================");
+    Log.Information("Config: {Iterations:N0} iterations, Request: {RequestSize:N0}B", iterations, requestSize);
+    Log.Information("");
+
+    // 호출 유형별로 그룹화
+    var groups = new Dictionary<string, List<(string Name, List<StartSSBenchmarkReply> Results)>>();
+    groups["Stage → API"] = new();
+    groups["Stage → Stage"] = new();
+    groups["API → API"] = new();
+
+    foreach (var (name, results) in allResults)
+    {
+        if (name.StartsWith("Stage → API"))
+            groups["Stage → API"].Add((name, results));
+        else if (name.StartsWith("Stage → Stage"))
+            groups["Stage → Stage"].Add((name, results));
+        else if (name.StartsWith("API → API"))
+            groups["API → API"].Add((name, results));
+    }
+
+    foreach (var (groupName, tests) in groups)
+    {
+        if (tests.Count == 0) continue;
+
+        Log.Information("[{GroupName}]", groupName);
+
+        if (tests.Count == 2 && responseSizes.Length == 1)
+        {
+            // RequestAsync vs RequestCallback 비교 (단일 응답 크기)
+            var requestAsync = tests.FirstOrDefault(t => t.Name.Contains("RequestAsync")).Results?.FirstOrDefault();
+            var requestCallback = tests.FirstOrDefault(t => t.Name.Contains("RequestCallback")).Results?.FirstOrDefault();
+
+            if (requestAsync != null && requestCallback != null)
+            {
+                var tpsDiff = ((requestCallback.ThroughputPerSec - requestAsync.ThroughputPerSec) / requestAsync.ThroughputPerSec) * 100;
+                var p99Diff = ((requestCallback.LatencyP99Ms - requestAsync.LatencyP99Ms) / requestAsync.LatencyP99Ms) * 100;
+
+                Log.Information("               | RequestAsync | RequestCallback | Diff");
+                Log.Information("---------------|--------------|-----------------|-------");
+                Log.Information("Throughput     | {RA,9:N0}/s | {RC,12:N0}/s | {Diff,6:+0.0;-0.0}%",
+                    requestAsync.ThroughputPerSec, requestCallback.ThroughputPerSec, tpsDiff);
+                Log.Information("P99 Latency    | {RA,9:F2}ms | {RC,12:F2}ms | {Diff,6:+0.0;-0.0}%",
+                    requestAsync.LatencyP99Ms, requestCallback.LatencyP99Ms, p99Diff);
+            }
+        }
+        else
+        {
+            // 여러 응답 크기 또는 단일 모드
+            foreach (var (name, results) in tests)
+            {
+                Log.Information("  {Name}:", name);
+                foreach (var r in results)
+                {
+                    Log.Information("    TPS: {TPS,8:N0}/s, P99: {P99,6:F2}ms",
+                        r.ThroughputPerSec, r.LatencyP99Ms);
+                }
+            }
+        }
+
+        Log.Information("");
+    }
+
+    Log.Information("================================================================================");
+}
+
+/// <summary>
+/// 내부 반복 벤치마크 결과 파일 저장
+/// </summary>
+static async Task SaveInternalBenchmarkResults(
+    string outputDir,
+    DateTime runTimestamp,
+    string label,
+    int iterations,
+    int requestSize,
+    Dictionary<string, List<StartSSBenchmarkReply>> allResults)
+{
+    var timestamp = runTimestamp.ToString("yyyyMMdd_HHmmss");
+    var labelSuffix = string.IsNullOrEmpty(label) ? "" : $"_{label}";
+
+    // JSON 결과 파일
+    var jsonFileName = $"benchmark_ss_internal_{timestamp}{labelSuffix}.json";
+    var jsonPath = Path.Combine(outputDir, jsonFileName);
+
+    var jsonResult = new
+    {
+        Timestamp = runTimestamp.ToString("yyyy-MM-dd HH:mm:ss"),
+        Label = label,
+        Config = new
+        {
+            Iterations = iterations,
+            RequestSizeBytes = requestSize
+        },
+        Results = allResults.Select(kv => new
+        {
+            TestName = kv.Key,
+            Results = kv.Value.Select(r => new
+            {
+                CallType = r.CallType.ToString(),
+                CommMode = r.CommMode.ToString(),
+                TotalIterations = r.TotalIterations,
+                SuccessCount = r.SuccessCount,
+                FailedCount = r.FailedCount,
+                ElapsedSeconds = r.ElapsedSeconds,
+                ThroughputPerSec = r.ThroughputPerSec,
+                LatencyMeanMs = r.LatencyMeanMs,
+                LatencyP50Ms = r.LatencyP50Ms,
+                LatencyP95Ms = r.LatencyP95Ms,
+                LatencyP99Ms = r.LatencyP99Ms
+            }).ToArray()
+        }).ToArray()
+    };
+
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+    await File.WriteAllTextAsync(jsonPath, System.Text.Json.JsonSerializer.Serialize(jsonResult, jsonOptions));
+
+    Log.Information("");
+    Log.Information("Results saved to:");
+    Log.Information("  JSON: {JsonPath}", jsonPath);
 }
 
 static async Task SaveResultsToFile(

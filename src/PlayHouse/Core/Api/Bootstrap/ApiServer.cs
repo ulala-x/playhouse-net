@@ -3,7 +3,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
-using PlayHouse.Core.Api;
+using PlayHouse.Bootstrap;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh;
@@ -11,7 +11,7 @@ using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 
-namespace PlayHouse.Bootstrap;
+namespace PlayHouse.Core.Api.Bootstrap;
 
 /// <summary>
 /// API Server 인스턴스.
@@ -33,11 +33,6 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
 
     private bool _isRunning;
     private bool _disposed;
-
-    /// <summary>
-    /// 서버가 실행 중인지 여부.
-    /// </summary>
-    public bool IsRunning => _isRunning;
 
     /// <summary>
     /// API Sender 인터페이스.
@@ -101,7 +96,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
             _serviceProvider);
 
         // ApiSender 생성
-        ApiSender = new Core.Api.ApiSender(
+        ApiSender = new ApiSender(
             new CommunicatorAdapter(_communicator),
             _requestCache,
             _options.ServiceId,
@@ -116,8 +111,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
             var myServerInfo = new XServerInfo(
                 _options.ServiceId,
                 _options.ServerId,
-                _options.BindEndpoint,
-                ServerState.Running);
+                _options.BindEndpoint);
 
             _addressResolver = new ServerAddressResolver(
                 myServerInfo,
@@ -206,40 +200,26 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     /// <summary>
     /// Communicator를 IClientCommunicator로 래핑.
     /// </summary>
-    private sealed class CommunicatorAdapter : IClientCommunicator
+    private sealed class CommunicatorAdapter(PlayCommunicator communicator) : IClientCommunicator
     {
-        private readonly PlayCommunicator _communicator;
-
-        public CommunicatorAdapter(PlayCommunicator communicator)
-        {
-            _communicator = communicator;
-        }
-
-        public string ServerId => _communicator.ServerId;
-
         public void Send(string targetNid, RoutePacket packet)
         {
-            _communicator.Send(targetNid, packet);
+            communicator.Send(targetNid, packet);
         }
 
         public void Connect(string targetNid, string address)
         {
-            _communicator.Connect(targetNid, address);
+            communicator.Connect(targetNid, address);
         }
 
         public void Disconnect(string targetNid, string endpoint)
         {
-            _communicator.Disconnect(targetNid, endpoint);
-        }
-
-        public void Communicate()
-        {
-            // Thread management is handled internally by PlayCommunicator.Start()
+            communicator.Disconnect(targetNid, endpoint);
         }
 
         public void Stop()
         {
-            _communicator.Stop();
+            communicator.Stop();
         }
     }
 }

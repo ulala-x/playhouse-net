@@ -1,5 +1,7 @@
 using System.CommandLine;
 using System.Runtime;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Abstractions;
 using PlayHouse.Benchmark.SS.ApiServer;
 using PlayHouse.Bootstrap;
@@ -23,6 +25,11 @@ var zmqPortOption = new Option<int>(
     description: "ZMQ port for server-to-server communication",
     getDefaultValue: () => 16201);
 
+var httpPortOption = new Option<int>(
+    name: "--http-port",
+    description: "HTTP API port for metrics",
+    getDefaultValue: () => 5081);
+
 var playNidOption = new Option<string>(
     name: "--play-nid",
     description: "PlayServer NID to connect to",
@@ -41,29 +48,33 @@ var logDirOption = new Option<string>(
 var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark API Server")
 {
     zmqPortOption,
+    httpPortOption,
     playNidOption,
     playPortOption,
     logDirOption
 };
 
 var zmqPort = 0;
+var httpPort = 0;
 var playNid = "play-1";
 var playPort = 16100;
 var logDir = "logs";
 
-rootCommand.SetHandler((zmq, pnid, pport, logDirectory) =>
+rootCommand.SetHandler((zmq, http, pnid, pport, logDirectory) =>
 {
     zmqPort = zmq;
+    httpPort = http;
     playNid = pnid;
     playPort = pport;
     logDir = logDirectory;
-}, zmqPortOption, playNidOption, playPortOption, logDirOption);
+}, zmqPortOption, httpPortOption, playNidOption, playPortOption, logDirOption);
 
 await rootCommand.InvokeAsync(args);
 
 if (zmqPort == 0)
 {
     zmqPort = 16201;
+    httpPort = 5081;
     playPort = 16100;
 }
 
@@ -91,10 +102,16 @@ try
     Log.Information("PlayHouse Server-to-Server Benchmark API Server");
     Log.Information("================================================================================");
     Log.Information("ZMQ Port (server-to-server): {ZmqPort}", zmqPort);
+    Log.Information("HTTP API Port: {HttpPort}", httpPort);
     Log.Information("PlayServer NID: {PlayNid}", playNid);
     Log.Information("PlayServer ZMQ Port: {PlayPort}", playPort);
     Log.Information("Log Directory: {LogDir}", Path.GetFullPath(logDir));
+    Log.Information("HTTP API Endpoints:");
+    Log.Information("  POST http://localhost:{HttpPort}/benchmark/shutdown - Shutdown server", httpPort);
     Log.Information("================================================================================");
+
+    // 종료 토큰 생성
+    var cts = new CancellationTokenSource();
 
     // ApiServer 구성
     var apiServer = new ApiServerBootstrap()
@@ -106,6 +123,21 @@ try
         })
         .UseController<BenchmarkApiController>()
         .Build();
+
+    // HTTP API 서버 구성
+    Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://0.0.0.0:{httpPort}");
+    var builder = WebApplication.CreateBuilder(args);
+
+    // Serilog를 ASP.NET Core에 통합
+    builder.Host.UseSerilog();
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
+
+    // CancellationTokenSource를 DI에 등록
+    builder.Services.AddSingleton(cts);
+
+    var app = builder.Build();
+    app.MapControllers();
 
     // MessagePool Prewarm (런타임 할당 방지)
     Net.Zmq.MessagePool.Shared.Prewarm(Net.Zmq.MessageSize.K2, 500);
@@ -120,10 +152,12 @@ try
     apiServer.Connect(playNid, playEndpoint);
     Log.Information("Connected to PlayServer (NID: {PlayNid}, Endpoint: {PlayEndpoint})", playNid, playEndpoint);
 
+    // HTTP API 서버 시작
+    await app.StartAsync();
+    Log.Information("HTTP API server started on port {HttpPort}", httpPort);
     Log.Information("Press Ctrl+C to stop...");
 
     // 종료 대기
-    var cts = new CancellationTokenSource();
     Console.CancelKeyPress += (s, e) =>
     {
         e.Cancel = true;
@@ -140,6 +174,7 @@ try
     }
 
     // 정리
+    await app.StopAsync();
     await apiServer.StopAsync();
 
     Log.Information("API Server stopped.");

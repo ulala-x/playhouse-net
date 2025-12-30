@@ -145,6 +145,7 @@ try
     Log.Information("HTTP API Endpoints:");
     Log.Information("  GET  http://localhost:{HttpPort}/benchmark/stats - Get metrics", httpPort);
     Log.Information("  POST http://localhost:{HttpPort}/benchmark/reset - Reset metrics", httpPort);
+    Log.Information("  POST http://localhost:{HttpPort}/benchmark/shutdown - Shutdown server", httpPort);
     Log.Information("================================================================================");
 
     // PlayServer 구성
@@ -169,6 +170,9 @@ try
         .UseActor<BenchmarkActor>()
         .Build();
 
+    // 종료 토큰 생성
+    var cts = new CancellationTokenSource();
+
     // HTTP API 서버 구성
     Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://0.0.0.0:{httpPort}");
     var builder = WebApplication.CreateBuilder(args);
@@ -177,6 +181,9 @@ try
     builder.Host.UseSerilog();
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
+
+    // CancellationTokenSource를 DI에 등록
+    builder.Services.AddSingleton(cts);
 
     var app = builder.Build();
     app.MapControllers();
@@ -208,7 +215,6 @@ try
     Log.Information("Press Ctrl+C to stop...");
 
     // 종료 대기
-    var cts = new CancellationTokenSource();
     Console.CancelKeyPress += (s, e) =>
     {
         e.Cancel = true;
