@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using PlayHouse.Connector.Protocol;
 
 namespace PlayHouse.Connector.Network;
 
@@ -15,9 +16,9 @@ public interface IConnection : IAsyncDisposable
     bool IsConnected { get; }
 
     /// <summary>
-    /// Raised when data is received from the server.
+    /// Raised when a complete packet is received from the server.
     /// </summary>
-    event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
+    event EventHandler<IPacket>? PacketReceived;
 
     /// <summary>
     /// Raised when the connection is disconnected.

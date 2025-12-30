@@ -287,17 +287,4 @@ public class ConnectorTests
         action.Should().NotThrow("MainThreadAction은 항상 안전하게 호출 가능해야 함");
     }
 
-    [Fact(DisplayName = "ClearCache - 초기 상태에서 호출해도 예외 없음")]
-    public void ClearCache_InitialState_NoException()
-    {
-        // Given (전제조건)
-        var connector = new ClientConnector();
-        connector.Init(new ConnectorConfig());
-
-        // When (행동)
-        var action = () => connector.ClearCache();
-
-        // Then (결과)
-        action.Should().NotThrow("ClearCache는 항상 안전하게 호출 가능해야 함");
-    }
 }

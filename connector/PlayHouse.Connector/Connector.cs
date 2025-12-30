@@ -252,15 +252,4 @@ public sealed class Connector : IConnectorCallback
 
     #endregion
 
-    #region Cache
-
-    /// <summary>
-    /// 캐시 정리
-    /// </summary>
-    public void ClearCache()
-    {
-        _clientNetwork?.ClearCache();
-    }
-
-    #endregion
 }

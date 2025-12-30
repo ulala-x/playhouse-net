@@ -2,16 +2,21 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PlayHouse.Connector.Infrastructure.Buffers;
+using PlayHouse.Connector.Protocol;
 
 namespace PlayHouse.Connector.Network;
 
 /// <summary>
 /// TCP 기반 연결 구현
+/// Zero-copy receive with RingBuffer and direct packet parsing
 /// </summary>
 internal sealed class TcpConnection : IConnection
 {
@@ -26,7 +31,11 @@ internal sealed class TcpConnection : IConnection
     private const int SendBufferSize = 65536;
     private const int ReceiveBufferSize = 65536;
 
-    public event EventHandler<ReadOnlyMemory<byte>>? DataReceived;
+    // Zero-copy receive buffer
+    private readonly RingBuffer _receiveBuffer = new(ReceiveBufferSize);
+    private int _expectedPacketSize = -1;
+
+    public event EventHandler<IPacket>? PacketReceived;
     public event EventHandler<Exception?>? Disconnected;
 
     public bool IsConnected => _isConnected;
@@ -156,14 +165,15 @@ internal sealed class TcpConnection : IConnection
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
+        var tempBuffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         try
         {
             while (!cancellationToken.IsCancellationRequested && _isConnected && _stream != null)
             {
                 try
                 {
-                    var bytesRead = await _stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                    // Read directly into temp buffer
+                    var bytesRead = await _stream.ReadAsync(tempBuffer, cancellationToken).ConfigureAwait(false);
 
                     if (bytesRead == 0)
                     {
@@ -171,11 +181,11 @@ internal sealed class TcpConnection : IConnection
                         break;
                     }
 
-                    // Create a copy for the consumer to own
-                    var data = new byte[bytesRead];
-                    new ReadOnlySpan<byte>(buffer, 0, bytesRead).CopyTo(data);
+                    // Write to RingBuffer (zero-copy)
+                    _receiveBuffer.WriteBytes(new ReadOnlySpan<byte>(tempBuffer, 0, bytesRead));
 
-                    DataReceived?.Invoke(this, new ReadOnlyMemory<byte>(data));
+                    // Parse packets from RingBuffer
+                    ProcessReceiveBuffer();
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -191,8 +201,149 @@ internal sealed class TcpConnection : IConnection
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            ArrayPool<byte>.Shared.Return(tempBuffer);
         }
+    }
+
+    private void ProcessReceiveBuffer()
+    {
+        while (true)
+        {
+            // Read packet size header (4 bytes)
+            if (_expectedPacketSize == -1)
+            {
+                if (_receiveBuffer.Count < 4)
+                {
+                    break;
+                }
+
+                // Peek and parse packet size (zero-copy)
+                _expectedPacketSize = ReadInt32LittleEndian(_receiveBuffer);
+
+                if (_expectedPacketSize <= 0 || _expectedPacketSize > 10 * 1024 * 1024)
+                {
+                    throw new InvalidOperationException($"Invalid packet size: {_expectedPacketSize}");
+                }
+
+                // Consume the size header
+                _receiveBuffer.Consume(4);
+            }
+
+            // Check if we have the complete packet
+            if (_receiveBuffer.Count < _expectedPacketSize)
+            {
+                break;
+            }
+
+            // Parse packet from RingBuffer
+            try
+            {
+                var packet = ParseServerPacket(_receiveBuffer, _expectedPacketSize);
+                _receiveBuffer.Consume(_expectedPacketSize);
+                _expectedPacketSize = -1;
+
+                // Raise event
+                PacketReceived?.Invoke(this, packet);
+            }
+            catch (Exception)
+            {
+                // Parsing error - skip this packet
+                _receiveBuffer.Consume(_expectedPacketSize);
+                _expectedPacketSize = -1;
+            }
+        }
+    }
+
+    private static int ReadInt32LittleEndian(RingBuffer buffer)
+    {
+        // Handle wrapped case
+        if (buffer.Count < 4)
+        {
+            throw new InvalidOperationException("Not enough data");
+        }
+
+        Span<byte> temp = stackalloc byte[4];
+        for (int i = 0; i < 4; i++)
+        {
+            temp[i] = buffer.PeekByte(i);
+        }
+        return BinaryPrimitives.ReadInt32LittleEndian(temp);
+    }
+
+    private static IPacket ParseServerPacket(RingBuffer buffer, int packetSize)
+    {
+        int offset = 0;
+
+        // Protocol: MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) + Payload
+
+        // MsgIdLen (1 byte)
+        var msgIdLen = buffer.PeekByte(offset++);
+
+        // MsgId (N bytes)
+        Span<byte> msgIdBytes = stackalloc byte[msgIdLen];
+        for (int i = 0; i < msgIdLen; i++)
+        {
+            msgIdBytes[i] = buffer.PeekByte(offset++);
+        }
+        var msgId = Encoding.UTF8.GetString(msgIdBytes);
+
+        // MsgSeq (2 bytes)
+        Span<byte> msgSeqBytes = stackalloc byte[2];
+        msgSeqBytes[0] = buffer.PeekByte(offset++);
+        msgSeqBytes[1] = buffer.PeekByte(offset++);
+        var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(msgSeqBytes);
+
+        // StageId (8 bytes)
+        Span<byte> stageIdBytes = stackalloc byte[8];
+        for (int i = 0; i < 8; i++)
+        {
+            stageIdBytes[i] = buffer.PeekByte(offset++);
+        }
+        var stageId = BinaryPrimitives.ReadInt64LittleEndian(stageIdBytes);
+
+        // ErrorCode (2 bytes)
+        Span<byte> errorCodeBytes = stackalloc byte[2];
+        errorCodeBytes[0] = buffer.PeekByte(offset++);
+        errorCodeBytes[1] = buffer.PeekByte(offset++);
+        var errorCode = BinaryPrimitives.ReadUInt16LittleEndian(errorCodeBytes);
+
+        // OriginalSize (4 bytes)
+        Span<byte> originalSizeBytes = stackalloc byte[4];
+        for (int i = 0; i < 4; i++)
+        {
+            originalSizeBytes[i] = buffer.PeekByte(offset++);
+        }
+        var originalSize = BinaryPrimitives.ReadInt32LittleEndian(originalSizeBytes);
+
+        // Payload (with optional decompression)
+        var payloadSize = packetSize - offset;
+        ReadOnlyMemory<byte> payload;
+
+        if (originalSize > 0)
+        {
+            // Need to copy for decompression
+            var compressedData = new byte[payloadSize];
+            for (int i = 0; i < payloadSize; i++)
+            {
+                compressedData[i] = buffer.PeekByte(offset++);
+            }
+
+            var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedData);
+            payload = new ReadOnlyMemory<byte>(decompressed);
+        }
+        else
+        {
+            // Copy payload data
+            var payloadData = new byte[payloadSize];
+            for (int i = 0; i < payloadSize; i++)
+            {
+                payloadData[i] = buffer.PeekByte(offset++);
+            }
+            payload = new ReadOnlyMemory<byte>(payloadData);
+        }
+
+        // Create ParsedPacket wrapper to pass metadata
+        return new ParsedPacket(msgId, msgSeq, stageId, errorCode, payload);
     }
 
     private void HandleDisconnection(Exception? exception)
@@ -219,11 +370,41 @@ internal sealed class TcpConnection : IConnection
 
         _client?.Dispose();
         _client = null;
+
+        _receiveBuffer.Clear();
+        _expectedPacketSize = -1;
     }
 
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync().ConfigureAwait(false);
         _sendLock.Dispose();
+        _receiveBuffer.Dispose();
+    }
+}
+
+/// <summary>
+/// Internal parsed packet wrapper for passing metadata
+/// </summary>
+internal sealed class ParsedPacket : IPacket
+{
+    public string MsgId { get; }
+    public ushort MsgSeq { get; }
+    public long StageId { get; }
+    public ushort ErrorCode { get; }
+    public IPayload Payload { get; }
+
+    public ParsedPacket(string msgId, ushort msgSeq, long stageId, ushort errorCode, ReadOnlyMemory<byte> payload)
+    {
+        MsgId = msgId;
+        MsgSeq = msgSeq;
+        StageId = stageId;
+        ErrorCode = errorCode;
+        Payload = new MemoryPayload(payload);
+    }
+
+    public void Dispose()
+    {
+        // No resources to dispose
     }
 }

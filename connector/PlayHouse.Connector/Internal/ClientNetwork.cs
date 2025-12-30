@@ -3,12 +3,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using PlayHouse.Connector.Infrastructure.Buffers;
 using PlayHouse.Connector.Network;
 using PlayHouse.Connector.Protocol;
 
@@ -28,10 +26,6 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private int _msgSeqCounter;
     private bool _isAuthenticated;
     private bool _debugMode;
-
-    // 패킷 버퍼
-    private readonly PooledBuffer _receiveBuffer = new();
-    private int _expectedPacketSize = -1;
 
     // HeartBeat & IdleTimeout
     private readonly Stopwatch _lastReceivedTime = new();
@@ -70,15 +64,13 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
             // 상태 초기화
             _isAuthenticated = false;
-            _receiveBuffer.Clear();
-            _expectedPacketSize = -1;
             ClearPendingRequests();
 
             _connection = _config.UseWebsocket
                 ? CreateWebSocketConnection()
                 : CreateTcpConnection();
 
-            _connection.DataReceived += OnDataReceived;
+            _connection.PacketReceived += OnPacketReceived;
             _connection.Disconnected += OnDisconnected;
 
             await _connection.ConnectAsync(host, port, _config.UseSsl);
@@ -101,7 +93,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
     {
         if (_connection != null)
         {
-            _connection.DataReceived -= OnDataReceived;
+            _connection.PacketReceived -= OnPacketReceived;
             _connection.Disconnected -= OnDisconnected;
             await _connection.DisposeAsync();
             _connection = null;
@@ -129,12 +121,6 @@ internal sealed class ClientNetwork : IAsyncDisposable
     {
         UpdateClientConnection();
         _asyncManager.MainThreadAction();
-    }
-
-    public void ClearCache()
-    {
-        _receiveBuffer.Clear();
-        _expectedPacketSize = -1;
     }
 
     private void UpdateClientConnection()
@@ -325,120 +311,24 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     #endregion
 
-    #region Packet Decoding
+    #region Packet Handling
 
-    private void OnDataReceived(object? sender, ReadOnlyMemory<byte> data)
+    private void OnPacketReceived(object? sender, IPacket packet)
     {
         // 데이터 수신 시 타이머 리셋
         _lastReceivedTime.Restart();
 
-        _receiveBuffer.Append(data.Span);
-        ProcessReceiveBuffer();
-    }
-
-    private void ProcessReceiveBuffer()
-    {
-        while (true)
+        // Cast to ParsedPacket to get metadata
+        if (packet is not ParsedPacket parsed)
         {
-            if (_expectedPacketSize == -1)
-            {
-                if (_receiveBuffer.Size < 4)
-                {
-                    break;
-                }
-
-                _expectedPacketSize = BinaryPrimitives.ReadInt32LittleEndian(_receiveBuffer.AsSpan(0, 4));
-
-                if (_expectedPacketSize <= 0 || _expectedPacketSize > 10 * 1024 * 1024)
-                {
-                    throw new InvalidOperationException($"Invalid packet size: {_expectedPacketSize}");
-                }
-
-                _receiveBuffer.Remove(0, 4);
-            }
-
-            if (_receiveBuffer.Size < _expectedPacketSize)
-            {
-                break;
-            }
-
-            var packetData = _receiveBuffer.AsSpan(0, _expectedPacketSize).ToArray();
-            _receiveBuffer.Remove(0, _expectedPacketSize);
-            _expectedPacketSize = -1;
-
-            try
-            {
-                var parsed = ParseServerPacket(packetData);
-                HandleReceivedPacket(parsed);
-            }
-            catch (Exception)
-            {
-                // 파싱 에러 무시
-            }
-        }
-    }
-
-    private ParsedPacket ParseServerPacket(byte[] data)
-    {
-        int offset = 0;
-
-        // 스펙에 따라 ServiceId 제거됨
-        // MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) + Payload
-
-        // MsgIdLen (1 byte)
-        var msgIdLen = data[offset++];
-        var msgId = Encoding.UTF8.GetString(data, offset, msgIdLen);
-        offset += msgIdLen;
-
-        // MsgSeq (2 bytes)
-        var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset));
-        offset += 2;
-
-        // StageId (8 bytes)
-        var stageId = BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(offset));
-        offset += 8;
-
-        // ErrorCode (2 bytes)
-        var errorCode = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset));
-        offset += 2;
-
-        // OriginalSize (4 bytes) - for LZ4 decompression
-        var originalSize = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset));
-        offset += 4;
-
-        // Payload (with optional decompression)
-        ReadOnlyMemory<byte> payload;
-        if (originalSize > 0)
-        {
-            // Decompression requires ToArray()
-            var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(data.AsSpan(offset).ToArray());
-            payload = new ReadOnlyMemory<byte>(decompressed);
-        }
-        else
-        {
-            // Zero-copy: slice the original array
-            payload = new ReadOnlyMemory<byte>(data, offset, data.Length - offset);
+            return;
         }
 
-        return new ParsedPacket
-        {
-            MsgId = msgId,
-            MsgSeq = msgSeq,
-            StageId = stageId,
-            ErrorCode = errorCode,
-            Payload = payload
-        };
-    }
-
-    private void HandleReceivedPacket(ParsedPacket parsed)
-    {
         // HeartBeat 메시지는 무시
         if (parsed.MsgId == PacketConst.HeartBeat)
         {
             return;
         }
-
-        var packet = new Packet(parsed.MsgId, new MemoryPayload(parsed.Payload));
 
         // Response 처리 (MsgSeq > 0)
         if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
@@ -531,15 +421,6 @@ internal sealed class ClientNetwork : IAsyncDisposable
         public TaskCompletionSource<IPacket>? Tcs { get; init; }
         public bool IsAuthenticate { get; init; }
         public DateTime CreatedAt { get; init; }
-    }
-
-    private sealed class ParsedPacket
-    {
-        public string MsgId { get; init; } = string.Empty;
-        public ushort MsgSeq { get; init; }
-        public long StageId { get; init; }
-        public ushort ErrorCode { get; init; }
-        public ReadOnlyMemory<byte> Payload { get; init; }
     }
 }
 
