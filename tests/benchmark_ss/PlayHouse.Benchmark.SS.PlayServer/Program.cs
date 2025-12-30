@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Runtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -8,6 +9,17 @@ using PlayHouse.Bootstrap;
 using Serilog;
 using Serilog.Events;
 using Serilog.Extensions.Logging;
+
+// GC 최적화: Batch 모드 (고처리량 우선, Gen2 GC 빈도 감소)
+if (GCSettings.IsServerGC)
+{
+    GCSettings.LatencyMode = GCLatencyMode.Batch;
+    Console.WriteLine($"[GC] Server GC enabled, LatencyMode set to Batch");
+}
+else
+{
+    Console.WriteLine($"[GC] Warning: Workstation GC detected, Server GC recommended");
+}
 
 // CLI 인자 파싱
 var tcpPortOption = new Option<int>(
