@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Google.Protobuf;
 using PlayHouse.Benchmark.Shared.Proto;
@@ -105,7 +106,7 @@ public class BenchmarkRunner(
         }
         else
         {
-            await RunSendOnReceiveMode(connector, connectionId);
+            await RunRequestCallbackMode(connector, connectionId);
         }
 
         connector.Disconnect();
@@ -153,33 +154,11 @@ public class BenchmarkRunner(
         }
     }
 
-    private async Task RunSendOnReceiveMode(ClientConnector connector, int connectionId)
+    private async Task RunRequestCallbackMode(ClientConnector connector, int connectionId)
     {
         var receivedCount = 0;
-        var timestamps = new Dictionary<int, long>();
+        var timestamps = new ConcurrentDictionary<int, long>();
         var tcs = new TaskCompletionSource();
-
-        // OnReceive 콜백 설정
-        connector.OnReceive += (long stageId, IPacket packet) =>
-        {
-            if (packet.MsgId == "BenchmarkReply")
-            {
-                var reply = BenchmarkReply.Parser.ParseFrom(packet.Payload.DataSpan);
-
-                if (timestamps.TryGetValue(reply.Sequence, out var startTicks))
-                {
-                    var elapsed = Stopwatch.GetTimestamp() - startTicks;
-                    metricsCollector.RecordReceived(elapsed);
-                }
-
-                receivedCount++;
-
-                if (receivedCount >= messagesPerConnection)
-                {
-                    tcs.TrySetResult();
-                }
-            }
-        };
 
         // 콜백 처리 타이머 시작
         using var callbackTimer = new Timer(_ => connector.MainThreadAction(), null, 0, 1);
@@ -191,17 +170,34 @@ public class BenchmarkRunner(
             Payload = _requestPayload
         };
 
-        // 메시지 전송
+        // 메시지 전송 (Request with callback)
         for (int i = 0; i < messagesPerConnection; i++)
         {
             request.Sequence = i;
             request.ClientTimestamp = Stopwatch.GetTimestamp();
 
-            using var packet = new ClientPacket(request);
-
-            timestamps[i] = Stopwatch.GetTimestamp();
-            connector.Send(packet);
+            var packet = new ClientPacket(request);
+            var seq = i;
+            timestamps[seq] = Stopwatch.GetTimestamp();
             metricsCollector.RecordSent();
+
+            connector.Request(packet, response =>
+            {
+                // 콜백에서 응답 처리
+                if (timestamps.TryRemove(seq, out var startTicks))
+                {
+                    var elapsed = Stopwatch.GetTimestamp() - startTicks;
+                    metricsCollector.RecordReceived(elapsed);
+                }
+
+                var count = Interlocked.Increment(ref receivedCount);
+                if (count >= messagesPerConnection)
+                {
+                    tcs.TrySetResult();
+                }
+
+                packet.Dispose();
+            });
         }
 
         // 모든 응답 수신 대기 (최대 30초)
@@ -223,5 +219,5 @@ public class BenchmarkRunner(
 public enum BenchmarkMode
 {
     RequestAsync,
-    SendOnReceive
+    RequestCallback
 }

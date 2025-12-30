@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Serilog;
 
 namespace PlayHouse.Benchmark.SS.PlayServer;
 
@@ -27,5 +28,16 @@ public class MetricsController : ControllerBase
     {
         ServerMetricsCollector.Instance.Reset();
         return Ok(new { message = "Metrics reset successfully" });
+    }
+
+    /// <summary>
+    /// POST /benchmark/shutdown - 서버 종료
+    /// </summary>
+    [HttpPost("shutdown")]
+    public IActionResult Shutdown([FromServices] CancellationTokenSource cts)
+    {
+        Log.Information("Shutdown requested via HTTP API");
+        cts.Cancel();
+        return Ok(new { message = "Shutdown initiated" });
     }
 }

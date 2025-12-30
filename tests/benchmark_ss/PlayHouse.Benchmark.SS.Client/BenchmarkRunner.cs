@@ -118,16 +118,119 @@ public class BenchmarkRunner(
         }
 
         // 모드에 따라 메시지 전송
-        if (mode == BenchmarkMode.PlayToApi)
+        switch (mode)
         {
-            await RunPlayToApiMode(connector, connectionId);
-        }
-        else
-        {
-            await RunPlayToStageMode(connector, connectionId);
+            case BenchmarkMode.PlayToApi:
+                await RunPlayToApiMode(connector, connectionId);
+                break;
+            case BenchmarkMode.PlayToStage:
+                await RunPlayToStageMode(connector, connectionId);
+                break;
+            case BenchmarkMode.StageToApi:
+            case BenchmarkMode.StageToStage:
+            case BenchmarkMode.ApiToApi:
+                // 신규 모드는 내부 반복 방식이므로 여기서는 처리하지 않음
+                // Program.cs에서 직접 호출됨
+                break;
+            default:
+                Log.Warning("[Connection {ConnectionId}] Unknown mode: {Mode}", connectionId, mode);
+                break;
         }
 
         connector.Disconnect();
+    }
+
+    /// <summary>
+    /// 내부 반복 벤치마크 실행 (서버 측에서 반복)
+    /// </summary>
+    public static async Task<StartSSBenchmarkReply?> RunInternalBenchmarkAsync(
+        string serverHost,
+        int serverPort,
+        int iterations,
+        int requestSize,
+        int responseSize,
+        SSCallType callType,
+        SSCommMode commMode,
+        long initialStageId = 1000,
+        long targetStageId = 2000,
+        string targetNid = "play-2",
+        string targetApiNid = "api-2")
+    {
+        var connector = new ClientConnector();
+        connector.Init(new ConnectorConfig());
+
+        // 연결
+        var connected = await connector.ConnectAsync(serverHost, serverPort, initialStageId);
+        if (!connected)
+        {
+            Log.Warning("Failed to connect to server");
+            return null;
+        }
+
+        // 인증
+        try
+        {
+            using (var authPacket = ClientPacket.Empty("Authenticate"))
+            {
+                var authReply = await connector.AuthenticateAsync(authPacket);
+                Log.Information("Authentication succeeded. Reply: {MsgId}", authReply.MsgId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Authentication failed");
+            connector.Disconnect();
+            return null;
+        }
+
+        // 벤치마크 요청 생성
+        var request = new StartSSBenchmarkRequest
+        {
+            Iterations = iterations,
+            RequestSize = requestSize,
+            ResponseSize = responseSize,
+            CallType = callType,
+            CommMode = commMode,
+            TargetNid = targetNid,
+            TargetStageId = targetStageId,
+            TargetApiNid = targetApiNid
+        };
+
+        using var packet = new ClientPacket(request);
+
+        try
+        {
+            // API 서버로 직접 요청하거나 Stage를 통해 요청
+            IPacket response;
+            if (callType == SSCallType.ApiToApi)
+            {
+                // API → API 테스트는 API 서버에 직접 요청
+                // Note: Connector는 Stage에만 연결되므로, Stage를 통해 API 호출
+                response = await connector.RequestAsync(packet);
+            }
+            else
+            {
+                // Stage → API, Stage → Stage는 Stage에 요청
+                response = await connector.RequestAsync(packet);
+            }
+
+            if (response.MsgId != "StartSSBenchmarkReply")
+            {
+                Log.Warning("Unexpected response: {MsgId}", response.MsgId);
+                connector.Disconnect();
+                return null;
+            }
+
+            var reply = StartSSBenchmarkReply.Parser.ParseFrom(response.Payload.DataSpan);
+            connector.Disconnect();
+            return reply;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Benchmark request failed");
+            connector.Disconnect();
+            return null;
+        }
     }
 
     private async Task RunPlayToApiMode(ClientConnector connector, int connectionId)
@@ -228,12 +331,32 @@ public class BenchmarkRunner(
 public enum BenchmarkMode
 {
     /// <summary>
-    /// Stage → API 통신 측정
+    /// Stage → API 통신 측정 (구 방식: 클라이언트가 매번 트리거)
     /// </summary>
     PlayToApi,
 
     /// <summary>
-    /// Stage → Stage 통신 측정
+    /// Stage → Stage 통신 측정 (구 방식: 클라이언트가 매번 트리거)
     /// </summary>
-    PlayToStage
+    PlayToStage,
+
+    /// <summary>
+    /// Stage → API 내부 반복 (신규: 서버 측에서 내부 반복)
+    /// </summary>
+    StageToApi,
+
+    /// <summary>
+    /// Stage → Stage 내부 반복 (신규: 서버 측에서 내부 반복)
+    /// </summary>
+    StageToStage,
+
+    /// <summary>
+    /// API → API 내부 반복 (신규: 서버 측에서 내부 반복)
+    /// </summary>
+    ApiToApi,
+
+    /// <summary>
+    /// 모든 테스트 실행 (StageToApi, StageToStage, ApiToApi - 각각 두 모드)
+    /// </summary>
+    All
 }
