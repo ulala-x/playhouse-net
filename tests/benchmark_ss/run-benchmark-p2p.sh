@@ -52,8 +52,13 @@ echo "[1/5] Build completed"
 
 # 기존 서버 프로세스 정리
 echo "[2/5] Cleaning up existing server processes..."
-pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null
+echo "  Checking for existing servers..."
+curl -s -X POST http://localhost:$PLAY1_HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 && echo "  Sent shutdown to PlayServer 1 port $PLAY1_HTTP_PORT" || true
+curl -s -X POST http://localhost:$PLAY2_HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 && echo "  Sent shutdown to PlayServer 2 port $PLAY2_HTTP_PORT" || true
 sleep 2
+
+pkill -f "PlayHouse.Benchmark.SS.PlayServer" 2>/dev/null
+sleep 1
 
 # 포트가 사용 중인지 확인 및 강제 종료
 for PORT in $PLAY1_TCP_PORT $PLAY1_ZMQ_PORT $PLAY1_HTTP_PORT $PLAY2_TCP_PORT $PLAY2_ZMQ_PORT $PLAY2_HTTP_PORT; do
@@ -145,31 +150,18 @@ dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.Client --configur
 
 CLIENT_EXIT_CODE=$?
 
-# 서버 종료
+# 클라이언트가 서버 종료를 처리하므로 여기서는 대기만 수행
 echo ""
-echo "Stopping servers and clients..."
-echo "  Stopping dummy client..."
-kill $DUMMY_CLIENT_PID 2>/dev/null
+echo "Stopping dummy client..."
+kill $DUMMY_CLIENT_PID 2>/dev/null || true
 sleep 1
 
-echo "  Stopping PlayServer 1..."
-kill $PLAY_SERVER1_PID 2>/dev/null
-sleep 1
-if ps -p $PLAY_SERVER1_PID > /dev/null 2>&1; then
-    kill -9 $PLAY_SERVER1_PID 2>/dev/null
-fi
+echo "Waiting for servers shutdown..."
+sleep 3
 
-echo "  Stopping PlayServer 2..."
-kill $PLAY_SERVER2_PID 2>/dev/null
-sleep 1
-if ps -p $PLAY_SERVER2_PID > /dev/null 2>&1; then
-    kill -9 $PLAY_SERVER2_PID 2>/dev/null
-fi
+# 혹시 남아있는 프로세스 정리
+pkill -f "PlayHouse.Benchmark.SS" 2>/dev/null || true
 
-# 좀비 프로세스 정리
-pkill -f "PlayHouse.Benchmark.SS" 2>/dev/null
-
-echo "All processes stopped"
 echo ""
 echo "================================================================================"
 echo "Benchmark completed"

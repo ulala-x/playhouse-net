@@ -42,8 +42,12 @@ echo ""
 
 # 기존 서버 프로세스 정리
 echo "[2/5] Cleaning up existing server processes..."
-pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+echo "  Checking for existing servers..."
+curl -s -X POST http://localhost:$HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 && echo "  Sent shutdown to port $HTTP_PORT" || true
 sleep 2
+
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
+sleep 1
 
 # 포트가 사용 중인지 확인 (TCP: 16110, ZMQ: 16100)
 ZMQ_PORT=16100
@@ -133,21 +137,14 @@ echo ""
 echo "[3/5] All tests completed"
 echo ""
 
-# 서버 종료
-echo "[4/5] Stopping benchmark server..."
-kill $SERVER_PID 2>/dev/null
-sleep 2
+# 클라이언트가 서버 종료를 처리하므로 여기서는 대기만 수행
+echo "[4/5] Waiting for server shutdown..."
+sleep 3
 
-# 서버가 아직 실행 중이면 강제 종료
-if ps -p $SERVER_PID > /dev/null 2>&1; then
-    echo "      Server still running, force killing..."
-    kill -9 $SERVER_PID 2>/dev/null
-fi
+# 혹시 남아있는 프로세스 정리
+pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null || true
 
-# 좀비 프로세스 정리
-pkill -f "PlayHouse.Benchmark.Server" 2>/dev/null
-
-echo "[4/5] Server stopped"
+echo "[4/5] Cleanup completed"
 echo ""
 
 # 결과 요약
