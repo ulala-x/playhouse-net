@@ -7,6 +7,9 @@
     <AssemblyName>PlayHouse.Benchmark.SS.PlayServer</AssemblyName>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
+    <!-- GC 최적화: Server GC + Concurrent GC -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
