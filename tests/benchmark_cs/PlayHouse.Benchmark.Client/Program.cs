@@ -188,7 +188,8 @@ static async Task RunBenchmarkAsync(
             await serverMetricsClient.ResetMetricsAsync();
             await Task.Delay(500);
 
-            // 벤치마크 실행
+            // 벤치마크 실행 (테스트마다 다른 stageId 범위 사용)
+            var stageIdOffset = i * connections;
             var runner = new BenchmarkRunner(
                 host,
                 port,
@@ -197,7 +198,8 @@ static async Task RunBenchmarkAsync(
                 requestSize,
                 responseSize,
                 benchmarkMode,
-                clientMetricsCollector);
+                clientMetricsCollector,
+                stageIdOffset);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -388,6 +390,9 @@ static async Task RunBothModesAsync(
     var resultsRequestAsync = new List<BenchmarkResult>();
     var resultsRequestCallback = new List<BenchmarkResult>();
 
+    // 테스트 인덱스 (stageId 충돌 방지용)
+    var testIndex = 0;
+
     // 1. RequestAsync 모드 테스트
     Log.Information("");
     Log.Information(">>> Testing RequestAsync Mode <<<");
@@ -406,9 +411,11 @@ static async Task RunBothModesAsync(
         await serverMetricsClient.ResetMetricsAsync();
         await Task.Delay(500);
 
+        var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.RequestAsync, clientMetricsCollector);
+            BenchmarkMode.RequestAsync, clientMetricsCollector, stageIdOffset);
+        testIndex++;
 
         var startTime = DateTime.Now;
         await runner.RunAsync();

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Abstractions.System;
+using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Bootstrap;
 

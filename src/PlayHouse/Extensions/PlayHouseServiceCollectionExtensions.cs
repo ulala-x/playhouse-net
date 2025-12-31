@@ -3,6 +3,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
+using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Extensions;
 
