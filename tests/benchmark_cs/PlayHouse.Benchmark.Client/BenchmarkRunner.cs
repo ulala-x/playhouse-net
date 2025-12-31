@@ -21,7 +21,8 @@ public class BenchmarkRunner(
     int requestSize,
     int responseSize,
     BenchmarkMode mode,
-    ClientMetricsCollector metricsCollector)
+    ClientMetricsCollector metricsCollector,
+    int stageIdOffset = 0)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -73,7 +74,7 @@ public class BenchmarkRunner(
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 
-        var stageId = 1000 + connectionId; // 각 연결마다 고유 StageId
+        var stageId = 1000 + stageIdOffset + connectionId; // 각 연결마다 고유 StageId
 
         // 연결
         var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchStage");

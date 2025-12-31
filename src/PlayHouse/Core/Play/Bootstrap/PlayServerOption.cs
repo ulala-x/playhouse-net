@@ -4,7 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 using PlayHouse.Abstractions;
 using PlayHouse.Runtime.ClientTransport;
 
-namespace PlayHouse.Bootstrap;
+namespace PlayHouse.Core.Play.Bootstrap;
 
 /// <summary>
 /// Play Server 설정 옵션.

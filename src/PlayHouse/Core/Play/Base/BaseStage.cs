@@ -620,20 +620,8 @@ internal sealed class BaseStage
         // 6. OnPostAuthenticate
         await actor.OnPostAuthenticate();
 
-        // 7. OnJoinStage
-        var joinResult = await Stage.OnJoinStage(actor);
-        if (!joinResult)
-        {
-            await actor.OnDestroy();
-            return (false, (ushort)ErrorCode.JoinStageRejected, null);
-        }
-
-        // 8. Add actor
+        // 7. Create BaseActor (JoinStage is handled in ProcessJoinActorAsync)
         var baseActor = new BaseActor(actor, actorSender);
-        AddActor(baseActor);
-
-        // 9. OnPostJoinStage
-        await Stage.OnPostJoinStage(actor);
 
         return (true, (ushort)ErrorCode.Success, baseActor);
     }

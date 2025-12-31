@@ -110,7 +110,8 @@ try
         options.AuthenticateMessageId = "AuthenticateRequest";
         options.DefaultStageType = "BenchmarkStage";
     })
-    .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage");
+    .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
+    .UseSystemController<BenchmarkSystemController>();
 
     var serviceProvider = services.BuildServiceProvider();
     var playServer = serviceProvider.GetRequiredService<PlayServer>();

@@ -17,6 +17,7 @@ using PlayHouse.Runtime.ClientTransport.Tcp;
 using PlayHouse.Runtime.ClientTransport.WebSocket;
 using PlayHouse.Abstractions;
 using Google.Protobuf;
+using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Bootstrap;
 
