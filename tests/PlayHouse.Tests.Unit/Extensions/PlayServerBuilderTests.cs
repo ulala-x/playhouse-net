@@ -1,0 +1,159 @@
+#nullable enable
+
+using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.Play;
+using PlayHouse.Bootstrap;
+using PlayHouse.Core.Shared;
+using PlayHouse.Extensions;
+using Xunit;
+
+namespace PlayHouse.Tests.Unit.Extensions;
+
+/// <summary>
+/// PlayServerBuilder의 단위 테스트
+/// </summary>
+public class PlayServerBuilderTests
+{
+    private class TestStage : IStage
+    {
+        public IStageSender StageSender { get; private set; } = null!;
+        public Task<(bool result, IPacket reply)> OnCreate(IPacket packet) =>
+            Task.FromResult<(bool result, IPacket reply)>((true, CPacket.Empty("TestReply")));
+        public Task OnPostCreate() => Task.CompletedTask;
+        public Task OnDestroy() => Task.CompletedTask;
+        public Task<bool> OnJoinStage(IActor actor) => Task.FromResult(true);
+        public Task OnPostJoinStage(IActor actor) => Task.CompletedTask;
+        public ValueTask OnConnectionChanged(IActor actor, bool isConnected) => ValueTask.CompletedTask;
+        public Task OnDispatch(IActor actor, IPacket packet) => Task.CompletedTask;
+        public Task OnDispatch(IPacket packet) => Task.CompletedTask;
+    }
+
+    private class TestActor : IActor
+    {
+        public IActorSender ActorSender { get; private set; } = null!;
+        public Task OnCreate() => Task.CompletedTask;
+        public Task OnDestroy() => Task.CompletedTask;
+        public Task<bool> OnAuthenticate(IPacket authPacket) => Task.FromResult(true);
+        public Task OnPostAuthenticate() => Task.CompletedTask;
+    }
+
+    [Fact(DisplayName = "AddPlayServer - PlayServer가 싱글톤으로 등록된다")]
+    public void AddPlayServer_RegistersPlayServerAsSingleton()
+    {
+        // Given
+        var services = new ServiceCollection();
+
+        // When
+        services.AddPlayServer(options =>
+        {
+            options.ServiceType = ServiceType.Play;
+            options.TcpPort = 0; // 랜덤 포트
+            options.AuthenticateMessageId = "Auth";
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Then
+        var playServer1 = serviceProvider.GetRequiredService<PlayServer>();
+        var playServer2 = serviceProvider.GetRequiredService<PlayServer>();
+
+        playServer1.Should().NotBeNull("PlayServer가 등록되어야 함");
+        playServer1.Should().BeSameAs(playServer2, "싱글톤으로 등록되어 같은 인스턴스여야 함");
+    }
+
+    [Fact(DisplayName = "AddPlayServer - IPlayServerControl 인터페이스로 해결 가능하다")]
+    public void AddPlayServer_RegistersIPlayServerControl()
+    {
+        // Given
+        var services = new ServiceCollection();
+
+        // When
+        services.AddPlayServer(options =>
+        {
+            options.ServiceType = ServiceType.Play;
+            options.TcpPort = 0;
+            options.AuthenticateMessageId = "Auth";
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Then
+        var playServerControl = serviceProvider.GetRequiredService<IPlayServerControl>();
+        var playServer = serviceProvider.GetRequiredService<PlayServer>();
+
+        playServerControl.Should().NotBeNull("IPlayServerControl이 등록되어야 함");
+        playServerControl.Should().BeSameAs(playServer, "IPlayServerControl이 PlayServer와 같은 인스턴스여야 함");
+    }
+
+    [Fact(DisplayName = "UseStage - 스테이지 타입이 등록되고 Stage를 생성할 수 있다")]
+    public void UseStage_RegistersStageType()
+    {
+        // Given
+        var services = new ServiceCollection();
+
+        // When
+        services.AddPlayServer(options =>
+        {
+            options.ServiceType = ServiceType.Play;
+            options.TcpPort = 0;
+            options.AuthenticateMessageId = "Auth";
+        }).UseStage<TestStage>("TestStage");
+
+        var serviceProvider = services.BuildServiceProvider();
+        var playServer = serviceProvider.GetRequiredService<PlayServer>();
+
+        // Then
+        playServer.Should().NotBeNull("PlayServer가 등록되어야 함");
+        // Note: 실제 Stage 생성 검증은 E2E 테스트에서 수행
+        // 여기서는 빌더 체인이 정상 동작하는지만 확인
+    }
+
+    [Fact(DisplayName = "UseActor - 액터 타입이 등록되고 Actor를 생성할 수 있다")]
+    public void UseActor_RegistersActorType()
+    {
+        // Given
+        var services = new ServiceCollection();
+
+        // When
+        services.AddPlayServer(options =>
+        {
+            options.ServiceType = ServiceType.Play;
+            options.TcpPort = 0;
+            options.AuthenticateMessageId = "Auth";
+        }).UseActor<TestActor>();
+
+        var serviceProvider = services.BuildServiceProvider();
+        var playServer = serviceProvider.GetRequiredService<PlayServer>();
+
+        // Then
+        playServer.Should().NotBeNull("PlayServer가 등록되어야 함");
+        // Note: 실제 Actor 생성 검증은 E2E 테스트에서 수행
+        // 여기서는 빌더 체인이 정상 동작하는지만 확인
+    }
+
+    [Fact(DisplayName = "빌더 체인 - UseStage와 UseActor를 연속 호출할 수 있다")]
+    public void BuilderChain_CanCallUseStageAndUseActorInSequence()
+    {
+        // Given
+        var services = new ServiceCollection();
+
+        // When
+        var builder = services.AddPlayServer(options =>
+        {
+            options.ServiceType = ServiceType.Play;
+            options.TcpPort = 0;
+            options.AuthenticateMessageId = "Auth";
+        })
+        .UseStage<TestStage>("TestStage")
+        .UseActor<TestActor>();
+
+        var serviceProvider = services.BuildServiceProvider();
+        var playServer = serviceProvider.GetRequiredService<PlayServer>();
+
+        // Then
+        builder.Should().NotBeNull("빌더가 반환되어야 함");
+        playServer.Should().NotBeNull("PlayServer가 등록되어야 함");
+    }
+}

@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using PlayHouse.Abstractions;
 
 namespace PlayHouse.Runtime.ServerMesh.Discovery;
 
@@ -11,7 +12,7 @@ namespace PlayHouse.Runtime.ServerMesh.Discovery;
 /// 모든 서버 정보를 캐시하고, 서비스 타입별로 조회할 수 있습니다.
 /// Round-robin 방식으로 로드밸런싱을 지원합니다.
 /// </remarks>
-public sealed class XServerInfoCenter
+public sealed class XServerInfoCenter : IServerInfoCenter
 {
     private readonly ConcurrentDictionary<string, XServerInfo> _servers = new();
     private readonly ConcurrentDictionary<ushort, int> _roundRobinIndex = new();

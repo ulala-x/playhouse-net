@@ -1,6 +1,8 @@
 #nullable enable
 
+using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Abstractions.Api;
+using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Api.Bootstrap;
 
 namespace PlayHouse.Bootstrap;
@@ -71,6 +73,23 @@ public sealed class ApiServerBootstrap
     {
         _options.Validate();
 
-        return new ApiServer(_options, _controllerTypes, _systemControllerType);
+        // ServiceProvider 생성
+        var services = new ServiceCollection();
+
+        // API Controllers 등록
+        foreach (var controllerType in _controllerTypes)
+        {
+            services.AddTransient(typeof(IApiController), controllerType);
+        }
+
+        // SystemController 등록
+        if (_systemControllerType != null)
+        {
+            services.AddSingleton(typeof(ISystemController), _systemControllerType);
+        }
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        return new ApiServer(_options, _controllerTypes, _systemControllerType, serviceProvider);
     }
 }
