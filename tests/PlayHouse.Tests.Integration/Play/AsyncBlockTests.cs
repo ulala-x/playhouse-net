@@ -27,7 +27,7 @@ public class AsyncBlockTests : IAsyncLifetime
 {
     private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -35,7 +35,7 @@ public class AsyncBlockTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, packet) => _receivedMessages.Add((stageId, packet));
+        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
     }
 
     public async Task InitializeAsync()
@@ -196,7 +196,7 @@ public class AsyncBlockTests : IAsyncLifetime
     {
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
         return stageId;

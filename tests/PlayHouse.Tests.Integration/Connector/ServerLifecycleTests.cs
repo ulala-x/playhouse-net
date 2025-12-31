@@ -1,6 +1,7 @@
 #nullable enable
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Tests.Integration.Infrastructure;
@@ -30,6 +31,8 @@ public class ServerLifecycleTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
         _playServer = new PlayServerBootstrap()
             .Configure(options =>
             {
@@ -40,8 +43,9 @@ public class ServerLifecycleTests : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
+            .UseSystemController<TestSystemController>()
             .Build();
 
         await _playServer.StartAsync();
@@ -99,7 +103,7 @@ public class ServerLifecycleTests : IAsyncLifetime
             RequestTimeoutMs = 30000,
             HeartbeatTimeoutMs = heartbeatTimeoutMs
         });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _playServer!.ActualTcpPort, stageId, "TestStage");
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
     }

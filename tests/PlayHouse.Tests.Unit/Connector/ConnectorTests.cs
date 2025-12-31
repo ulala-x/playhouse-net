@@ -114,7 +114,7 @@ public class ConnectorTests
         IPacket? receivedPacket = null;
 
         // When (행동)
-        connector.OnReceive += (stageId, packet) =>
+        connector.OnReceive += (stageId, stageType, packet) =>
         {
             receivedStageId = stageId;
             receivedPacket = packet;
@@ -132,7 +132,7 @@ public class ConnectorTests
         var receivedErrorCode = (ushort)0;
 
         // When (행동)
-        connector.OnError += (stageId, errorCode, request) =>
+        connector.OnError += (stageId, stageType, errorCode, request) =>
         {
             receivedErrorCode = errorCode;
         };
@@ -163,7 +163,7 @@ public class ConnectorTests
         connector.Init(new ConnectorConfig());
 
         ushort receivedErrorCode = 0;
-        connector.OnError += (stageId, errorCode, request) =>
+        connector.OnError += (stageId, stageType, errorCode, request) =>
         {
             receivedErrorCode = errorCode;
         };
@@ -186,7 +186,7 @@ public class ConnectorTests
         connector.Init(new ConnectorConfig());
 
         ushort receivedErrorCode = 0;
-        connector.OnError += (stageId, errorCode, request) =>
+        connector.OnError += (stageId, stageType, errorCode, request) =>
         {
             receivedErrorCode = errorCode;
         };
@@ -227,7 +227,7 @@ public class ConnectorTests
         connector.Init(new ConnectorConfig());
 
         ushort receivedErrorCode = 0;
-        connector.OnError += (stageId, errorCode, request) =>
+        connector.OnError += (stageId, stageType, errorCode, request) =>
         {
             receivedErrorCode = errorCode;
         };

@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
 using Xunit;
 
@@ -22,6 +23,8 @@ public class DualPlayServerFixture : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
         // PlayServer A (ServerId, ServerId=1)
         PlayServerA = new PlayServerBootstrap()
             .Configure(options =>
@@ -33,8 +36,8 @@ public class DualPlayServerFixture : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
             .UseSystemController<TestSystemController>()
             .Build();
 
@@ -49,8 +52,8 @@ public class DualPlayServerFixture : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
             .UseSystemController<TestSystemController>()
             .Build();
 

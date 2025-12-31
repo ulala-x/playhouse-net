@@ -76,7 +76,7 @@ public class BenchmarkRunner(
         var stageId = 1000 + connectionId; // 각 연결마다 고유 StageId
 
         // 연결
-        var connected = await connector.ConnectAsync(serverHost, serverPort, stageId);
+        var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchStage");
         if (!connected)
         {
             Log.Warning("[Connection {ConnectionId}] Failed to connect", connectionId);

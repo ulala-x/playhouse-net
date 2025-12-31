@@ -165,8 +165,7 @@ try
         options.AuthenticateMessageId = "Authenticate";
         options.DefaultStageType = "BenchmarkStage";
     })
-    .UseStage<BenchmarkStage>("BenchmarkStage")
-    .UseActor<BenchmarkActor>();
+    .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage");
 
     var serviceProvider = services.BuildServiceProvider();
     var playServer = serviceProvider.GetRequiredService<PlayServer>();

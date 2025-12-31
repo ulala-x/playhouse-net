@@ -3,6 +3,7 @@
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Bootstrap;
 using PlayHouse.Extensions;
@@ -25,6 +26,9 @@ public class DIPlayServerFixture : IAsyncLifetime
     {
         var services = new ServiceCollection();
 
+        // Logging 등록
+        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
         // 사용자 서비스 등록 (DI 검증용)
         services.AddSingleton<ITestService, TestService>();
 
@@ -44,8 +48,8 @@ public class DIPlayServerFixture : IAsyncLifetime
             options.AuthenticateMessageId = "AuthenticateRequest";
             options.DefaultStageType = "DITest";
         })
-        .UseStage<DITestStage>("DITest")
-        .UseActor<DITestActor>();
+        .UseStage<DITestStage, DITestActor>("DITest")
+        .UseSystemController<TestSystemController>();
 
         ServiceProvider = services.BuildServiceProvider();
         PlayServer = ServiceProvider.GetRequiredService<PlayServer>();
