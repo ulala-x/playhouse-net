@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
 using Xunit;
 
@@ -20,6 +21,8 @@ public class SinglePlayServerFixture : IAsyncLifetime
         // - TestStageImpl.GetByStageId()로 해당 Stage만 검증
         // - 서버가 Collection 전체에서 공유되므로 리셋 시 다른 테스트에 영향
 
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
         PlayServer = new PlayServerBootstrap()
             .Configure(options =>
             {
@@ -30,8 +33,9 @@ public class SinglePlayServerFixture : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
+            .UseSystemController<TestSystemController>()
             .Build();
 
         await PlayServer.StartAsync();

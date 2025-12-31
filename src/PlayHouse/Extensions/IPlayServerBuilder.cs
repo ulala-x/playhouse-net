@@ -13,8 +13,18 @@ namespace PlayHouse.Extensions;
 public interface IPlayServerBuilder
 {
     IServiceCollection Services { get; }
-    IPlayServerBuilder UseStage<TStage>(string stageType) where TStage : class, IStage;
-    IPlayServerBuilder UseActor<TActor>() where TActor : class, IActor;
+    IPlayServerBuilder UseStage<TStage, TActor>(string stageType)
+        where TStage : class, IStage
+        where TActor : class, IActor;
+
+    /// <summary>
+    /// System Controller를 등록합니다.
+    /// </summary>
+    /// <typeparam name="T">ISystemController 구현 타입.</typeparam>
+    /// <returns>빌더 인스턴스.</returns>
+    /// <remarks>
+    /// 이 메서드는 필수입니다. PlayServer를 빌드하기 전에 반드시 호출해야 합니다.
+    /// </remarks>
     IPlayServerBuilder UseSystemController<T>() where T : class, ISystemController;
 }
 

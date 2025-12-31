@@ -2,11 +2,14 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
+using PlayHouse.Abstractions.System;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Shared;
 using PlayHouse.Extensions;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using Xunit;
 
 namespace PlayHouse.Tests.Unit.Extensions;
@@ -41,18 +44,26 @@ public class PlayServerHostedServiceTests
         public Task OnPostAuthenticate() => Task.CompletedTask;
     }
 
+    private class TestSystemController : ISystemController
+    {
+        public Task<IReadOnlyList<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)
+            => Task.FromResult<IReadOnlyList<IServerInfo>>(new List<IServerInfo>());
+    }
+
     [Fact(DisplayName = "생성자 - PlayServer를 받아 HostedService를 생성한다")]
     public void Constructor_AcceptsPlayServer()
     {
         // Given
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddPlayServer(options =>
         {
             options.ServiceType = ServiceType.Play;
             options.TcpPort = 0;
             options.AuthenticateMessageId = "Auth";
-        }).UseStage<TestStage>("TestStage")
-          .UseActor<TestActor>();
+        })
+        .UseStage<TestStage, TestActor>("TestStage")
+        .UseSystemController<TestSystemController>();
 
         var serviceProvider = services.BuildServiceProvider();
         var playServer = serviceProvider.GetRequiredService<PlayServer>();
@@ -69,13 +80,15 @@ public class PlayServerHostedServiceTests
     {
         // Given
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddPlayServer(options =>
         {
             options.ServiceType = ServiceType.Play;
             options.TcpPort = 0; // 랜덤 포트
             options.AuthenticateMessageId = "Auth";
-        }).UseStage<TestStage>("TestStage")
-          .UseActor<TestActor>();
+        })
+        .UseStage<TestStage, TestActor>("TestStage")
+        .UseSystemController<TestSystemController>();
 
         var serviceProvider = services.BuildServiceProvider();
         var playServer = serviceProvider.GetRequiredService<PlayServer>();

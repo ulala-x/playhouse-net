@@ -15,7 +15,7 @@ namespace PlayHouse.Abstractions.Play;
 /// Usage with DI:
 /// <code>
 /// var serviceProvider = services.BuildServiceProvider();
-/// var producer = new PlayProducer(stageTypes, actorType, serviceProvider);
+/// var producer = new PlayProducer(stageTypes, actorTypes, serviceProvider);
 /// </code>
 ///
 /// Manual registration (legacy):
@@ -32,7 +32,7 @@ public class PlayProducer
 {
     private readonly IServiceProvider? _serviceProvider;
     private readonly Dictionary<string, Type> _stageTypes = new();
-    private readonly Type? _actorType;
+    private readonly Dictionary<string, Type> _actorTypes = new();
     private readonly Dictionary<string, Func<IStageSender, IStage>> _stageFactories = new();
     private readonly Dictionary<string, Func<IActorSender, IActor>> _actorFactories = new();
 
@@ -44,19 +44,19 @@ public class PlayProducer
     }
 
     /// <summary>
-    /// Constructor for Bootstrap pattern with Type-based registration and dependency injection support.
+    /// Constructor for Bootstrap pattern with Stage-specific Actor types and dependency injection support.
     /// </summary>
     /// <param name="stageTypes">Dictionary of stage type names to Stage implementation types.</param>
-    /// <param name="actorType">Default Actor implementation type (nullable for auth-only servers).</param>
+    /// <param name="actorTypes">Dictionary of stage type names to Actor implementation types.</param>
     /// <param name="serviceProvider">Service provider for dependency injection.</param>
     public PlayProducer(
         Dictionary<string, Type> stageTypes,
-        Type? actorType,
+        Dictionary<string, Type> actorTypes,
         IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
         _stageTypes = stageTypes;
-        _actorType = actorType;
+        _actorTypes = actorTypes;
     }
 
     /// <summary>
@@ -128,11 +128,11 @@ public class PlayProducer
         }
 
         // Type-based registration with DI
-        if (_serviceProvider != null && _actorType != null)
+        if (_serviceProvider != null && _actorTypes.TryGetValue(stageType, out var actorType))
         {
             return (IActor)ActivatorUtilities.CreateInstance(
                 _serviceProvider,
-                _actorType,
+                actorType,
                 actorSender);  // IActorSender is explicitly passed
         }
 

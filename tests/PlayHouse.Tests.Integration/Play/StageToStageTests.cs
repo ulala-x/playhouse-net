@@ -1,6 +1,7 @@
 #nullable enable
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
@@ -30,8 +31,8 @@ public class ISenderTests : IAsyncLifetime
     private PlayServer? _playServerB;
     private readonly ClientConnector _connectorA;
     private readonly ClientConnector _connectorB;
-    private readonly List<(long stageId, ClientPacket packet)> _receivedMessagesA = new();
-    private readonly List<(long stageId, ClientPacket packet)> _receivedMessagesB = new();
+    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessagesA = new();
+    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessagesB = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -42,8 +43,8 @@ public class ISenderTests : IAsyncLifetime
     {
         _connectorA = new ClientConnector();
         _connectorB = new ClientConnector();
-        _connectorA.OnReceive += (stageId, packet) => _receivedMessagesA.Add((stageId, packet));
-        _connectorB.OnReceive += (stageId, packet) => _receivedMessagesB.Add((stageId, packet));
+        _connectorA.OnReceive += (stageId, stageType, packet) => _receivedMessagesA.Add((stageId, stageType, packet));
+        _connectorB.OnReceive += (stageId, stageType, packet) => _receivedMessagesB.Add((stageId, stageType, packet));
     }
 
     public async Task InitializeAsync()
@@ -51,6 +52,8 @@ public class ISenderTests : IAsyncLifetime
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
         TestSystemController.Reset();
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
 
         // PlayServer A (ServerId=1)
         _playServerA = new PlayServerBootstrap()
@@ -63,8 +66,8 @@ public class ISenderTests : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
             .UseSystemController<TestSystemController>()
             .Build();
 
@@ -79,8 +82,8 @@ public class ISenderTests : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
             .UseSystemController<TestSystemController>()
             .Build();
 
@@ -297,7 +300,7 @@ public class ISenderTests : IAsyncLifetime
     private async Task ConnectAndAuthenticateAsync(ClientConnector connector, long stageId, PlayServer server)
     {
         connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await connector.ConnectAsync("127.0.0.1", server.ActualTcpPort, stageId);
+        var connected = await connector.ConnectAsync("127.0.0.1", server.ActualTcpPort, stageId, "TestStage");
         connected.Should().BeTrue($"서버에 연결되어야 함 (stageId: {stageId})");
         await Task.Delay(100);
 

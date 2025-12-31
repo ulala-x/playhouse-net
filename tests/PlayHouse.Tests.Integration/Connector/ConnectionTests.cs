@@ -71,7 +71,7 @@ public class ConnectionTests : IAsyncLifetime
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When
-        var result = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
         await Task.Delay(100);
 
         // Then - E2E 검증: Connector 공개 API만 사용
@@ -88,7 +88,7 @@ public class ConnectionTests : IAsyncLifetime
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When - 존재하지 않는 포트로 연결 시도
-        var result = await _connector.ConnectAsync("127.0.0.1", 59999, stageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", 59999, stageId, "TestStage");
         await Task.Delay(100);
 
         // Then - E2E 검증
@@ -105,7 +105,7 @@ public class ConnectionTests : IAsyncLifetime
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When
-        var result = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
 
         // Then - E2E 검증
         result.Should().BeTrue("await ConnectAsync()가 true를 반환해야 함");
@@ -120,7 +120,7 @@ public class ConnectionTests : IAsyncLifetime
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         // When
-        var result = await _connector.ConnectAsync("127.0.0.1", 59999, stageId);
+        var result = await _connector.ConnectAsync("127.0.0.1", 59999, stageId, "TestStage");
 
         // Then - E2E 검증
         result.Should().BeFalse("await ConnectAsync()가 false를 반환해야 함");
@@ -227,7 +227,7 @@ public class ConnectionTests : IAsyncLifetime
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
 
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
     }

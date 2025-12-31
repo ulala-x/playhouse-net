@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 using Xunit;
@@ -23,6 +24,8 @@ public class ApiPlayServerFixture : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
         // PlayServer (ServerId, ServiceId=1, ServerId=1)
         PlayServer = new PlayServerBootstrap()
             .Configure(options =>
@@ -34,8 +37,8 @@ public class ApiPlayServerFixture : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
             .UseSystemController<TestSystemController>()
             .Build();
 

@@ -29,9 +29,9 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 {
     private readonly PlayServerOption _options;
     private readonly PlayProducer _producer;
-    private readonly Type? _systemControllerType;
+    private readonly ISystemController _systemController;
     private readonly ServerConfig _serverConfig;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private readonly IServiceProvider _serviceProvider;
 
     private PlayCommunicator? _communicator;
@@ -88,13 +88,13 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     internal PlayServer(
         PlayServerOption options,
         PlayProducer producer,
-        Type? systemControllerType,
+        ISystemController systemController,
         IServiceProvider serviceProvider,
-        ILogger? logger = null)
+        ILogger logger)
     {
         _options = options;
         _producer = producer;
-        _systemControllerType = systemControllerType;
+        _systemController = systemController;
         _serviceProvider = serviceProvider;
         _logger = logger;
 
@@ -137,32 +137,26 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         _transportServer = BuildTransportServer();
         await _transportServer.StartAsync(_cts.Token);
 
-        // ServerAddressResolver 시작 (SystemController가 등록된 경우)
-        if (_systemControllerType != null)
-        {
-            var systemController = Activator.CreateInstance(_systemControllerType) as ISystemController
-                ?? throw new InvalidOperationException($"Failed to create SystemController instance: {_systemControllerType.Name}");
+        // ServerAddressResolver 시작
+        var serverInfoCenter = new XServerInfoCenter();
 
-            var serverInfoCenter = new XServerInfoCenter();
+        var myServerInfo = new XServerInfo(
+            _options.ServiceId,
+            _options.ServerId,
+            _options.BindEndpoint,
+            ServerState.Running);
 
-            var myServerInfo = new XServerInfo(
-                _options.ServiceId,
-                _options.ServerId,
-                _options.BindEndpoint,
-                ServerState.Running);
+        _addressResolver = new ServerAddressResolver(
+            myServerInfo,
+            _systemController,
+            serverInfoCenter,
+            _communicator,
+            TimeSpan.FromSeconds(3));
 
-            _addressResolver = new ServerAddressResolver(
-                myServerInfo,
-                systemController,
-                serverInfoCenter,
-                _communicator,
-                TimeSpan.FromSeconds(3));
-
-            _addressResolver.Start();
-        }
+        _addressResolver.Start();
 
         _isRunning = true;
-        _logger?.LogInformation("PlayServer started: ServerId={ServerId}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
+        _logger.LogInformation("PlayServer started: ServerId={ServerId}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
             _options.ServerId, _options.IsTcpEnabled, _options.IsWebSocketEnabled);
 
         await Task.Delay(50); // 서버 초기화 대기
@@ -193,12 +187,12 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             if (_options.IsTcpSslEnabled)
             {
                 builder.AddTcpWithSsl(tcpPort, _options.TcpSslCertificate!, _options.TcpBindAddress);
-                _logger?.LogInformation("TCP+SSL enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
+                _logger.LogInformation("TCP+SSL enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
             }
             else
             {
                 builder.AddTcp(tcpPort, _options.TcpBindAddress);
-                _logger?.LogInformation("TCP enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
+                _logger.LogInformation("TCP enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
             }
         }
 
@@ -206,7 +200,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         if (_options.IsWebSocketEnabled)
         {
             builder.AddWebSocket(_options.WebSocketPath!);
-            _logger?.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
+            _logger.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
         }
 
         return builder.Build();
@@ -251,7 +245,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         _cts?.Dispose();
         _cts = null;
 
-        _logger?.LogInformation("PlayServer stopped: ServerId={ServerId}", _options.ServerId);
+        _logger.LogInformation("PlayServer stopped: ServerId={ServerId}", _options.ServerId);
     }
 
     /// <inheritdoc/>
@@ -292,7 +286,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             // 인증 메시지가 아니면 연결 끊기
             if (msgId != _options.AuthenticateMessageId)
             {
-                _logger?.LogWarning("Unauthenticated session {SessionId} sent non-auth message: {MsgId}",
+                _logger.LogWarning("Unauthenticated session {SessionId} sent non-auth message: {MsgId}",
                     session.SessionId, msgId);
                 _ = session.DisconnectAsync();
                 return;
@@ -346,7 +340,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         }
         else
         {
-            _logger?.LogWarning("Unauthenticated session {SessionId} tried to send message: {MsgId}",
+            _logger.LogWarning("Unauthenticated session {SessionId} tried to send message: {MsgId}",
                 session.SessionId, msgId);
         }
 
@@ -378,7 +372,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 
             if (baseStage == null)
             {
-                _logger?.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
+                _logger.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
                 await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
                 return;
             }
@@ -391,7 +385,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 
                 if (!createSuccess)
                 {
-                    _logger?.LogError("Failed to initialize stage {StageId}", targetStageId);
+                    _logger.LogError("Failed to initialize stage {StageId}", targetStageId);
                     await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
                     return;
                 }
@@ -414,7 +408,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     }
                     catch (KeyNotFoundException)
                     {
-                        _logger?.LogError("Actor factory not found for stage type: {StageType}", _options.DefaultStageType);
+                        _logger.LogError("Actor factory not found for stage type: {StageType}", _options.DefaultStageType);
                         return (false, (ushort)ErrorCode.InvalidStageType, (BaseActor?)null);
                     }
 
@@ -427,7 +421,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 
                     if (!authResult)
                     {
-                        _logger?.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
+                        _logger.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
                         return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null);
                     }
@@ -435,7 +429,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     // 5. AccountId 검증
                     if (string.IsNullOrEmpty(actorSender.AccountId))
                     {
-                        _logger?.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
+                        _logger.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
                         return (false, (ushort)ErrorCode.InvalidAccountId, (BaseActor?)null);
                     }
@@ -450,7 +444,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error during actor authentication callbacks");
+                    _logger.LogError(ex, "Error during actor authentication callbacks");
                     return (false, (ushort)ErrorCode.InternalError, (BaseActor?)null);
                 }
             });
@@ -474,14 +468,14 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             }
             catch (TimeoutException)
             {
-                _logger?.LogError("Join actor timeout for session {SessionId}, accountId {AccountId}",
+                _logger.LogError("Join actor timeout for session {SessionId}, accountId {AccountId}",
                     session.SessionId, actor.ActorSender.AccountId);
                 await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.InternalError);
                 return;
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to join actor for session {SessionId}", session.SessionId);
+                _logger.LogError(ex, "Failed to join actor for session {SessionId}", session.SessionId);
                 await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.InternalError);
                 return;
             }
@@ -491,7 +485,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Authentication failed for session {SessionId}", session.SessionId);
+            _logger.LogError(ex, "Authentication failed for session {SessionId}", session.SessionId);
             await SendAuthReplyAsync(session, msgSeq, stageId, (ushort)ErrorCode.InternalError);
         }
     }
@@ -550,11 +544,11 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     {
         if (ex != null)
         {
-            _logger?.LogWarning(ex, "Session {SessionId} disconnected with error", session.SessionId);
+            _logger.LogWarning(ex, "Session {SessionId} disconnected with error", session.SessionId);
         }
         else
         {
-            _logger?.LogDebug("Session {SessionId} disconnected", session.SessionId);
+            _logger.LogDebug("Session {SessionId} disconnected", session.SessionId);
         }
 
         // 인증된 세션인 경우 DisconnectMessage 전달
@@ -651,7 +645,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         }
         else
         {
-            _logger?.LogWarning("Cannot send client reply: session {SessionId} not found or disconnected", sessionId);
+            _logger.LogWarning("Cannot send client reply: session {SessionId} not found or disconnected", sessionId);
         }
     }
 

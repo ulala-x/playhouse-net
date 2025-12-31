@@ -1,6 +1,7 @@
 #nullable enable
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Core.Shared;
@@ -34,6 +35,8 @@ public class IApiSenderTests : IAsyncLifetime
         TestApiController.ResetAll();
         TestSystemController.Reset();
 
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
         // PlayServer (ServiceId=1, ServerId=play-1)
         _playServer = new PlayServerBootstrap()
             .Configure(options =>
@@ -45,8 +48,8 @@ public class IApiSenderTests : IAsyncLifetime
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
             })
-            .UseStage<TestStageImpl>("TestStage")
-            .UseActor<TestActorImpl>()
+            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseStage<TestStageImpl, TestActorImpl>("TestStage")
             .UseSystemController<TestSystemController>()
             .Build();
 

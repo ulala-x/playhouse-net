@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using PlayHouse.Connector.Internal;
 using PlayHouse.Connector.Protocol;
@@ -19,6 +20,7 @@ public sealed class Connector : IConnectorCallback
     private ClientNetwork? _clientNetwork;
     private bool _disconnectFromClient;
     private long _stageId;
+    private string _stageType = string.Empty;
 
     /// <summary>
     /// Connector 설정
@@ -30,6 +32,11 @@ public sealed class Connector : IConnectorCallback
     /// </summary>
     public long StageId => _stageId;
 
+    /// <summary>
+    /// 현재 연결된 Stage의 타입
+    /// </summary>
+    public string StageType => _stageType;
+
     #region Events
 
     /// <summary>
@@ -38,14 +45,14 @@ public sealed class Connector : IConnectorCallback
     public event Action<bool>? OnConnect;
 
     /// <summary>
-    /// 메시지 수신 이벤트 (stageId, packet)
+    /// 메시지 수신 이벤트 (stageId, stageType, packet)
     /// </summary>
-    public event Action<long, IPacket>? OnReceive;
+    public event Action<long, string, IPacket>? OnReceive;
 
     /// <summary>
-    /// 에러 이벤트 (stageId, errorCode, request)
+    /// 에러 이벤트 (stageId, stageType, errorCode, request)
     /// </summary>
-    public event Action<long, ushort, IPacket>? OnError;
+    public event Action<long, string, ushort, IPacket>? OnError;
 
     /// <summary>
     /// 연결 끊김 이벤트
@@ -63,12 +70,12 @@ public sealed class Connector : IConnectorCallback
 
     void IConnectorCallback.ReceiveCallback(long stageId, IPacket packet)
     {
-        OnReceive?.Invoke(stageId, packet);
+        OnReceive?.Invoke(stageId, _stageType, packet);
     }
 
     void IConnectorCallback.ErrorCallback(long stageId, ushort errorCode, IPacket request)
     {
-        OnError?.Invoke(stageId, errorCode, request);
+        OnError?.Invoke(stageId, _stageType, errorCode, request);
     }
 
     void IConnectorCallback.DisconnectCallback()
@@ -105,11 +112,13 @@ public sealed class Connector : IConnectorCallback
     /// <param name="host">서버 호스트 주소</param>
     /// <param name="port">서버 포트</param>
     /// <param name="stageId">Stage ID (모든 Send/Request에서 사용)</param>
+    /// <param name="stageType">Stage 타입</param>
     /// <param name="debugMode">디버그 모드</param>
-    public void Connect(string host, int port, long stageId, bool debugMode = false)
+    public void Connect(string host, int port, long stageId, string stageType, bool debugMode = false)
     {
         _disconnectFromClient = false;
         _stageId = stageId;
+        _stageType = stageType;
         _clientNetwork!.Connect(host, port, debugMode);
     }
 
@@ -119,12 +128,14 @@ public sealed class Connector : IConnectorCallback
     /// <param name="host">서버 호스트 주소</param>
     /// <param name="port">서버 포트</param>
     /// <param name="stageId">Stage ID (모든 Send/Request에서 사용)</param>
+    /// <param name="stageType">Stage 타입</param>
     /// <param name="debugMode">디버그 모드</param>
     /// <returns>연결 성공 여부</returns>
-    public async Task<bool> ConnectAsync(string host, int port, long stageId, bool debugMode = false)
+    public async Task<bool> ConnectAsync(string host, int port, long stageId, string stageType, bool debugMode = false)
     {
         _disconnectFromClient = false;
         _stageId = stageId;
+        _stageType = stageType;
         return await _clientNetwork!.ConnectAsync(host, port, debugMode);
     }
 
@@ -166,7 +177,7 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            OnError?.Invoke(_stageId, (ushort)ConnectorErrorCode.Disconnected, request);
+            OnError?.Invoke(_stageId, _stageType, (ushort)ConnectorErrorCode.Disconnected, request);
             return;
         }
 
@@ -200,7 +211,7 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            OnError?.Invoke(_stageId, (ushort)ConnectorErrorCode.Disconnected, packet);
+            OnError?.Invoke(_stageId, _stageType, (ushort)ConnectorErrorCode.Disconnected, packet);
             return;
         }
 
@@ -216,7 +227,7 @@ public sealed class Connector : IConnectorCallback
     {
         if (!IsConnected())
         {
-            OnError?.Invoke(_stageId, (ushort)ConnectorErrorCode.Disconnected, request);
+            OnError?.Invoke(_stageId, _stageType, (ushort)ConnectorErrorCode.Disconnected, request);
             return;
         }
 

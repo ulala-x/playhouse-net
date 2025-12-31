@@ -25,8 +25,8 @@ public class MessagingTests : IAsyncLifetime
 {
     private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, ClientPacket packet)> _receivedMessages = new();
-    private readonly List<(long stageId, ushort errorCode, ClientPacket request)> _receivedErrors = new();
+    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, ushort errorCode, ClientPacket request)> _receivedErrors = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -34,8 +34,8 @@ public class MessagingTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, packet) => _receivedMessages.Add((stageId, packet));
-        _connector.OnError += (stageId, errorCode, request) => _receivedErrors.Add((stageId, errorCode, request));
+        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
+        _connector.OnError += (stageId, stageType, errorCode, request) => _receivedErrors.Add((stageId, stageType, errorCode, request));
     }
 
     public Task InitializeAsync()
@@ -142,7 +142,7 @@ public class MessagingTests : IAsyncLifetime
 
         // Then - E2E 검증: OnError 콜백 호출
         _receivedErrors.Should().NotBeEmpty("OnError 콜백이 호출되어야 함");
-        var (stageId, errorCode, request) = _receivedErrors.First();
+        var (stageId, stageType, errorCode, request) = _receivedErrors.First();
         errorCode.Should().Be(500, "서버가 반환한 에러코드 500이어야 함");
     }
 
@@ -195,7 +195,7 @@ public class MessagingTests : IAsyncLifetime
             connector.Init(new ConnectorConfig { RequestTimeoutMs = 100 });
 
             var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
-            await connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+            await connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
             await Task.Delay(100);
 
             // 인증 수행
@@ -266,7 +266,7 @@ public class MessagingTests : IAsyncLifetime
         response.MsgId.Should().Be("BroadcastTriggerReply", "트리거 응답을 받아야 함");
         _receivedMessages.Should().NotBeEmpty("Push 메시지를 수신해야 함");
 
-        var (stageId, packet) = _receivedMessages.First();
+        var (stageId, stageType, packet) = _receivedMessages.First();
         packet.MsgId.Should().EndWith("BroadcastNotify", "메시지 ID가 BroadcastNotify로 끝나야 함");
 
         var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.DataSpan);
@@ -364,7 +364,7 @@ public class MessagingTests : IAsyncLifetime
     {
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
 

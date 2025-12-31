@@ -4,6 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
+using PlayHouse.Abstractions.System;
 
 namespace PlayHouse.Bootstrap;
 
@@ -23,8 +24,7 @@ namespace PlayHouse.Bootstrap;
 ///         options.TcpPort = 6000;
 ///         options.AuthenticateMessageId = "AuthRequest";
 ///     })
-///     .UseStage&lt;GameRoomStage&gt;("GameRoom")
-///     .UseActor&lt;PlayerActor&gt;()
+///     .UseStage&lt;GameRoomStage, PlayerActor&gt;("GameRoom")
 ///     .Build();
 ///
 /// // TCP + WebSocket 동시 사용
@@ -48,7 +48,7 @@ public sealed class PlayServerBootstrap
 {
     private readonly PlayServerOption _options = new();
     private readonly Dictionary<string, Type> _stageTypes = new();
-    private Type? _actorType;
+    private readonly Dictionary<string, Type> _actorTypes = new();
     private Type? _systemControllerType;
     private ILogger? _logger;
 
@@ -117,37 +117,25 @@ public sealed class PlayServerBootstrap
     }
 
     /// <summary>
-    /// Stage 타입을 등록합니다.
+    /// Stage와 Actor 타입을 등록합니다.
     /// </summary>
     /// <typeparam name="TStage">IStage 구현 타입.</typeparam>
+    /// <typeparam name="TActor">IActor 구현 타입.</typeparam>
     /// <param name="stageType">Stage 타입 이름.</param>
     /// <returns>빌더 인스턴스.</returns>
     /// <remarks>
-    /// TStage는 IStageSender를 받는 생성자가 필요합니다.
+    /// TStage는 IStageSender를 받는 생성자가 필요하고, TActor는 IActorSender를 받는 생성자가 필요합니다.
     /// <code>
     /// public MyStage(IStageSender stageSender) { StageSender = stageSender; }
-    /// </code>
-    /// </remarks>
-    public PlayServerBootstrap UseStage<TStage>(string stageType) where TStage : class, IStage
-    {
-        _stageTypes[stageType] = typeof(TStage);
-        return this;
-    }
-
-    /// <summary>
-    /// Actor 타입을 등록합니다.
-    /// </summary>
-    /// <typeparam name="TActor">IActor 구현 타입.</typeparam>
-    /// <returns>빌더 인스턴스.</returns>
-    /// <remarks>
-    /// TActor는 IActorSender를 받는 생성자가 필요합니다.
-    /// <code>
     /// public MyActor(IActorSender actorSender) { ActorSender = actorSender; }
     /// </code>
     /// </remarks>
-    public PlayServerBootstrap UseActor<TActor>() where TActor : class, IActor
+    public PlayServerBootstrap UseStage<TStage, TActor>(string stageType)
+        where TStage : class, IStage
+        where TActor : class, IActor
     {
-        _actorType = typeof(TActor);
+        _stageTypes[stageType] = typeof(TStage);
+        _actorTypes[stageType] = typeof(TActor);
         return this;
     }
 
@@ -170,28 +158,39 @@ public sealed class PlayServerBootstrap
     {
         _options.Validate();
 
+        // SystemController 필수 검증
+        if (_systemControllerType == null)
+            throw new InvalidOperationException(
+                "SystemController is required. Use UseSystemController<T>() to register.");
+
+        // ILogger 필수 검증
+        if (_logger == null)
+            throw new InvalidOperationException(
+                "ILogger is required. Use UseLogger(logger) to register.");
+
         // DefaultStageType이 설정된 경우에만 Stage와 Actor 필수
         if (!string.IsNullOrEmpty(_options.DefaultStageType))
         {
             if (_stageTypes.Count == 0)
-                throw new InvalidOperationException("At least one Stage type must be registered when using DefaultStageType. Use UseStage<T>().");
+                throw new InvalidOperationException("At least one Stage type must be registered when using DefaultStageType. Use UseStage<TStage, TActor>().");
 
-            if (_actorType == null)
-                throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseActor<T>().");
+            if (_actorTypes.Count == 0)
+                throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseStage<TStage, TActor>().");
         }
 
         // ServiceProvider 생성
         var services = new ServiceCollection();
 
-        // Logger 등록 (있는 경우)
-        if (_logger != null)
-        {
-            services.AddSingleton(_logger);
-        }
+        // Logger 등록
+        services.AddSingleton(_logger);
 
         var serviceProvider = services.BuildServiceProvider();
 
-        var producer = new PlayProducer(_stageTypes, _actorType, serviceProvider);
-        return new PlayServer(_options, producer, _systemControllerType, serviceProvider, _logger);
+        // SystemController 인스턴스 생성
+        var systemController = Activator.CreateInstance(_systemControllerType) as ISystemController
+            ?? throw new InvalidOperationException($"Failed to create SystemController instance: {_systemControllerType.Name}");
+
+        var producer = new PlayProducer(_stageTypes, _actorTypes, serviceProvider);
+        return new PlayServer(_options, producer, systemController, serviceProvider, _logger);
     }
 }

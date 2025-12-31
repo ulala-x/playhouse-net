@@ -160,7 +160,7 @@ public class ActorCallbackTests : IAsyncLifetime
     {
         var stageId = Random.Shared.NextInt64(100000, long.MaxValue);
         _connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId);
+        var connected = await _connector.ConnectAsync("127.0.0.1", _fixture.PlayServer!.ActualTcpPort, stageId, "TestStage");
         connected.Should().BeTrue("서버에 연결되어야 함");
         await Task.Delay(100);
         return stageId;
