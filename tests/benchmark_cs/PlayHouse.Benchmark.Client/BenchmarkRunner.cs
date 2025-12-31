@@ -22,7 +22,8 @@ public class BenchmarkRunner(
     int responseSize,
     BenchmarkMode mode,
     ClientMetricsCollector metricsCollector,
-    int stageIdOffset = 0)
+    int stageIdOffset = 0,
+    string stageName = "BenchStage")
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -77,7 +78,7 @@ public class BenchmarkRunner(
         var stageId = 1000 + stageIdOffset + connectionId; // 각 연결마다 고유 StageId
 
         // 연결
-        var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchStage");
+        var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, stageName);
         if (!connected)
         {
             Log.Warning("[Connection {ConnectionId}] Failed to connect", connectionId);
@@ -161,12 +162,15 @@ public class BenchmarkRunner(
         var timestamps = new ConcurrentDictionary<int, long>();
         var tcs = new TaskCompletionSource();
 
-        // 동시 요청 수 제한 (backpressure)
-        const int maxConcurrentRequests = 100;
+        // 동시 요청 수 제한 (backpressure) - 응답 크기에 따라 조절
+        var maxConcurrentRequests = responseSize switch
+        {
+            > 32768 => 10,   // 32KB 이상: 10개
+            > 8192 => 30,    // 8KB 이상: 30개
+            > 1024 => 50,    // 1KB 이상: 50개
+            _ => 100         // 기본: 100개
+        };
         var semaphore = new SemaphoreSlim(maxConcurrentRequests);
-
-        // 콜백 처리 타이머 시작
-        using var callbackTimer = new Timer(_ => connector.MainThreadAction(), null, 0, 1);
 
         // 요청 객체 재사용
         var request = new BenchmarkRequest
@@ -178,12 +182,14 @@ public class BenchmarkRunner(
         // 메시지 전송 (Request with callback)
         for (int i = 0; i < messagesPerConnection; i++)
         {
-            // 타임아웃 포함 대기 (에러 발생 시 semaphore가 릴리즈되지 않을 수 있음)
-            if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(5)))
+            // 동시 요청 수 제한을 위해 semaphore 대기
+            while (semaphore.CurrentCount == 0)
             {
-                Log.Warning("[Connection {ConnectionId}] Semaphore wait timeout at message {Seq}", connectionId, i);
-                continue;
+                connector.MainThreadAction();
+                await Task.Delay(1);
             }
+
+            await semaphore.WaitAsync();
 
             request.Sequence = i;
             request.ClientTimestamp = Stopwatch.GetTimestamp();
@@ -212,17 +218,22 @@ public class BenchmarkRunner(
 
                 packet.Dispose();
             });
+
+            // 콜백 처리를 위해 주기적으로 호출
+            connector.MainThreadAction();
         }
 
-        // 모든 응답 수신 대기 (최대 30초)
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        cts.Token.Register(() => tcs.TrySetCanceled());
+        // 모든 응답 수신 대기 (응답 크기에 따라 타임아웃 조절)
+        var overallTimeoutSec = responseSize > 32768 ? 60 : 30;
+        var deadline = DateTime.UtcNow.AddSeconds(overallTimeoutSec);
 
-        try
+        while (receivedCount < messagesPerConnection && DateTime.UtcNow < deadline)
         {
-            await tcs.Task;
+            connector.MainThreadAction();
+            await Task.Delay(1);
         }
-        catch (TaskCanceledException)
+
+        if (receivedCount < messagesPerConnection)
         {
             Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
                 connectionId, receivedCount, messagesPerConnection);

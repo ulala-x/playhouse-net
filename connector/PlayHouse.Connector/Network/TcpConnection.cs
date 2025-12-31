@@ -29,7 +29,7 @@ internal sealed class TcpConnection : IConnection
     private volatile bool _isConnected;
 
     private const int SendBufferSize = 65536;
-    private const int ReceiveBufferSize = 65536;
+    private const int ReceiveBufferSize = 262144; // 256KB for large payloads
 
     // Zero-copy receive buffer
     private readonly RingBuffer _receiveBuffer = new(ReceiveBufferSize);
