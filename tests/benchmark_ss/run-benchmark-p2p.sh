@@ -2,7 +2,8 @@
 
 # PlayHouse SS Benchmark 실행 스크립트 (Play-to-Stage 모드)
 # 두 개의 PlayServer 인스턴스 실행
-# 사용법: ./run-benchmark-p2p.sh [connections] [messages] [response-size]
+# 사용법: ./run-benchmark-p2p.sh [connections] [messages] [response-sizes]
+#   response-sizes: 콤마로 구분된 응답 크기 (예: "256,65536")
 
 # 스크립트 위치 기준으로 프로젝트 루트 찾기
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +13,7 @@ cd "$PROJECT_ROOT"
 # 기본값
 CONNECTIONS=${1:-1}
 MESSAGES=${2:-10000}
-RESPONSE_SIZE=${3:-1500}
+RESPONSE_SIZES=${3:-"256,512"}
 
 # PlayServer 1 포트 (클라이언트 연결)
 PLAY1_TCP_PORT=16110
@@ -30,7 +31,7 @@ echo "==========================================================================
 echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Messages per connection: $MESSAGES"
-echo "  Response size: $RESPONSE_SIZE bytes"
+echo "  Response sizes: $RESPONSE_SIZES bytes"
 echo "  Mode: play-to-stage"
 echo "  PlayServer 1 - TCP: $PLAY1_TCP_PORT, ZMQ: $PLAY1_ZMQ_PORT, HTTP: $PLAY1_HTTP_PORT"
 echo "  PlayServer 2 - TCP: $PLAY2_TCP_PORT, ZMQ: $PLAY2_ZMQ_PORT, HTTP: $PLAY2_HTTP_PORT"
@@ -138,13 +139,13 @@ echo "      Dummy client PID: $DUMMY_CLIENT_PID"
 sleep 5
 echo "      Target Stage 2000 created and connection maintained"
 
-# 클라이언트 실행 (play-to-stage 모드)
+# 클라이언트 실행 (play-to-stage 모드, 모든 응답 크기를 한 번에 테스트)
 echo "[5/5] Running benchmark client (play-to-stage mode)..."
 dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.Client --configuration Release -- \
     --server 127.0.0.1:$PLAY1_TCP_PORT \
     --connections $CONNECTIONS \
     --messages $MESSAGES \
-    --response-size $RESPONSE_SIZE \
+    --response-size $RESPONSE_SIZES \
     --mode play-to-stage \
     --http-port $PLAY1_HTTP_PORT
 

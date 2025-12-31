@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # PlayHouse SS Benchmark 실행 스크립트 (Play-to-Api 모드)
-# 사용법: ./run-benchmark.sh [connections] [messages] [response-size] [mode]
+# 사용법: ./run-benchmark.sh [connections] [messages] [response-sizes] [mode]
+#   response-sizes: 콤마로 구분된 응답 크기 (예: "256,65536")
 
 # 스크립트 위치 기준으로 프로젝트 루트 찾기
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +12,7 @@ cd "$PROJECT_ROOT"
 # 기본값
 CONNECTIONS=${1:-1000}
 MESSAGES=${2:-10000}
-RESPONSE_SIZE=${3:-1500}
+RESPONSE_SIZES=${3:-"1500,65536"}
 MODE=${4:-play-to-api}
 
 # 포트 설정
@@ -26,7 +27,7 @@ echo "==========================================================================
 echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Messages per connection: $MESSAGES"
-echo "  Response size: $RESPONSE_SIZE bytes"
+echo "  Response sizes: $RESPONSE_SIZES bytes"
 echo "  Mode: $MODE"
 echo "  PlayServer - TCP: $PLAY_TCP_PORT, ZMQ: $PLAY_ZMQ_PORT, HTTP: $PLAY_HTTP_PORT"
 echo "  ApiServer  - ZMQ: $API_ZMQ_PORT"
@@ -116,13 +117,13 @@ echo "[4/5] ApiServer started successfully"
 echo "      Waiting for server connection (3 seconds)..."
 sleep 3
 
-# 클라이언트 실행
+# 클라이언트 실행 (모든 응답 크기를 한 번에 테스트)
 echo "[5/5] Running benchmark client..."
 dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.Client --configuration Release -- \
     --server 127.0.0.1:$PLAY_TCP_PORT \
     --connections $CONNECTIONS \
     --messages $MESSAGES \
-    --response-size $RESPONSE_SIZE \
+    --response-size $RESPONSE_SIZES \
     --mode $MODE \
     --http-port $PLAY_HTTP_PORT
 

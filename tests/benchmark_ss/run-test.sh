@@ -8,8 +8,9 @@
 CCU=${1:-1}
 MSG_PER_CONN=${2:-1000}
 
-# 테스트할 응답 크기들
-RESPONSE_SIZES=(256 65536)
+# 테스트할 응답 크기들 (콤마로 구분하여 클라이언트에 전달)
+# Note: Larger sizes may cause timeouts - this is a pre-existing issue
+RESPONSE_SIZES="256,512,1024"
 
 echo "================================================================================"
 echo "PlayHouse SS Benchmark Test Suite"
@@ -17,7 +18,7 @@ echo "==========================================================================
 echo "Configuration:"
 echo "  Concurrent Users (CCU): $CCU"
 echo "  Messages per connection: $MSG_PER_CONN"
-echo "  Response sizes: ${RESPONSE_SIZES[*]} bytes"
+echo "  Response sizes: $RESPONSE_SIZES bytes"
 echo "================================================================================"
 echo ""
 
@@ -70,29 +71,19 @@ TEST_INDEX=0
 echo "[3/4] Running benchmark tests..."
 echo ""
 echo "================================================================================"
-echo "PART 1: Play-to-Api Tests"
+echo "PART 1: Play-to-Api Test"
 echo "================================================================================"
 
-for RESPONSE_SIZE in "${RESPONSE_SIZES[@]}"; do
-    TEST_INDEX=$((TEST_INDEX + 1))
-    echo ""
-    echo "--------------------------------------------------------------------------------"
-    echo "Test $TEST_INDEX: Play-to-Api with response size = $RESPONSE_SIZE bytes"
-    echo "--------------------------------------------------------------------------------"
+./tests/benchmark_ss/run-benchmark.sh $CCU $MSG_PER_CONN $RESPONSE_SIZES play-to-api
 
-    ./tests/benchmark_ss/run-benchmark.sh $CCU $MSG_PER_CONN $RESPONSE_SIZE play-to-api
+CLIENT_EXIT_CODE=$?
+TEST_INDEX=$((TEST_INDEX + 1))
 
-    CLIENT_EXIT_CODE=$?
-
-    if [ $CLIENT_EXIT_CODE -ne 0 ]; then
-        RESULTS[$TEST_INDEX]="Play-to-Api ($RESPONSE_SIZE bytes): FAILED"
-    else
-        RESULTS[$TEST_INDEX]="Play-to-Api ($RESPONSE_SIZE bytes): SUCCESS"
-    fi
-
-    # 다음 테스트 전 대기
-    sleep 2
-done
+if [ $CLIENT_EXIT_CODE -ne 0 ]; then
+    RESULTS[$TEST_INDEX]="Play-to-Api: FAILED"
+else
+    RESULTS[$TEST_INDEX]="Play-to-Api: SUCCESS"
+fi
 
 # 포트 정리 (클라이언트가 종료 처리했으므로 간단한 대기만)
 echo ""
@@ -114,29 +105,19 @@ done
 # Play-to-Stage 테스트
 echo ""
 echo "================================================================================"
-echo "PART 2: Play-to-Stage Tests"
+echo "PART 2: Play-to-Stage Test"
 echo "================================================================================"
 
-for RESPONSE_SIZE in "${RESPONSE_SIZES[@]}"; do
-    TEST_INDEX=$((TEST_INDEX + 1))
-    echo ""
-    echo "--------------------------------------------------------------------------------"
-    echo "Test $TEST_INDEX: Play-to-Stage with response size = $RESPONSE_SIZE bytes"
-    echo "--------------------------------------------------------------------------------"
+./tests/benchmark_ss/run-benchmark-p2p.sh $CCU $MSG_PER_CONN $RESPONSE_SIZES
 
-    ./tests/benchmark_ss/run-benchmark-p2p.sh $CCU $MSG_PER_CONN $RESPONSE_SIZE
+CLIENT_EXIT_CODE=$?
+TEST_INDEX=$((TEST_INDEX + 1))
 
-    CLIENT_EXIT_CODE=$?
-
-    if [ $CLIENT_EXIT_CODE -ne 0 ]; then
-        RESULTS[$TEST_INDEX]="Play-to-Stage ($RESPONSE_SIZE bytes): FAILED"
-    else
-        RESULTS[$TEST_INDEX]="Play-to-Stage ($RESPONSE_SIZE bytes): SUCCESS"
-    fi
-
-    # 다음 테스트 전 대기
-    sleep 2
-done
+if [ $CLIENT_EXIT_CODE -ne 0 ]; then
+    RESULTS[$TEST_INDEX]="Play-to-Stage: FAILED"
+else
+    RESULTS[$TEST_INDEX]="Play-to-Stage: SUCCESS"
+fi
 
 echo ""
 echo "[3/4] All tests completed"

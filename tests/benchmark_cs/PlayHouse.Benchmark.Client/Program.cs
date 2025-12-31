@@ -183,10 +183,17 @@ static async Task RunBenchmarkAsync(
             // 메트릭 수집기
             var clientMetricsCollector = new ClientMetricsCollector();
 
+            // 이전 테스트의 Stage 정리 대기
+            if (i > 0)
+            {
+                Log.Information("Waiting for previous test cleanup...");
+                await Task.Delay(5000);
+            }
+
             // 서버 메트릭 리셋
             Log.Information("Resetting server metrics...");
             await serverMetricsClient.ResetMetricsAsync();
-            await Task.Delay(500);
+            await Task.Delay(1000);
 
             // 벤치마크 실행 (테스트마다 다른 stageId 범위 사용)
             var stageIdOffset = i * connections;
@@ -206,8 +213,8 @@ static async Task RunBenchmarkAsync(
             var endTime = DateTime.Now;
             var totalElapsed = (endTime - startTime).TotalSeconds;
 
-            Log.Information("Waiting for server metrics to stabilize...");
-            await Task.Delay(1000);
+            Log.Information("Waiting for server to cleanup stages and stabilize metrics...");
+            await Task.Delay(3000);
 
             // 결과 조회
             var serverMetrics = await serverMetricsClient.GetMetricsAsync();
@@ -455,9 +462,11 @@ static async Task RunBothModesAsync(
         await serverMetricsClient.ResetMetricsAsync();
         await Task.Delay(500);
 
+        var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.RequestCallback, clientMetricsCollector);
+            BenchmarkMode.RequestCallback, clientMetricsCollector, stageIdOffset);
+        testIndex++;
 
         var startTime = DateTime.Now;
         await runner.RunAsync();
