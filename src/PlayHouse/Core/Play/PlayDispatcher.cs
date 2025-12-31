@@ -174,6 +174,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         else
         {
             _logger?.LogWarning("Stage {StageId} not found for client message {MsgId}", message.StageId, message.MsgId);
+            message.Payload?.Dispose();
         }
     }
 
@@ -181,28 +182,25 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     {
         if (_stages.TryGetValue(message.StageId, out var baseStage))
         {
-            if (message.CompletionSource != null)
-            {
-                // Use async version when CompletionSource is provided
-                _ = baseStage.PostJoinActorAsync(message.Actor).ContinueWith(t =>
-                {
-                    if (t.IsCompletedSuccessfully)
-                        message.CompletionSource.TrySetResult(true);
-                    else if (t.IsFaulted)
-                        message.CompletionSource.TrySetException(t.Exception!);
-                    else
-                        message.CompletionSource.TrySetCanceled();
-                }, TaskScheduler.Default);
-            }
-            else
-            {
-                baseStage.PostJoinActor(message.Actor);
-            }
+            // Forward to BaseStage's message queue
+            baseStage.PostJoinActor(new Base.StageMessage.JoinActorMessage(
+                message.Actor,
+                message.Session,
+                message.MsgSeq,
+                message.AuthReplyMsgId,
+                message.Payload));
         }
         else
         {
             _logger?.LogWarning("Stage {StageId} not found for JoinActorMessage", message.StageId);
-            message.CompletionSource?.TrySetException(new InvalidOperationException($"Stage {message.StageId} not found"));
+            // Send error response
+            message.Session.SendResponse(
+                message.AuthReplyMsgId,
+                message.MsgSeq,
+                message.StageId,
+                (ushort)ErrorCode.StageNotFound,
+                ReadOnlySpan<byte>.Empty);
+            message.Payload?.Dispose();
         }
     }
 
@@ -228,7 +226,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="payload">Message payload.</param>
-    public void RouteClientMessage(long stageId, string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+    public void RouteClientMessage(long stageId, string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
     {
         if (_stages.TryGetValue(stageId, out var baseStage))
         {
@@ -237,6 +235,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         else
         {
             _logger?.LogWarning("Stage {StageId} not found for client message {MsgId}", stageId, msgId);
+            payload.Dispose();
         }
     }
 

@@ -82,7 +82,7 @@ internal sealed class XActorSender : IActorSender
         {
             if (_transportSession.IsConnected)
             {
-                _ = _transportSession.SendResponseAsync(
+                _transportSession.SendResponse(
                     packet.MsgId,
                     0,  // msgSeq = 0 for push messages
                     _baseStage.StageId,

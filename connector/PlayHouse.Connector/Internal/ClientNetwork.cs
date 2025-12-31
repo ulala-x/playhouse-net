@@ -197,6 +197,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
 
         var msgSeq = GetNextMsgSeq();
+        var timeoutCts = new CancellationTokenSource();
         var pending = new PendingRequest
         {
             MsgSeq = msgSeq,
@@ -204,25 +205,58 @@ internal sealed class ClientNetwork : IAsyncDisposable
             StageId = stageId,
             Callback = callback,
             IsAuthenticate = isAuthenticate,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            TimeoutCts = timeoutCts
         };
 
         _pendingRequests[msgSeq] = pending;
 
         var data = EncodePacket(request, msgSeq, stageId);
-        _ = _connection!.SendAsync(data);
 
-        // 타임아웃 설정
-        _ = Task.Delay(_config.RequestTimeoutMs).ContinueWith(_ =>
+        // SendAsync와 타임아웃을 fire-and-forget으로 실행
+        _ = SendRequestAsync(msgSeq, data, timeoutCts.Token);
+    }
+
+    private async Task SendRequestAsync(ushort msgSeq, byte[] data, CancellationToken timeoutToken)
+    {
+        try
         {
+            await _connection!.SendAsync(data);
+        }
+        catch
+        {
+            // 전송 실패 시 pending request 제거하고 에러 콜백
             if (_pendingRequests.TryRemove(msgSeq, out var req))
             {
+                req.Dispose();
                 _asyncManager.AddJob(() =>
                 {
-                    _callback.ErrorCallback(req.StageId, (ushort)ConnectorErrorCode.RequestTimeout, req.Request);
+                    _callback.ErrorCallback(req.StageId, (ushort)ConnectorErrorCode.Disconnected, req.Request);
                 });
             }
-        });
+            return;
+        }
+
+        // 타임아웃 설정 - 응답 도착 시 취소됨
+        try
+        {
+            await Task.Delay(_config.RequestTimeoutMs, timeoutToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // 응답이 도착해서 타임아웃이 취소됨 - 정상
+            return;
+        }
+
+        // 타임아웃 발생
+        if (_pendingRequests.TryRemove(msgSeq, out var timedOutReq))
+        {
+            timedOutReq.Dispose();
+            _asyncManager.AddJob(() =>
+            {
+                _callback.ErrorCallback(timedOutReq.StageId, (ushort)ConnectorErrorCode.RequestTimeout, timedOutReq.Request);
+            });
+        }
     }
 
     public async Task<IPacket> RequestAsync(IPacket request, long stageId, bool isAuthenticate = false)
@@ -333,6 +367,9 @@ internal sealed class ClientNetwork : IAsyncDisposable
         // Response 처리 (MsgSeq > 0)
         if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
         {
+            // 타임아웃 타이머 취소
+            pending.Dispose();
+
             if (pending.IsAuthenticate && parsed.ErrorCode == 0)
             {
                 _isAuthenticated = true;
@@ -398,6 +435,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
         foreach (var kvp in pending)
         {
+            kvp.Value.Dispose();
             kvp.Value.Tcs?.TrySetCanceled();
         }
     }
@@ -412,7 +450,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
     }
 
-    private sealed class PendingRequest
+    private sealed class PendingRequest : IDisposable
     {
         public ushort MsgSeq { get; init; }
         public IPacket Request { get; init; } = null!;
@@ -421,6 +459,13 @@ internal sealed class ClientNetwork : IAsyncDisposable
         public TaskCompletionSource<IPacket>? Tcs { get; init; }
         public bool IsAuthenticate { get; init; }
         public DateTime CreatedAt { get; init; }
+        public CancellationTokenSource? TimeoutCts { get; init; }
+
+        public void Dispose()
+        {
+            TimeoutCts?.Cancel();
+            TimeoutCts?.Dispose();
+        }
     }
 }
 

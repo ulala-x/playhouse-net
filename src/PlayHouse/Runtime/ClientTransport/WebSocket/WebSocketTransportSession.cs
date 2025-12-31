@@ -3,7 +3,9 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Net.WebSockets;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using PlayHouse.Abstractions;
 using WS = System.Net.WebSockets.WebSocket;
 
 namespace PlayHouse.Runtime.ClientTransport.WebSocket;
@@ -15,6 +17,7 @@ namespace PlayHouse.Runtime.ClientTransport.WebSocket;
 /// WebSocket messages are self-framed, so we use binary messages directly.
 /// Message format inside WebSocket frame:
 /// [MsgIdLen:1][MsgId:N][MsgSeq:2][StageId:8][Payload]
+/// Message processing is fire-and-forget for high throughput.
 /// </remarks>
 internal sealed class WebSocketTransportSession : ITransportSession
 {
@@ -73,8 +76,12 @@ internal sealed class WebSocketTransportSession : ITransportSession
     private readonly ILogger? _logger;
     private readonly CancellationTokenSource _cts;
     private readonly Task _receiveTask;
+    private readonly Channel<SendItem> _sendChannel;
+    private readonly Task _sendTask;
 
     private bool _disposed;
+
+    private readonly record struct SendItem(byte[] Buffer, int Size);
 
     public long SessionId { get; }
     public string AccountId { get; set; } = string.Empty;
@@ -99,7 +106,15 @@ internal sealed class WebSocketTransportSession : ITransportSession
         _logger = logger;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
 
+        // Configure send channel
+        _sendChannel = Channel.CreateUnbounded<SendItem>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
+
         _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
+        _sendTask = Task.Run(() => SendLoopAsync(_cts.Token));
 
         _logger?.LogDebug("WebSocket session {SessionId} started", sessionId);
     }
@@ -120,10 +135,11 @@ internal sealed class WebSocketTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Sends a response packet with ArrayPool optimization.
-    /// WebSocket has its own framing, so we don't need PipeWriter.
+    /// Sends a response packet by enqueueing it to the send channel.
+    /// Thread-safe for concurrent calls.
+    /// WebSocket has its own framing, so we don't need length prefix.
     /// </summary>
-    public ValueTask<FlushResult> SendResponseAsync(
+    public void SendResponse(
         string msgId,
         ushort msgSeq,
         long stageId,
@@ -131,47 +147,50 @@ internal sealed class WebSocketTransportSession : ITransportSession
         ReadOnlySpan<byte> payload)
     {
         if (_disposed || _webSocket.State != WebSocketState.Open)
-            return default;
+            return;
 
         var size = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: false);
         var buffer = ArrayPool<byte>.Shared.Rent(size);
 
-        try
-        {
-            // Write response body synchronously (Span can be used here)
-            MessageCodec.WriteResponseBody(buffer.AsSpan(), msgId, msgSeq, stageId, errorCode, payload);
+        // Write response body
+        MessageCodec.WriteResponseBody(buffer.AsSpan(), msgId, msgSeq, stageId, errorCode, payload);
 
-            // Send asynchronously
-            return SendBufferAsync(buffer, size);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error preparing response on WebSocket session {SessionId}", SessionId);
-            ArrayPool<byte>.Shared.Return(buffer);
-            return default;
-        }
+        // Enqueue to send channel (synchronous)
+        _sendChannel.Writer.TryWrite(new SendItem(buffer, size));
     }
 
-    private async ValueTask<FlushResult> SendBufferAsync(byte[] buffer, int size)
+    /// <summary>
+    /// Send loop that processes queued messages from the channel.
+    /// </summary>
+    private async Task SendLoopAsync(CancellationToken ct)
     {
         try
         {
-            await _webSocket.SendAsync(
-                buffer.AsMemory(0, size),
-                WebSocketMessageType.Binary,
-                endOfMessage: true,
-                CancellationToken.None);
-            return default;
+            await foreach (var item in _sendChannel.Reader.ReadAllAsync(ct))
+            {
+                try
+                {
+                    await _webSocket.SendAsync(
+                        item.Buffer.AsMemory(0, item.Size),
+                        WebSocketMessageType.Binary,
+                        endOfMessage: true,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
+                    break;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                }
+            }
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error sending response on WebSocket session {SessionId}", SessionId);
-            await DisconnectAsync();
-            return default;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
+            _logger?.LogError(ex, "Error in send loop for WebSocket session {SessionId}", SessionId);
         }
     }
 
@@ -203,8 +222,12 @@ internal sealed class WebSocketTransportSession : ITransportSession
         {
             _cts.Cancel();
 
+            // Complete send channel
+            _sendChannel.Writer.Complete();
+
             var timeout = Task.Delay(TimeSpan.FromSeconds(5));
-            await Task.WhenAny(_receiveTask, timeout);
+            var completed = Task.WhenAll(_receiveTask, _sendTask);
+            await Task.WhenAny(completed, timeout);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -263,7 +286,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
                 }
                 while (!result.EndOfMessage);
 
-                // Process complete message
+                // Process complete message with fire-and-forget
                 if (pooledBuffer.Length > 0)
                 {
                     try
@@ -305,7 +328,13 @@ internal sealed class WebSocketTransportSession : ITransportSession
             throw new InvalidDataException("Invalid message format");
         }
 
-        var payload = data.Slice(payloadOffset);
+        // Copy payload to ArrayPool buffer: PooledBuffer will be disposed after this method returns
+        var payloadLength = data.Length - payloadOffset;
+        var rentedBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+        data.Span.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
+        var payload = new ArrayPoolPayload(rentedBuffer, payloadLength);
+
+        // Fire-and-forget: no await for high throughput
         _onMessage(this, msgId, msgSeq, stageId, payload);
     }
 

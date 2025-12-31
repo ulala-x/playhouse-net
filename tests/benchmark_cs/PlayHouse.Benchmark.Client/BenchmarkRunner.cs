@@ -161,6 +161,10 @@ public class BenchmarkRunner(
         var timestamps = new ConcurrentDictionary<int, long>();
         var tcs = new TaskCompletionSource();
 
+        // 동시 요청 수 제한 (backpressure)
+        const int maxConcurrentRequests = 100;
+        var semaphore = new SemaphoreSlim(maxConcurrentRequests);
+
         // 콜백 처리 타이머 시작
         using var callbackTimer = new Timer(_ => connector.MainThreadAction(), null, 0, 1);
 
@@ -174,6 +178,13 @@ public class BenchmarkRunner(
         // 메시지 전송 (Request with callback)
         for (int i = 0; i < messagesPerConnection; i++)
         {
+            // 타임아웃 포함 대기 (에러 발생 시 semaphore가 릴리즈되지 않을 수 있음)
+            if (!await semaphore.WaitAsync(TimeSpan.FromSeconds(5)))
+            {
+                Log.Warning("[Connection {ConnectionId}] Semaphore wait timeout at message {Seq}", connectionId, i);
+                continue;
+            }
+
             request.Sequence = i;
             request.ClientTimestamp = Stopwatch.GetTimestamp();
 
@@ -190,6 +201,8 @@ public class BenchmarkRunner(
                     var elapsed = Stopwatch.GetTimestamp() - startTicks;
                     metricsCollector.RecordReceived(elapsed);
                 }
+
+                semaphore.Release();
 
                 var count = Interlocked.Increment(ref receivedCount);
                 if (count >= messagesPerConnection)

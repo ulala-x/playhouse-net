@@ -4,7 +4,9 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
 using System.Net.Sockets;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using PlayHouse.Abstractions;
 
 namespace PlayHouse.Runtime.ClientTransport.Tcp;
 
@@ -13,13 +15,13 @@ namespace PlayHouse.Runtime.ClientTransport.Tcp;
 /// </summary>
 /// <remarks>
 /// Uses length-prefixed message framing and zero-copy buffer management.
+/// Message processing is fire-and-forget for high throughput.
 /// </remarks>
 internal sealed class TcpTransportSession : ITransportSession
 {
     private readonly Socket _socket;
     private readonly Stream _stream;
     private readonly Pipe _receivePipe;
-    private readonly Pipe _sendPipe;
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
@@ -27,10 +29,13 @@ internal sealed class TcpTransportSession : ITransportSession
     private readonly CancellationTokenSource _cts;
     private readonly Task _receiveTask;
     private readonly Task _processTask;
+    private readonly Channel<SendItem> _sendChannel;
     private readonly Task _sendTask;
 
     private DateTime _lastActivity;
     private bool _disposed;
+
+    private readonly record struct SendItem(byte[] Buffer, int Size);
 
     public long SessionId { get; }
     public string AccountId { get; set; } = string.Empty;
@@ -61,13 +66,19 @@ internal sealed class TcpTransportSession : ITransportSession
         // Configure socket
         ConfigureSocket();
 
-        // Configure pipes
+        // Configure receive pipe
         var pipeOptions = new PipeOptions(
             pauseWriterThreshold: options.PauseWriterThreshold,
             resumeWriterThreshold: options.ResumeWriterThreshold,
             useSynchronizationContext: false);
         _receivePipe = new Pipe(pipeOptions);
-        _sendPipe = new Pipe(pipeOptions);
+
+        // Configure send channel
+        _sendChannel = Channel.CreateUnbounded<SendItem>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
 
         // Start I/O tasks
         _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
@@ -94,33 +105,82 @@ internal sealed class TcpTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Sends a response directly to PipeWriter (zero-copy).
+    /// Sends a response by enqueueing it to the send channel.
+    /// Thread-safe for concurrent calls.
     /// </summary>
-    public ValueTask<FlushResult> SendResponseAsync(
+    public void SendResponse(
         string msgId,
         ushort msgSeq,
         long stageId,
         ushort errorCode,
         ReadOnlySpan<byte> payload)
     {
-        if (_disposed) return ValueTask.FromResult(default(FlushResult));
+        if (_disposed) return;
 
-        var writer = _sendPipe.Writer;
         var totalSize = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: true);
 
-        // PipeWriter에서 메모리 획득 (내부적으로 ArrayPool 사용)
-        var memory = writer.GetMemory(totalSize);
-        var span = memory.Span;
+        // Rent buffer from ArrayPool
+        var buffer = ArrayPool<byte>.Shared.Rent(totalSize);
+
+        // Prepare buffer synchronously (Span operations)
+        PrepareResponseBuffer(buffer, totalSize, msgId, msgSeq, stageId, errorCode, payload);
+
+        // Enqueue to send channel (synchronous)
+        _sendChannel.Writer.TryWrite(new SendItem(buffer, totalSize));
+    }
+
+    /// <summary>
+    /// Prepares the response buffer synchronously (Span operations).
+    /// </summary>
+    private static void PrepareResponseBuffer(
+        byte[] buffer,
+        int totalSize,
+        string msgId,
+        ushort msgSeq,
+        long stageId,
+        ushort errorCode,
+        ReadOnlySpan<byte> payload)
+    {
+        var span = buffer.AsSpan(0, totalSize);
 
         // Length prefix (4 bytes)
         var bodySize = totalSize - 4;
         BinaryPrimitives.WriteInt32LittleEndian(span, bodySize);
 
-        // Body 작성
+        // Body
         MessageCodec.WriteResponseBody(span[4..], msgId, msgSeq, stageId, errorCode, payload);
+    }
 
-        writer.Advance(totalSize);
-        return writer.FlushAsync();
+    /// <summary>
+    /// Send loop that processes queued messages from the channel.
+    /// </summary>
+    private async Task SendLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var item in _sendChannel.Reader.ReadAllAsync(ct))
+            {
+                try
+                {
+                    await _stream.WriteAsync(item.Buffer.AsMemory(0, item.Size), ct);
+                    await _stream.FlushAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error sending data on session {SessionId}", SessionId);
+                    break;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error in send loop for session {SessionId}", SessionId);
+        }
     }
 
     public async ValueTask DisconnectAsync()
@@ -138,8 +198,8 @@ internal sealed class TcpTransportSession : ITransportSession
         {
             _cts.Cancel();
 
-            // Complete send pipe
-            await _sendPipe.Writer.CompleteAsync();
+            // Complete send channel
+            _sendChannel.Writer.Complete();
 
             // Wait for tasks with timeout
             var timeout = Task.Delay(TimeSpan.FromSeconds(5));
@@ -210,44 +270,6 @@ internal sealed class TcpTransportSession : ITransportSession
         }
     }
 
-    /// <summary>
-    /// Send loop that reads from send pipe and writes to network stream.
-    /// </summary>
-    private async Task SendLoopAsync(CancellationToken ct)
-    {
-        var reader = _sendPipe.Reader;
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var result = await reader.ReadAsync(ct);
-                var buffer = result.Buffer;
-
-                if (buffer.Length > 0)
-                {
-                    foreach (var segment in buffer)
-                    {
-                        await _stream.WriteAsync(segment, ct);
-                    }
-                    await _stream.FlushAsync(ct);
-                }
-
-                reader.AdvanceTo(buffer.End);
-
-                if (result.IsCompleted) break;
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error in send loop for session {SessionId}", SessionId);
-        }
-        finally
-        {
-            await reader.CompleteAsync();
-        }
-    }
-
     private async Task ProcessMessagesAsync(CancellationToken ct)
     {
         var reader = _receivePipe.Reader;
@@ -263,6 +285,7 @@ internal sealed class TcpTransportSession : ITransportSession
                 {
                     try
                     {
+                        // Fire-and-forget: no await for high throughput
                         _onMessage(this, msgId, msgSeq, stageId, payload);
                     }
                     catch (Exception ex)
@@ -304,12 +327,12 @@ internal sealed class TcpTransportSession : ITransportSession
         out string msgId,
         out ushort msgSeq,
         out long stageId,
-        out ReadOnlyMemory<byte> payload)
+        out ArrayPoolPayload payload)
     {
         msgId = string.Empty;
         msgSeq = 0;
         stageId = 0;
-        payload = ReadOnlyMemory<byte>.Empty;
+        payload = null!;
 
         // Need at least 4 bytes for length prefix
         if (buffer.Length < 4) return false;
@@ -340,7 +363,12 @@ internal sealed class TcpTransportSession : ITransportSession
             {
                 throw new InvalidDataException("Invalid message format");
             }
-            payload = packetBuffer.First.Slice(payloadOffset);
+
+            // Copy payload to ArrayPool buffer: Stage processes asynchronously while Pipe buffer is reused
+            var payloadLength = span.Length - payloadOffset;
+            var rentedBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+            span.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
+            payload = new ArrayPoolPayload(rentedBuffer, payloadLength);
         }
         else
         {
@@ -354,11 +382,11 @@ internal sealed class TcpTransportSession : ITransportSession
                     throw new InvalidDataException("Invalid message format");
                 }
 
-                // Must copy payload since rentedBuffer will be returned
+                // Copy payload to separate ArrayPool buffer
                 var payloadLength = (int)packetLength - payloadOffset;
-                var payloadCopy = new byte[payloadLength];
-                rentedBuffer.AsSpan(payloadOffset, payloadLength).CopyTo(payloadCopy);
-                payload = payloadCopy;
+                var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+                rentedBuffer.AsSpan(payloadOffset, payloadLength).CopyTo(payloadBuffer);
+                payload = new ArrayPoolPayload(payloadBuffer, payloadLength);
             }
             finally
             {
