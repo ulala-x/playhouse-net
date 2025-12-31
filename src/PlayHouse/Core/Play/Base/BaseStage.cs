@@ -8,6 +8,7 @@ using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
+using PlayHouse.Runtime.ClientTransport;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
 using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
@@ -124,35 +125,19 @@ internal sealed class BaseStage
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="payload">Message payload.</param>
-    internal void PostClientRoute(string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+    internal void PostClientRoute(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
     {
         _messageQueue.Enqueue(new StageMessage.ClientRouteMessage(accountId, msgId, msgSeq, sid, payload));
         TryStartProcessing();
     }
 
     /// <summary>
-    /// Posts an authenticated Actor join to the Stage event loop.
-    /// This completes the authentication flow by calling Stage callbacks.
+    /// Posts a JoinActorMessage to the Stage event loop.
     /// </summary>
-    /// <param name="actor">The authenticated BaseActor.</param>
-    internal void PostJoinActor(BaseActor actor)
+    internal void PostJoinActor(StageMessage.JoinActorMessage message)
     {
-        _messageQueue.Enqueue(new StageMessage.JoinActorMessage(actor, null));
+        _messageQueue.Enqueue(message);
         TryStartProcessing();
-    }
-
-    /// <summary>
-    /// Posts an authenticated Actor join to the Stage event loop and waits for completion.
-    /// This is used during authentication to ensure the actor is fully joined before the client receives auth reply.
-    /// </summary>
-    /// <param name="actor">The authenticated BaseActor.</param>
-    /// <returns>Task that completes when the actor has been joined to the stage.</returns>
-    internal Task PostJoinActorAsync(BaseActor actor)
-    {
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _messageQueue.Enqueue(new StageMessage.JoinActorMessage(actor, tcs));
-        TryStartProcessing();
-        return tcs.Task;
     }
 
     /// <summary>
@@ -224,8 +209,7 @@ internal sealed class BaseStage
                 break;
 
             case StageMessage.JoinActorMessage joinActorMessage:
-                await ProcessJoinActorAsync(joinActorMessage.Actor);
-                joinActorMessage.CompletionSource?.TrySetResult(true);
+                await ProcessJoinActorAsync(joinActorMessage);
                 break;
 
             case StageMessage.DisconnectMessage disconnectMessage:
@@ -334,7 +318,7 @@ internal sealed class BaseStage
     /// <summary>
     /// Processes client route message by finding actor and dispatching to Stage.OnDispatch.
     /// </summary>
-    private async Task ProcessClientRouteAsync(string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+    private async Task ProcessClientRouteAsync(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
     {
         if (_actors.TryGetValue(accountId, out var baseActor))
         {
@@ -355,8 +339,8 @@ internal sealed class BaseStage
 
             try
             {
-                // Create packet from ReadOnlyMemory - zero-copy with MemoryPayload
-                var packet = CPacket.Of(msgId, new MemoryPayload(payload));
+                // Create packet from ArrayPoolPayload - wrap in MemoryPayload
+                var packet = CPacket.Of(msgId, new MemoryPayload(new ReadOnlyMemory<byte>(payload.DataSpan.ToArray())));
                 await Stage.OnDispatch(baseActor.Actor, packet);
             }
             finally
@@ -373,72 +357,95 @@ internal sealed class BaseStage
 
     /// <summary>
     /// Processes actor join by checking for existing actor (reconnection) or new join.
+    /// Sends auth reply after processing.
     /// </summary>
-    private async Task ProcessJoinActorAsync(BaseActor actor)
+    private async Task ProcessJoinActorAsync(StageMessage.JoinActorMessage message)
     {
+        var actor = message.Actor;
         var accountId = actor.AccountId;
+        ushort errorCode = (ushort)ErrorCode.Success;
 
-        // Check if actor already exists (reconnection)
-        if (_actors.TryGetValue(accountId, out var existingActor))
-        {
-            _logger?.LogInformation("Actor {AccountId} reconnecting to stage {StageId}", accountId, StageId);
-
-            // Destroy the new actor instance
-            try
-            {
-                await actor.Actor.OnDestroy();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error destroying new actor instance during reconnection for {AccountId}", accountId);
-            }
-
-            // Update existing actor's session information
-            existingActor.ActorSender.Update(
-                actor.ActorSender.SessionNid,
-                actor.ActorSender.Sid,
-                actor.ActorSender.ApiNid);
-
-            // Notify reconnection
-            try
-            {
-                await Stage.OnConnectionChanged(existingActor.Actor, true);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error in OnConnectionChanged(true) for actor {AccountId}", accountId);
-            }
-
-            return;
-        }
-
-        // New actor join (existing logic)
-        var joinResult = await Stage.OnJoinStage(actor.Actor);
-        if (!joinResult)
-        {
-            _logger?.LogWarning("Stage {StageId} rejected actor {AccountId}", StageId, accountId);
-            try
-            {
-                await actor.Actor.OnDestroy();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Error destroying rejected actor {AccountId}", accountId);
-            }
-            return;
-        }
-
-        // Add actor to stage
-        AddActor(actor);
-
-        // Call Stage.OnPostJoinStage
         try
         {
-            await Stage.OnPostJoinStage(actor.Actor);
+            // Check if actor already exists (reconnection)
+            if (_actors.TryGetValue(accountId, out var existingActor))
+            {
+                _logger?.LogInformation("Actor {AccountId} reconnecting to stage {StageId}", accountId, StageId);
+
+                // Destroy the new actor instance
+                try
+                {
+                    await actor.Actor.OnDestroy();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error destroying new actor instance during reconnection for {AccountId}", accountId);
+                }
+
+                // Update existing actor's session information
+                existingActor.ActorSender.Update(
+                    actor.ActorSender.SessionNid,
+                    actor.ActorSender.Sid,
+                    actor.ActorSender.ApiNid);
+
+                // Notify reconnection
+                try
+                {
+                    await Stage.OnConnectionChanged(existingActor.Actor, true);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error in OnConnectionChanged(true) for actor {AccountId}", accountId);
+                }
+            }
+            else
+            {
+                // New actor join
+                var joinResult = await Stage.OnJoinStage(actor.Actor);
+                if (!joinResult)
+                {
+                    _logger?.LogWarning("Stage {StageId} rejected actor {AccountId}", StageId, accountId);
+                    errorCode = (ushort)ErrorCode.JoinStageFailed;
+                    try
+                    {
+                        await actor.Actor.OnDestroy();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Error destroying rejected actor {AccountId}", accountId);
+                    }
+                }
+                else
+                {
+                    // Add actor to stage
+                    AddActor(actor);
+
+                    // Call Stage.OnPostJoinStage
+                    try
+                    {
+                        await Stage.OnPostJoinStage(actor.Actor);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Error in OnPostJoinStage for actor {AccountId}", accountId);
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in OnPostJoinStage for actor {AccountId}", accountId);
+            _logger?.LogError(ex, "Error in ProcessJoinActorAsync for actor {AccountId}", accountId);
+            errorCode = (ushort)ErrorCode.InternalError;
+        }
+        finally
+        {
+            // Send auth reply
+            message.Session.SendResponse(
+                message.AuthReplyMsgId,
+                message.MsgSeq,
+                StageId,
+                errorCode,
+                ReadOnlySpan<byte>.Empty);
         }
     }
 
@@ -725,15 +732,20 @@ internal abstract class StageMessage : IDisposable
         public string MsgId { get; }
         public ushort MsgSeq { get; }
         public long Sid { get; }
-        public ReadOnlyMemory<byte> Payload { get; }
+        public ArrayPoolPayload Payload { get; }
 
-        public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, ReadOnlyMemory<byte> payload)
+        public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
         {
             AccountId = accountId;
             MsgId = msgId;
             MsgSeq = msgSeq;
             Sid = sid;
             Payload = payload;
+        }
+
+        public override void Dispose()
+        {
+            Payload?.Dispose();
         }
     }
 
@@ -743,12 +755,28 @@ internal abstract class StageMessage : IDisposable
     public sealed class JoinActorMessage : StageMessage
     {
         public BaseActor Actor { get; }
-        public TaskCompletionSource<bool>? CompletionSource { get; }
+        public ITransportSession Session { get; }
+        public ushort MsgSeq { get; }
+        public string AuthReplyMsgId { get; }
+        public ArrayPoolPayload Payload { get; }
 
-        public JoinActorMessage(BaseActor actor, TaskCompletionSource<bool>? completionSource = null)
+        public JoinActorMessage(
+            BaseActor actor,
+            ITransportSession session,
+            ushort msgSeq,
+            string authReplyMsgId,
+            ArrayPoolPayload payload)
         {
             Actor = actor;
-            CompletionSource = completionSource;
+            Session = session;
+            MsgSeq = msgSeq;
+            AuthReplyMsgId = authReplyMsgId;
+            Payload = payload;
+        }
+
+        public override void Dispose()
+        {
+            Payload?.Dispose();
         }
     }
 

@@ -46,12 +46,6 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private bool _disposed;
 
     /// <summary>
-    /// 클라이언트 메시지 핸들러.
-    /// 테스트나 커스텀 메시지 처리를 위해 설정합니다.
-    /// </summary>
-    internal Func<ITransportSession, string, ushort, long, ReadOnlyMemory<byte>, Task>? MessageHandler { get; set; }
-
-    /// <summary>
     /// 서버가 실행 중인지 여부.
     /// </summary>
     public bool IsRunning => _isRunning;
@@ -273,13 +267,14 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 
     /// <summary>
     /// Transport에서 클라이언트 메시지 수신 시 호출됩니다.
+    /// Fire-and-forget pattern for high throughput.
     /// </summary>
     private void OnClientMessage(
         ITransportSession session,
         string msgId,
         ushort msgSeq,
         long stageId,
-        ReadOnlyMemory<byte> payload)
+        ArrayPoolPayload payload)
     {
         // 미인증 클라이언트 체크
         if (!session.IsAuthenticated)
@@ -289,48 +284,44 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             {
                 _logger.LogWarning("Unauthenticated session {SessionId} sent non-auth message: {MsgId}",
                     session.SessionId, msgId);
-                _ = session.DisconnectAsync();
+                payload.Dispose();
+                _ = session.DisconnectAsync(); // Fire-and-forget
                 return;
             }
         }
 
-        // 커스텀 핸들러가 있으면 사용
-        if (MessageHandler != null)
-        {
-            _ = MessageHandler(session, msgId, msgSeq, stageId, payload);
-            return;
-        }
-
-        // 기본 핸들러: 에코 및 인증 처리
-        // Note: Ignore returned ValueTask for fire-and-forget behavior
-        _ = HandleDefaultMessageAsync(session, msgId, msgSeq, stageId, payload);
+        // 기본 핸들러: 인증 및 메시지 처리
+        HandleDefaultMessage(session, msgId, msgSeq, stageId, payload);
     }
 
     /// <summary>
     /// Handles default message processing for client messages.
     /// </summary>
     /// <remarks>
-    /// Uses ValueTask to avoid Task allocation on sync path (normal message routing).
-    /// Only authentication and heartbeat paths are async.
+    /// Fire-and-forget pattern for high throughput.
+    /// Authentication is handled asynchronously in background.
     /// </remarks>
-    private ValueTask HandleDefaultMessageAsync(
+    private void HandleDefaultMessage(
         ITransportSession session,
         string msgId,
         ushort msgSeq,
         long stageId,
-        ReadOnlyMemory<byte> payload)
+        ArrayPoolPayload payload)
     {
-        // 인증 요청 처리 (async path)
+        // 인증 요청 처리 (async - fire-and-forget)
         if (msgId == _options.AuthenticateMessageId)
         {
-            return new ValueTask(HandleAuthenticationAsync(session, msgSeq, stageId, payload));
+            _ = HandleAuthenticationAsync(session, msgSeq, stageId, payload); // Fire-and-forget
+            return;
         }
 
-        // HeartBeat 요청 처리 (async path)
+        // HeartBeat 요청 처리 (sync path)
         if (msgId == "@Heart@Beat@")
         {
-            // Use new zero-copy API
-            return new ValueTask(session.SendResponseAsync(msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty).AsTask());
+            // Use new zero-copy API (synchronous - queued internally)
+            session.SendResponse(msgId, msgSeq, stageId, 0, ReadOnlySpan<byte>.Empty);
+            payload.Dispose();
+            return;
         }
 
         // 인증된 세션의 일반 메시지 처리 (sync path - no allocation)
@@ -343,16 +334,15 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         {
             _logger.LogWarning("Unauthenticated session {SessionId} tried to send message: {MsgId}",
                 session.SessionId, msgId);
+            payload.Dispose();
         }
-
-        return ValueTask.CompletedTask;
     }
 
     private async Task HandleAuthenticationAsync(
         ITransportSession session,
         ushort msgSeq,
         long stageId,
-        ReadOnlyMemory<byte> payload)
+        ArrayPoolPayload payload)
     {
         try
         {
@@ -363,11 +353,11 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                 session.IsAuthenticated = true;
                 session.AccountId = GenerateAccountId(); // 임시 AccountId 생성
                 await SendAuthReplyAsync(session, msgSeq, 0, (ushort)ErrorCode.Success, session.AccountId);
+                payload.Dispose();
                 return;
             }
 
-            // 기존 로직: DefaultStageType이 있는 경우 Stage 생성 및 Actor 참가
-            // 1. Stage 조회/생성 (DefaultStageType 사용)
+            // Stage 조회/생성 (DefaultStageType 사용)
             var targetStageId = stageId != 0 ? stageId : GenerateStageId();
             var baseStage = _dispatcher?.GetOrCreateStage(targetStageId, _options.DefaultStageType);
 
@@ -375,10 +365,11 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             {
                 _logger.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
                 await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
+                payload.Dispose();
                 return;
             }
 
-            // 2. Stage 초기화 (OnCreate 호출) - 처음 생성된 경우에만
+            // Stage 초기화 (OnCreate 호출) - 처음 생성된 경우에만
             if (!baseStage.IsCreated)
             {
                 var createPacket = CPacket.Empty("CreateStage");
@@ -388,11 +379,12 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                 {
                     _logger.LogError("Failed to initialize stage {StageId}", targetStageId);
                     await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
+                    payload.Dispose();
                     return;
                 }
             }
 
-            // 3. 별도 Task에서 Actor 콜백 호출
+            // 별도 Task에서 Actor 콜백 호출
             var (success, errorCode, actor) = await Task.Run(async () =>
             {
                 try
@@ -413,11 +405,11 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                         return (false, (ushort)ErrorCode.InvalidStageType, (BaseActor?)null);
                     }
 
-                    // 4. Actor 콜백 순차 호출
+                    // Actor 콜백 순차 호출
                     await actor.Actor.OnCreate();
 
-                    // Zero-copy: wrap ReadOnlyMemory<byte> in MemoryPayload
-                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, new MemoryPayload(payload));
+                    // Create MemoryPayload from ArrayPoolPayload
+                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, new MemoryPayload(new ReadOnlyMemory<byte>(payload.DataSpan.ToArray())));
                     var authResult = await actor.Actor.OnAuthenticate(authPacket);
 
                     if (!authResult)
@@ -427,7 +419,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                         return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null);
                     }
 
-                    // 5. AccountId 검증
+                    // AccountId 검증
                     if (string.IsNullOrEmpty(actorSender.AccountId))
                     {
                         _logger.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
@@ -435,7 +427,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                         return (false, (ushort)ErrorCode.InvalidAccountId, (BaseActor?)null);
                     }
 
-                    // 6. 세션에 인증 정보 설정
+                    // 세션에 인증 정보 설정
                     session.AccountId = actorSender.AccountId;
                     session.IsAuthenticated = true;
                     session.StageId = targetStageId;
@@ -453,45 +445,24 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             if (!success || actor == null)
             {
                 await SendAuthReplyAsync(session, msgSeq, targetStageId, errorCode);
+                payload.Dispose();
                 return;
             }
 
-            // 7. Stage Queue에 JoinActorMessage 전달하고 완료 대기
-            // 이렇게 하면 클라이언트가 인증 응답을 받기 전에 Actor가 Stage에 완전히 조인됨
-            var joinCompletionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _dispatcher?.OnPost(new JoinActorMessage(targetStageId, actor, joinCompletionSource));
-
-            try
-            {
-                // 최대 5초 대기 (타임아웃)
-                using var cts = new CancellationTokenSource(5000);
-                await joinCompletionSource.Task.WaitAsync(cts.Token);
-            }
-            catch (TimeoutException)
-            {
-                _logger.LogError("Join actor timeout for session {SessionId}, accountId {AccountId}",
-                    session.SessionId, actor.ActorSender.AccountId);
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.InternalError);
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to join actor for session {SessionId}", session.SessionId);
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.InternalError);
-                return;
-            }
-
-            // 8. Actor가 완전히 조인된 후 클라이언트에 응답
-            await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.Success, actor.ActorSender.AccountId);
+            // Stage Queue에 JoinActorMessage 전달 (즉시 return, Stage에서 응답 send)
+            var authReplyMsgId = _options.AuthenticateMessageId.Replace("Request", "Reply");
+            _dispatcher?.OnPost(new JoinActorMessage(targetStageId, actor, session, msgSeq, authReplyMsgId, payload));
+            // payload는 JoinActorMessage에서 Dispose됨
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Authentication failed for session {SessionId}", session.SessionId);
             await SendAuthReplyAsync(session, msgSeq, stageId, (ushort)ErrorCode.InternalError);
+            payload.Dispose();
         }
     }
 
-    private async Task SendAuthReplyAsync(
+    private Task SendAuthReplyAsync(
         ITransportSession session,
         ushort msgSeq,
         long stageId,
@@ -513,7 +484,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         {
             reply.WriteTo(buffer.AsSpan(0, size));
 
-            await session.SendResponseAsync(
+            // Synchronous send - queued internally
+            session.SendResponse(
                 _options.AuthenticateMessageId.Replace("Request", "Reply"),
                 msgSeq,
                 stageId,
@@ -524,6 +496,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+
+        return Task.CompletedTask;
     }
 
     private long GenerateStageId()
@@ -562,14 +536,15 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     /// <summary>
     /// 특정 세션에 Push 메시지를 전송합니다.
     /// </summary>
-    public async ValueTask SendPushAsync(long sessionId, string msgId, long stageId, ReadOnlyMemory<byte> payload)
+    public ValueTask SendPushAsync(long sessionId, string msgId, long stageId, ReadOnlyMemory<byte> payload)
     {
         var session = _transportServer?.GetSession(sessionId);
         if (session?.IsConnected == true)
         {
-            // Use new zero-copy API
-            await session.SendResponseAsync(msgId, 0, stageId, 0, payload.Span);
+            // Synchronous send - queued internally
+            session.SendResponse(msgId, 0, stageId, 0, payload.Span);
         }
+        return ValueTask.CompletedTask;
     }
 
 
@@ -636,18 +611,19 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     }
 
     /// <inheritdoc/>
-    public async ValueTask SendClientReplyAsync(long sessionId, string msgId, ushort msgSeq, long stageId, ushort errorCode, Abstractions.IPayload payload)
+    public ValueTask SendClientReplyAsync(long sessionId, string msgId, ushort msgSeq, long stageId, ushort errorCode, Abstractions.IPayload payload)
     {
         var session = _transportServer?.GetSession(sessionId);
         if (session?.IsConnected == true)
         {
-            // Use new zero-copy API - PipeWriter for TCP, ArrayPool for WebSocket
-            await session.SendResponseAsync(msgId, msgSeq, stageId, errorCode, payload.DataSpan);
+            // Synchronous send - queued internally (Channel + SendLoop)
+            session.SendResponse(msgId, msgSeq, stageId, errorCode, payload.DataSpan);
         }
         else
         {
             _logger.LogWarning("Cannot send client reply: session {SessionId} not found or disconnected", sessionId);
         }
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc/>

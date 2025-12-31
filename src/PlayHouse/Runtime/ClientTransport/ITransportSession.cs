@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.IO.Pipelines;
+using PlayHouse.Abstractions;
 
 namespace PlayHouse.Runtime.ClientTransport;
 
@@ -49,14 +50,14 @@ public interface ITransportSession : IAsyncDisposable
 
     /// <summary>
     /// Sends a response packet with zero-copy optimization.
+    /// Thread-safe: Queue-based implementation ensures thread safety.
     /// </summary>
     /// <param name="msgId">Message identifier.</param>
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="stageId">Stage identifier.</param>
     /// <param name="errorCode">Error code (0 for success).</param>
     /// <param name="payload">Message payload.</param>
-    /// <returns>Flush result from the underlying transport.</returns>
-    ValueTask<FlushResult> SendResponseAsync(
+    void SendResponse(
         string msgId,
         ushort msgSeq,
         long stageId,
@@ -71,18 +72,19 @@ public interface ITransportSession : IAsyncDisposable
 
 /// <summary>
 /// Callback delegate for received messages.
+/// Fire-and-forget pattern for high throughput.
 /// </summary>
 /// <param name="session">The session that received the message.</param>
 /// <param name="msgId">Message identifier.</param>
 /// <param name="msgSeq">Message sequence number.</param>
 /// <param name="stageId">Target stage ID.</param>
-/// <param name="payload">Message payload.</param>
+/// <param name="payload">Message payload (must be disposed by caller).</param>
 public delegate void MessageReceivedCallback(
     ITransportSession session,
     string msgId,
     ushort msgSeq,
     long stageId,
-    ReadOnlyMemory<byte> payload);
+    ArrayPoolPayload payload);
 
 /// <summary>
 /// Callback delegate for session disconnection.

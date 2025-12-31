@@ -1,5 +1,7 @@
 #nullable enable
 
+using PlayHouse.Abstractions;
+using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ServerMesh.Message;
 
 namespace PlayHouse.Core.Play;
@@ -147,9 +149,9 @@ internal sealed class ClientRouteMessage : PlayMessage
     public long Sid { get; }
 
     /// <summary>
-    /// Gets the message payload.
+    /// Gets the message payload (must be disposed).
     /// </summary>
-    public ReadOnlyMemory<byte> Payload { get; }
+    public ArrayPoolPayload Payload { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientRouteMessage"/> class.
@@ -166,7 +168,7 @@ internal sealed class ClientRouteMessage : PlayMessage
         string msgId,
         ushort msgSeq,
         long sid,
-        ReadOnlyMemory<byte> payload)
+        ArrayPoolPayload payload)
         : base(stageId)
     {
         AccountId = accountId;
@@ -174,6 +176,14 @@ internal sealed class ClientRouteMessage : PlayMessage
         MsgSeq = msgSeq;
         Sid = sid;
         Payload = payload;
+    }
+
+    /// <summary>
+    /// Disposes resources including the payload.
+    /// </summary>
+    public override void Dispose()
+    {
+        Payload?.Dispose();
     }
 }
 
@@ -188,22 +198,56 @@ internal sealed class JoinActorMessage : PlayMessage
     public Base.BaseActor Actor { get; }
 
     /// <summary>
-    /// Gets the optional TaskCompletionSource to signal completion of the join operation.
-    /// Used during authentication to ensure actor is joined before client receives auth reply.
+    /// Gets the transport session for sending auth reply.
     /// </summary>
-    public TaskCompletionSource<bool>? CompletionSource { get; }
+    public ITransportSession Session { get; }
+
+    /// <summary>
+    /// Gets the message sequence number for auth reply.
+    /// </summary>
+    public ushort MsgSeq { get; }
+
+    /// <summary>
+    /// Gets the auth reply message ID.
+    /// </summary>
+    public string AuthReplyMsgId { get; }
+
+    /// <summary>
+    /// Gets the auth request payload (must be disposed).
+    /// </summary>
+    public ArrayPoolPayload Payload { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="JoinActorMessage"/> class.
     /// </summary>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="actor">The authenticated actor.</param>
-    /// <param name="completionSource">Optional TaskCompletionSource to signal completion.</param>
-    public JoinActorMessage(long stageId, Base.BaseActor actor, TaskCompletionSource<bool>? completionSource = null)
+    /// <param name="session">Transport session for sending auth reply.</param>
+    /// <param name="msgSeq">Message sequence number for auth reply.</param>
+    /// <param name="authReplyMsgId">Auth reply message ID.</param>
+    /// <param name="payload">Auth request payload.</param>
+    public JoinActorMessage(
+        long stageId,
+        Base.BaseActor actor,
+        ITransportSession session,
+        ushort msgSeq,
+        string authReplyMsgId,
+        ArrayPoolPayload payload)
         : base(stageId)
     {
         Actor = actor;
-        CompletionSource = completionSource;
+        Session = session;
+        MsgSeq = msgSeq;
+        AuthReplyMsgId = authReplyMsgId;
+        Payload = payload;
+    }
+
+    /// <summary>
+    /// Disposes resources including the payload.
+    /// </summary>
+    public override void Dispose()
+    {
+        Payload?.Dispose();
     }
 }
 
