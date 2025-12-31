@@ -1,18 +1,24 @@
 #nullable enable
 
-using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace PlayHouse.Abstractions.Play;
 
 /// <summary>
-/// Factory for creating Stage and Actor instances.
+/// Factory for creating Stage and Actor instances with dependency injection support.
 /// </summary>
 /// <remarks>
 /// Content developers register their Stage and Actor factories using this class.
 /// The framework uses these factories to create instances during Stage creation
 /// and Actor join processes.
 ///
-/// Usage:
+/// Usage with DI:
+/// <code>
+/// var serviceProvider = services.BuildServiceProvider();
+/// var producer = new PlayProducer(stageTypes, actorType, serviceProvider);
+/// </code>
+///
+/// Manual registration (legacy):
 /// <code>
 /// var producer = new PlayProducer();
 /// producer.Register(
@@ -24,9 +30,11 @@ namespace PlayHouse.Abstractions.Play;
 /// </remarks>
 public class PlayProducer
 {
+    private readonly IServiceProvider? _serviceProvider;
+    private readonly Dictionary<string, Type> _stageTypes = new();
+    private readonly Type? _actorType;
     private readonly Dictionary<string, Func<IStageSender, IStage>> _stageFactories = new();
     private readonly Dictionary<string, Func<IActorSender, IActor>> _actorFactories = new();
-    private readonly Type? _defaultActorType;
 
     /// <summary>
     /// Default constructor for manual registration.
@@ -36,47 +44,19 @@ public class PlayProducer
     }
 
     /// <summary>
-    /// Constructor for Bootstrap pattern with Type-based registration.
+    /// Constructor for Bootstrap pattern with Type-based registration and dependency injection support.
     /// </summary>
     /// <param name="stageTypes">Dictionary of stage type names to Stage implementation types.</param>
     /// <param name="actorType">Default Actor implementation type (nullable for auth-only servers).</param>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when Stage or Actor type doesn't have a constructor accepting the required sender parameter.
-    /// </exception>
-    public PlayProducer(Dictionary<string, Type> stageTypes, Type? actorType)
+    /// <param name="serviceProvider">Service provider for dependency injection.</param>
+    public PlayProducer(
+        Dictionary<string, Type> stageTypes,
+        Type? actorType,
+        IServiceProvider serviceProvider)
     {
-        _defaultActorType = actorType;
-
-        // Actor 생성자 검증 (actorType이 null이 아닌 경우에만)
-        ConstructorInfo? actorCtor = null;
-        if (_defaultActorType != null)
-        {
-            actorCtor = _defaultActorType.GetConstructor(new[] { typeof(IActorSender) })
-                ?? throw new InvalidOperationException(
-                    $"Actor type '{_defaultActorType.Name}' must have a constructor accepting IActorSender parameter. " +
-                    $"Example: public {_defaultActorType.Name}(IActorSender actorSender)");
-        }
-
-        foreach (var (stageType, type) in stageTypes)
-        {
-            var stageT = type;
-
-            // Stage 생성자 검증
-            var stageCtor = stageT.GetConstructor(new[] { typeof(IStageSender) })
-                ?? throw new InvalidOperationException(
-                    $"Stage type '{stageT.Name}' must have a constructor accepting IStageSender parameter. " +
-                    $"Example: public {stageT.Name}(IStageSender stageSender)");
-
-            _stageFactories[stageType] = stageSender =>
-                (IStage)stageCtor.Invoke(new object[] { stageSender });
-
-            // Actor factory는 actorCtor가 null이 아닌 경우에만 등록
-            if (actorCtor != null)
-            {
-                _actorFactories[stageType] = actorSender =>
-                    (IActor)actorCtor.Invoke(new object[] { actorSender });
-            }
-        }
+        _serviceProvider = serviceProvider;
+        _stageTypes = stageTypes;
+        _actorType = actorType;
     }
 
     /// <summary>
@@ -112,9 +92,19 @@ public class PlayProducer
     /// </exception>
     internal IStage GetStage(string stageType, IStageSender stageSender)
     {
+        // Manual registration (factory-based)
         if (_stageFactories.TryGetValue(stageType, out var factory))
         {
             return factory(stageSender);
+        }
+
+        // Type-based registration with DI
+        if (_serviceProvider != null && _stageTypes.TryGetValue(stageType, out var type))
+        {
+            return (IStage)ActivatorUtilities.CreateInstance(
+                _serviceProvider,
+                type,
+                stageSender);  // IStageSender is explicitly passed
         }
 
         throw new KeyNotFoundException($"Stage type '{stageType}' is not registered. Did you forget to call PlayProducer.Register()?");
@@ -131,9 +121,19 @@ public class PlayProducer
     /// </exception>
     internal IActor GetActor(string stageType, IActorSender actorSender)
     {
+        // Manual registration (factory-based)
         if (_actorFactories.TryGetValue(stageType, out var factory))
         {
             return factory(actorSender);
+        }
+
+        // Type-based registration with DI
+        if (_serviceProvider != null && _actorType != null)
+        {
+            return (IActor)ActivatorUtilities.CreateInstance(
+                _serviceProvider,
+                _actorType,
+                actorSender);  // IActorSender is explicitly passed
         }
 
         throw new KeyNotFoundException($"Actor type for stage '{stageType}' is not registered. Did you forget to call PlayProducer.Register()?");
@@ -146,7 +146,7 @@ public class PlayProducer
     /// <returns>true if registered, false otherwise.</returns>
     internal bool IsValidType(string stageType)
     {
-        return _stageFactories.ContainsKey(stageType);
+        return _stageFactories.ContainsKey(stageType) || _stageTypes.ContainsKey(stageType);
     }
 
     /// <summary>
@@ -155,6 +155,11 @@ public class PlayProducer
     /// <returns>Collection of registered stage type identifiers.</returns>
     public IReadOnlyCollection<string> GetRegisteredTypes()
     {
-        return _stageFactories.Keys.ToList().AsReadOnly();
+        var allTypes = new HashSet<string>(_stageFactories.Keys);
+        foreach (var key in _stageTypes.Keys)
+        {
+            allTypes.Add(key);
+        }
+        return allTypes.ToList().AsReadOnly();
     }
 }

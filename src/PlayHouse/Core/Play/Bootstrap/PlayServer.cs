@@ -25,13 +25,14 @@ namespace PlayHouse.Bootstrap;
 /// Stage와 Actor를 관리하고 클라이언트와 실시간 통신을 담당합니다.
 /// TCP, WebSocket, SSL/TLS를 지원하며 동시에 여러 Transport를 사용할 수 있습니다.
 /// </summary>
-public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClientReplyHandler
+public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunicateListener, IClientReplyHandler
 {
     private readonly PlayServerOption _options;
     private readonly PlayProducer _producer;
     private readonly Type? _systemControllerType;
     private readonly ServerConfig _serverConfig;
     private readonly ILogger? _logger;
+    private readonly IServiceProvider _serviceProvider;
 
     private PlayCommunicator? _communicator;
     private PlayDispatcher? _dispatcher;
@@ -84,11 +85,17 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     /// </summary>
     public ITransportServer? TransportServer => _transportServer;
 
-    internal PlayServer(PlayServerOption options, PlayProducer producer, Type? systemControllerType, ILogger? logger = null)
+    internal PlayServer(
+        PlayServerOption options,
+        PlayProducer producer,
+        Type? systemControllerType,
+        IServiceProvider serviceProvider,
+        ILogger? logger = null)
     {
         _options = options;
         _producer = producer;
         _systemControllerType = systemControllerType;
+        _serviceProvider = serviceProvider;
         _logger = logger;
 
         _serverConfig = new ServerConfig(
@@ -222,7 +229,7 @@ public sealed class PlayServer : IAsyncDisposable, ICommunicateListener, IClient
     /// <summary>
     /// 서버를 중지합니다.
     /// </summary>
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (!_isRunning) return;
 

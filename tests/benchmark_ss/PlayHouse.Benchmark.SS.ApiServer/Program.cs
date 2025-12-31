@@ -2,9 +2,12 @@ using System.CommandLine;
 using System.Runtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Benchmark.SS.ApiServer;
 using PlayHouse.Bootstrap;
+using PlayHouse.Core.Api.Bootstrap;
+using PlayHouse.Extensions;
 using Serilog;
 using Serilog.Events;
 
@@ -114,15 +117,22 @@ try
     var cts = new CancellationTokenSource();
 
     // ApiServer 구성
-    var apiServer = new ApiServerBootstrap()
-        .Configure(options =>
-        {
-            options.ServiceType = ServiceType.Api;
-            options.ServerId = "api-1";
-            options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
-        })
-        .UseController<BenchmarkApiController>()
-        .Build();
+    var services = new ServiceCollection();
+    services.AddLogging(builder =>
+    {
+        builder.AddSerilog(Log.Logger);
+    });
+
+    services.AddApiServer(options =>
+    {
+        options.ServiceType = ServiceType.Api;
+        options.ServerId = "api-1";
+        options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
+    })
+    .UseController<BenchmarkApiController>();
+
+    var serviceProvider = services.BuildServiceProvider();
+    var apiServer = serviceProvider.GetRequiredService<ApiServer>();
 
     // HTTP API 서버 구성
     Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://0.0.0.0:{httpPort}");

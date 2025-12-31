@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Benchmark.SS.PlayServer;
 using PlayHouse.Bootstrap;
+using PlayHouse.Extensions;
 using Serilog;
 using Serilog.Events;
 using Serilog.Extensions.Logging;
@@ -149,26 +150,26 @@ try
     Log.Information("================================================================================");
 
     // PlayServer 구성
-    using var loggerFactory = LoggerFactory.Create(builder =>
+    var services = new ServiceCollection();
+    services.AddLogging(builder =>
     {
         builder.AddSerilog(Log.Logger);
     });
-    var logger = loggerFactory.CreateLogger<PlayServer>();
 
-    var playServer = new PlayServerBootstrap()
-        .Configure(options =>
-        {
-            options.ServiceType = ServiceType.Play;
-            options.ServerId = serverId;
-            options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
-            options.TcpPort = tcpPort;
-            options.AuthenticateMessageId = "Authenticate";
-            options.DefaultStageType = "BenchmarkStage";
-        })
-        .UseLogger(logger)
-        .UseStage<BenchmarkStage>("BenchmarkStage")
-        .UseActor<BenchmarkActor>()
-        .Build();
+    services.AddPlayServer(options =>
+    {
+        options.ServiceType = ServiceType.Play;
+        options.ServerId = serverId;
+        options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
+        options.TcpPort = tcpPort;
+        options.AuthenticateMessageId = "Authenticate";
+        options.DefaultStageType = "BenchmarkStage";
+    })
+    .UseStage<BenchmarkStage>("BenchmarkStage")
+    .UseActor<BenchmarkActor>();
+
+    var serviceProvider = services.BuildServiceProvider();
+    var playServer = serviceProvider.GetRequiredService<PlayServer>();
 
     // 종료 토큰 생성
     var cts = new CancellationTokenSource();

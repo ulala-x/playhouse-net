@@ -1,6 +1,7 @@
 #nullable enable
 
 using Microsoft.Extensions.DependencyInjection;
+using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Bootstrap;
@@ -17,17 +18,17 @@ namespace PlayHouse.Core.Api.Bootstrap;
 /// API Server 인스턴스.
 /// Play Server와 ZMQ로 통신하며 Stateless 요청 처리를 담당합니다.
 /// </summary>
-public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
+public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicateListener
 {
     private readonly ApiServerOption _options;
     private readonly List<Type> _controllerTypes;
     private readonly Type? _systemControllerType;
     private readonly ServerConfig _serverConfig;
+    private readonly IServiceProvider _serviceProvider;
 
     private PlayCommunicator? _communicator;
     private ApiDispatcher? _dispatcher;
     private RequestCache? _requestCache;
-    private ServiceProvider? _serviceProvider;
     private ServerAddressResolver? _addressResolver;
     private CancellationTokenSource? _cts;
 
@@ -35,16 +36,26 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     private bool _disposed;
 
     /// <summary>
+    /// 서버가 실행 중인지 여부.
+    /// </summary>
+    public bool IsRunning => _isRunning;
+
+    /// <summary>
     /// API Sender 인터페이스.
     /// DI에 등록하여 Play Server에 요청을 보낼 때 사용합니다.
     /// </summary>
     public IApiSender? ApiSender { get; private set; }
 
-    internal ApiServer(ApiServerOption options, List<Type> controllerTypes, Type? systemControllerType)
+    internal ApiServer(
+        ApiServerOption options,
+        List<Type> controllerTypes,
+        Type? systemControllerType,
+        IServiceProvider serviceProvider)
     {
         _options = options;
         _controllerTypes = controllerTypes;
         _systemControllerType = systemControllerType;
+        _serviceProvider = serviceProvider;
 
         _serverConfig = new ServerConfig(
             options.ServiceId,
@@ -64,22 +75,6 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         _cts = new CancellationTokenSource();
         _requestCache = new RequestCache();
 
-        // 서비스 컨테이너 구성
-        var services = new ServiceCollection();
-        foreach (var controllerType in _controllerTypes)
-        {
-            // IApiController 인터페이스로 등록하여 ApiReflection에서 찾을 수 있게 함
-            services.AddTransient(typeof(IApiController), controllerType);
-        }
-
-        // SystemController 등록
-        if (_systemControllerType != null)
-        {
-            services.AddSingleton(typeof(ISystemController), _systemControllerType);
-        }
-
-        _serviceProvider = services.BuildServiceProvider();
-
         _communicator = new PlayCommunicator(_serverConfig);
         _communicator.Bind(this);
         _communicator.Start();
@@ -87,7 +82,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         // 자기 자신에게 연결 (자기 자신에게 메시지를 보내기 위해 필요)
         _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
-        // ApiDispatcher 생성
+        // ApiDispatcher 생성 (외부 ServiceProvider 사용)
         _dispatcher = new ApiDispatcher(
             _options.ServiceId,
             _options.ServerId,
@@ -131,7 +126,7 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
     /// <summary>
     /// 서버를 중지합니다.
     /// </summary>
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (!_isRunning) return;
 
@@ -143,7 +138,6 @@ public sealed class ApiServer : IAsyncDisposable, ICommunicateListener
         _communicator?.Stop();
         _dispatcher?.Dispose();
         _requestCache?.CancelAll();
-        _serviceProvider?.Dispose();
 
         _cts?.Dispose();
         _cts = null;

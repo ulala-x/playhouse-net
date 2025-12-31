@@ -100,3 +100,13 @@ public class SelfConnectionTestsCollection
 {
     // 이 클래스는 마커 역할만 하며 코드를 포함하지 않습니다.
 }
+
+/// <summary>
+/// DI 통합 테스트용 Collection.
+/// DI 기반으로 구성된 PlayServer 인스턴스를 공유합니다.
+/// </summary>
+[CollectionDefinition("E2E DI Integration")]
+public class DIIntegrationCollection : ICollectionFixture<DIPlayServerFixture>
+{
+    // 이 클래스는 마커 역할만 하며 코드를 포함하지 않습니다.
+}

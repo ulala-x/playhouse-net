@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 
@@ -179,7 +180,18 @@ public sealed class PlayServerBootstrap
                 throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseActor<T>().");
         }
 
-        var producer = new PlayProducer(_stageTypes, _actorType);
-        return new PlayServer(_options, producer, _systemControllerType, _logger);
+        // ServiceProvider 생성
+        var services = new ServiceCollection();
+
+        // Logger 등록 (있는 경우)
+        if (_logger != null)
+        {
+            services.AddSingleton(_logger);
+        }
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        var producer = new PlayProducer(_stageTypes, _actorType, serviceProvider);
+        return new PlayServer(_options, producer, _systemControllerType, serviceProvider, _logger);
     }
 }
