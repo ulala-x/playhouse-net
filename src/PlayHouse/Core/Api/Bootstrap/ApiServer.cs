@@ -145,20 +145,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         await Task.CompletedTask;
     }
 
-    /// <summary>
-    /// 다른 서버에 수동으로 연결합니다.
-    /// </summary>
-    /// <param name="targetNid">대상 서버 NID (예: "2:2" for ApiServer, "1:1" for PlayServer)</param>
-    /// <param name="address">대상 서버 주소 (예: "tcp://localhost:5000")</param>
-    /// <remarks>
-    /// UseSystemController()를 사용한 경우 ServerAddressResolver가 자동으로 서버를 연결하므로
-    /// 이 메서드를 호출할 필요가 없습니다. 수동 연결이 필요한 경우에만 사용하세요.
-    /// </remarks>
-    public void Connect(string targetNid, string address)
-    {
-        _communicator?.Connect(targetNid, address);
-    }
-
     /// <inheritdoc/>
     public void OnReceive(RoutePacket packet)
     {

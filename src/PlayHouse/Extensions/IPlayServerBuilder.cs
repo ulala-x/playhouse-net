@@ -26,6 +26,16 @@ public interface IPlayServerBuilder
     /// 이 메서드는 필수입니다. PlayServer를 빌드하기 전에 반드시 호출해야 합니다.
     /// </remarks>
     IPlayServerBuilder UseSystemController<T>() where T : class, ISystemController;
+
+    /// <summary>
+    /// System Controller 인스턴스를 등록합니다.
+    /// </summary>
+    /// <param name="controller">ISystemController 인스턴스.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    /// <remarks>
+    /// 이 메서드는 필수입니다. PlayServer를 빌드하기 전에 반드시 호출해야 합니다.
+    /// </remarks>
+    IPlayServerBuilder UseSystemController(ISystemController controller);
 }
 
 /// <summary>
@@ -36,4 +46,5 @@ public interface IApiServerBuilder
     IServiceCollection Services { get; }
     IApiServerBuilder UseController<T>() where T : class, IApiController;
     IApiServerBuilder UseSystemController<T>() where T : class, ISystemController;
+    IApiServerBuilder UseSystemController(ISystemController controller);
 }

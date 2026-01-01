@@ -202,20 +202,6 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     }
 
     /// <summary>
-    /// 다른 서버에 수동으로 연결합니다 (ZMQ Router-Router 패턴).
-    /// </summary>
-    /// <param name="targetNid">대상 서버 NID (예: "2:1")</param>
-    /// <param name="address">대상 서버 주소 (예: "tcp://127.0.0.1:15101")</param>
-    /// <remarks>
-    /// UseSystemController()를 사용한 경우 ServerAddressResolver가 자동으로 서버를 연결하므로
-    /// 이 메서드를 호출할 필요가 없습니다. 수동 연결이 필요한 경우에만 사용하세요.
-    /// </remarks>
-    public void Connect(string targetNid, string address)
-    {
-        _communicator?.Connect(targetNid, address);
-    }
-
-    /// <summary>
     /// 서버를 중지합니다.
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)

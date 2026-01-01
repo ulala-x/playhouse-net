@@ -137,6 +137,9 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     {
         var request = TriggerStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
+        Serilog.Log.Information("[BenchmarkStage] HandleTriggerStageRequest - TargetNid: {TargetNid}, TargetStageId: {TargetStageId}",
+            request.TargetNid, request.TargetStageId);
+
         // 다른 Stage에 요청 전송 및 SS 구간 측정
         var ssRequest = new SSBenchmarkRequest
         {

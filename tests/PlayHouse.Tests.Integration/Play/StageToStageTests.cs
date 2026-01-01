@@ -207,6 +207,60 @@ public class ISenderTests : IAsyncLifetime
             "Stage B의 에코 응답이 포함되어야 함");
     }
 
+    /// <summary>
+    /// RequestToStage Callback 버전 E2E 테스트
+    /// Stage A에서 Stage B로 요청을 보내고 callback으로 응답을 받습니다.
+    ///
+    /// 테스트 플로우:
+    /// 1. 클라이언트 A를 PlayServer A에 연결하여 Stage A 생성
+    /// 2. 클라이언트 B를 PlayServer B에 연결하여 Stage B 생성
+    /// 3. 클라이언트 A가 Stage A에 TriggerRequestToStageCallbackRequest 전송
+    /// 4. Stage A에서 IStageSender.RequestToStage("2", StageIdB, message, callback)로 PlayServer B의 Stage B에 요청 전송
+    /// 5. PlayServer B의 Stage B에서 OnDispatch(IPacket) 콜백 호출되고 Reply 반환
+    /// 6. Stage A의 callback이 호출되고 응답을 클라이언트에 Push 메시지로 전달
+    /// 7. E2E 검증: 즉시 수락 응답 + callback 호출 횟수 + Push 메시지 내용 검증
+    /// </summary>
+    [Fact(DisplayName = "RequestToStage - Callback 버전 성공")]
+    public async Task RequestToStage_Callback_Success_CallbackInvoked()
+    {
+        // Given - 두 개의 서버에 각각 Stage 연결
+        await ConnectAndAuthenticateAsync(_connectorA, StageIdA, _playServerA!);
+        await ConnectAndAuthenticateAsync(_connectorB, StageIdB, _playServerB!);
+
+        var initialCallbackCount = TestStageImpl.RequestToStageCallbackCount;
+        _receivedMessagesA.Clear();
+
+        // When - Stage A에서 Stage B로 RequestToStage Callback 버전 트리거
+        var request = new TriggerRequestToStageCallbackRequest
+        {
+            TargetNid = "2",  // PlayServer B
+            TargetStageId = StageIdB,
+            Query = "Callback Query from Stage A"
+        };
+        using var packet = new Packet(request);
+        var response = await _connectorA.RequestAsync(packet);
+
+        // Then - E2E 검증 1: 즉시 수락 응답
+        response.MsgId.Should().EndWith("TriggerRequestToStageCallbackAccepted",
+            "즉시 수락 응답을 받아야 함");
+
+        // Callback이 실행되고 Push 메시지가 도착할 시간 대기
+        await Task.Delay(1000);
+
+        // Then - E2E 검증 2: Callback 호출 횟수 증가
+        TestStageImpl.RequestToStageCallbackCount.Should().BeGreaterThan(initialCallbackCount,
+            "RequestToStage callback이 호출되어야 함");
+
+        // Then - E2E 검증 3: Push 메시지 수신 (callback에서 SendToClient로 전송)
+        _receivedMessagesA.Should().NotBeEmpty("Push 메시지를 수신해야 함");
+        var pushMessage = _receivedMessagesA.FirstOrDefault(m => m.packet.MsgId.Contains("TriggerRequestToStageCallbackReply"));
+        pushMessage.Should().NotBe(default, "TriggerRequestToStageCallbackReply Push 메시지가 있어야 함");
+
+        var pushReply = TriggerRequestToStageCallbackReply.Parser.ParseFrom(pushMessage.packet.Payload.DataSpan);
+        pushReply.Response.Should().Contain("Callback Query from Stage A",
+            "Stage B의 에코 응답이 callback을 통해 전달되어야 함");
+    }
+
     #endregion
 
     #region 같은 서버 내 Stage간 통신 테스트

@@ -38,6 +38,13 @@ internal sealed class ApiServerBuilder : IApiServerBuilder
         return this;
     }
 
+    public IApiServerBuilder UseSystemController(ISystemController controller)
+    {
+        _systemControllerType = controller.GetType();
+        _services.AddSingleton<ISystemController>(controller);
+        return this;
+    }
+
     internal void Build()
     {
         // ApiServer 싱글턴 등록

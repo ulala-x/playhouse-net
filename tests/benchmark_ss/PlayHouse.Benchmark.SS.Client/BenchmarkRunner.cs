@@ -281,6 +281,9 @@ public class BenchmarkRunner(
 
     private async Task RunPlayToStageMode(ClientConnector connector, int connectionId)
     {
+        Log.Information("[Connection {ConnectionId}] RunPlayToStageMode - TargetNid: {TargetNid}, TargetStageId: {TargetStageId}",
+            connectionId, targetNid, targetStageId);
+
         // 요청 객체 재사용
         var request = new TriggerStageRequest
         {

@@ -43,6 +43,13 @@ internal sealed class PlayServerBuilder : IPlayServerBuilder
         return this;
     }
 
+    public IPlayServerBuilder UseSystemController(ISystemController controller)
+    {
+        _systemControllerType = controller.GetType();
+        _services.AddSingleton<ISystemController>(controller);
+        return this;
+    }
+
     internal void Build()
     {
         // IServerInfoCenter 싱글턴 등록
