@@ -26,11 +26,11 @@ public class ApiPlayServerFixture : IAsyncLifetime
 
         var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
 
-        // PlayServer (ServerId, ServiceId=1, ServerId=1)
+        // PlayServer (ServerId=play-1, ServiceId=1)
         PlayServer = new PlayServerBootstrap()
             .Configure(options =>
             {
-                options.ServerId = "1";
+                options.ServerId = "play-1";
                 options.BindEndpoint = "tcp://127.0.0.1:15100";
                 options.TcpPort = 0;
                 options.RequestTimeoutMs = 30000;
@@ -42,12 +42,12 @@ public class ApiPlayServerFixture : IAsyncLifetime
             .UseSystemController<TestSystemController>()
             .Build();
 
-        // ApiServer (ServerId, ServiceType=Api, ServerId=1)
+        // ApiServer (ServerId=api-1, ServiceType=Api)
         ApiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
                 // ServiceType.Api (=2) is default, no need to set
-                options.ServerId = "1";
+                options.ServerId = "api-1";
                 options.BindEndpoint = "tcp://127.0.0.1:15101";
                 options.RequestTimeoutMs = 30000;
             })
@@ -59,7 +59,8 @@ public class ApiPlayServerFixture : IAsyncLifetime
         await ApiServer.StartAsync();
 
         // ServerAddressResolver가 서버를 자동으로 연결할 시간을 줌
-        await Task.Delay(1000);
+        // ZMQ 연결이 완전히 수립되려면 충분한 대기 시간이 필요
+        await Task.Delay(3000);
     }
 
     public async Task DisposeAsync()

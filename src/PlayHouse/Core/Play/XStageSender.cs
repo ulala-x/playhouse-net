@@ -281,8 +281,12 @@ internal sealed class XStageSender : XSender, IStageSender
     {
         if (CurrentHeader?.Sid > 0 && _clientReplyHandler != null)
         {
+            // Capture header values before async execution (CurrentHeader may be cleared during await)
+            var sid = CurrentHeader.Sid;
+            var msgSeq = (ushort)CurrentHeader.MsgSeq;
+
             // Client request - route through transport with fire-and-forget disposal
-            _ = ReplyAndDisposeAsync(reply);
+            _ = ReplyAndDisposeAsync(reply, sid, msgSeq);
         }
         else
         {
@@ -294,14 +298,14 @@ internal sealed class XStageSender : XSender, IStageSender
     /// <summary>
     /// Sends client reply and ensures packet disposal after transmission.
     /// </summary>
-    private async Task ReplyAndDisposeAsync(IPacket reply)
+    private async Task ReplyAndDisposeAsync(IPacket reply, long sid, ushort msgSeq)
     {
         try
         {
             await _clientReplyHandler!.SendClientReplyAsync(
-                CurrentHeader!.Sid,
+                sid,
                 reply.MsgId,
-                (ushort)CurrentHeader.MsgSeq,
+                msgSeq,
                 StageId,
                 0,
                 reply.Payload);
