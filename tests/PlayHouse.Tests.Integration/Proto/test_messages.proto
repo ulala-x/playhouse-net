@@ -226,6 +226,14 @@ message TriggerRequestToApiReply {
     string api_response = 1;
 }
 
+// RequestToApi Callback 트리거 (Stage → API)
+message TriggerRequestToApiCallbackRequest {
+    string query = 1;
+}
+message TriggerRequestToApiCallbackReply {
+    string api_response = 1;
+}
+
 // CreateStage 트리거 (API → PlayServer)
 message TriggerCreateStageRequest {
     string stage_type = 1;
