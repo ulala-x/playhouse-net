@@ -107,9 +107,28 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         // ★ Stage → Api 구간만 측정
         var ssSw = Stopwatch.StartNew();
-        var apiResponse = await StageSender.RequestToApi("api-1", CPacket.Of(ssRequest));
-        ssSw.Stop();
 
+        // CommMode에 따라 RequestAsync 또는 RequestCallback 사용
+        if (request.CommMode == SSCommMode.RequestCallback)
+        {
+            // RequestCallback 모드: 콜백 기반 비동기 호출
+            var tcs = new TaskCompletionSource<IPacket>();
+            StageSender.RequestToApi("api-1", CPacket.Of(ssRequest), (errorCode, reply) =>
+            {
+                if (errorCode == 0 && reply != null)
+                    tcs.TrySetResult(reply);
+                else
+                    tcs.TrySetException(new Exception($"API call failed with error code: {errorCode}"));
+            });
+            await tcs.Task;
+        }
+        else
+        {
+            // RequestAsync 모드: await 기반 비동기 호출 (기본값)
+            await StageSender.RequestToApi("api-1", CPacket.Of(ssRequest));
+        }
+
+        ssSw.Stop();
         totalSw.Stop();
 
         // 응답 페이로드 생성 (요청된 크기만큼)

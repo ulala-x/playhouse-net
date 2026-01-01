@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Runtime;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
@@ -150,6 +151,41 @@ try
     var app = builder.Build();
     app.MapControllers();
 
+    // Stage 생성 HTTP 엔드포인트 추가
+    app.MapPost("/benchmark/create-stage", async (CreateStageHttpRequest request) =>
+    {
+        try
+        {
+            var createPacket = PlayHouse.Core.Shared.CPacket.Empty("CreateStage");
+            var result = await apiServer.ApiSender!.CreateStage(
+                request.PlayNid,
+                request.StageType,
+                request.StageId,
+                createPacket);
+
+            return TypedResults.Ok(new CreateStageHttpResponse
+            {
+                Success = result.Result,
+                ErrorCode = result.Result ? 0 : -1,
+                StageId = request.StageId,
+                PlayNid = request.PlayNid,
+                ErrorMessage = result.Result ? null : "Failed to create stage"
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to create stage {StageId} on {PlayNid}", request.StageId, request.PlayNid);
+            return TypedResults.Ok(new CreateStageHttpResponse
+            {
+                Success = false,
+                ErrorCode = -1,
+                StageId = request.StageId,
+                PlayNid = request.PlayNid,
+                ErrorMessage = ex.Message
+            });
+        }
+    });
+
     // MessagePool Prewarm (런타임 할당 방지)
     Net.Zmq.MessagePool.Shared.Prewarm(Net.Zmq.MessageSize.K2, 500);
     Log.Information("MessagePool prewarmed: K2 x 500");
@@ -193,4 +229,26 @@ catch (Exception ex)
 finally
 {
     await Log.CloseAndFlushAsync();
+}
+
+/// <summary>
+/// HTTP를 통한 Stage 생성 요청
+/// </summary>
+internal record CreateStageHttpRequest
+{
+    public required string PlayNid { get; set; }
+    public required string StageType { get; set; }
+    public required long StageId { get; set; }
+}
+
+/// <summary>
+/// HTTP를 통한 Stage 생성 응답
+/// </summary>
+internal record CreateStageHttpResponse
+{
+    public bool Success { get; set; }
+    public int ErrorCode { get; set; }
+    public long StageId { get; set; }
+    public string PlayNid { get; set; } = "";
+    public string? ErrorMessage { get; set; }
 }

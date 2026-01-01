@@ -139,7 +139,6 @@ try
         options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
         options.TcpPort = tcpPort;
         options.AuthenticateMessageId = "Authenticate";
-        options.DefaultStageType = "BenchmarkStage";
     })
     .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
     .UseSystemController(StaticSystemController.Parse(peers));

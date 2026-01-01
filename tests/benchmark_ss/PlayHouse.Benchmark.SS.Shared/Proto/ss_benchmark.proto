@@ -8,12 +8,29 @@ option csharp_namespace = "PlayHouse.Benchmark.SS.Shared.Proto";
 // Server-to-Server Benchmark Messages
 // ============================================
 
+// Stage 생성 요청 (HTTP 클라이언트 → API Server)
+message CreateStageRequest {
+    string play_nid = 1;
+    string stage_type = 2;
+    int64 stage_id = 3;
+}
+
+// Stage 생성 응답 (API Server → HTTP 클라이언트)
+message CreateStageReply {
+    bool success = 1;
+    int32 error_code = 2;
+    int64 stage_id = 3;
+    string play_nid = 4;
+    string error_message = 5;
+}
+
 // 클라이언트 → Stage 트리거 요청 (API 통신)
 message TriggerApiRequest {
     int32 sequence = 1;
     int32 response_size = 2;
     int64 client_timestamp = 3;
     bytes payload = 4;
+    SSCommMode comm_mode = 5;  // RequestAsync or RequestCallback
 }
 
 // Stage → 클라이언트 응답 (API 통신 결과)

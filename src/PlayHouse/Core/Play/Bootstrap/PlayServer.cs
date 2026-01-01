@@ -332,42 +332,59 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     {
         try
         {
-            // DefaultStageType이 설정되지 않은 경우: 인증만 처리
+            // Stage ID 결정
+            var targetStageId = stageId != 0 ? stageId : GenerateStageId();
+
+            BaseStage? baseStage;
+            string stageType;
+
+            // DefaultStageType이 설정되지 않은 경우
             if (string.IsNullOrEmpty(_options.DefaultStageType))
             {
-                // 간단한 인증 플로우: Stage 없이 인증만 처리
-                session.IsAuthenticated = true;
-                session.AccountId = GenerateAccountId(); // 임시 AccountId 생성
-                await SendAuthReplyAsync(session, msgSeq, 0, (ushort)ErrorCode.Success, session.AccountId);
-                payload.Dispose();
-                return;
-            }
+                // Stage가 이미 존재하는지 확인
+                baseStage = _dispatcher?.GetStage(targetStageId);
 
-            // Stage 조회/생성 (DefaultStageType 사용)
-            var targetStageId = stageId != 0 ? stageId : GenerateStageId();
-            var baseStage = _dispatcher?.GetOrCreateStage(targetStageId, _options.DefaultStageType);
-
-            if (baseStage == null)
-            {
-                _logger.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
-                payload.Dispose();
-                return;
-            }
-
-            // Stage 초기화 (OnCreate 호출) - 처음 생성된 경우에만
-            if (!baseStage.IsCreated)
-            {
-                var createPacket = CPacket.Empty("CreateStage");
-                var (createSuccess, _) = await baseStage.CreateStage(_options.DefaultStageType, createPacket);
-
-                if (!createSuccess)
+                if (baseStage == null)
                 {
-                    _logger.LogError("Failed to initialize stage {StageId}", targetStageId);
+                    // Stage가 없으면 에러 (DefaultStageType이 없으므로 자동 생성 불가)
+                    _logger.LogError("Stage {StageId} not found and DefaultStageType is not set. Stage must be created via API server.", targetStageId);
+                    await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageNotFound);
+                    payload.Dispose();
+                    return;
+                }
+
+                // 기존 Stage의 타입 사용
+                stageType = baseStage.StageType;
+            }
+            else
+            {
+                // Stage 조회/생성 (DefaultStageType 사용)
+                baseStage = _dispatcher?.GetOrCreateStage(targetStageId, _options.DefaultStageType);
+
+                if (baseStage == null)
+                {
+                    _logger.LogError("Failed to get or create stage {StageId} for authentication", targetStageId);
                     await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
                     payload.Dispose();
                     return;
                 }
+
+                // Stage 초기화 (OnCreate 호출) - 처음 생성된 경우에만
+                if (!baseStage.IsCreated)
+                {
+                    var createPacket = CPacket.Empty("CreateStage");
+                    var (createSuccess, _) = await baseStage.CreateStage(_options.DefaultStageType, createPacket);
+
+                    if (!createSuccess)
+                    {
+                        _logger.LogError("Failed to initialize stage {StageId}", targetStageId);
+                        await SendAuthReplyAsync(session, msgSeq, targetStageId, (ushort)ErrorCode.StageCreationFailed);
+                        payload.Dispose();
+                        return;
+                    }
+                }
+
+                stageType = _options.DefaultStageType;
             }
 
             // 별도 Task에서 Actor 콜백 호출
@@ -382,12 +399,12 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     BaseActor actor;
                     try
                     {
-                        IActor iActor = _producer.GetActor(_options.DefaultStageType, actorSender);
+                        IActor iActor = _producer.GetActor(stageType, actorSender);
                         actor = new BaseActor(iActor, actorSender);
                     }
                     catch (KeyNotFoundException)
                     {
-                        _logger.LogError("Actor factory not found for stage type: {StageType}", _options.DefaultStageType);
+                        _logger.LogError("Actor factory not found for stage type: {StageType}", stageType);
                         return (false, (ushort)ErrorCode.InvalidStageType, (BaseActor?)null);
                     }
 
