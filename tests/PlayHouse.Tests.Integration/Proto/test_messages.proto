@@ -179,6 +179,16 @@ message TriggerRequestToStageReply {
     string response = 1;
 }
 
+// RequestToStage Callback 버전 트리거 요청
+message TriggerRequestToStageCallbackRequest {
+    string target_nid = 1;        // Target PlayServer ServerId (e.g., "1", "2")
+    int64 target_stage_id = 2;
+    string query = 3;
+}
+message TriggerRequestToStageCallbackReply {
+    string response = 1;
+}
+
 // Stage간 직접 전달되는 메시지 (Stage A → Stage B)
 message InterStageMessage {
     int64 from_stage_id = 1;

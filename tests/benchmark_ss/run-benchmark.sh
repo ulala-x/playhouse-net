@@ -75,7 +75,9 @@ echo "[3/5] Starting PlayServer (TCP port $PLAY_TCP_PORT, HTTP API port $PLAY_HT
 dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.PlayServer --configuration Release -- \
     --tcp-port $PLAY_TCP_PORT \
     --zmq-port $PLAY_ZMQ_PORT \
-    --http-port $PLAY_HTTP_PORT > /tmp/benchmark-ss-playserver.log 2>&1 &
+    --http-port $PLAY_HTTP_PORT \
+    --server-id play-1 \
+    --peers "play-1=tcp://127.0.0.1:$PLAY_ZMQ_PORT,api-1=tcp://127.0.0.1:$API_ZMQ_PORT" > /tmp/benchmark-ss-playserver.log 2>&1 &
 
 PLAY_SERVER_PID=$!
 echo "      PlayServer PID: $PLAY_SERVER_PID"
@@ -95,7 +97,8 @@ echo "[3/5] PlayServer started successfully"
 echo "[4/5] Starting ApiServer (ZMQ port $API_ZMQ_PORT)..."
 dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.ApiServer --configuration Release -- \
     --zmq-port $API_ZMQ_PORT \
-    --play-port $PLAY_ZMQ_PORT > /tmp/benchmark-ss-apiserver.log 2>&1 &
+    --server-id api-1 \
+    --peers "play-1=tcp://127.0.0.1:$PLAY_ZMQ_PORT,api-1=tcp://127.0.0.1:$API_ZMQ_PORT" > /tmp/benchmark-ss-apiserver.log 2>&1 &
 
 API_SERVER_PID=$!
 echo "      ApiServer PID: $API_SERVER_PID"

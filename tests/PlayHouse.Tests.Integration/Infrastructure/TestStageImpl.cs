@@ -33,6 +33,7 @@ public class TestStageImpl : IStage
     public static int AsyncPostCallbackCount => _asyncPostCallbackCount;
     public static ConcurrentBag<string> InterStageReceivedMsgIds { get; } = new();
     public static int InterStageMessageCount => _interStageMessageCount;
+    public static int RequestToStageCallbackCount => _requestToStageCallbackCount;
 
     private static readonly ConcurrentDictionary<long, TestStageImpl> _stageIdMap = new();
     private static readonly ConcurrentDictionary<long, int> _timerCallbackCountByStageId = new();
@@ -41,6 +42,7 @@ public class TestStageImpl : IStage
     private static int _asyncPreCallbackCount;
     private static int _asyncPostCallbackCount;
     private static int _interStageMessageCount;
+    private static int _requestToStageCallbackCount;
 
     // 테스트 검증용 데이터
     public List<string> ReceivedMsgIds { get; } = new();
@@ -76,6 +78,7 @@ public class TestStageImpl : IStage
         Interlocked.Exchange(ref _asyncPreCallbackCount, 0);
         Interlocked.Exchange(ref _asyncPostCallbackCount, 0);
         Interlocked.Exchange(ref _interStageMessageCount, 0);
+        Interlocked.Exchange(ref _requestToStageCallbackCount, 0);
     }
 
     public TestStageImpl(IStageSender stageSender)
@@ -190,6 +193,10 @@ public class TestStageImpl : IStage
 
             case "TriggerRequestToStageRequest":
                 await HandleTriggerRequestToStage(actor, packet);
+                break;
+
+            case "TriggerRequestToStageCallbackRequest":
+                HandleTriggerRequestToStageCallback(actor, packet);
                 break;
 
             case "TriggerSendToApiRequest":
@@ -460,6 +467,52 @@ public class TestStageImpl : IStage
         // Stage B의 응답을 클라이언트에 전달
         var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.DataSpan);
         actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToStageReply { Response = interStageReply.Response }));
+    }
+
+    private void HandleTriggerRequestToStageCallback(IActor actor, IPacket packet)
+    {
+        var request = TriggerRequestToStageCallbackRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var interStageMsg = new InterStageMessage
+        {
+            FromStageId = StageSender.StageId,
+            Content = request.Query
+        };
+
+        // TargetNid가 지정되지 않으면 기본값 "1" 사용 (이전 호환성)
+        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1" : request.TargetNid;
+
+        // Callback 버전 RequestToStage 호출
+        StageSender.RequestToStage(
+            targetNid,
+            request.TargetStageId,
+            CPacket.Of(interStageMsg),
+            (errorCode, reply) =>
+            {
+                // Callback 호출 횟수 증가
+                Interlocked.Increment(ref _requestToStageCallbackCount);
+
+                // Callback에서 응답을 클라이언트에 전달
+                if (errorCode == 0 && reply != null)
+                {
+                    var interStageReply = InterStageReply.Parser.ParseFrom(reply.Payload.DataSpan);
+                    actor.ActorSender.SendToClient(CPacket.Of(new TriggerRequestToStageCallbackReply
+                    {
+                        Response = interStageReply.Response
+                    }));
+                }
+                else
+                {
+                    // 에러 발생 시 에러 응답 전송
+                    actor.ActorSender.SendToClient(CPacket.Of(new TriggerRequestToStageCallbackReply
+                    {
+                        Response = $"Error: {errorCode}"
+                    }));
+                }
+            });
+
+        // 즉시 수락 응답 전송 (비동기 처리 시작됨을 알림)
+        actor.ActorSender.Reply(CPacket.Empty("TriggerRequestToStageCallbackAccepted"));
     }
 
     private void HandleTriggerSendToApi(IActor actor, IPacket packet)

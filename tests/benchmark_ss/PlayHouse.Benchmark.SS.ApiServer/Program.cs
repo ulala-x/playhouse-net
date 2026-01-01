@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.System;
 using PlayHouse.Benchmark.SS.ApiServer;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
@@ -33,15 +34,15 @@ var httpPortOption = new Option<int>(
     description: "HTTP API port for metrics",
     getDefaultValue: () => 5081);
 
-var playNidOption = new Option<string>(
-    name: "--play-nid",
-    description: "PlayServer NID to connect to",
-    getDefaultValue: () => "play-1");
+var serverIdOption = new Option<string>(
+    name: "--server-id",
+    description: "ApiServer ID",
+    getDefaultValue: () => "api-1");
 
-var playPortOption = new Option<int>(
-    name: "--play-port",
-    description: "PlayServer ZMQ port to connect to",
-    getDefaultValue: () => 16100);
+var peersOption = new Option<string>(
+    name: "--peers",
+    description: "Comma-separated peer list (e.g., play-1=tcp://127.0.0.1:16100,play-2=tcp://127.0.0.1:16101)",
+    getDefaultValue: () => "play-1=tcp://127.0.0.1:16100");
 
 var logDirOption = new Option<string>(
     name: "--log-dir",
@@ -52,25 +53,25 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark API Serv
 {
     zmqPortOption,
     httpPortOption,
-    playNidOption,
-    playPortOption,
+    serverIdOption,
+    peersOption,
     logDirOption
 };
 
 var zmqPort = 0;
 var httpPort = 0;
-var playNid = "play-1";
-var playPort = 16100;
+var serverId = "api-1";
+var peers = "play-1=tcp://127.0.0.1:16100";
 var logDir = "logs";
 
-rootCommand.SetHandler((zmq, http, pnid, pport, logDirectory) =>
+rootCommand.SetHandler((zmq, http, sid, peersStr, logDirectory) =>
 {
     zmqPort = zmq;
     httpPort = http;
-    playNid = pnid;
-    playPort = pport;
+    serverId = sid;
+    peers = peersStr;
     logDir = logDirectory;
-}, zmqPortOption, httpPortOption, playNidOption, playPortOption, logDirOption);
+}, zmqPortOption, httpPortOption, serverIdOption, peersOption, logDirOption);
 
 await rootCommand.InvokeAsync(args);
 
@@ -78,7 +79,6 @@ if (zmqPort == 0)
 {
     zmqPort = 16201;
     httpPort = 5081;
-    playPort = 16100;
 }
 
 // 로그 디렉토리 생성
@@ -104,10 +104,10 @@ try
     Log.Information("================================================================================");
     Log.Information("PlayHouse Server-to-Server Benchmark API Server");
     Log.Information("================================================================================");
+    Log.Information("Server ID: {ServerId}", serverId);
     Log.Information("ZMQ Port (server-to-server): {ZmqPort}", zmqPort);
     Log.Information("HTTP API Port: {HttpPort}", httpPort);
-    Log.Information("PlayServer NID: {PlayNid}", playNid);
-    Log.Information("PlayServer ZMQ Port: {PlayPort}", playPort);
+    Log.Information("Peers: {Peers}", peers);
     Log.Information("Log Directory: {LogDir}", Path.GetFullPath(logDir));
     Log.Information("HTTP API Endpoints:");
     Log.Information("  POST http://localhost:{HttpPort}/benchmark/shutdown - Shutdown server", httpPort);
@@ -126,9 +126,10 @@ try
     services.AddApiServer(options =>
     {
         options.ServiceType = ServiceType.Api;
-        options.ServerId = "api-1";
+        options.ServerId = serverId;
         options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
     })
+    .UseSystemController(StaticSystemController.Parse(peers))
     .UseController<BenchmarkApiController>();
 
     var serviceProvider = services.BuildServiceProvider();
@@ -156,11 +157,7 @@ try
     // ApiServer 시작
     await apiServer.StartAsync();
     Log.Information("API Server started (ZMQ: {ZmqPort})", zmqPort);
-
-    // PlayServer에 수동 연결 (양방향 통신을 위해 필요)
-    var playEndpoint = $"tcp://127.0.0.1:{playPort}";
-    apiServer.Connect(playNid, playEndpoint);
-    Log.Information("Connected to PlayServer (NID: {PlayNid}, Endpoint: {PlayEndpoint})", playNid, playEndpoint);
+    Log.Information("SystemController will manage connections to peers: {Peers}", peers);
 
     // HTTP API 서버 시작
     await app.StartAsync();

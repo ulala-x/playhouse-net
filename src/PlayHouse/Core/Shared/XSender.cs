@@ -79,6 +79,16 @@ public abstract class XSender : ISender
     }
 
     /// <summary>
+    /// Gets the sender's Stage ID for Stage-to-Stage communication.
+    /// Override this in XStageSender to return the actual StageId.
+    /// </summary>
+    /// <returns>Stage ID for the sender (0 if not a Stage).</returns>
+    protected virtual long GetSenderStageId()
+    {
+        return 0;
+    }
+
+    /// <summary>
     /// Gets the next message sequence number.
     /// </summary>
     /// <returns>A new sequence number (1-65535).</returns>
@@ -100,7 +110,7 @@ public abstract class XSender : ISender
     /// <inheritdoc/>
     public void SendToApi(string apiServerId, IPacket packet)
     {
-        var header = CreateHeader(packet.MsgId, 0);
+        var header = CreateHeader(packet.MsgId, 0, stageId: 0, accountId: 0, sid: 0);
         SendInternal(apiServerId, header, packet.Payload);
     }
 
@@ -108,7 +118,7 @@ public abstract class XSender : ISender
     public void RequestToApi(string apiServerId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
-        var header = CreateHeader(packet.MsgId, msgSeq);
+        var header = CreateHeader(packet.MsgId, msgSeq, stageId: 0, accountId: 0, sid: 0);
 
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback);
         RegisterReply(replyObject);
@@ -120,7 +130,7 @@ public abstract class XSender : ISender
     public async Task<IPacket> RequestToApi(string apiServerId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
-        var header = CreateHeader(packet.MsgId, msgSeq);
+        var header = CreateHeader(packet.MsgId, msgSeq, stageId: 0, accountId: 0, sid: 0);
 
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
         RegisterReply(replyObject);
@@ -137,7 +147,14 @@ public abstract class XSender : ISender
     /// <inheritdoc/>
     public void SendToStage(string playServerId, long stageId, IPacket packet)
     {
-        var header = CreateHeader(packet.MsgId, 0, stageId);
+        // Determine AccountId for reply routing:
+        // - If CurrentHeader exists with AccountId (Actor context), preserve it
+        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
+        var accountId = (CurrentHeader != null && CurrentHeader.AccountId != 0)
+            ? CurrentHeader.AccountId
+            : GetSenderStageId();
+        // Stage-to-Stage communication: Sid should be 0 (not a client session)
+        var header = CreateHeader(packet.MsgId, 0, stageId, accountId, sid: 0);
         SendInternal(playServerId, header, packet.Payload);
     }
 
@@ -145,7 +162,14 @@ public abstract class XSender : ISender
     public void RequestToStage(string playServerId, long stageId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId);
+        // Determine AccountId for reply routing:
+        // - If CurrentHeader exists with AccountId (Actor context), preserve it
+        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
+        var accountId = (CurrentHeader != null && CurrentHeader.AccountId != 0)
+            ? CurrentHeader.AccountId
+            : GetSenderStageId();
+        // Stage-to-Stage communication: Sid should be 0 (not a client session)
+        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid: 0);
 
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback);
         RegisterReply(replyObject);
@@ -157,7 +181,15 @@ public abstract class XSender : ISender
     public async Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId);
+        // Determine AccountId for reply routing:
+        // - If CurrentHeader exists with AccountId (Actor context), preserve it
+        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
+        var accountId = (CurrentHeader != null && CurrentHeader.AccountId != 0)
+            ? CurrentHeader.AccountId
+            : GetSenderStageId();
+
+        // Stage-to-Stage communication: Sid should be 0 (not a client session)
+        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid: 0);
 
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
         RegisterReply(replyObject);
@@ -210,6 +242,11 @@ public abstract class XSender : ISender
             return; // Not a request, no reply needed
         }
 
+        // For Stage-to-Stage communication: AccountId in request contains the sender's StageId
+        // Reply should be routed back to that Stage
+        var replyStageId = CurrentHeader.AccountId;
+        var replyAccountId = CurrentHeader.AccountId;
+
         var replyHeader = new RouteHeader
         {
             MsgSeq = CurrentHeader.MsgSeq,
@@ -217,7 +254,9 @@ public abstract class XSender : ISender
             MsgId = reply.MsgId,
             From = ServerId,
             ErrorCode = 0,
-            IsReply = true
+            IsReply = true,
+            StageId = replyStageId,
+            AccountId = replyAccountId
         };
 
         SendReplyInternal(CurrentHeader.From, replyHeader, reply.Payload);
@@ -227,7 +266,7 @@ public abstract class XSender : ISender
 
     #region Internal Methods
 
-    private RouteHeader CreateHeader(string msgId, ushort msgSeq, long stageId = 0, long accountId = 0)
+    private RouteHeader CreateHeader(string msgId, ushort msgSeq, long stageId = 0, long accountId = 0, long sid = 0)
     {
         return new RouteHeader
         {
@@ -236,7 +275,8 @@ public abstract class XSender : ISender
             MsgId = msgId,
             From = ServerId,
             StageId = stageId,
-            AccountId = accountId
+            AccountId = accountId,
+            Sid = sid
         };
     }
 

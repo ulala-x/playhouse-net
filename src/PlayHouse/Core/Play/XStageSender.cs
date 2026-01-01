@@ -71,6 +71,15 @@ internal sealed class XStageSender : XSender, IStageSender
         StageType = stageType;
     }
 
+    /// <summary>
+    /// Gets the sender's Stage ID for Stage-to-Stage communication.
+    /// </summary>
+    /// <returns>This Stage's ID.</returns>
+    protected override long GetSenderStageId()
+    {
+        return StageId;
+    }
+
     #region Timer Management
 
     /// <inheritdoc/>

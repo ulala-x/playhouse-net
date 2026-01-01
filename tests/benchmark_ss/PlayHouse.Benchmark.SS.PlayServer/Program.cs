@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.System;
 using PlayHouse.Benchmark.SS.PlayServer;
 using PlayHouse.Bootstrap;
 using PlayHouse.Extensions;
@@ -43,30 +44,15 @@ var serverIdOption = new Option<string>(
     description: "Server ID (NID) for this PlayServer",
     getDefaultValue: () => "play-1");
 
-var apiNidOption = new Option<string>(
-    name: "--api-nid",
-    description: "API Server NID (for play-to-api mode)",
-    getDefaultValue: () => "api-1");
-
-var apiPortOption = new Option<int>(
-    name: "--api-port",
-    description: "API Server ZMQ port (for play-to-api mode)",
-    getDefaultValue: () => 16201);
+var peersOption = new Option<string>(
+    name: "--peers",
+    description: "Peer servers in format 'nid1=endpoint1,nid2=endpoint2' (e.g., 'play-2=tcp://127.0.0.1:16200,api-1=tcp://127.0.0.1:16201')",
+    getDefaultValue: () => "");
 
 var logDirOption = new Option<string>(
     name: "--log-dir",
     description: "Directory for log files",
     getDefaultValue: () => "logs");
-
-var targetNidOption = new Option<string>(
-    name: "--target-nid",
-    description: "Target PlayServer NID (for play-to-stage mode)",
-    getDefaultValue: () => "");
-
-var targetPortOption = new Option<int>(
-    name: "--target-port",
-    description: "Target PlayServer ZMQ port (for play-to-stage mode)",
-    getDefaultValue: () => 0);
 
 var rootCommand = new RootCommand("PlayHouse Benchmark Server (Server-to-Server)")
 {
@@ -74,22 +60,16 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Server (Server-to-Server)
     zmqPortOption,
     httpPortOption,
     serverIdOption,
-    apiNidOption,
-    apiPortOption,
-    logDirOption,
-    targetNidOption,
-    targetPortOption
+    peersOption,
+    logDirOption
 };
 
 var tcpPort = 0;
 var zmqPort = 0;
 var httpPort = 0;
 var serverId = "play-1";
-var apiNid = "api-1";
-var apiPort = 16201;
+var peers = "";
 var logDir = "logs";
-var targetNid = "";
-var targetPort = 0;
 
 rootCommand.SetHandler((context) =>
 {
@@ -97,11 +77,8 @@ rootCommand.SetHandler((context) =>
     zmqPort = context.ParseResult.GetValueForOption(zmqPortOption);
     httpPort = context.ParseResult.GetValueForOption(httpPortOption);
     serverId = context.ParseResult.GetValueForOption(serverIdOption)!;
-    apiNid = context.ParseResult.GetValueForOption(apiNidOption)!;
-    apiPort = context.ParseResult.GetValueForOption(apiPortOption);
+    peers = context.ParseResult.GetValueForOption(peersOption)!;
     logDir = context.ParseResult.GetValueForOption(logDirOption)!;
-    targetNid = context.ParseResult.GetValueForOption(targetNidOption)!;
-    targetPort = context.ParseResult.GetValueForOption(targetPortOption);
 });
 
 await rootCommand.InvokeAsync(args);
@@ -111,7 +88,6 @@ if (tcpPort == 0)
     tcpPort = 16110;
     zmqPort = 16100;
     httpPort = 5080;
-    apiPort = 16201;
 }
 
 // 로그 디렉토리 생성
@@ -138,10 +114,10 @@ try
     Log.Information("PlayHouse Benchmark Server (Server-to-Server)");
     Log.Information("================================================================================");
     Log.Information("Server ID: {ServerId}", serverId);
-    Log.Information("API Server NID: {ApiNid}", apiNid);
     Log.Information("ZMQ Port (server-to-server): {ZmqPort}", zmqPort);
     Log.Information("TCP Port (client connections): {TcpPort}", tcpPort);
     Log.Information("HTTP API Port: {HttpPort}", httpPort);
+    Log.Information("Peers: {Peers}", string.IsNullOrEmpty(peers) ? "(none)" : peers);
     Log.Information("Log Directory: {LogDir}", Path.GetFullPath(logDir));
     Log.Information("HTTP API Endpoints:");
     Log.Information("  GET  http://localhost:{HttpPort}/benchmark/stats - Get metrics", httpPort);
@@ -166,7 +142,7 @@ try
         options.DefaultStageType = "BenchmarkStage";
     })
     .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
-    .UseSystemController<BenchmarkSystemController>();
+    .UseSystemController(StaticSystemController.Parse(peers));
 
     var serviceProvider = services.BuildServiceProvider();
     var playServer = serviceProvider.GetRequiredService<PlayServer>();
@@ -196,19 +172,6 @@ try
     // PlayServer 시작
     await playServer.StartAsync();
     Log.Information("PlayServer started (ID: {ServerId}, ZMQ: {ZmqPort}, TCP: {TcpPort})", serverId, zmqPort, tcpPort);
-
-    // ApiServer에 수동 연결 (프로세스 간 TestSystemController 공유 불가로 수동 연결 필요)
-    var apiEndpoint = $"tcp://127.0.0.1:{apiPort}";
-    playServer.Connect(apiNid, apiEndpoint);
-    Log.Information("Connected to ApiServer (NID: {ApiNid}, Endpoint: {ApiEndpoint})", apiNid, apiEndpoint);
-
-    // 다른 PlayServer에 연결 (play-to-stage 모드)
-    if (!string.IsNullOrEmpty(targetNid) && targetPort > 0)
-    {
-        var targetEndpoint = $"tcp://127.0.0.1:{targetPort}";
-        playServer.Connect(targetNid, targetEndpoint);
-        Log.Information("Connected to target PlayServer (NID: {TargetNid}, Endpoint: {TargetEndpoint})", targetNid, targetEndpoint);
-    }
 
     // HTTP API 서버 시작
     await app.StartAsync();
