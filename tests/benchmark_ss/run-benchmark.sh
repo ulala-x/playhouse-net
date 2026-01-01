@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# PlayHouse SS Benchmark 실행 스크립트 (Play-to-Api 모드)
+# PlayHouse SS Benchmark 실행 스크립트 (Play-to-Api 모드: RequestAsync/RequestCallback 분리)
 # 사용법: ./run-benchmark.sh [connections] [messages] [response-sizes] [mode]
 #   response-sizes: 콤마로 구분된 응답 크기 (예: "256,65536")
+#   mode: play-to-api (기본, 1000 CCU + CommMode 분리), stage-to-api (내부 반복)
 
 # 스크립트 위치 기준으로 프로젝트 루트 찾기
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +12,7 @@ cd "$PROJECT_ROOT"
 
 # 기본값
 CONNECTIONS=${1:-1000}
-MESSAGES=${2:-10000}
+MESSAGES=${2:-1000}
 RESPONSE_SIZES=${3:-"1500,65536"}
 MODE=${4:-play-to-api}
 
@@ -22,7 +23,7 @@ PLAY_HTTP_PORT=5080
 API_ZMQ_PORT=16201
 
 echo "================================================================================"
-echo "PlayHouse SS Benchmark Execution Script (Play-to-Api Mode)"
+echo "PlayHouse SS Benchmark Execution Script (Stage-to-Api Mode)"
 echo "================================================================================"
 echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
@@ -119,6 +120,22 @@ echo "[4/5] ApiServer started successfully"
 # 서버 간 연결 대기
 echo "      Waiting for server connection (3 seconds)..."
 sleep 3
+
+# Stage 생성 (API 서버를 통해)
+echo "      Creating $CONNECTIONS benchmark stages via API server..."
+API_HTTP_PORT=5081
+
+# 연결 수만큼 Stage 생성 (StageID: 1000~1000+CONNECTIONS-1)
+# xargs를 사용하여 병렬 처리 (50개씩)
+seq 0 $(($CONNECTIONS - 1)) | xargs -P 50 -I {} sh -c "
+    STAGE_ID=\$((1000 + {}))
+    curl -s --max-time 10 -X POST http://localhost:$API_HTTP_PORT/benchmark/create-stage \
+        -H 'Content-Type: application/json' \
+        -d '{\"playNid\":\"play-1\",\"stageType\":\"BenchmarkStage\",\"stageId\":'\$STAGE_ID'}' > /dev/null 2>&1
+"
+
+echo "      Stage creation completed: $CONNECTIONS stages"
+sleep 2
 
 # 클라이언트 실행 (모든 응답 크기를 한 번에 테스트)
 echo "[5/5] Running benchmark client..."

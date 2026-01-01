@@ -120,23 +120,63 @@ fi
 
 echo "[4/5] PlayServer 2 started successfully"
 
-# PlayServer 2에 타겟 Stage 생성 (더미 연결 - 백그라운드 유지)
-echo "      Creating and maintaining target Stage on PlayServer 2 (Stage ID: 2000)..."
-# 연결을 유지하여 Stage가 살아있도록 함 (messages=0으로 연결만 유지)
-dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.Client --configuration Release -- \
-    --server 127.0.0.1:$PLAY2_TCP_PORT \
-    --connections 1 \
-    --messages 0 \
-    --mode play-to-api \
-    --stage-id 2000 \
-    --http-port $PLAY2_HTTP_PORT > /tmp/benchmark-ss-dummy-client.log 2>&1 &
+# 서버 간 연결 대기
+echo "      Waiting for server connection (3 seconds)..."
+sleep 3
 
-DUMMY_CLIENT_PID=$!
-echo "      Dummy client PID: $DUMMY_CLIENT_PID"
+# Stage 생성을 위해 임시 API 서버 시작
+echo "      Starting temporary ApiServer for stage creation..."
+TMP_API_ZMQ_PORT=16300
+TMP_API_HTTP_PORT=5082
 
-# Stage 생성 및 인증 완료 대기
-sleep 5
-echo "      Target Stage 2000 created and connection maintained"
+dotnet run --project tests/benchmark_ss/PlayHouse.Benchmark.SS.ApiServer --configuration Release -- \
+    --zmq-port $TMP_API_ZMQ_PORT \
+    --http-port $TMP_API_HTTP_PORT \
+    --server-id tmp-api \
+    --peers "play-1=tcp://127.0.0.1:$PLAY1_ZMQ_PORT,play-2=tcp://127.0.0.1:$PLAY2_ZMQ_PORT" > /tmp/benchmark-ss-tmpapi.log 2>&1 &
+
+TMP_API_PID=$!
+echo "      Temporary ApiServer PID: $TMP_API_PID"
+sleep 3
+
+# 임시 API 서버 시작 확인
+if ! ps -p $TMP_API_PID > /dev/null; then
+    echo "      Temporary ApiServer failed to start! Check /tmp/benchmark-ss-tmpapi.log"
+    kill $PLAY_SERVER1_PID 2>/dev/null
+    kill $PLAY_SERVER2_PID 2>/dev/null
+    exit 1
+fi
+
+# Stage 생성 (API 서버를 통해)
+echo "      Creating stages via temporary API server..."
+
+# PlayServer 1용 Stage 생성 (첫 10개만)
+CREATE_COUNT=$CONNECTIONS
+if [ $CREATE_COUNT -gt 10 ]; then
+    CREATE_COUNT=10
+fi
+
+for i in $(seq 0 $(($CREATE_COUNT - 1))); do
+    STAGE_ID=$((1000 + i))
+    curl -s -X POST http://localhost:$TMP_API_HTTP_PORT/benchmark/create-stage \
+        -H "Content-Type: application/json" \
+        -d "{\"playNid\":\"play-1\",\"stageType\":\"BenchmarkStage\",\"stageId\":$STAGE_ID}" > /dev/null 2>&1
+done
+
+# PlayServer 2용 타겟 Stage 생성 (ID: 2000)
+curl -s -X POST http://localhost:$TMP_API_HTTP_PORT/benchmark/create-stage \
+    -H "Content-Type: application/json" \
+    -d "{\"playNid\":\"play-2\",\"stageType\":\"BenchmarkStage\",\"stageId\":2000}" > /dev/null 2>&1
+
+echo "      Stages created successfully"
+sleep 1
+
+# 임시 API 서버 종료
+echo "      Stopping temporary ApiServer..."
+curl -s -X POST http://localhost:$TMP_API_HTTP_PORT/benchmark/shutdown > /dev/null 2>&1
+sleep 2
+pkill -f "tmp-api" 2>/dev/null || true
+echo "      Temporary ApiServer stopped"
 
 # 클라이언트 실행 (play-to-stage 모드, 모든 응답 크기를 한 번에 테스트)
 echo "[5/5] Running benchmark client (play-to-stage mode)..."

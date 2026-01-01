@@ -40,6 +40,51 @@ public class BenchmarkApiController : IApiController
     {
         register.Add(nameof(SSBenchmarkRequest), HandleSSBenchmark);
         register.Add(nameof(StartSSBenchmarkRequest), HandleStartSSBenchmark);
+        register.Add(nameof(CreateStageRequest), HandleCreateStage);
+    }
+
+    /// <summary>
+    /// Stage 생성 요청 처리.
+    /// HTTP 클라이언트에서 온 CreateStageRequest를 받아서 PlayServer에 Stage를 생성합니다.
+    /// </summary>
+    private async Task HandleCreateStage(IPacket packet, IApiSender sender)
+    {
+        _apiSender = sender;
+
+        var request = CreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        try
+        {
+            var createPacket = CPacket.Empty("CreateStage");
+            var result = await sender.CreateStage(
+                request.PlayNid,
+                request.StageType,
+                request.StageId,
+                createPacket);
+
+            var reply = new CreateStageReply
+            {
+                Success = result.Result,
+                ErrorCode = result.Result ? 0 : -1,
+                StageId = request.StageId,
+                PlayNid = request.PlayNid
+            };
+
+            sender.Reply(CPacket.Of(reply));
+        }
+        catch (Exception ex)
+        {
+            var reply = new CreateStageReply
+            {
+                Success = false,
+                ErrorCode = -1,
+                StageId = request.StageId,
+                PlayNid = request.PlayNid,
+                ErrorMessage = ex.Message
+            };
+
+            sender.Reply(CPacket.Of(reply));
+        }
     }
 
     /// <summary>

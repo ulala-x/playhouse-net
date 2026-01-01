@@ -6,6 +6,8 @@ using PlayHouse.Connector.Protocol;
 using Serilog;
 using ClientConnector = PlayHouse.Connector.Connector;
 using ClientPacket = PlayHouse.Connector.Protocol.Packet;
+using System.Net.Http;
+using System.Net.Http.Json;
 
 namespace PlayHouse.Benchmark.SS.Client;
 
@@ -23,7 +25,8 @@ public class BenchmarkRunner(
     long initialStageId,
     long targetStageId,
     string targetNid,
-    ClientMetricsCollector metricsCollector)
+    ClientMetricsCollector metricsCollector,
+    SSCommMode commMode = SSCommMode.RequestAsync)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -41,6 +44,97 @@ public class BenchmarkRunner(
             payload[i] = (byte)(i % 256);
         }
         return ByteString.CopyFrom(payload);
+    }
+
+    /// <summary>
+    /// API 서버를 통해 PlayServer에 Stage를 생성합니다.
+    /// </summary>
+    /// <param name="apiHost">API 서버 호스트</param>
+    /// <param name="apiPort">API 서버 포트</param>
+    /// <param name="playNid">PlayServer NID</param>
+    /// <param name="stageType">Stage 타입</param>
+    /// <param name="stageId">Stage ID</param>
+    /// <returns>생성 성공 여부</returns>
+    public static Task<bool> CreateStageViaApiAsync(
+        string apiHost,
+        int apiPort,
+        string playNid,
+        string stageType,
+        long stageId)
+    {
+        // API 서버는 TCP 연결을 받지 않으므로, PlayServer를 경유해야 함
+        // 대신 스크립트에서 curl을 통해 HTTP 엔드포인트를 사용하도록 변경
+        Log.Warning("CreateStageViaApiAsync: Direct API connection not supported. Use script-based creation instead.");
+        return Task.FromResult(false);
+    }
+
+    /// <summary>
+    /// PlayServer에 연결된 클라이언트를 통해 API 서버에 Stage 생성 요청을 보냅니다.
+    /// </summary>
+    public static async Task<bool> CreateStageViaPlayServerAsync(
+        string serverHost,
+        int serverPort,
+        long tempStageId,
+        string playNid,
+        string stageType,
+        long targetStageId)
+    {
+        var connector = new ClientConnector();
+        connector.Init(new ConnectorConfig());
+
+        try
+        {
+            // 임시 Stage로 연결 (이미 존재해야 함)
+            var connected = await connector.ConnectAsync(serverHost, serverPort, tempStageId, stageType);
+            if (!connected)
+            {
+                Log.Error("Failed to connect to PlayServer for stage creation");
+                return false;
+            }
+
+            // 인증
+            using (var authPacket = ClientPacket.Empty("Authenticate"))
+            {
+                await connector.AuthenticateAsync(authPacket);
+            }
+
+            // CreateStageRequest 전송
+            var createRequest = new CreateStageRequest
+            {
+                PlayNid = playNid,
+                StageType = stageType,
+                StageId = targetStageId
+            };
+
+            using var packet = new ClientPacket(createRequest);
+            var response = await connector.RequestAsync(packet);
+
+            if (response.MsgId == "CreateStageReply")
+            {
+                var reply = CreateStageReply.Parser.ParseFrom(response.Payload.DataSpan);
+                if (reply.Success)
+                {
+                    Log.Information("Stage {StageId} created successfully on {PlayNid}", targetStageId, playNid);
+                    connector.Disconnect();
+                    return true;
+                }
+                else
+                {
+                    Log.Error("Stage creation failed: {ErrorMessage}", reply.ErrorMessage);
+                    connector.Disconnect();
+                    return false;
+                }
+            }
+
+            connector.Disconnect();
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Exception during stage creation");
+            connector.Disconnect();
+            return false;
+        }
     }
 
     public async Task RunAsync()
@@ -81,15 +175,20 @@ public class BenchmarkRunner(
 
         var stageId = initialStageId + connectionId; // 각 연결마다 고유 StageId
 
-        // 연결
+        // 1. API 서버를 통해 Stage 생성 (첫 번째 연결에서만 수행, 나머지는 이미 생성됨)
+        // Note: 실제로는 스크립트에서 미리 Stage를 생성하거나, 여기서 CreateStage를 호출해야 함
+        // 하지만 현재 아키텍처상 클라이언트가 직접 API 서버에 CreateStage 요청을 보내기 어려우므로
+        // 이 부분은 스크립트에서 처리하도록 함
+
+        // 2. PlayServer에 연결
         var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchStage");
         if (!connected)
         {
-            Log.Warning("[Connection {ConnectionId}] Failed to connect", connectionId);
+            Log.Warning("[Connection {ConnectionId}] Failed to connect to stage {StageId}. Stage may not exist.", connectionId, stageId);
             return;
         }
 
-        // 인증
+        // 3. 인증
         try
         {
             using (var authPacket = ClientPacket.Empty("Authenticate"))
@@ -239,7 +338,8 @@ public class BenchmarkRunner(
         var request = new TriggerApiRequest
         {
             ResponseSize = responseSize,
-            Payload = _requestPayload
+            Payload = _requestPayload,
+            CommMode = commMode
         };
 
         for (int i = 0; i < messagesPerConnection; i++)

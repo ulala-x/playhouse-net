@@ -390,6 +390,17 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     #region Stage Access
 
     /// <summary>
+    /// Gets an existing Stage without creating it.
+    /// </summary>
+    /// <param name="stageId">The stage ID.</param>
+    /// <returns>The BaseStage instance if it exists, otherwise null.</returns>
+    public BaseStage? GetStage(long stageId)
+    {
+        _stages.TryGetValue(stageId, out var stage);
+        return stage;
+    }
+
+    /// <summary>
     /// Gets an existing Stage or creates a new one if it doesn't exist.
     /// </summary>
     /// <param name="stageId">The stage ID.</param>
