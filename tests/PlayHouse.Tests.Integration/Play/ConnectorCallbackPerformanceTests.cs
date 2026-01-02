@@ -16,8 +16,8 @@ namespace PlayHouse.Tests.Integration.Play;
 /// <summary>
 /// Connector RequestCallback 모드 성능 E2E 테스트
 ///
-/// 이 테스트는 RequestCallback 모드에서 8KB 이상 메시지 처리 시
-/// UseMainThreadCallback 옵션에 따른 동작을 검증합니다.
+/// RequestCallback은 UseMainThreadCallback 설정과 관계없이 항상 큐를 사용합니다.
+/// MainThreadAction() 호출이 필수이며, 8KB 이상 메시지도 정상 처리되어야 합니다.
 /// </summary>
 [Collection("E2E ApiPlayServer")]
 public class ConnectorCallbackPerformanceTests : IAsyncLifetime
@@ -48,18 +48,27 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// RequestCallback 모드 - UseMainThreadCallback = false (즉시 실행)
+    /// RequestCallback 모드 - 8KB 메시지 정상 처리, MainThreadAction 필요
     /// </summary>
     /// <remarks>
-    /// 고성능 시나리오에서는 UseMainThreadCallback = false로 설정하여
-    /// 콜백을 네트워크 스레드에서 즉시 실행합니다.
-    /// MainThreadAction() 호출 없이도 정상 동작해야 합니다.
+    /// RequestCallback은 UseMainThreadCallback 설정과 관계없이 항상 큐를 사용합니다.
+    /// MainThreadAction() 호출이 필수입니다.
+    /// 8KB 이상 메시지도 정상적으로 처리되어야 합니다.
     /// </remarks>
-    [Fact(DisplayName = "RequestCallback - UseMainThreadCallback=false, 즉시 실행, 8KB 메시지 정상 처리")]
-    public async Task RequestCallback_ImmediateExecution_8KBMessage_Success()
+    [Fact(DisplayName = "RequestCallback - 8KB 메시지 정상 처리, MainThreadAction 필요")]
+    public async Task RequestCallback_8KBMessage_RequiresMainThreadAction()
     {
-        // Given - 즉시 실행 모드로 연결
+        // Given - 연결 및 콜백 자동 처리 타이머 시작
         _connector = await CreateConnectorAsync(useMainThreadCallback: false);
+
+        // 콜백 자동 처리 타이머 시작 (RequestCallback은 항상 큐를 사용하므로 필수)
+        _callbackTimer = new Timer(_ =>
+        {
+            lock (_callbackLock)
+            {
+                _connector?.MainThreadAction();
+            }
+        }, null, 0, 10); // 10ms 간격
 
         var receivedCount = 0;
         var timestamps = new ConcurrentDictionary<int, long>();
@@ -102,7 +111,7 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
             });
         }
 
-        // MainThreadAction() 호출 없이 대기
+        // MainThreadAction() 호출로 콜백 처리
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(5000));
 
         // Then - 모든 응답이 정상 수신되어야 함
@@ -111,14 +120,14 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// RequestCallback 모드 - UseMainThreadCallback = true (메인 스레드 큐)
+    /// RequestCallback 모드 - UseMainThreadCallback 설정 검증
     /// </summary>
     /// <remarks>
-    /// Unity 시나리오에서는 UseMainThreadCallback = true로 설정하여
-    /// 콜백을 메인 스레드 큐에 추가합니다.
+    /// UseMainThreadCallback은 Push 콜백 처리 방식을 결정합니다.
+    /// RequestCallback은 이 설정과 관계없이 항상 큐를 사용합니다.
     /// MainThreadAction() 호출이 필수입니다.
     /// </remarks>
-    [Fact(DisplayName = "RequestCallback - UseMainThreadCallback=true, 메인 스레드 큐, MainThreadAction 필요")]
+    [Fact(DisplayName = "RequestCallback - UseMainThreadCallback=true 설정, MainThreadAction 필요")]
     public async Task RequestCallback_MainThreadQueue_RequiresMainThreadAction()
     {
         // Given - 메인 스레드 큐 모드로 연결
@@ -173,13 +182,13 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     /// RequestAsync와 RequestCallback 성능 비교
     /// </summary>
     /// <remarks>
-    /// UseMainThreadCallback = false일 때, RequestCallback도
-    /// RequestAsync와 유사한 성능을 보여야 합니다.
+    /// RequestCallback은 항상 큐를 사용하므로 MainThreadAction() 호출이 필요합니다.
+    /// RequestAsync와 비교하여 합리적인 성능을 보여야 합니다.
     /// </remarks>
-    [Fact(DisplayName = "RequestCallback vs RequestAsync - 유사한 성능")]
+    [Fact(DisplayName = "RequestCallback vs RequestAsync - 성능 비교")]
     public async Task RequestCallback_Vs_RequestAsync_SimilarPerformance()
     {
-        // Given - 즉시 실행 모드로 연결
+        // Given - 연결
         _connector = await CreateConnectorAsync(useMainThreadCallback: false);
 
         var messageCount = 100;
@@ -201,7 +210,15 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
         }
         asyncSw.Stop();
 
-        // When 2 - RequestCallback 성능 측정
+        // When 2 - RequestCallback 성능 측정 (MainThreadAction 필요)
+        _callbackTimer = new Timer(_ =>
+        {
+            lock (_callbackLock)
+            {
+                _connector?.MainThreadAction();
+            }
+        }, null, 0, 10); // 10ms 간격
+
         var receivedCount = 0;
         var tcs = new TaskCompletionSource();
 
