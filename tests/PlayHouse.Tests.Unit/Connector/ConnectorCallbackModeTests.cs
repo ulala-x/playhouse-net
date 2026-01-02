@@ -2,74 +2,74 @@
 
 using FluentAssertions;
 using PlayHouse.Connector;
+using System.Threading;
 using Xunit;
-using ClientConnector = PlayHouse.Connector.Connector;
 
 namespace PlayHouse.Tests.Unit.Connector;
 
 /// <summary>
-/// 단위 테스트: Connector 콜백 실행 모드 검증
+/// 단위 테스트: Connector SynchronizationContext 기반 콜백 검증
 /// </summary>
 public class ConnectorCallbackModeTests
 {
-    [Fact(DisplayName = "ConnectorConfig - UseMainThreadCallback 기본값은 false")]
-    public void ConnectorConfig_UseMainThreadCallback_DefaultIsFalse()
+    [Fact(DisplayName = "ImmediateSynchronizationContext - Post는 즉시 실행")]
+    public void ImmediateSynchronizationContext_Post_ExecutesImmediately()
     {
         // Given (전제조건)
-        var config = new ConnectorConfig();
-
-        // Then (결과)
-        config.UseMainThreadCallback.Should().BeFalse(
-            "기본값은 false (즉시 실행 모드)로 고성능 시나리오에 최적화되어야 함");
-    }
-
-    [Fact(DisplayName = "ConnectorConfig - UseMainThreadCallback을 true로 설정 가능")]
-    public void ConnectorConfig_UseMainThreadCallback_CanSetTrue()
-    {
-        // Given (전제조건)
-        var config = new ConnectorConfig
-        {
-            UseMainThreadCallback = true  // Unity 모드
-        };
-
-        // Then (결과)
-        config.UseMainThreadCallback.Should().BeTrue(
-            "Unity 프로젝트에서는 true로 설정하여 메인 스레드 큐 사용");
-    }
-
-    [Fact(DisplayName = "Connector - UseMainThreadCallback = false 설정으로 초기화")]
-    public void Connector_Init_WithUseMainThreadCallbackFalse()
-    {
-        // Given (전제조건)
-        var connector = new ClientConnector();
-        var config = new ConnectorConfig
-        {
-            UseMainThreadCallback = false
-        };
+        var syncContext = new ImmediateSynchronizationContext();
+        var executed = false;
 
         // When (행동)
-        connector.Init(config);
+        syncContext.Post(_ => executed = true, null);
 
         // Then (결과)
-        connector.ConnectorConfig.UseMainThreadCallback.Should().BeFalse(
-            "콜백 즉시 실행 모드로 설정되어야 함");
+        executed.Should().BeTrue("Post는 즉시 동일 스레드에서 실행되어야 함");
     }
 
-    [Fact(DisplayName = "Connector - UseMainThreadCallback = true 설정으로 초기화")]
-    public void Connector_Init_WithUseMainThreadCallbackTrue()
+    [Fact(DisplayName = "ImmediateSynchronizationContext - Send는 즉시 실행")]
+    public void ImmediateSynchronizationContext_Send_ExecutesImmediately()
     {
         // Given (전제조건)
-        var connector = new ClientConnector();
-        var config = new ConnectorConfig
-        {
-            UseMainThreadCallback = true
-        };
+        var syncContext = new ImmediateSynchronizationContext();
+        var executed = false;
 
         // When (행동)
-        connector.Init(config);
+        syncContext.Send(_ => executed = true, null);
 
         // Then (결과)
-        connector.ConnectorConfig.UseMainThreadCallback.Should().BeTrue(
-            "메인 스레드 큐 모드로 설정되어야 함");
+        executed.Should().BeTrue("Send는 즉시 동일 스레드에서 실행되어야 함");
+    }
+
+    [Fact(DisplayName = "SynchronizationContext.Current - null일 때 큐 모드로 동작")]
+    public void ClientNetwork_NoSyncContext_UsesQueueMode()
+    {
+        // Given (전제조건) - SynchronizationContext.Current가 null인 상태
+        SynchronizationContext.SetSynchronizationContext(null);
+
+        // Then (결과)
+        SynchronizationContext.Current.Should().BeNull(
+            "SynchronizationContext가 없으면 큐 모드로 동작 (MainThreadAction 필요)");
+    }
+
+    [Fact(DisplayName = "SynchronizationContext.Current - 설정되었을 때 즉시 실행")]
+    public void ClientNetwork_WithSyncContext_ExecutesImmediately()
+    {
+        // Given (전제조건)
+        var originalContext = SynchronizationContext.Current;
+        var syncContext = new ImmediateSynchronizationContext();
+        SynchronizationContext.SetSynchronizationContext(syncContext);
+
+        try
+        {
+            // Then (결과)
+            SynchronizationContext.Current.Should().NotBeNull(
+                "SynchronizationContext가 설정되면 즉시 실행 모드로 동작");
+            SynchronizationContext.Current.Should().BeSameAs(syncContext);
+        }
+        finally
+        {
+            // Cleanup
+            SynchronizationContext.SetSynchronizationContext(originalContext);
+        }
     }
 }

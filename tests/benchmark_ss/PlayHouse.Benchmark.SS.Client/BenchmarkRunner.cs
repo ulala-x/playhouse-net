@@ -107,7 +107,7 @@ public class BenchmarkRunner(
             };
 
             using var packet = new ClientPacket(createRequest);
-            var response = await connector.RequestAsync(packet);
+            using var response = await connector.RequestAsync(packet);
 
             if (response.MsgId == "CreateStageReply")
             {
@@ -170,6 +170,10 @@ public class BenchmarkRunner(
 
     private async Task RunConnectionAsync(int connectionId)
     {
+        // 각 Task마다 ImmediateSynchronizationContext 설정하여 폴링 지연 제거
+        SynchronizationContext.SetSynchronizationContext(
+            new ImmediateSynchronizationContext());
+
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 
@@ -300,18 +304,7 @@ public class BenchmarkRunner(
         try
         {
             // API 서버로 직접 요청하거나 Stage를 통해 요청
-            IPacket response;
-            if (callType == SSCallType.ApiToApi)
-            {
-                // API → API 테스트는 API 서버에 직접 요청
-                // Note: Connector는 Stage에만 연결되므로, Stage를 통해 API 호출
-                response = await connector.RequestAsync(packet);
-            }
-            else
-            {
-                // Stage → API, Stage → Stage는 Stage에 요청
-                response = await connector.RequestAsync(packet);
-            }
+            using var response = await connector.RequestAsync(packet);
 
             if (response.MsgId != "StartSSBenchmarkReply")
             {
@@ -355,7 +348,7 @@ public class BenchmarkRunner(
             var e2eStopwatch = Stopwatch.StartNew();
             try
             {
-                var response = await connector.RequestAsync(packet);
+                using var response = await connector.RequestAsync(packet);
                 e2eStopwatch.Stop();
 
                 if (response.MsgId != "TriggerApiReply")
@@ -406,7 +399,7 @@ public class BenchmarkRunner(
             var e2eStopwatch = Stopwatch.StartNew();
             try
             {
-                var response = await connector.RequestAsync(packet);
+                using var response = await connector.RequestAsync(packet);
                 e2eStopwatch.Stop();
 
                 if (response.MsgId != "TriggerStageReply")
