@@ -204,8 +204,7 @@ internal sealed class BaseStage
                 break;
 
             case StageMessage.ClientRouteMessage clientRouteMessage:
-                await ProcessClientRouteAsync(clientRouteMessage.AccountId, clientRouteMessage.MsgId,
-                    clientRouteMessage.MsgSeq, clientRouteMessage.Sid, clientRouteMessage.Payload);
+                await ProcessClientRouteAsync(clientRouteMessage);
                 break;
 
             case StageMessage.JoinActorMessage joinActorMessage:
@@ -318,20 +317,20 @@ internal sealed class BaseStage
     /// <summary>
     /// Processes client route message by finding actor and dispatching to Stage.OnDispatch.
     /// </summary>
-    private async Task ProcessClientRouteAsync(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
+    private async Task ProcessClientRouteAsync(StageMessage.ClientRouteMessage message)
     {
-        if (_actors.TryGetValue(accountId, out var baseActor))
+        if (_actors.TryGetValue(message.AccountId, out var baseActor))
         {
             // Create RouteHeader for client message reply routing
             var header = new RouteHeader
             {
-                MsgSeq = msgSeq,
+                MsgSeq = message.MsgSeq,
                 ServiceId = 1, // TODO: Get from config
-                MsgId = msgId,
+                MsgId = message.MsgId,
                 From = "client", // From client transport
                 StageId = StageId,
                 AccountId = 0, // Will be set by ActorSender
-                Sid = sid // Session ID for reply routing
+                Sid = message.Sid // Session ID for reply routing
             };
 
             // Set current header on StageSender for reply routing
@@ -339,9 +338,15 @@ internal sealed class BaseStage
 
             try
             {
-                // Create packet from ArrayPoolPayload - wrap in MemoryPayload
-                var packet = CPacket.Of(msgId, new MemoryPayload(new ReadOnlyMemory<byte>(payload.DataSpan.ToArray())));
-                await Stage.OnDispatch(baseActor.Actor, packet);
+                // Take ownership of payload from message (zero-copy optimization)
+                var payload = message.TakePayload();
+                if (payload != null)
+                {
+                    // Pass payload directly to CPacket - ownership transferred
+                    using var packet = CPacket.Of(message.MsgId, payload);
+                    await Stage.OnDispatch(baseActor.Actor, packet);
+                    // packet.Dispose() will handle payload cleanup
+                }
             }
             finally
             {
@@ -351,7 +356,7 @@ internal sealed class BaseStage
         }
         else
         {
-            _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
+            _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", message.AccountId, message.MsgId);
         }
     }
 
@@ -732,7 +737,7 @@ internal abstract class StageMessage : IDisposable
         public string MsgId { get; }
         public ushort MsgSeq { get; }
         public long Sid { get; }
-        public ArrayPoolPayload Payload { get; }
+        public ArrayPoolPayload? Payload { get; private set; }
 
         public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
         {
@@ -741,6 +746,17 @@ internal abstract class StageMessage : IDisposable
             MsgSeq = msgSeq;
             Sid = sid;
             Payload = payload;
+        }
+
+        /// <summary>
+        /// Takes ownership of the payload, preventing automatic disposal.
+        /// </summary>
+        /// <returns>The payload, or null if already taken.</returns>
+        public ArrayPoolPayload? TakePayload()
+        {
+            var p = Payload;
+            Payload = null;  // Transfer ownership - Dispose will not clean up
+            return p;
         }
 
         public override void Dispose()

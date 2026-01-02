@@ -54,6 +54,7 @@ public sealed class RequestCache
         }
         else
         {
+            cts.Dispose();  // CTS 반드시 정리
             _logger?.LogWarning("Failed to register request {MsgSeq} - already exists", msgSeq);
             tcs.TrySetException(new InvalidOperationException($"Request {msgSeq} already registered"));
         }

@@ -314,6 +314,10 @@ public abstract class XSender : ISender
             {
                 replyObject.CompleteWithError((ushort)ErrorCode.RequestTimeout);
             }
+            else if (t.IsCanceled)
+            {
+                replyObject.CompleteWithError((ushort)ErrorCode.RequestTimeout);
+            }
         }, TaskContinuationOptions.ExecuteSynchronously);
     }
 
