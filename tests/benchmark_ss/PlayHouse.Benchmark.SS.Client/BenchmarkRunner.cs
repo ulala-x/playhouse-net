@@ -26,10 +26,12 @@ public class BenchmarkRunner(
     long targetStageId,
     string targetNid,
     ClientMetricsCollector metricsCollector,
-    SSCommMode commMode = SSCommMode.RequestAsync)
+    SSCommMode commMode = SSCommMode.RequestAsync,
+    int serverHttpPort = 5080)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
+    private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
 
     /// <summary>
     /// 지정된 크기의 페이로드를 생성합니다. (압축 방지를 위해 패턴으로 채움)
@@ -137,6 +139,30 @@ public class BenchmarkRunner(
         }
     }
 
+    /// <summary>
+    /// 서버 메트릭을 Reset합니다. (측정 범위 통일)
+    /// </summary>
+    private async Task ResetServerMetricsAsync()
+    {
+        try
+        {
+            var url = $"http://{serverHost}:{serverHttpPort}/benchmark/reset";
+            var response = await _httpClient.PostAsync(url, null);
+            if (response.IsSuccessStatusCode)
+            {
+                Log.Information("Server metrics reset successfully via {Url}", url);
+            }
+            else
+            {
+                Log.Warning("Failed to reset server metrics: {StatusCode}", response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Failed to reset server metrics: {Message}", ex.Message);
+        }
+    }
+
     public async Task RunAsync()
     {
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
@@ -153,6 +179,8 @@ public class BenchmarkRunner(
             Log.Information("  Target NID: {TargetNid}", targetNid);
         }
 
+        // 서버와 클라이언트 메트릭을 동시에 Reset하여 측정 범위 통일
+        await ResetServerMetricsAsync();
         metricsCollector.Reset();
 
         var tasks = new List<Task>();

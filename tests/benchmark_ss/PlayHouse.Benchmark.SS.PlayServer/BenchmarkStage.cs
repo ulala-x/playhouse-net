@@ -144,9 +144,9 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         actor.ActorSender.Reply(CPacket.Of(reply));
 
-        // 메트릭 기록 (SS 구간만)
+        // 메트릭 기록 (전체 구간 - 클라이언트와 동일한 범위)
         var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
-        ServerMetricsCollector.Instance.RecordMessage(ssSw.ElapsedTicks, messageSize);
+        ServerMetricsCollector.Instance.RecordMessage(totalSw.ElapsedTicks, messageSize);
     }
 
     /// <summary>
@@ -189,9 +189,9 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         actor.ActorSender.Reply(CPacket.Of(reply));
 
-        // 메트릭 기록 (SS 구간만)
+        // 메트릭 기록 (전체 구간 - 클라이언트와 동일한 범위)
         var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
-        ServerMetricsCollector.Instance.RecordMessage(ssSw.ElapsedTicks, messageSize);
+        ServerMetricsCollector.Instance.RecordMessage(totalSw.ElapsedTicks, messageSize);
     }
 
     /// <summary>
