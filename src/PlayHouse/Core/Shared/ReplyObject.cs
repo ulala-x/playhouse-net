@@ -11,6 +11,7 @@ public sealed class ReplyObject : IDisposable
 {
     private readonly TaskCompletionSource<IPacket>? _tcs;
     private readonly ReplyCallback? _callback;
+    private readonly object? _stageContext;  // BaseStage instance
     private readonly DateTime _createdAt;
     private bool _completed;
 
@@ -24,11 +25,12 @@ public sealed class ReplyObject : IDisposable
     /// </summary>
     public DateTime CreatedAt => _createdAt;
 
-    private ReplyObject(ushort msgSeq, TaskCompletionSource<IPacket>? tcs, ReplyCallback? callback)
+    private ReplyObject(ushort msgSeq, TaskCompletionSource<IPacket>? tcs, ReplyCallback? callback, object? stageContext = null)
     {
         MsgSeq = msgSeq;
         _tcs = tcs;
         _callback = callback;
+        _stageContext = stageContext;
         _createdAt = DateTime.UtcNow;
     }
 
@@ -49,10 +51,11 @@ public sealed class ReplyObject : IDisposable
     /// </summary>
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="callback">Callback to invoke on reply.</param>
+    /// <param name="stageContext">Optional Stage context for callback queueing.</param>
     /// <returns>A new ReplyObject.</returns>
-    public static ReplyObject CreateCallback(ushort msgSeq, ReplyCallback callback)
+    public static ReplyObject CreateCallback(ushort msgSeq, ReplyCallback callback, object? stageContext = null)
     {
-        return new ReplyObject(msgSeq, null, callback);
+        return new ReplyObject(msgSeq, null, callback, stageContext);
     }
 
     /// <summary>
@@ -70,7 +73,19 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            _callback((ushort)ErrorCode.Success, packet);
+            // If Stage context is present, post callback to Stage event loop
+            if (_stageContext != null)
+            {
+                // Use reflection to call BaseStage.PostReplyCallback
+                var method = _stageContext.GetType().GetMethod("PostReplyCallback",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                method?.Invoke(_stageContext, new object?[] { _callback, (ushort)ErrorCode.Success, packet });
+            }
+            else
+            {
+                // No Stage context - invoke callback directly on current thread
+                _callback((ushort)ErrorCode.Success, packet);
+            }
         }
     }
 
@@ -91,7 +106,19 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            _callback(errorCode, null);
+            // If Stage context is present, post callback to Stage event loop
+            if (_stageContext != null)
+            {
+                // Use reflection to call BaseStage.PostReplyCallback
+                var method = _stageContext.GetType().GetMethod("PostReplyCallback",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                method?.Invoke(_stageContext, new object?[] { _callback, errorCode, null });
+            }
+            else
+            {
+                // No Stage context - invoke callback directly on current thread
+                _callback(errorCode, null);
+            }
         }
     }
 
