@@ -24,6 +24,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     private IConnection? _connection;
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pendingRequests = new();
+    private readonly ConcurrentQueue<ParsedPacket> _packetQueue = new();
     private int _msgSeqCounter;
     private bool _isAuthenticated;
     private bool _debugMode;
@@ -134,6 +135,12 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     public void MainThreadAction()
     {
+        // 큐에서 패킷 꺼내서 처리
+        while (_packetQueue.TryDequeue(out var packet))
+        {
+            ProcessPacket(packet);
+        }
+
         UpdateClientConnection();
         _asyncManager.MainThreadAction();
     }
@@ -412,13 +419,26 @@ internal sealed class ClientNetwork : IAsyncDisposable
             return;
         }
 
-        // HeartBeat 메시지는 무시
+        // HeartBeat 메시지는 즉시 처리하고 dispose
         if (parsed.MsgId == PacketConst.HeartBeat)
         {
             packet.Dispose();
             return;
         }
 
+        // RequestAsync (Tcs) 응답은 즉시 처리 (MainThreadAction과 독립적으로 동작)
+        if (parsed.MsgSeq > 0 && _pendingRequests.TryGetValue(parsed.MsgSeq, out var pending) && pending.Tcs != null)
+        {
+            ProcessPacketImmediate(parsed);
+            return;
+        }
+
+        // RequestCallback + Push: 항상 큐에 추가 (MainThreadAction에서 콜백 후 dispose)
+        _packetQueue.Enqueue(parsed);
+    }
+
+    private void ProcessPacketImmediate(ParsedPacket parsed)
+    {
         // Response 처리 (MsgSeq > 0)
         if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
         {
@@ -432,20 +452,14 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
             if (parsed.ErrorCode != 0)
             {
+                parsed.Dispose(); // Error case - dispose packet
                 if (pending.Tcs != null)
                 {
                     pending.Tcs.TrySetException(new ConnectorException(parsed.StageId, parsed.ErrorCode, pending.Request, parsed.MsgSeq));
                 }
                 else if (pending.Callback != null)
                 {
-                    if (_config.UseMainThreadCallback)
-                    {
-                        _asyncManager.AddJob(() => _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request));
-                    }
-                    else
-                    {
-                        _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
-                    }
+                    _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
                 }
             }
             else
@@ -453,40 +467,18 @@ internal sealed class ClientNetwork : IAsyncDisposable
                 if (pending.Tcs != null)
                 {
                     // Async pattern - caller owns the packet and is responsible for disposal
-                    pending.Tcs.TrySetResult(packet);
+                    pending.Tcs.TrySetResult(parsed);
                 }
                 else if (pending.Callback != null)
                 {
-                    // Callback pattern - copy payload to MemoryPayload for safe async usage
-                    // The callback may store the packet reference and use it after the callback returns,
-                    // so we need to ensure the payload data remains valid
-                    var copiedResponse = CopyPacketPayload(parsed);
-                    packet.Dispose(); // Dispose original packet immediately
-
-                    if (_config.UseMainThreadCallback)
+                    // Callback pattern - dispose after callback
+                    try
                     {
-                        _asyncManager.AddJob(() =>
-                        {
-                            try
-                            {
-                                pending.Callback(copiedResponse);
-                            }
-                            finally
-                            {
-                                copiedResponse.Dispose();
-                            }
-                        });
+                        pending.Callback(parsed);
                     }
-                    else
+                    finally
                     {
-                        try
-                        {
-                            pending.Callback(copiedResponse);
-                        }
-                        finally
-                        {
-                            copiedResponse.Dispose();
-                        }
+                        parsed.Dispose();
                     }
                 }
             }
@@ -495,53 +487,60 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
 
         // Push 메시지 처리 (MsgSeq == 0)
-        // Copy payload for safe async callback usage
-        var copiedPacket = CopyPacketPayload(parsed);
-        packet.Dispose(); // Dispose original packet immediately
-
-        if (_config.UseMainThreadCallback)
+        try
         {
-            _asyncManager.AddJob(() =>
-            {
-                try
-                {
-                    _callback.ReceiveCallback(parsed.StageId, copiedPacket);
-                }
-                finally
-                {
-                    copiedPacket.Dispose();
-                }
-            });
+            _callback.ReceiveCallback(parsed.StageId, parsed);
         }
-        else
+        finally
         {
-            try
-            {
-                _callback.ReceiveCallback(parsed.StageId, copiedPacket);
-            }
-            finally
-            {
-                copiedPacket.Dispose();
-            }
+            parsed.Dispose();
         }
     }
 
-    private static ParsedPacket CopyPacketPayload(ParsedPacket original)
+    private void ProcessPacket(ParsedPacket parsed)
     {
-        // 콜백 내에서만 패킷을 사용하는 패턴으로 ArrayPool 사용
-        // 콜백 종료 후 자동 dispose됨
-        var length = original.Payload.DataSpan.Length;
-        var rentedBuffer = ArrayPool<byte>.Shared.Rent(length);
-        original.Payload.DataSpan.CopyTo(rentedBuffer);
+        // Response 처리 (MsgSeq > 0) - Callback 패턴
+        if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
+        {
+            // 타임아웃 타이머 취소
+            pending.Dispose();
 
-        var copiedPayload = new ArrayPoolPayload(rentedBuffer, length);
-        return new ParsedPacket(
-            original.MsgId,
-            original.MsgSeq,
-            original.StageId,
-            original.ErrorCode,
-            copiedPayload
-        );
+            if (pending.IsAuthenticate && parsed.ErrorCode == 0)
+            {
+                _isAuthenticated = true;
+            }
+
+            if (parsed.ErrorCode != 0)
+            {
+                parsed.Dispose(); // Error case - dispose packet
+                pending.Callback?.Invoke(parsed); // This shouldn't happen as error goes to ErrorCallback
+                _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
+            }
+            else
+            {
+                // Callback pattern - dispose after callback
+                try
+                {
+                    pending.Callback?.Invoke(parsed);
+                }
+                finally
+                {
+                    parsed.Dispose();
+                }
+            }
+
+            return;
+        }
+
+        // Push 메시지 처리 (MsgSeq == 0)
+        try
+        {
+            _callback.ReceiveCallback(parsed.StageId, parsed);
+        }
+        finally
+        {
+            parsed.Dispose();
+        }
     }
 
     private void OnDisconnected(object? sender, Exception? exception)
