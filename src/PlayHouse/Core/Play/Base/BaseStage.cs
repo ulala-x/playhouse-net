@@ -118,6 +118,18 @@ internal sealed class BaseStage
     }
 
     /// <summary>
+    /// Posts a reply callback to the Stage event loop.
+    /// </summary>
+    /// <param name="callback">Reply callback.</param>
+    /// <param name="errorCode">Error code.</param>
+    /// <param name="packet">Reply packet.</param>
+    internal void PostReplyCallback(ReplyCallback callback, ushort errorCode, IPacket? packet)
+    {
+        _messageQueue.Enqueue(new StageMessage.ReplyCallbackMessage(callback, errorCode, packet));
+        TryStartProcessing();
+    }
+
+    /// <summary>
     /// Posts a client route message to the Stage event loop.
     /// </summary>
     /// <param name="accountId">Account ID for actor routing.</param>
@@ -125,7 +137,7 @@ internal sealed class BaseStage
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="payload">Message payload.</param>
-    internal void PostClientRoute(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
+    internal void PostClientRoute(string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
     {
         _messageQueue.Enqueue(new StageMessage.ClientRouteMessage(accountId, msgId, msgSeq, sid, payload));
         TryStartProcessing();
@@ -201,6 +213,10 @@ internal sealed class BaseStage
 
             case StageMessage.AsyncMessage asyncMessage:
                 await asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
+                break;
+
+            case StageMessage.ReplyCallbackMessage replyMessage:
+                replyMessage.Callback(replyMessage.ErrorCode, replyMessage.Packet);
                 break;
 
             case StageMessage.ClientRouteMessage clientRouteMessage:
@@ -724,6 +740,23 @@ internal abstract class StageMessage : IDisposable
     }
 
     /// <summary>
+    /// Message for reply callbacks.
+    /// </summary>
+    public sealed class ReplyCallbackMessage : StageMessage
+    {
+        public ReplyCallback Callback { get; }
+        public ushort ErrorCode { get; }
+        public IPacket? Packet { get; }
+
+        public ReplyCallbackMessage(ReplyCallback callback, ushort errorCode, IPacket? packet)
+        {
+            Callback = callback;
+            ErrorCode = errorCode;
+            Packet = packet;
+        }
+    }
+
+    /// <summary>
     /// Message to destroy the Stage.
     /// </summary>
     public sealed class DestroyMessage : StageMessage { }
@@ -737,9 +770,9 @@ internal abstract class StageMessage : IDisposable
         public string MsgId { get; }
         public ushort MsgSeq { get; }
         public long Sid { get; }
-        public ArrayPoolPayload? Payload { get; private set; }
+        public IPayload? Payload { get; private set; }
 
-        public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
+        public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
         {
             AccountId = accountId;
             MsgId = msgId;
@@ -752,7 +785,7 @@ internal abstract class StageMessage : IDisposable
         /// Takes ownership of the payload, preventing automatic disposal.
         /// </summary>
         /// <returns>The payload, or null if already taken.</returns>
-        public ArrayPoolPayload? TakePayload()
+        public IPayload? TakePayload()
         {
             var p = Payload;
             Payload = null;  // Transfer ownership - Dispose will not clean up
@@ -774,14 +807,14 @@ internal abstract class StageMessage : IDisposable
         public ITransportSession Session { get; }
         public ushort MsgSeq { get; }
         public string AuthReplyMsgId { get; }
-        public ArrayPoolPayload Payload { get; }
+        public IPayload Payload { get; }
 
         public JoinActorMessage(
             BaseActor actor,
             ITransportSession session,
             ushort msgSeq,
             string authReplyMsgId,
-            ArrayPoolPayload payload)
+            IPayload payload)
         {
             Actor = actor;
             Session = session;

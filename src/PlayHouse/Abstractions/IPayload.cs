@@ -62,6 +62,67 @@ public sealed class ArrayPoolPayload : IPayload
 }
 
 /// <summary>
+/// Payload that wraps an ArrayPool buffer with offset support.
+/// Allows accessing a portion of a larger rented buffer without additional copying.
+/// </summary>
+/// <remarks>
+/// This is useful when handling multi-segment packets where the entire packet is copied
+/// into a single buffer. Instead of copying the payload portion again, this class provides
+/// a view into the rented buffer at the specified offset.
+/// </remarks>
+public sealed class ArrayPoolPayloadWithOffset : IPayload
+{
+    private byte[]? _rentedBuffer;
+    private readonly int _offset;
+    private readonly int _length;
+    private bool _disposed;
+
+    /// <summary>
+    /// Initializes a new instance from ArrayPool with offset support.
+    /// </summary>
+    /// <param name="rentedBuffer">Rented buffer from ArrayPool.</param>
+    /// <param name="offset">Starting offset of the payload data in the buffer.</param>
+    /// <param name="length">Length of the payload data.</param>
+    /// <exception cref="ArgumentNullException">Thrown when rentedBuffer is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when offset or length is negative.</exception>
+    public ArrayPoolPayloadWithOffset(byte[] rentedBuffer, int offset, int length)
+    {
+        _rentedBuffer = rentedBuffer ?? throw new ArgumentNullException(nameof(rentedBuffer));
+
+        if (offset < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(offset), "Offset cannot be negative.");
+        }
+
+        if (length < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(length), "Length cannot be negative.");
+        }
+
+        _offset = offset;
+        _length = length;
+    }
+
+    public ReadOnlySpan<byte> DataSpan => _disposed
+        ? throw new ObjectDisposedException(nameof(ArrayPoolPayloadWithOffset))
+        : _rentedBuffer.AsSpan(_offset, _length);
+
+    public int Length => _length;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_rentedBuffer != null)
+        {
+            ArrayPool<byte>.Shared.Return(_rentedBuffer);
+            _rentedBuffer = null;
+        }
+    }
+}
+
+/// <summary>
 /// Payload backed by ReadOnlyMemory (zero-copy, no allocation).
 /// </summary>
 // public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IMessagePayload

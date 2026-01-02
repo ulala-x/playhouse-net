@@ -226,7 +226,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="payload">Message payload.</param>
-    public void RouteClientMessage(long stageId, string accountId, string msgId, ushort msgSeq, long sid, ArrayPoolPayload payload)
+    public void RouteClientMessage(long stageId, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
     {
         if (_stages.TryGetValue(stageId, out var baseStage))
         {
@@ -335,6 +335,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
         var stage = _producer.GetStage(stageType, stageSender);
         var baseStage = new BaseStage(stage, stageSender, _logger);
+
+        // Set BaseStage reference in XStageSender for callback queueing
+        stageSender.SetBaseStage(baseStage);
 
         // Create and set command handler for system messages
         var cmdHandler = new BaseStageCmdHandler(_logger);

@@ -30,6 +30,7 @@ internal sealed class XStageSender : XSender, IStageSender
     private readonly IClientReplyHandler? _clientReplyHandler;
     private readonly HashSet<long> _timerIds = new();
     private long _timerIdCounter;
+    private object? _baseStage;  // BaseStage instance (stored as object to avoid circular dependency)
 
     /// <inheritdoc/>
     public long StageId { get; }
@@ -72,12 +73,30 @@ internal sealed class XStageSender : XSender, IStageSender
     }
 
     /// <summary>
+    /// Sets the BaseStage instance for callback queueing.
+    /// </summary>
+    /// <param name="baseStage">BaseStage instance.</param>
+    internal void SetBaseStage(object baseStage)
+    {
+        _baseStage = baseStage;
+    }
+
+    /// <summary>
     /// Gets the sender's Stage ID for Stage-to-Stage communication.
     /// </summary>
     /// <returns>This Stage's ID.</returns>
     protected override long GetSenderStageId()
     {
         return StageId;
+    }
+
+    /// <summary>
+    /// Gets the Stage context for callback queueing.
+    /// </summary>
+    /// <returns>BaseStage instance.</returns>
+    protected override object? GetStageContext()
+    {
+        return _baseStage;
     }
 
     #region Timer Management

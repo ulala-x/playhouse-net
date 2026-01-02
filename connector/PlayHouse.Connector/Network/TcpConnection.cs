@@ -323,10 +323,8 @@ internal sealed class TcpConnection : IConnection
         {
             // Need to copy for decompression
             var compressedData = new byte[payloadSize];
-            for (int i = 0; i < payloadSize; i++)
-            {
-                compressedData[i] = buffer.PeekByte(offset++);
-            }
+            buffer.PeekBytes(offset, compressedData);
+            offset += payloadSize;
 
             var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedData);
             payload = new ReadOnlyMemory<byte>(decompressed);
@@ -335,10 +333,8 @@ internal sealed class TcpConnection : IConnection
         {
             // Copy payload data
             var payloadData = new byte[payloadSize];
-            for (int i = 0; i < payloadSize; i++)
-            {
-                payloadData[i] = buffer.PeekByte(offset++);
-            }
+            buffer.PeekBytes(offset, payloadData);
+            offset += payloadSize;
             payload = new ReadOnlyMemory<byte>(payloadData);
         }
 

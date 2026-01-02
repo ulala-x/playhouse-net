@@ -327,7 +327,7 @@ internal sealed class TcpTransportSession : ITransportSession
         out string msgId,
         out ushort msgSeq,
         out long stageId,
-        out ArrayPoolPayload payload)
+        out IPayload payload)
     {
         msgId = string.Empty;
         msgSeq = 0;
@@ -372,26 +372,19 @@ internal sealed class TcpTransportSession : ITransportSession
         }
         else
         {
-            // Multiple segments (rare): use ArrayPool
+            // Multiple segments (rare): use ArrayPool with single copy optimization
             var rentedBuffer = ArrayPool<byte>.Shared.Rent((int)packetLength);
-            try
-            {
-                packetBuffer.CopyTo(rentedBuffer);
-                if (!MessageCodec.TryParseMessage(rentedBuffer.AsSpan(0, (int)packetLength), out msgId, out msgSeq, out stageId, out var payloadOffset))
-                {
-                    throw new InvalidDataException("Invalid message format");
-                }
+            packetBuffer.CopyTo(rentedBuffer);
 
-                // Copy payload to separate ArrayPool buffer
-                var payloadLength = (int)packetLength - payloadOffset;
-                var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
-                rentedBuffer.AsSpan(payloadOffset, payloadLength).CopyTo(payloadBuffer);
-                payload = new ArrayPoolPayload(payloadBuffer, payloadLength);
-            }
-            finally
+            if (!MessageCodec.TryParseMessage(rentedBuffer.AsSpan(0, (int)packetLength), out msgId, out msgSeq, out stageId, out var payloadOffset))
             {
                 ArrayPool<byte>.Shared.Return(rentedBuffer);
+                throw new InvalidDataException("Invalid message format");
             }
+
+            // No second copy: use offset-based payload (ArrayPoolPayloadWithOffset.Dispose() handles buffer return)
+            var payloadLength = (int)packetLength - payloadOffset;
+            payload = new ArrayPoolPayloadWithOffset(rentedBuffer, payloadOffset, payloadLength);
         }
 
         // Advance buffer

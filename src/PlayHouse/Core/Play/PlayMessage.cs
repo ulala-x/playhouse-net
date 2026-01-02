@@ -151,7 +151,7 @@ internal sealed class ClientRouteMessage : PlayMessage
     /// <summary>
     /// Gets the message payload (must be disposed).
     /// </summary>
-    public ArrayPoolPayload Payload { get; }
+    public IPayload Payload { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientRouteMessage"/> class.
@@ -168,7 +168,7 @@ internal sealed class ClientRouteMessage : PlayMessage
         string msgId,
         ushort msgSeq,
         long sid,
-        ArrayPoolPayload payload)
+        IPayload payload)
         : base(stageId)
     {
         AccountId = accountId;
@@ -215,7 +215,7 @@ internal sealed class JoinActorMessage : PlayMessage
     /// <summary>
     /// Gets the auth request payload (must be disposed).
     /// </summary>
-    public ArrayPoolPayload Payload { get; }
+    public IPayload Payload { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="JoinActorMessage"/> class.
@@ -232,7 +232,7 @@ internal sealed class JoinActorMessage : PlayMessage
         ITransportSession session,
         ushort msgSeq,
         string authReplyMsgId,
-        ArrayPoolPayload payload)
+        IPayload payload)
         : base(stageId)
     {
         Actor = actor;

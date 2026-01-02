@@ -214,6 +214,40 @@ public sealed class RingBuffer : IDisposable
     }
 
     /// <summary>
+    /// Peek multiple bytes at specific offset (handles wrap-around for bulk copy)
+    /// Reduces function call overhead from N PeekByte() calls to 1-2 memory copies
+    /// </summary>
+    /// <param name="offset">Offset from current tail position</param>
+    /// <param name="destination">Destination span to copy bytes into</param>
+    public void PeekBytes(int offset, Span<byte> destination)
+    {
+        if (offset < 0 || offset + destination.Length > _count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(offset),
+                $"Cannot peek {destination.Length} bytes at offset {offset}, only {_count} bytes available");
+        }
+
+        if (destination.Length == 0)
+        {
+            return;
+        }
+
+        // Calculate read start position in circular buffer
+        var readStart = (_tail + offset) % _capacity;
+
+        // First chunk: from readStart to end of buffer or end of destination
+        var firstChunkSize = Math.Min(_capacity - readStart, destination.Length);
+        _buffer.AsSpan(readStart, firstChunkSize).CopyTo(destination);
+
+        // Second chunk: if data wraps around to beginning of buffer
+        if (firstChunkSize < destination.Length)
+        {
+            var secondChunkSize = destination.Length - firstChunkSize;
+            _buffer.AsSpan(0, secondChunkSize).CopyTo(destination.Slice(firstChunkSize));
+        }
+    }
+
+    /// <summary>
     /// Consume (remove) data from buffer after reading
     /// </summary>
     public void Consume(int count)

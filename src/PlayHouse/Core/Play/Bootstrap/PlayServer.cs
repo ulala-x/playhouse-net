@@ -260,7 +260,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         string msgId,
         ushort msgSeq,
         long stageId,
-        ArrayPoolPayload payload)
+        IPayload payload)
     {
         // 미인증 클라이언트 체크
         if (!session.IsAuthenticated)
@@ -292,7 +292,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         string msgId,
         ushort msgSeq,
         long stageId,
-        ArrayPoolPayload payload)
+        IPayload payload)
     {
         // 인증 요청 처리 (async - fire-and-forget)
         if (msgId == _options.AuthenticateMessageId)
@@ -328,7 +328,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         ITransportSession session,
         ushort msgSeq,
         long stageId,
-        ArrayPoolPayload payload)
+        IPayload payload)
     {
         try
         {
@@ -411,8 +411,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     // Actor 콜백 순차 호출
                     await actor.Actor.OnCreate();
 
-                    // Create MemoryPayload from ArrayPoolPayload
-                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, new MemoryPayload(new ReadOnlyMemory<byte>(payload.DataSpan.ToArray())));
+                    // Zero-copy: Use payload directly without ToArray() copy
+                    var authPacket = CPacket.Of(_options.AuthenticateMessageId, payload);
                     var authResult = await actor.Actor.OnAuthenticate(authPacket);
 
                     if (!authResult)

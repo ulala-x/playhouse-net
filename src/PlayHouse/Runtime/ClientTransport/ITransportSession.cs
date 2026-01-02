@@ -84,7 +84,7 @@ public delegate void MessageReceivedCallback(
     string msgId,
     ushort msgSeq,
     long stageId,
-    ArrayPoolPayload payload);
+    IPayload payload);
 
 /// <summary>
 /// Callback delegate for session disconnection.
