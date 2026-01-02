@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -79,12 +80,26 @@ internal sealed class ClientNetwork : IAsyncDisposable
             _lastReceivedTime.Restart();
             _lastSendHeartBeatTime.Restart();
 
-            _asyncManager.AddJob(() => _callback.ConnectCallback(true));
+            if (_config.UseMainThreadCallback)
+            {
+                _asyncManager.AddJob(() => _callback.ConnectCallback(true));
+            }
+            else
+            {
+                _callback.ConnectCallback(true);
+            }
             return true;
         }
         catch (Exception)
         {
-            _asyncManager.AddJob(() => _callback.ConnectCallback(false));
+            if (_config.UseMainThreadCallback)
+            {
+                _asyncManager.AddJob(() => _callback.ConnectCallback(false));
+            }
+            else
+            {
+                _callback.ConnectCallback(false);
+            }
             return false;
         }
     }
@@ -185,8 +200,20 @@ internal sealed class ClientNetwork : IAsyncDisposable
             return;
         }
 
-        var data = EncodePacket(packet, 0, stageId);
-        _ = _connection!.SendAsync(data);
+        var (buffer, length) = EncodePacket(packet, 0, stageId);
+        _ = SendAndReturnBufferAsync(buffer, length);
+    }
+
+    private async Task SendAndReturnBufferAsync(byte[] buffer, int length)
+    {
+        try
+        {
+            await _connection!.SendAsync(buffer.AsMemory(0, length));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     public void Request(IPacket request, Action<IPacket> callback, long stageId, bool isAuthenticate = false)
@@ -211,17 +238,17 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
         _pendingRequests[msgSeq] = pending;
 
-        var data = EncodePacket(request, msgSeq, stageId);
+        var (buffer, length) = EncodePacket(request, msgSeq, stageId);
 
         // SendAsync와 타임아웃을 fire-and-forget으로 실행
-        _ = SendRequestAsync(msgSeq, data, timeoutCts.Token);
+        _ = SendRequestAsync(msgSeq, buffer, length, timeoutCts.Token);
     }
 
-    private async Task SendRequestAsync(ushort msgSeq, byte[] data, CancellationToken timeoutToken)
+    private async Task SendRequestAsync(ushort msgSeq, byte[] buffer, int length, CancellationToken timeoutToken)
     {
         try
         {
-            await _connection!.SendAsync(data);
+            await _connection!.SendAsync(buffer.AsMemory(0, length));
         }
         catch
         {
@@ -229,12 +256,23 @@ internal sealed class ClientNetwork : IAsyncDisposable
             if (_pendingRequests.TryRemove(msgSeq, out var req))
             {
                 req.Dispose();
-                _asyncManager.AddJob(() =>
+                if (_config.UseMainThreadCallback)
+                {
+                    _asyncManager.AddJob(() =>
+                    {
+                        _callback.ErrorCallback(req.StageId, (ushort)ConnectorErrorCode.Disconnected, req.Request);
+                    });
+                }
+                else
                 {
                     _callback.ErrorCallback(req.StageId, (ushort)ConnectorErrorCode.Disconnected, req.Request);
-                });
+                }
             }
             return;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         // 타임아웃 설정 - 응답 도착 시 취소됨
@@ -252,10 +290,17 @@ internal sealed class ClientNetwork : IAsyncDisposable
         if (_pendingRequests.TryRemove(msgSeq, out var timedOutReq))
         {
             timedOutReq.Dispose();
-            _asyncManager.AddJob(() =>
+            if (_config.UseMainThreadCallback)
+            {
+                _asyncManager.AddJob(() =>
+                {
+                    _callback.ErrorCallback(timedOutReq.StageId, (ushort)ConnectorErrorCode.RequestTimeout, timedOutReq.Request);
+                });
+            }
+            else
             {
                 _callback.ErrorCallback(timedOutReq.StageId, (ushort)ConnectorErrorCode.RequestTimeout, timedOutReq.Request);
-            });
+            }
         }
     }
 
@@ -281,8 +326,15 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
         _pendingRequests[msgSeq] = pending;
 
-        var data = EncodePacket(request, msgSeq, stageId);
-        await _connection!.SendAsync(data);
+        var (buffer, length) = EncodePacket(request, msgSeq, stageId);
+        try
+        {
+            await _connection!.SendAsync(buffer.AsMemory(0, length));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
 
         // 타임아웃 설정
         using var cts = new CancellationTokenSource(_config.RequestTimeoutMs);
@@ -302,7 +354,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     #region Packet Encoding
 
-    private byte[] EncodePacket(IPacket packet, ushort msgSeq, long stageId)
+    private (byte[] buffer, int length) EncodePacket(IPacket packet, ushort msgSeq, long stageId)
     {
         var msgIdByteCount = Encoding.UTF8.GetByteCount(packet.MsgId);
         if (msgIdByteCount > 255)
@@ -315,7 +367,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
         // 스펙에 따라 ServiceId 제거
         // MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + Payload
         var contentSize = 1 + msgIdByteCount + 2 + 8 + payloadSpan.Length;
-        var buffer = new byte[4 + contentSize];
+        var totalSize = 4 + contentSize;
+        var buffer = ArrayPool<byte>.Shared.Rent(totalSize);
 
         int offset = 0;
 
@@ -341,7 +394,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
         // Payload - direct copy from span
         payloadSpan.CopyTo(buffer.AsSpan(offset));
 
-        return buffer;
+        return (buffer, totalSize);
     }
 
     #endregion
@@ -385,7 +438,14 @@ internal sealed class ClientNetwork : IAsyncDisposable
                 }
                 else if (pending.Callback != null)
                 {
-                    _asyncManager.AddJob(() => _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request));
+                    if (_config.UseMainThreadCallback)
+                    {
+                        _asyncManager.AddJob(() => _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request));
+                    }
+                    else
+                    {
+                        _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
+                    }
                 }
             }
             else
@@ -403,7 +463,21 @@ internal sealed class ClientNetwork : IAsyncDisposable
                     var copiedResponse = CopyPacketPayload(parsed);
                     packet.Dispose(); // Dispose original packet immediately
 
-                    _asyncManager.AddJob(() =>
+                    if (_config.UseMainThreadCallback)
+                    {
+                        _asyncManager.AddJob(() =>
+                        {
+                            try
+                            {
+                                pending.Callback(copiedResponse);
+                            }
+                            finally
+                            {
+                                copiedResponse.Dispose();
+                            }
+                        });
+                    }
+                    else
                     {
                         try
                         {
@@ -413,7 +487,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
                         {
                             copiedResponse.Dispose();
                         }
-                    });
+                    }
                 }
             }
 
@@ -425,7 +499,21 @@ internal sealed class ClientNetwork : IAsyncDisposable
         var copiedPacket = CopyPacketPayload(parsed);
         packet.Dispose(); // Dispose original packet immediately
 
-        _asyncManager.AddJob(() =>
+        if (_config.UseMainThreadCallback)
+        {
+            _asyncManager.AddJob(() =>
+            {
+                try
+                {
+                    _callback.ReceiveCallback(parsed.StageId, copiedPacket);
+                }
+                finally
+                {
+                    copiedPacket.Dispose();
+                }
+            });
+        }
+        else
         {
             try
             {
@@ -435,15 +523,18 @@ internal sealed class ClientNetwork : IAsyncDisposable
             {
                 copiedPacket.Dispose();
             }
-        });
+        }
     }
 
     private static ParsedPacket CopyPacketPayload(ParsedPacket original)
     {
-        // Copy payload data to a byte array managed by GC
-        var payloadData = original.Payload.DataSpan.ToArray();
-        var copiedPayload = new MemoryPayload(new ReadOnlyMemory<byte>(payloadData));
+        // 콜백 내에서만 패킷을 사용하는 패턴으로 ArrayPool 사용
+        // 콜백 종료 후 자동 dispose됨
+        var length = original.Payload.DataSpan.Length;
+        var rentedBuffer = ArrayPool<byte>.Shared.Rent(length);
+        original.Payload.DataSpan.CopyTo(rentedBuffer);
 
+        var copiedPayload = new ArrayPoolPayload(rentedBuffer, length);
         return new ParsedPacket(
             original.MsgId,
             original.MsgSeq,
@@ -457,7 +548,15 @@ internal sealed class ClientNetwork : IAsyncDisposable
     {
         _isAuthenticated = false;
         ClearPendingRequests();
-        _asyncManager.AddJob(() => _callback.DisconnectCallback());
+
+        if (_config.UseMainThreadCallback)
+        {
+            _asyncManager.AddJob(() => _callback.DisconnectCallback());
+        }
+        else
+        {
+            _callback.DisconnectCallback();
+        }
     }
 
     #endregion

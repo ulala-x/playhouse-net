@@ -25,7 +25,7 @@ public class TimerTests : IAsyncLifetime
 {
     private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -33,7 +33,13 @@ public class TimerTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
+        _connector.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessages.Add((stageId, stageType, msgId, payloadData));
+        };
     }
 
     public async Task InitializeAsync()
@@ -97,8 +103,8 @@ public class TimerTests : IAsyncLifetime
 
         // Then - E2E 검증: Push 메시지 검증
         var timerTicks = _receivedMessages
-            .Where(m => m.packet.MsgId.EndsWith("TimerTickNotify"))
-            .Select(m => TimerTickNotify.Parser.ParseFrom(m.packet.Payload.DataSpan))
+            .Where(m => m.msgId.EndsWith("TimerTickNotify"))
+            .Select(m => TimerTickNotify.Parser.ParseFrom(m.payloadData))
             .ToList();
 
         timerTicks.Should().HaveCountGreaterOrEqualTo(3, "타이머가 최소 3회 이상 실행되어야 함");
@@ -153,8 +159,8 @@ public class TimerTests : IAsyncLifetime
 
         // Then - E2E 검증: Push 메시지 검증
         var timerTicks = _receivedMessages
-            .Where(m => m.packet.MsgId.EndsWith("TimerTickNotify"))
-            .Select(m => TimerTickNotify.Parser.ParseFrom(m.packet.Payload.DataSpan))
+            .Where(m => m.msgId.EndsWith("TimerTickNotify"))
+            .Select(m => TimerTickNotify.Parser.ParseFrom(m.payloadData))
             .ToList();
 
         timerTicks.Should().HaveCount(5, "타이머가 정확히 5회만 실행되어야 함");

@@ -52,4 +52,14 @@ public sealed class ConnectorConfig
     /// 추적 로깅 활성화
     /// </summary>
     public bool TurnOnTrace { get; set; }
+
+    /// <summary>
+    /// 콜백을 메인 스레드 큐에 추가할지 여부 (Unity용)
+    /// </summary>
+    /// <remarks>
+    /// - true: 모든 콜백을 큐에 추가하고 MainThreadAction()에서 실행 (Unity 권장)
+    /// - false: 콜백을 네트워크 스레드에서 즉시 실행 (고성능 시나리오)
+    /// 기본값: false (즉시 실행)
+    /// </remarks>
+    public bool UseMainThreadCallback { get; set; } = false;
 }

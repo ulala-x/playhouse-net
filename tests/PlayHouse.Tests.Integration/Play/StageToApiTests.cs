@@ -37,7 +37,7 @@ public class StageToApiTests : IAsyncLifetime
     private PlayServer? PlayServer => _fixture.PlayServer;
     private ApiServer? ApiServer => _fixture.ApiServer;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -47,7 +47,13 @@ public class StageToApiTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
+        _connector.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessages.Add((stageId, stageType, msgId, payloadData));
+        };
     }
 
     public async Task InitializeAsync()
@@ -210,10 +216,10 @@ public class StageToApiTests : IAsyncLifetime
 
         // Then - E2E 검증 4: Push 메시지 수신 (callback에서 SendToClient로 전송)
         _receivedMessages.Should().NotBeEmpty("Push 메시지를 수신해야 함");
-        var pushMessage = _receivedMessages.FirstOrDefault(m => m.packet.MsgId.Contains("TriggerRequestToApiCallbackReply"));
+        var pushMessage = _receivedMessages.FirstOrDefault(m => m.msgId.Contains("TriggerRequestToApiCallbackReply"));
         pushMessage.Should().NotBe(default, "TriggerRequestToApiCallbackReply Push 메시지가 있어야 함");
 
-        var pushReply = TriggerRequestToApiCallbackReply.Parser.ParseFrom(pushMessage.packet.Payload.DataSpan);
+        var pushReply = TriggerRequestToApiCallbackReply.Parser.ParseFrom(pushMessage.payloadData);
         pushReply.ApiResponse.Should().Contain("Callback Query from Stage",
             "API의 에코 응답이 callback을 통해 전달되어야 함");
     }

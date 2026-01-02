@@ -27,7 +27,7 @@ public class AsyncBlockTests : IAsyncLifetime
 {
     private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -35,7 +35,13 @@ public class AsyncBlockTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
+        _connector.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessages.Add((stageId, stageType, msgId, payloadData));
+        };
     }
 
     public async Task InitializeAsync()
@@ -106,8 +112,8 @@ public class AsyncBlockTests : IAsyncLifetime
 
         // Then - E2E 검증: Push 메시지 검증
         var asyncReplies = _receivedMessages
-            .Where(m => m.packet.MsgId.EndsWith("AsyncBlockReply"))
-            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.packet.Payload.DataSpan))
+            .Where(m => m.msgId.EndsWith("AsyncBlockReply"))
+            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.payloadData))
             .ToList();
 
         asyncReplies.Should().HaveCount(1, "AsyncBlockReply를 1개 받아야 함");
@@ -170,8 +176,8 @@ public class AsyncBlockTests : IAsyncLifetime
 
         // Then - E2E 검증: Push 메시지 검증
         var asyncReplies = _receivedMessages
-            .Where(m => m.packet.MsgId.EndsWith("AsyncBlockReply"))
-            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.packet.Payload.DataSpan))
+            .Where(m => m.msgId.EndsWith("AsyncBlockReply"))
+            .Select(m => AsyncBlockReply.Parser.ParseFrom(m.payloadData))
             .ToList();
 
         asyncReplies.Should().HaveCount(requestCount, $"AsyncBlockReply를 {requestCount}개 받아야 함");
