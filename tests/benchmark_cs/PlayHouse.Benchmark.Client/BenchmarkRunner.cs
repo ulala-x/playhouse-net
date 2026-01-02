@@ -136,7 +136,7 @@ public class BenchmarkRunner(
             var sw = Stopwatch.StartNew();
             try
             {
-                var response = await connector.RequestAsync(packet);
+                using var response = await connector.RequestAsync(packet);
                 sw.Stop();
 
                 if (response.MsgId != "BenchmarkReply")

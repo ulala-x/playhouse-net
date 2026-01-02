@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Buffers;
 using Google.Protobuf;
 
 namespace PlayHouse.Connector.Protocol;
@@ -99,5 +100,50 @@ public sealed class MemoryPayload : IPayload
     public void Dispose()
     {
         // Nothing to dispose
+    }
+}
+
+/// <summary>
+/// ArrayPool 기반 페이로드 (수신 경로용, 메모리 풀 사용)
+/// </summary>
+public sealed class ArrayPoolPayload : IPayload
+{
+    private byte[]? _rentedBuffer;
+    private readonly int _actualSize;
+    private bool _disposed;
+
+    /// <summary>
+    /// ArrayPool에서 대여한 버퍼로 페이로드 생성
+    /// </summary>
+    /// <param name="rentedBuffer">ArrayPool에서 대여한 버퍼</param>
+    /// <param name="actualSize">실제 데이터 크기</param>
+    public ArrayPoolPayload(byte[] rentedBuffer, int actualSize)
+    {
+        _rentedBuffer = rentedBuffer ?? throw new ArgumentNullException(nameof(rentedBuffer));
+        _actualSize = actualSize;
+    }
+
+    public ReadOnlySpan<byte> DataSpan
+    {
+        get
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(ArrayPoolPayload));
+            }
+            return _rentedBuffer.AsSpan(0, _actualSize);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_rentedBuffer != null)
+        {
+            ArrayPool<byte>.Shared.Return(_rentedBuffer);
+            _rentedBuffer = null;
+        }
     }
 }

@@ -397,16 +397,21 @@ internal sealed class ClientNetwork : IAsyncDisposable
                 }
                 else if (pending.Callback != null)
                 {
-                    // Callback pattern - dispose packet after callback execution
+                    // Callback pattern - copy payload to MemoryPayload for safe async usage
+                    // The callback may store the packet reference and use it after the callback returns,
+                    // so we need to ensure the payload data remains valid
+                    var copiedResponse = CopyPacketPayload(parsed);
+                    packet.Dispose(); // Dispose original packet immediately
+
                     _asyncManager.AddJob(() =>
                     {
                         try
                         {
-                            pending.Callback(packet);
+                            pending.Callback(copiedResponse);
                         }
                         finally
                         {
-                            packet.Dispose();
+                            copiedResponse.Dispose();
                         }
                     });
                 }
@@ -416,17 +421,36 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
 
         // Push 메시지 처리 (MsgSeq == 0)
+        // Copy payload for safe async callback usage
+        var copiedPacket = CopyPacketPayload(parsed);
+        packet.Dispose(); // Dispose original packet immediately
+
         _asyncManager.AddJob(() =>
         {
             try
             {
-                _callback.ReceiveCallback(parsed.StageId, packet);
+                _callback.ReceiveCallback(parsed.StageId, copiedPacket);
             }
             finally
             {
-                packet.Dispose();
+                copiedPacket.Dispose();
             }
         });
+    }
+
+    private static ParsedPacket CopyPacketPayload(ParsedPacket original)
+    {
+        // Copy payload data to a byte array managed by GC
+        var payloadData = original.Payload.DataSpan.ToArray();
+        var copiedPayload = new MemoryPayload(new ReadOnlyMemory<byte>(payloadData));
+
+        return new ParsedPacket(
+            original.MsgId,
+            original.MsgSeq,
+            original.StageId,
+            original.ErrorCode,
+            copiedPayload
+        );
     }
 
     private void OnDisconnected(object? sender, Exception? exception)
