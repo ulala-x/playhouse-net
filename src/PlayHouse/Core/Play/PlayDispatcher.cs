@@ -322,6 +322,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
     private BaseStage CreateNewStage(long stageId, string stageType)
     {
+        // Create temporary registry placeholder (will be replaced with BaseStage)
+        var tempRegistry = new TempReplyPacketRegistry();
+
         var stageSender = new XStageSender(
             _communicator,
             _requestCache,
@@ -329,6 +332,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             _nid,
             stageId,
             this,
+            tempRegistry,
             _clientReplyHandler);
 
         stageSender.SetStageType(stageType);
@@ -336,8 +340,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         var stage = _producer.GetStage(stageType, stageSender);
         var baseStage = new BaseStage(stage, stageSender, _logger);
 
-        // Set BaseStage reference in XStageSender for callback queueing
+        // Set BaseStage reference in XStageSender for callback queueing and reply registry
         stageSender.SetBaseStage(baseStage);
+        stageSender.SetReplyPacketRegistry(baseStage);
 
         // Create and set command handler for system messages
         var cmdHandler = new BaseStageCmdHandler(_logger);
@@ -453,6 +458,18 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         {
             ProcessDestroy(stageId);
         }
+    }
+}
+
+/// <summary>
+/// Temporary registry used during XStageSender creation before BaseStage is available.
+/// This registry does nothing - the real registry (BaseStage) is set later via SetReplyPacketRegistry.
+/// </summary>
+internal sealed class TempReplyPacketRegistry : IReplyPacketRegistry
+{
+    public void RegisterReplyForDisposal(IDisposable packet)
+    {
+        // No-op: BaseStage registry will be set shortly
     }
 }
 

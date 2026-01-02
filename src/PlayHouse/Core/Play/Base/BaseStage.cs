@@ -29,11 +29,12 @@ namespace PlayHouse.Core.Play.Base;
 /// 3. Loop processes all queued messages
 /// 4. Loop exits when queue is empty (double-check for race conditions)
 /// </remarks>
-internal sealed class BaseStage
+internal sealed class BaseStage : IReplyPacketRegistry
 {
     private readonly ConcurrentQueue<StageMessage> _messageQueue = new();
     private readonly AtomicBoolean _isProcessing = new(false);
     private readonly Dictionary<string, BaseActor> _actors = new();
+    private readonly List<IDisposable> _pendingReplyPackets = new();
     private readonly ILogger? _logger;
     private BaseStageCmdHandler? _cmdHandler;
 
@@ -82,6 +83,33 @@ internal sealed class BaseStage
     internal void SetCmdHandler(BaseStageCmdHandler cmdHandler)
     {
         _cmdHandler = cmdHandler;
+    }
+
+    /// <summary>
+    /// Registers a reply packet for disposal after callback completion.
+    /// </summary>
+    public void RegisterReplyForDisposal(IDisposable packet)
+    {
+        _pendingReplyPackets.Add(packet);
+    }
+
+    /// <summary>
+    /// Disposes all pending reply packets registered during message dispatch.
+    /// </summary>
+    private void DisposePendingReplies()
+    {
+        foreach (var packet in _pendingReplyPackets)
+        {
+            try
+            {
+                packet.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error disposing pending reply packet");
+            }
+        }
+        _pendingReplyPackets.Clear();
     }
 
     #region Event Loop
@@ -201,39 +229,51 @@ internal sealed class BaseStage
 
     private async Task DispatchMessageAsync(StageMessage message)
     {
-        switch (message)
+        try
         {
-            case StageMessage.RouteMessage routeMessage:
-                await DispatchRoutePacketAsync(routeMessage.Packet);
-                break;
+            switch (message)
+            {
+                case StageMessage.RouteMessage routeMessage:
+                    await DispatchRoutePacketAsync(routeMessage.Packet);
+                    break;
 
-            case StageMessage.TimerMessage timerMessage:
-                await timerMessage.Callback.Invoke();
-                break;
+                case StageMessage.TimerMessage timerMessage:
+                    await timerMessage.Callback.Invoke();
+                    break;
 
-            case StageMessage.AsyncMessage asyncMessage:
-                await asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
-                break;
+                case StageMessage.AsyncMessage asyncMessage:
+                    await asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
+                    break;
 
-            case StageMessage.ReplyCallbackMessage replyMessage:
-                replyMessage.Callback(replyMessage.ErrorCode, replyMessage.Packet);
-                break;
+                case StageMessage.ReplyCallbackMessage replyMessage:
+                    // Register packet for disposal if present
+                    if (replyMessage.Packet is IDisposable disposable)
+                    {
+                        RegisterReplyForDisposal(disposable);
+                    }
+                    replyMessage.Callback(replyMessage.ErrorCode, replyMessage.Packet);
+                    break;
 
-            case StageMessage.ClientRouteMessage clientRouteMessage:
-                await ProcessClientRouteAsync(clientRouteMessage);
-                break;
+                case StageMessage.ClientRouteMessage clientRouteMessage:
+                    await ProcessClientRouteAsync(clientRouteMessage);
+                    break;
 
-            case StageMessage.JoinActorMessage joinActorMessage:
-                await ProcessJoinActorAsync(joinActorMessage);
-                break;
+                case StageMessage.JoinActorMessage joinActorMessage:
+                    await ProcessJoinActorAsync(joinActorMessage);
+                    break;
 
-            case StageMessage.DisconnectMessage disconnectMessage:
-                await ProcessDisconnectAsync(disconnectMessage.AccountId);
-                break;
+                case StageMessage.DisconnectMessage disconnectMessage:
+                    await ProcessDisconnectAsync(disconnectMessage.AccountId);
+                    break;
 
-            case StageMessage.DestroyMessage:
-                await HandleDestroyAsync();
-                break;
+                case StageMessage.DestroyMessage:
+                    await HandleDestroyAsync();
+                    break;
+            }
+        }
+        finally
+        {
+            DisposePendingReplies();
         }
     }
 

@@ -39,6 +39,7 @@ public class TestApiController : IApiController
         register.Add(typeof(TriggerRequestToApiServerRequest).Name!, HandleRequestToApiServer);
         register.Add(typeof(InterApiMessage).Name!, HandleInterApiMessage);
         register.Add(typeof(BenchmarkApiRequest).Name!, HandleBenchmarkApi);
+        register.Add(typeof(TimerApiRequest).Name!, HandleTimerApi);
     }
 
     private Task HandleApiEcho(IPacket packet, IApiSender sender)
@@ -199,6 +200,24 @@ public class TestApiController : IApiController
             Payload = payload
         };
 
+        sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Timer에서 호출되는 API 요청 처리
+    /// </summary>
+    private Task HandleTimerApi(IPacket packet, IApiSender sender)
+    {
+        ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+
+        var request = TimerApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var reply = new TimerApiReply
+        {
+            Content = $"Timer API Response: {request.Content}"
+        };
         sender.Reply(CPacket.Of(reply));
         return Task.CompletedTask;
     }

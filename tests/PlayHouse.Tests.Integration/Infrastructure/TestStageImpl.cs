@@ -222,6 +222,18 @@ public class TestStageImpl : IStage
                 await HandleTriggerBenchmarkApi(actor, packet);
                 break;
 
+            case "TriggerAutoDisposeApiRequest":
+                await HandleTriggerAutoDisposeApi(actor, packet);
+                break;
+
+            case "TriggerAutoDisposeStageRequest":
+                await HandleTriggerAutoDisposeStage(actor, packet);
+                break;
+
+            case "StartTimerWithRequestRequest":
+                await HandleStartTimerWithRequest(actor, packet);
+                break;
+
             default:
                 // 기본 성공 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -669,5 +681,108 @@ public class TestStageImpl : IStage
         reply.MemoryAllocatedList.AddRange(memoryAllocatedList);
 
         actor.ActorSender.Reply(CPacket.Of(reply));
+    }
+
+    /// <summary>
+    /// OnDispatch 내에서 RequestToApi를 호출하여 자동 Dispose 테스트
+    /// </summary>
+    private async Task HandleTriggerAutoDisposeApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerAutoDisposeApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        // OnDispatch 내에서 RequestToApi 호출 (자동 Dispose 대상)
+        const string apiNid = "api-1";
+        var apiMsg = new ApiEchoRequest { Content = request.Query };
+        var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
+
+        // response는 자동 dispose되므로 여기서 사용해야 함
+        var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
+
+        // 클라이언트에 응답 전달
+        actor.ActorSender.Reply(CPacket.Of(new TriggerAutoDisposeApiReply
+        {
+            ApiResponse = apiReply.Content
+        }));
+
+        // response는 OnDispatch 종료 시 자동 dispose됨
+    }
+
+    /// <summary>
+    /// OnDispatch 내에서 RequestToStage를 호출하여 자동 Dispose 테스트
+    /// </summary>
+    private async Task HandleTriggerAutoDisposeStage(IActor actor, IPacket packet)
+    {
+        var request = TriggerAutoDisposeStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        // OnDispatch 내에서 RequestToStage 호출 (자동 Dispose 대상)
+        var interStageMsg = new InterStageMessage
+        {
+            FromStageId = StageSender.StageId,
+            Content = request.Query
+        };
+
+        var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1" : request.TargetNid;
+        var response = await StageSender.RequestToStage(
+            targetNid,
+            request.TargetStageId,
+            CPacket.Of(interStageMsg));
+
+        // response는 자동 dispose되므로 여기서 사용해야 함
+        var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.DataSpan);
+
+        // 클라이언트에 응답 전달
+        actor.ActorSender.Reply(CPacket.Of(new TriggerAutoDisposeStageReply
+        {
+            Response = interStageReply.Response
+        }));
+
+        // response는 OnDispatch 종료 시 자동 dispose됨
+    }
+
+    /// <summary>
+    /// Timer 콜백 내에서 RequestAsync를 호출하여 자동 Dispose 테스트
+    /// </summary>
+    private Task HandleStartTimerWithRequest(IActor actor, IPacket packet)
+    {
+        var request = StartTimerWithRequestRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var timerId = StageSender.AddCountTimer(
+            TimeSpan.FromMilliseconds(request.DelayMs),
+            TimeSpan.FromMilliseconds(50),
+            1,
+            async () =>
+            {
+                // Timer 콜백 내에서 RequestToApi 호출 (자동 Dispose 대상)
+                const string apiNid = "api-1";
+                var apiMsg = new TimerApiRequest { Content = "timer_test" };
+
+                try
+                {
+                    var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
+
+                    // response는 자동 dispose되므로 여기서 사용해야 함
+                    var apiReply = TimerApiReply.Parser.ParseFrom(response.Payload.DataSpan);
+
+                    // 결과를 클라이언트에 Push
+                    actor.ActorSender.SendToClient(CPacket.Of(new TimerRequestResultNotify
+                    {
+                        Result = apiReply.Content,
+                        Success = true
+                    }));
+
+                    // response는 Timer 콜백 종료 시 자동 dispose됨
+                }
+                catch (Exception)
+                {
+                    actor.ActorSender.SendToClient(CPacket.Of(new TimerRequestResultNotify
+                    {
+                        Result = "error",
+                        Success = false
+                    }));
+                }
+            });
+
+        actor.ActorSender.Reply(CPacket.Of(new StartTimerWithRequestReply { TimerId = timerId }));
+        return Task.CompletedTask;
     }
 }

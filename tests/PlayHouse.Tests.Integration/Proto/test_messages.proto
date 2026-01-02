@@ -289,3 +289,47 @@ message InterApiMessage {
 message InterApiReply {
     string response = 1;
 }
+
+// ============================================
+// 자동 Dispose 테스트용 메시지
+// ============================================
+
+// OnDispatch 내 RequestToApi 자동 Dispose 테스트
+message TriggerAutoDisposeApiRequest {
+    string query = 1;
+}
+message TriggerAutoDisposeApiReply {
+    string api_response = 1;
+}
+
+// OnDispatch 내 RequestToStage 자동 Dispose 테스트
+message TriggerAutoDisposeStageRequest {
+    string target_nid = 1;
+    int64 target_stage_id = 2;
+    string query = 3;
+}
+message TriggerAutoDisposeStageReply {
+    string response = 1;
+}
+
+// Timer 콜백 내 RequestAsync 자동 Dispose 테스트
+message StartTimerWithRequestRequest {
+    int32 delay_ms = 1;
+}
+message StartTimerWithRequestReply {
+    int64 timer_id = 1;
+}
+
+// Timer에서 전송할 Request/Reply
+message TimerApiRequest {
+    string content = 1;
+}
+message TimerApiReply {
+    string content = 1;
+}
+
+// Timer RequestAsync 결과 알림 (Push)
+message TimerRequestResultNotify {
+    string result = 1;
+    bool success = 2;
+}
