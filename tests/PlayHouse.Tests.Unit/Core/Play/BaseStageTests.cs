@@ -98,6 +98,7 @@ public class BaseStageTests
         var communicator = Substitute.For<IClientCommunicator>();
         var requestCache = new RequestCache();
         var dispatcher = Substitute.For<IPlayDispatcher>();
+        var replyRegistry = Substitute.For<IReplyPacketRegistry>();
 
         var stageSender = new XStageSender(
             communicator,
@@ -105,7 +106,8 @@ public class BaseStageTests
             serviceId: 1,
             serverId: "1",
             stageId: 100,
-            dispatcher);
+            dispatcher,
+            replyRegistry);
 
         stageSender.SetStageType("test_stage");
 

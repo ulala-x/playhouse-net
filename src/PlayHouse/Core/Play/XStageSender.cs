@@ -28,6 +28,7 @@ internal sealed class XStageSender : XSender, IStageSender
     private readonly IPlayDispatcher _dispatcher;
     private readonly IClientCommunicator _communicator;
     private readonly IClientReplyHandler? _clientReplyHandler;
+    private IReplyPacketRegistry _replyPacketRegistry;
     private readonly HashSet<long> _timerIds = new();
     private long _timerIdCounter;
     private object? _baseStage;  // BaseStage instance (stored as object to avoid circular dependency)
@@ -53,6 +54,7 @@ internal sealed class XStageSender : XSender, IStageSender
         string serverId,
         long stageId,
         IPlayDispatcher dispatcher,
+        IReplyPacketRegistry replyPacketRegistry,
         IClientReplyHandler? clientReplyHandler = null,
         int requestTimeoutMs = 30000)
         : base(communicator, requestCache, serviceId, serverId, requestTimeoutMs)
@@ -61,6 +63,7 @@ internal sealed class XStageSender : XSender, IStageSender
         _dispatcher = dispatcher;
         _communicator = communicator;
         _clientReplyHandler = clientReplyHandler;
+        _replyPacketRegistry = replyPacketRegistry;
     }
 
     /// <summary>
@@ -79,6 +82,15 @@ internal sealed class XStageSender : XSender, IStageSender
     internal void SetBaseStage(object baseStage)
     {
         _baseStage = baseStage;
+    }
+
+    /// <summary>
+    /// Sets the reply packet registry (called after BaseStage creation).
+    /// </summary>
+    /// <param name="registry">Reply packet registry.</param>
+    internal void SetReplyPacketRegistry(IReplyPacketRegistry registry)
+    {
+        _replyPacketRegistry = registry;
     }
 
     /// <summary>
@@ -333,6 +345,30 @@ internal sealed class XStageSender : XSender, IStageSender
         {
             reply.Dispose();  // ArrayPool.Return is called here
         }
+    }
+
+    #endregion
+
+    #region Request Overrides with Reply Registration
+
+    /// <summary>
+    /// Overrides RequestToApi to register reply packet for disposal.
+    /// </summary>
+    public new async Task<IPacket> RequestToApi(string apiServerId, IPacket packet)
+    {
+        var reply = await base.RequestToApi(apiServerId, packet);
+        _replyPacketRegistry.RegisterReplyForDisposal(reply);
+        return reply;
+    }
+
+    /// <summary>
+    /// Overrides RequestToStage to register reply packet for disposal.
+    /// </summary>
+    public new async Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet)
+    {
+        var reply = await base.RequestToStage(playServerId, stageId, packet);
+        _replyPacketRegistry.RegisterReplyForDisposal(reply);
+        return reply;
     }
 
     #endregion
