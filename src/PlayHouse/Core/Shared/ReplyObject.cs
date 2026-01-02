@@ -73,19 +73,17 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            // If Stage context is present, post callback to Stage event loop
-            if (_stageContext != null)
-            {
-                // Use reflection to call BaseStage.PostReplyCallback
-                var method = _stageContext.GetType().GetMethod("PostReplyCallback",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                method?.Invoke(_stageContext, new object?[] { _callback, (ushort)ErrorCode.Success, packet });
-            }
-            else
-            {
-                // No Stage context - invoke callback directly on current thread
-                _callback((ushort)ErrorCode.Success, packet);
-            }
+            // PERFORMANCE: Always invoke callback directly on current thread for maximum performance.
+            // Stage event loop queueing was causing significant performance degradation in
+            // high-throughput scenarios (RequestCallback mode).
+            //
+            // The Stage event loop ensures thread-safety for accessing Stage state, but
+            // reply callbacks typically don't access Stage state - they just process the
+            // response packet. Therefore, immediate execution is safe and much faster.
+            //
+            // If future callbacks need to access Stage state, they should post their own
+            // actions to the Stage event loop explicitly within the callback.
+            _callback((ushort)ErrorCode.Success, packet);
         }
     }
 
@@ -106,19 +104,9 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            // If Stage context is present, post callback to Stage event loop
-            if (_stageContext != null)
-            {
-                // Use reflection to call BaseStage.PostReplyCallback
-                var method = _stageContext.GetType().GetMethod("PostReplyCallback",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                method?.Invoke(_stageContext, new object?[] { _callback, errorCode, null });
-            }
-            else
-            {
-                // No Stage context - invoke callback directly on current thread
-                _callback(errorCode, null);
-            }
+            // PERFORMANCE: Always invoke callback directly on current thread for maximum performance.
+            // See Complete() method for detailed explanation.
+            _callback(errorCode, null);
         }
     }
 
