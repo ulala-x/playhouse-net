@@ -15,7 +15,7 @@ namespace PlayHouse.Connector;
 /// 클라이언트가 Play Server에 연결하여 실시간 통신을 수행하는 메인 클래스입니다.
 /// Connect() 호출 시 지정한 stageId가 모든 Send/Request에서 사용됩니다.
 /// </remarks>
-public sealed class Connector : IConnectorCallback
+public sealed class Connector : IConnectorCallback, IAsyncDisposable
 {
     private ClientNetwork? _clientNetwork;
     private bool _disconnectFromClient;
@@ -259,6 +259,22 @@ public sealed class Connector : IConnectorCallback
     public void MainThreadAction()
     {
         _clientNetwork?.MainThreadAction();
+    }
+
+    #endregion
+
+    #region IAsyncDisposable
+
+    /// <summary>
+    /// 비동기 리소스 정리
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_clientNetwork != null)
+        {
+            await _clientNetwork.DisposeAsync();
+            _clientNetwork = null;
+        }
     }
 
     #endregion
