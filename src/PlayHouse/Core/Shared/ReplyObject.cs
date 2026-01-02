@@ -11,7 +11,7 @@ public sealed class ReplyObject : IDisposable
 {
     private readonly TaskCompletionSource<IPacket>? _tcs;
     private readonly ReplyCallback? _callback;
-    private readonly object? _stageContext;  // BaseStage instance
+    private readonly Action<ReplyCallback, ushort, IPacket?>? _postToStage;
     private readonly DateTime _createdAt;
     private bool _completed;
 
@@ -25,12 +25,16 @@ public sealed class ReplyObject : IDisposable
     /// </summary>
     public DateTime CreatedAt => _createdAt;
 
-    private ReplyObject(ushort msgSeq, TaskCompletionSource<IPacket>? tcs, ReplyCallback? callback, object? stageContext = null)
+    private ReplyObject(
+        ushort msgSeq,
+        TaskCompletionSource<IPacket>? tcs,
+        ReplyCallback? callback,
+        Action<ReplyCallback, ushort, IPacket?>? postToStage = null)
     {
         MsgSeq = msgSeq;
         _tcs = tcs;
         _callback = callback;
-        _stageContext = stageContext;
+        _postToStage = postToStage;
         _createdAt = DateTime.UtcNow;
     }
 
@@ -51,11 +55,14 @@ public sealed class ReplyObject : IDisposable
     /// </summary>
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="callback">Callback to invoke on reply.</param>
-    /// <param name="stageContext">Optional Stage context for callback queueing.</param>
+    /// <param name="postToStage">Optional delegate for posting callback to Stage event loop.</param>
     /// <returns>A new ReplyObject.</returns>
-    public static ReplyObject CreateCallback(ushort msgSeq, ReplyCallback callback, object? stageContext = null)
+    public static ReplyObject CreateCallback(
+        ushort msgSeq,
+        ReplyCallback callback,
+        Action<ReplyCallback, ushort, IPacket?>? postToStage = null)
     {
-        return new ReplyObject(msgSeq, null, callback, stageContext);
+        return new ReplyObject(msgSeq, null, callback, postToStage);
     }
 
     /// <summary>
@@ -73,17 +80,16 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            // PERFORMANCE: Always invoke callback directly on current thread for maximum performance.
-            // Stage event loop queueing was causing significant performance degradation in
-            // high-throughput scenarios (RequestCallback mode).
-            //
-            // The Stage event loop ensures thread-safety for accessing Stage state, but
-            // reply callbacks typically don't access Stage state - they just process the
-            // response packet. Therefore, immediate execution is safe and much faster.
-            //
-            // If future callbacks need to access Stage state, they should post their own
-            // actions to the Stage event loop explicitly within the callback.
-            _callback((ushort)ErrorCode.Success, packet);
+            if (_postToStage != null)
+            {
+                // Post callback to Stage event loop for thread-safe execution and proper disposal
+                _postToStage(_callback, (ushort)ErrorCode.Success, packet);
+            }
+            else
+            {
+                // Direct invocation for non-Stage contexts (e.g., API server)
+                _callback((ushort)ErrorCode.Success, packet);
+            }
         }
     }
 
@@ -104,9 +110,16 @@ public sealed class ReplyObject : IDisposable
         }
         else if (_callback != null)
         {
-            // PERFORMANCE: Always invoke callback directly on current thread for maximum performance.
-            // See Complete() method for detailed explanation.
-            _callback(errorCode, null);
+            if (_postToStage != null)
+            {
+                // Post callback to Stage event loop for thread-safe execution
+                _postToStage(_callback, errorCode, null);
+            }
+            else
+            {
+                // Direct invocation for non-Stage contexts (e.g., API server)
+                _callback(errorCode, null);
+            }
         }
     }
 

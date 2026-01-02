@@ -32,11 +32,20 @@ namespace PlayHouse.Core.Play.Base;
 internal sealed class BaseStage : IReplyPacketRegistry
 {
     private readonly ConcurrentQueue<StageMessage> _messageQueue = new();
+    private readonly ConcurrentQueue<StageMessage.ReplyCallbackMessage> _callbackQueue = new();
     private readonly AtomicBoolean _isProcessing = new(false);
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
     private readonly ILogger? _logger;
     private BaseStageCmdHandler? _cmdHandler;
+
+    // AsyncLocal to track current Stage context for callback execution
+    private static readonly AsyncLocal<BaseStage?> _currentStage = new();
+
+    /// <summary>
+    /// Gets the current Stage being processed (for callback execution optimization).
+    /// </summary>
+    internal static BaseStage? Current => _currentStage.Value;
 
     /// <summary>
     /// Gets the content-implemented Stage.
@@ -153,7 +162,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <param name="packet">Reply packet.</param>
     internal void PostReplyCallback(ReplyCallback callback, ushort errorCode, IPacket? packet)
     {
-        _messageQueue.Enqueue(new StageMessage.ReplyCallbackMessage(callback, errorCode, packet));
+        _callbackQueue.Enqueue(new StageMessage.ReplyCallbackMessage(callback, errorCode, packet));
         TryStartProcessing();
     }
 
@@ -201,30 +210,57 @@ internal sealed class BaseStage : IReplyPacketRegistry
 
     private async Task ProcessMessageLoopAsync()
     {
-        do
+        // Set current Stage context for callback execution optimization
+        _currentStage.Value = this;
+        try
         {
-            // Process all queued messages
-            while (_messageQueue.TryDequeue(out var message))
+            do
             {
-                try
+                // 1. Process all callback queue first (highest priority)
+                while (_callbackQueue.TryDequeue(out var callbackMessage))
                 {
-                    await DispatchMessageAsync(message);
+                    try
+                    {
+                        if (callbackMessage.Packet is IDisposable disposable)
+                        {
+                            RegisterReplyForDisposal(disposable);
+                        }
+                        callbackMessage.Callback(callbackMessage.ErrorCode, callbackMessage.Packet);
+                    }
+                    finally
+                    {
+                        DisposePendingReplies();
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger?.LogError(ex, "Unhandled exception in Stage {StageId}", StageId);
-                }
-                finally
-                {
-                    message.Dispose();
-                }
-            }
 
-            // Reset processing flag
-            _isProcessing.Set(false);
+                // 2. Process one regular message
+                if (_messageQueue.TryDequeue(out var message))
+                {
+                    try
+                    {
+                        await DispatchMessageAsync(message);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Unhandled exception in Stage {StageId}", StageId);
+                    }
+                    finally
+                    {
+                        message.Dispose();
+                    }
+                }
 
-            // Double-check: If new messages arrived during reset, restart processing
-        } while (!_messageQueue.IsEmpty && _isProcessing.CompareAndSet(false, true));
+                // Reset processing flag
+                _isProcessing.Set(false);
+
+                // Double-check: If new messages arrived during reset, restart processing
+            } while ((!_messageQueue.IsEmpty || !_callbackQueue.IsEmpty)
+                     && _isProcessing.CompareAndSet(false, true));
+        }
+        finally
+        {
+            _currentStage.Value = null;
+        }
     }
 
     private async Task DispatchMessageAsync(StageMessage message)
@@ -243,15 +279,6 @@ internal sealed class BaseStage : IReplyPacketRegistry
 
                 case StageMessage.AsyncMessage asyncMessage:
                     await asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
-                    break;
-
-                case StageMessage.ReplyCallbackMessage replyMessage:
-                    // Register packet for disposal if present
-                    if (replyMessage.Packet is IDisposable disposable)
-                    {
-                        RegisterReplyForDisposal(disposable);
-                    }
-                    replyMessage.Callback(replyMessage.ErrorCode, replyMessage.Packet);
                     break;
 
                 case StageMessage.ClientRouteMessage clientRouteMessage:
