@@ -400,7 +400,25 @@ internal sealed class ClientNetwork : IAsyncDisposable
             return;
         }
 
-        // SyncContext가 있으면 즉시 Post, 없으면 큐
+        // Response 메시지인 경우 (MsgSeq > 0): RequestAsync vs RequestCallback 분기
+        if (parsed.MsgSeq > 0)
+        {
+            // RequestAsync(Tcs) 응답인지 확인
+            // - await 패턴은 스레드 전환을 자동으로 처리 (ConfigureAwait)
+            // - 네트워크 스레드에서 TrySetResult() 호출해도 안전
+            // - SyncContext.Post() 오버헤드 제거로 성능 향상
+            if (_pendingRequests.TryGetValue(parsed.MsgSeq, out var pending) && pending.Tcs != null)
+            {
+                ProcessPacket(parsed);
+                return;
+            }
+            // RequestCallback 응답은 아래 SyncContext/큐 처리로 진행
+        }
+
+        // RequestCallback 또는 Push 메시지
+        // - Callback/ReceiveCallback은 메인 스레드에서 호출되어야 함 (Unity 호환성)
+        // - SyncContext가 있으면 해당 스레드로 Post (Unity: 다음 프레임)
+        // - 없으면 큐에 추가 후 MainThreadAction()에서 처리
         if (_syncContext != null)
         {
             _syncContext.Post(_ => ProcessPacket(parsed), null);
