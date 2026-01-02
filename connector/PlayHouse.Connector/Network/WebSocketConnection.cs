@@ -323,29 +323,32 @@ internal sealed class WebSocketConnection : IConnection
 
         // Payload (with optional decompression)
         var payloadSize = packetSize - offset;
-        ReadOnlyMemory<byte> payload;
+        IPayload payload;
 
         if (originalSize > 0)
         {
-            // Need to copy for decompression
-            var compressedData = new byte[payloadSize];
-            for (int i = 0; i < payloadSize; i++)
+            // Decompression path: Use ArrayPool for temporary compressed data
+            var compressedBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
+            try
             {
-                compressedData[i] = buffer.PeekByte(offset++);
-            }
+                buffer.PeekBytes(offset, compressedBuffer.AsSpan(0, payloadSize));
+                offset += payloadSize;
 
-            var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedData);
-            payload = new ReadOnlyMemory<byte>(decompressed);
+                var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedBuffer.AsSpan(0, payloadSize).ToArray());
+                payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(compressedBuffer);
+            }
         }
         else
         {
-            // Copy payload data
-            var payloadData = new byte[payloadSize];
-            for (int i = 0; i < payloadSize; i++)
-            {
-                payloadData[i] = buffer.PeekByte(offset++);
-            }
-            payload = new ReadOnlyMemory<byte>(payloadData);
+            // Non-compressed path: Use ArrayPool
+            var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
+            buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
+            offset += payloadSize;
+            payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
         }
 
         // Create ParsedPacket wrapper to pass metadata

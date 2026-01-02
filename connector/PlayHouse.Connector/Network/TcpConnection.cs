@@ -317,25 +317,32 @@ internal sealed class TcpConnection : IConnection
 
         // Payload (with optional decompression)
         var payloadSize = packetSize - offset;
-        ReadOnlyMemory<byte> payload;
+        IPayload payload;
 
         if (originalSize > 0)
         {
-            // Need to copy for decompression
-            var compressedData = new byte[payloadSize];
-            buffer.PeekBytes(offset, compressedData);
-            offset += payloadSize;
+            // Decompression path: Use ArrayPool for temporary compressed data
+            var compressedBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
+            try
+            {
+                buffer.PeekBytes(offset, compressedBuffer.AsSpan(0, payloadSize));
+                offset += payloadSize;
 
-            var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedData);
-            payload = new ReadOnlyMemory<byte>(decompressed);
+                var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedBuffer.AsSpan(0, payloadSize).ToArray());
+                payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(compressedBuffer);
+            }
         }
         else
         {
-            // Copy payload data
-            var payloadData = new byte[payloadSize];
-            buffer.PeekBytes(offset, payloadData);
+            // Non-compressed path: Use ArrayPool
+            var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
+            buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
             offset += payloadSize;
-            payload = new ReadOnlyMemory<byte>(payloadData);
+            payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
         }
 
         // Create ParsedPacket wrapper to pass metadata
@@ -390,17 +397,17 @@ internal sealed class ParsedPacket : IPacket
     public ushort ErrorCode { get; }
     public IPayload Payload { get; }
 
-    public ParsedPacket(string msgId, ushort msgSeq, long stageId, ushort errorCode, ReadOnlyMemory<byte> payload)
+    public ParsedPacket(string msgId, ushort msgSeq, long stageId, ushort errorCode, IPayload payload)
     {
         MsgId = msgId;
         MsgSeq = msgSeq;
         StageId = stageId;
         ErrorCode = errorCode;
-        Payload = new MemoryPayload(payload);
+        Payload = payload;
     }
 
     public void Dispose()
     {
-        // No resources to dispose
+        Payload?.Dispose();
     }
 }
