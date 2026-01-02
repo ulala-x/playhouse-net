@@ -97,6 +97,7 @@ public sealed class ProtoPayload(IMessage proto) : IPayload
 {
     private byte[]? _rentedBuffer;
     private int _actualSize = -1;
+    private bool _disposed;
 
     /// <summary>
     /// Lazy serialization to ArrayPool buffer.
@@ -133,6 +134,9 @@ public sealed class ProtoPayload(IMessage proto) : IPayload
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+
         if (_rentedBuffer != null)
         {
             ArrayPool<byte>.Shared.Return(_rentedBuffer);
