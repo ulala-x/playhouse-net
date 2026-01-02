@@ -31,8 +31,8 @@ public class ISenderTests : IAsyncLifetime
     private PlayServer? _playServerB;
     private readonly ClientConnector _connectorA;
     private readonly ClientConnector _connectorB;
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessagesA = new();
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessagesB = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessagesA = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessagesB = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -43,8 +43,20 @@ public class ISenderTests : IAsyncLifetime
     {
         _connectorA = new ClientConnector();
         _connectorB = new ClientConnector();
-        _connectorA.OnReceive += (stageId, stageType, packet) => _receivedMessagesA.Add((stageId, stageType, packet));
-        _connectorB.OnReceive += (stageId, stageType, packet) => _receivedMessagesB.Add((stageId, stageType, packet));
+        _connectorA.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessagesA.Add((stageId, stageType, msgId, payloadData));
+        };
+        _connectorB.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessagesB.Add((stageId, stageType, msgId, payloadData));
+        };
     }
 
     public async Task InitializeAsync()
@@ -253,10 +265,10 @@ public class ISenderTests : IAsyncLifetime
 
         // Then - E2E 검증 3: Push 메시지 수신 (callback에서 SendToClient로 전송)
         _receivedMessagesA.Should().NotBeEmpty("Push 메시지를 수신해야 함");
-        var pushMessage = _receivedMessagesA.FirstOrDefault(m => m.packet.MsgId.Contains("TriggerRequestToStageCallbackReply"));
+        var pushMessage = _receivedMessagesA.FirstOrDefault(m => m.msgId.Contains("TriggerRequestToStageCallbackReply"));
         pushMessage.Should().NotBe(default, "TriggerRequestToStageCallbackReply Push 메시지가 있어야 함");
 
-        var pushReply = TriggerRequestToStageCallbackReply.Parser.ParseFrom(pushMessage.packet.Payload.DataSpan);
+        var pushReply = TriggerRequestToStageCallbackReply.Parser.ParseFrom(pushMessage.payloadData);
         pushReply.Response.Should().Contain("Callback Query from Stage A",
             "Stage B의 에코 응답이 callback을 통해 전달되어야 함");
     }

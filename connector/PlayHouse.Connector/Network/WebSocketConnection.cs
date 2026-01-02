@@ -334,7 +334,7 @@ internal sealed class WebSocketConnection : IConnection
                 buffer.PeekBytes(offset, compressedBuffer.AsSpan(0, payloadSize));
                 offset += payloadSize;
 
-                var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedBuffer.AsSpan(0, payloadSize).ToArray());
+                var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedBuffer.AsSpan(0, payloadSize));
                 payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
             }
             finally

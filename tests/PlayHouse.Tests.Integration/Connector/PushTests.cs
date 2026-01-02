@@ -24,7 +24,7 @@ public class PushTests : IAsyncLifetime
 {
     private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -32,7 +32,13 @@ public class PushTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
+        _connector.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessages.Add((stageId, stageType, msgId, payloadData));
+        };
     }
 
     public Task InitializeAsync()
@@ -85,10 +91,10 @@ public class PushTests : IAsyncLifetime
         response.MsgId.Should().Be("BroadcastTriggerReply", "트리거 응답을 받아야 함");
         _receivedMessages.Should().NotBeEmpty("Push 메시지를 수신해야 함");
 
-        var (stageId, stageType, packet) = _receivedMessages.First();
-        packet.MsgId.Should().EndWith("BroadcastNotify", "메시지 ID가 BroadcastNotify로 끝나야 함");
+        var (stageId, stageType, msgId, payloadData) = _receivedMessages.First();
+        msgId.Should().EndWith("BroadcastNotify", "메시지 ID가 BroadcastNotify로 끝나야 함");
 
-        var parsed = BroadcastNotify.Parser.ParseFrom(packet.Payload.DataSpan);
+        var parsed = BroadcastNotify.Parser.ParseFrom(payloadData);
         parsed.EventType.Should().Be("system");
         parsed.Data.Should().Be("Welcome!");
     }
@@ -122,7 +128,7 @@ public class PushTests : IAsyncLifetime
 
         // Push 메시지 내용 검증
         var pushMessages = _receivedMessages
-            .Where(m => m.packet.MsgId.Contains("BroadcastNotify"))
+            .Where(m => m.msgId.Contains("BroadcastNotify"))
             .ToList();
         pushMessages.Should().HaveCountGreaterOrEqualTo(3, "3개 이상의 BroadcastNotify를 수신해야 함");
     }

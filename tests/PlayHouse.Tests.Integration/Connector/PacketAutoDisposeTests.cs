@@ -25,7 +25,7 @@ public class PacketAutoDisposeTests : IAsyncLifetime
 {
     private readonly SinglePlayServerFixture _fixture;
     private readonly ClientConnector _connector;
-    private readonly List<(long stageId, string stageType, ClientPacket packet)> _receivedMessages = new();
+    private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessages = new();
     private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
@@ -33,7 +33,13 @@ public class PacketAutoDisposeTests : IAsyncLifetime
     {
         _fixture = fixture;
         _connector = new ClientConnector();
-        _connector.OnReceive += (stageId, stageType, packet) => _receivedMessages.Add((stageId, stageType, packet));
+        _connector.OnReceive += (stageId, stageType, packet) =>
+        {
+            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            var msgId = packet.MsgId;
+            var payloadData = packet.Payload.DataSpan.ToArray();
+            _receivedMessages.Add((stageId, stageType, msgId, payloadData));
+        };
     }
 
     public Task InitializeAsync()
