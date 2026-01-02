@@ -21,6 +21,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private readonly ConnectorConfig _config;
     private readonly IConnectorCallback _callback;
     private readonly AsyncManager _asyncManager = new();
+    private readonly SynchronizationContext? _syncContext;
 
     private IConnection? _connection;
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pendingRequests = new();
@@ -37,6 +38,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+        _syncContext = SynchronizationContext.Current;
     }
 
     public bool IsConnect() => _connection?.IsConnected ?? false;
@@ -81,26 +83,12 @@ internal sealed class ClientNetwork : IAsyncDisposable
             _lastReceivedTime.Restart();
             _lastSendHeartBeatTime.Restart();
 
-            if (_config.UseMainThreadCallback)
-            {
-                _asyncManager.AddJob(() => _callback.ConnectCallback(true));
-            }
-            else
-            {
-                _callback.ConnectCallback(true);
-            }
+            _asyncManager.AddJob(() => _callback.ConnectCallback(true));
             return true;
         }
         catch (Exception)
         {
-            if (_config.UseMainThreadCallback)
-            {
-                _asyncManager.AddJob(() => _callback.ConnectCallback(false));
-            }
-            else
-            {
-                _callback.ConnectCallback(false);
-            }
+            _asyncManager.AddJob(() => _callback.ConnectCallback(false));
             return false;
         }
     }
@@ -263,17 +251,10 @@ internal sealed class ClientNetwork : IAsyncDisposable
             if (_pendingRequests.TryRemove(msgSeq, out var req))
             {
                 req.Dispose();
-                if (_config.UseMainThreadCallback)
-                {
-                    _asyncManager.AddJob(() =>
-                    {
-                        _callback.ErrorCallback(req.StageId, (ushort)ConnectorErrorCode.Disconnected, req.Request);
-                    });
-                }
-                else
+                _asyncManager.AddJob(() =>
                 {
                     _callback.ErrorCallback(req.StageId, (ushort)ConnectorErrorCode.Disconnected, req.Request);
-                }
+                });
             }
             return;
         }
@@ -297,17 +278,10 @@ internal sealed class ClientNetwork : IAsyncDisposable
         if (_pendingRequests.TryRemove(msgSeq, out var timedOutReq))
         {
             timedOutReq.Dispose();
-            if (_config.UseMainThreadCallback)
-            {
-                _asyncManager.AddJob(() =>
-                {
-                    _callback.ErrorCallback(timedOutReq.StageId, (ushort)ConnectorErrorCode.RequestTimeout, timedOutReq.Request);
-                });
-            }
-            else
+            _asyncManager.AddJob(() =>
             {
                 _callback.ErrorCallback(timedOutReq.StageId, (ushort)ConnectorErrorCode.RequestTimeout, timedOutReq.Request);
-            }
+            });
         }
     }
 
@@ -426,18 +400,18 @@ internal sealed class ClientNetwork : IAsyncDisposable
             return;
         }
 
-        // RequestAsync (Tcs) 응답은 즉시 처리 (MainThreadAction과 독립적으로 동작)
-        if (parsed.MsgSeq > 0 && _pendingRequests.TryGetValue(parsed.MsgSeq, out var pending) && pending.Tcs != null)
+        // SyncContext가 있으면 즉시 Post, 없으면 큐
+        if (_syncContext != null)
         {
-            ProcessPacketImmediate(parsed);
-            return;
+            _syncContext.Post(_ => ProcessPacket(parsed), null);
         }
-
-        // RequestCallback + Push: 항상 큐에 추가 (MainThreadAction에서 콜백 후 dispose)
-        _packetQueue.Enqueue(parsed);
+        else
+        {
+            _packetQueue.Enqueue(parsed);
+        }
     }
 
-    private void ProcessPacketImmediate(ParsedPacket parsed)
+    private void ProcessPacket(ParsedPacket parsed)
     {
         // Response 처리 (MsgSeq > 0)
         if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
@@ -497,65 +471,12 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
     }
 
-    private void ProcessPacket(ParsedPacket parsed)
-    {
-        // Response 처리 (MsgSeq > 0) - Callback 패턴
-        if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
-        {
-            // 타임아웃 타이머 취소
-            pending.Dispose();
-
-            if (pending.IsAuthenticate && parsed.ErrorCode == 0)
-            {
-                _isAuthenticated = true;
-            }
-
-            if (parsed.ErrorCode != 0)
-            {
-                parsed.Dispose(); // Error case - dispose packet
-                pending.Callback?.Invoke(parsed); // This shouldn't happen as error goes to ErrorCallback
-                _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
-            }
-            else
-            {
-                // Callback pattern - dispose after callback
-                try
-                {
-                    pending.Callback?.Invoke(parsed);
-                }
-                finally
-                {
-                    parsed.Dispose();
-                }
-            }
-
-            return;
-        }
-
-        // Push 메시지 처리 (MsgSeq == 0)
-        try
-        {
-            _callback.ReceiveCallback(parsed.StageId, parsed);
-        }
-        finally
-        {
-            parsed.Dispose();
-        }
-    }
-
     private void OnDisconnected(object? sender, Exception? exception)
     {
         _isAuthenticated = false;
         ClearPendingRequests();
 
-        if (_config.UseMainThreadCallback)
-        {
-            _asyncManager.AddJob(() => _callback.DisconnectCallback());
-        }
-        else
-        {
-            _callback.DisconnectCallback();
-        }
+        _asyncManager.AddJob(() => _callback.DisconnectCallback());
     }
 
     #endregion

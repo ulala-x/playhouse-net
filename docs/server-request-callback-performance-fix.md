@@ -80,10 +80,11 @@ private async Task ProcessMessageLoopAsync()
 
 #### 4. 클라이언트와 동일한 패턴
 
-클라이언트 Connector에서도 동일한 문제가 발생했고, `ConnectorConfig.UseMainThreadCallback = false`로 해결:
+클라이언트 Connector에서도 동일한 문제가 발생했고, `SynchronizationContext` 기반 콜백 실행으로 해결:
 - `/home/ulalax/project/ulalax/playhouse/playhouse-net/docs/connector-callback-performance-fix.md` 참조
-- Unity에서는 `UseMainThreadCallback = true` 필요 (Unity API는 메인 스레드 전용)
-- 일반 C# / 서버 환경에서는 `false`가 적절 (즉시 실행)
+- Unity에서는 `UnitySynchronizationContext`가 자동으로 메인 스레드에서 실행
+- 테스트/벤치마크에서는 `ImmediateSynchronizationContext`로 즉시 실행
+- 일반 C# / 서버 환경에서는 SynchronizationContext가 null이면 큐 방식 사용
 
 ## 해결 방법
 

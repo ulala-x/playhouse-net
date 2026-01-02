@@ -16,7 +16,7 @@ namespace PlayHouse.Tests.Integration.Play;
 /// <summary>
 /// Connector RequestCallback 모드 성능 E2E 테스트
 ///
-/// RequestCallback은 UseMainThreadCallback 설정과 관계없이 항상 큐를 사용합니다.
+/// RequestCallback은 SynchronizationContext가 없으면 큐를 사용합니다.
 /// MainThreadAction() 호출이 필수이며, 8KB 이상 메시지도 정상 처리되어야 합니다.
 /// </summary>
 [Collection("E2E ApiPlayServer")]
@@ -51,7 +51,7 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     /// RequestCallback 모드 - 8KB 메시지 정상 처리, MainThreadAction 필요
     /// </summary>
     /// <remarks>
-    /// RequestCallback은 UseMainThreadCallback 설정과 관계없이 항상 큐를 사용합니다.
+    /// RequestCallback은 SynchronizationContext가 없으면 큐를 사용합니다.
     /// MainThreadAction() 호출이 필수입니다.
     /// 8KB 이상 메시지도 정상적으로 처리되어야 합니다.
     /// </remarks>
@@ -59,7 +59,7 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     public async Task RequestCallback_8KBMessage_RequiresMainThreadAction()
     {
         // Given - 연결 및 콜백 자동 처리 타이머 시작
-        _connector = await CreateConnectorAsync(useMainThreadCallback: false);
+        _connector = await CreateConnectorAsync();
 
         // 콜백 자동 처리 타이머 시작 (RequestCallback은 항상 큐를 사용하므로 필수)
         _callbackTimer = new Timer(_ =>
@@ -120,18 +120,17 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// RequestCallback 모드 - UseMainThreadCallback 설정 검증
+    /// RequestCallback 모드 - SynchronizationContext 없이 큐 모드 검증
     /// </summary>
     /// <remarks>
-    /// UseMainThreadCallback은 Push 콜백 처리 방식을 결정합니다.
-    /// RequestCallback은 이 설정과 관계없이 항상 큐를 사용합니다.
+    /// SynchronizationContext가 없으면 큐를 사용합니다.
     /// MainThreadAction() 호출이 필수입니다.
     /// </remarks>
-    [Fact(DisplayName = "RequestCallback - UseMainThreadCallback=true 설정, MainThreadAction 필요")]
+    [Fact(DisplayName = "RequestCallback - SynchronizationContext 없이 큐 모드, MainThreadAction 필요")]
     public async Task RequestCallback_MainThreadQueue_RequiresMainThreadAction()
     {
-        // Given - 메인 스레드 큐 모드로 연결
-        _connector = await CreateConnectorAsync(useMainThreadCallback: true);
+        // Given - SynchronizationContext 없이 연결
+        _connector = await CreateConnectorAsync();
 
         // 콜백 자동 처리 타이머 시작 (Unity Update 시뮬레이션)
         _callbackTimer = new Timer(_ =>
@@ -182,14 +181,14 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
     /// RequestAsync와 RequestCallback 성능 비교
     /// </summary>
     /// <remarks>
-    /// RequestCallback은 항상 큐를 사용하므로 MainThreadAction() 호출이 필요합니다.
+    /// RequestCallback은 SynchronizationContext가 없으면 큐를 사용하므로 MainThreadAction() 호출이 필요합니다.
     /// RequestAsync와 비교하여 합리적인 성능을 보여야 합니다.
     /// </remarks>
     [Fact(DisplayName = "RequestCallback vs RequestAsync - 성능 비교")]
     public async Task RequestCallback_Vs_RequestAsync_SimilarPerformance()
     {
         // Given - 연결
-        _connector = await CreateConnectorAsync(useMainThreadCallback: false);
+        _connector = await CreateConnectorAsync();
 
         var messageCount = 100;
         var largeContent = new string('A', 1024);
@@ -257,12 +256,11 @@ public class ConnectorCallbackPerformanceTests : IAsyncLifetime
 
     #region Helper Methods
 
-    private async Task<ClientConnector> CreateConnectorAsync(bool useMainThreadCallback)
+    private async Task<ClientConnector> CreateConnectorAsync()
     {
         var connector = new ClientConnector();
         var config = new ConnectorConfig
         {
-            UseMainThreadCallback = useMainThreadCallback,
             RequestTimeoutMs = 5000
         };
 
