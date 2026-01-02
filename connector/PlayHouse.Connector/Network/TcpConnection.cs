@@ -9,14 +9,13 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using PlayHouse.Connector.Infrastructure.Buffers;
 using PlayHouse.Connector.Protocol;
 
 namespace PlayHouse.Connector.Network;
 
 /// <summary>
 /// TCP 기반 연결 구현
-/// Zero-copy receive with RingBuffer and direct packet parsing
+/// Direct stream reading without intermediate buffering for zero-copy receive
 /// </summary>
 internal sealed class TcpConnection : IConnection
 {
@@ -31,9 +30,8 @@ internal sealed class TcpConnection : IConnection
     private const int SendBufferSize = 65536;
     private const int ReceiveBufferSize = 262144; // 256KB for large payloads
 
-    // Zero-copy receive buffer
-    private readonly RingBuffer _receiveBuffer = new(ReceiveBufferSize);
-    private int _expectedPacketSize = -1;
+    // Header buffer for reading packet metadata (4 + 1 + 255 + 16 = 276 bytes max)
+    private readonly byte[] _headerBuffer = new byte[276];
 
     public event EventHandler<IPacket>? PacketReceived;
     public event EventHandler<Exception?>? Disconnected;
@@ -165,27 +163,79 @@ internal sealed class TcpConnection : IConnection
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        var tempBuffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         try
         {
             while (!cancellationToken.IsCancellationRequested && _isConnected && _stream != null)
             {
                 try
                 {
-                    // Read directly into temp buffer
-                    var bytesRead = await _stream.ReadAsync(tempBuffer, cancellationToken).ConfigureAwait(false);
+                    // 1. Read packet length (4 bytes)
+                    await ReadExactlyAsync(_headerBuffer, 0, 4, cancellationToken).ConfigureAwait(false);
+                    var contentSize = BinaryPrimitives.ReadInt32LittleEndian(_headerBuffer);
 
-                    if (bytesRead == 0)
+                    if (contentSize <= 0 || contentSize > 10 * 1024 * 1024)
                     {
-                        HandleDisconnection(null);
-                        break;
+                        throw new InvalidOperationException($"Invalid packet size: {contentSize}");
                     }
 
-                    // Write to RingBuffer (zero-copy)
-                    _receiveBuffer.WriteBytes(new ReadOnlySpan<byte>(tempBuffer, 0, bytesRead));
+                    // 2. Read MsgIdLen (1 byte)
+                    await ReadExactlyAsync(_headerBuffer, 0, 1, cancellationToken).ConfigureAwait(false);
+                    var msgIdLen = _headerBuffer[0];
 
-                    // Parse packets from RingBuffer
-                    ProcessReceiveBuffer();
+                    // 3. Read MsgId + fixed fields (msgIdLen + 16 bytes)
+                    var fixedHeaderSize = msgIdLen + 16; // MsgId + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4)
+                    await ReadExactlyAsync(_headerBuffer, 0, fixedHeaderSize, cancellationToken).ConfigureAwait(false);
+
+                    // 4. Parse header fields
+                    var msgId = Encoding.UTF8.GetString(_headerBuffer, 0, msgIdLen);
+                    var offset = msgIdLen;
+                    var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(_headerBuffer.AsSpan(offset));
+                    offset += 2;
+                    var stageId = BinaryPrimitives.ReadInt64LittleEndian(_headerBuffer.AsSpan(offset));
+                    offset += 8;
+                    var errorCode = BinaryPrimitives.ReadUInt16LittleEndian(_headerBuffer.AsSpan(offset));
+                    offset += 2;
+                    var originalSize = BinaryPrimitives.ReadInt32LittleEndian(_headerBuffer.AsSpan(offset));
+
+                    // 5. Calculate payload size and read payload
+                    var headerTotalSize = 1 + fixedHeaderSize; // MsgIdLen(1) + fixedHeaderSize
+                    var payloadSize = contentSize - headerTotalSize;
+
+                    IPayload payload;
+                    if (payloadSize > 0)
+                    {
+                        var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
+                        try
+                        {
+                            await ReadExactlyAsync(payloadBuffer, 0, payloadSize, cancellationToken).ConfigureAwait(false);
+
+                            if (originalSize > 0)
+                            {
+                                // Decompression path
+                                var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(payloadBuffer.AsSpan(0, payloadSize));
+                                ArrayPool<byte>.Shared.Return(payloadBuffer);
+                                payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
+                            }
+                            else
+                            {
+                                // Non-compressed path: keep ArrayPool buffer
+                                payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
+                            }
+                        }
+                        catch
+                        {
+                            ArrayPool<byte>.Shared.Return(payloadBuffer);
+                            throw;
+                        }
+                    }
+                    else
+                    {
+                        payload = EmptyPayload.Instance;
+                    }
+
+                    // 6. Create packet and raise event
+                    var packet = new ParsedPacket(msgId, msgSeq, stageId, errorCode, payload);
+                    PacketReceived?.Invoke(this, packet);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -199,154 +249,27 @@ internal sealed class TcpConnection : IConnection
                 }
             }
         }
-        finally
+        catch (Exception ex)
         {
-            ArrayPool<byte>.Shared.Return(tempBuffer);
+            HandleDisconnection(ex);
         }
     }
 
-    private void ProcessReceiveBuffer()
+    /// <summary>
+    /// Reads exactly the specified number of bytes from the stream
+    /// </summary>
+    private async Task ReadExactlyAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
-        while (true)
+        int totalRead = 0;
+        while (totalRead < count)
         {
-            // Read packet size header (4 bytes)
-            if (_expectedPacketSize == -1)
+            var bytesRead = await _stream!.ReadAsync(buffer, offset + totalRead, count - totalRead, cancellationToken).ConfigureAwait(false);
+            if (bytesRead == 0)
             {
-                if (_receiveBuffer.Count < 4)
-                {
-                    break;
-                }
-
-                // Peek and parse packet size (zero-copy)
-                _expectedPacketSize = ReadInt32LittleEndian(_receiveBuffer);
-
-                if (_expectedPacketSize <= 0 || _expectedPacketSize > 10 * 1024 * 1024)
-                {
-                    throw new InvalidOperationException($"Invalid packet size: {_expectedPacketSize}");
-                }
-
-                // Consume the size header
-                _receiveBuffer.Consume(4);
+                throw new EndOfStreamException("Connection closed while reading packet");
             }
-
-            // Check if we have the complete packet
-            if (_receiveBuffer.Count < _expectedPacketSize)
-            {
-                break;
-            }
-
-            // Parse packet from RingBuffer
-            try
-            {
-                var packet = ParseServerPacket(_receiveBuffer, _expectedPacketSize);
-                _receiveBuffer.Consume(_expectedPacketSize);
-                _expectedPacketSize = -1;
-
-                // Raise event
-                PacketReceived?.Invoke(this, packet);
-            }
-            catch (Exception)
-            {
-                // Parsing error - skip this packet
-                _receiveBuffer.Consume(_expectedPacketSize);
-                _expectedPacketSize = -1;
-            }
+            totalRead += bytesRead;
         }
-    }
-
-    private static int ReadInt32LittleEndian(RingBuffer buffer)
-    {
-        // Handle wrapped case
-        if (buffer.Count < 4)
-        {
-            throw new InvalidOperationException("Not enough data");
-        }
-
-        Span<byte> temp = stackalloc byte[4];
-        for (int i = 0; i < 4; i++)
-        {
-            temp[i] = buffer.PeekByte(i);
-        }
-        return BinaryPrimitives.ReadInt32LittleEndian(temp);
-    }
-
-    private static IPacket ParseServerPacket(RingBuffer buffer, int packetSize)
-    {
-        int offset = 0;
-
-        // Protocol: MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) + Payload
-
-        // MsgIdLen (1 byte)
-        var msgIdLen = buffer.PeekByte(offset++);
-
-        // MsgId (N bytes)
-        Span<byte> msgIdBytes = stackalloc byte[msgIdLen];
-        for (int i = 0; i < msgIdLen; i++)
-        {
-            msgIdBytes[i] = buffer.PeekByte(offset++);
-        }
-        var msgId = Encoding.UTF8.GetString(msgIdBytes);
-
-        // MsgSeq (2 bytes)
-        Span<byte> msgSeqBytes = stackalloc byte[2];
-        msgSeqBytes[0] = buffer.PeekByte(offset++);
-        msgSeqBytes[1] = buffer.PeekByte(offset++);
-        var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(msgSeqBytes);
-
-        // StageId (8 bytes)
-        Span<byte> stageIdBytes = stackalloc byte[8];
-        for (int i = 0; i < 8; i++)
-        {
-            stageIdBytes[i] = buffer.PeekByte(offset++);
-        }
-        var stageId = BinaryPrimitives.ReadInt64LittleEndian(stageIdBytes);
-
-        // ErrorCode (2 bytes)
-        Span<byte> errorCodeBytes = stackalloc byte[2];
-        errorCodeBytes[0] = buffer.PeekByte(offset++);
-        errorCodeBytes[1] = buffer.PeekByte(offset++);
-        var errorCode = BinaryPrimitives.ReadUInt16LittleEndian(errorCodeBytes);
-
-        // OriginalSize (4 bytes)
-        Span<byte> originalSizeBytes = stackalloc byte[4];
-        for (int i = 0; i < 4; i++)
-        {
-            originalSizeBytes[i] = buffer.PeekByte(offset++);
-        }
-        var originalSize = BinaryPrimitives.ReadInt32LittleEndian(originalSizeBytes);
-
-        // Payload (with optional decompression)
-        var payloadSize = packetSize - offset;
-        IPayload payload;
-
-        if (originalSize > 0)
-        {
-            // Decompression path: Use ArrayPool for temporary compressed data
-            var compressedBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
-            try
-            {
-                buffer.PeekBytes(offset, compressedBuffer.AsSpan(0, payloadSize));
-                offset += payloadSize;
-
-                var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedBuffer.AsSpan(0, payloadSize));
-                payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(compressedBuffer);
-            }
-        }
-        else
-        {
-            // Non-compressed path: Use ArrayPool
-            var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
-            buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
-            offset += payloadSize;
-            payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
-        }
-
-        // Create ParsedPacket wrapper to pass metadata
-        return new ParsedPacket(msgId, msgSeq, stageId, errorCode, payload);
     }
 
     private void HandleDisconnection(Exception? exception)
@@ -373,16 +296,12 @@ internal sealed class TcpConnection : IConnection
 
         _client?.Dispose();
         _client = null;
-
-        _receiveBuffer.Clear();
-        _expectedPacketSize = -1;
     }
 
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync().ConfigureAwait(false);
         _sendLock.Dispose();
-        _receiveBuffer.Dispose();
     }
 }
 
