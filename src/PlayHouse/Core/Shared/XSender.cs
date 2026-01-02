@@ -89,11 +89,11 @@ public abstract class XSender : ISender
     }
 
     /// <summary>
-    /// Gets the Stage context for callback queueing.
-    /// Override this in XStageSender to return the BaseStage instance.
+    /// Gets the delegate for posting callbacks to Stage event loop.
+    /// Override this in XStageSender to return the post callback delegate.
     /// </summary>
-    /// <returns>Stage context object (null if not a Stage).</returns>
-    protected virtual object? GetStageContext()
+    /// <returns>Callback delegate (null if not a Stage).</returns>
+    protected virtual Action<ReplyCallback, ushort, IPacket?>? GetPostToStageCallback()
     {
         return null;
     }
@@ -130,7 +130,7 @@ public abstract class XSender : ISender
         var msgSeq = NextMsgSeq();
         var header = CreateHeader(packet.MsgId, msgSeq, stageId: 0, accountId: 0, sid: 0);
 
-        var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetStageContext());
+        var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetPostToStageCallback());
         RegisterReply(replyObject);
 
         SendInternal(apiServerId, header, packet.Payload);
@@ -181,7 +181,7 @@ public abstract class XSender : ISender
         // Stage-to-Stage communication: Sid should be 0 (not a client session)
         var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid: 0);
 
-        var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetStageContext());
+        var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetPostToStageCallback());
         RegisterReply(replyObject);
 
         SendInternal(playServerId, header, packet.Payload);

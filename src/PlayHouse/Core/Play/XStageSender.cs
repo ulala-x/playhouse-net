@@ -103,12 +103,37 @@ internal sealed class XStageSender : XSender, IStageSender
     }
 
     /// <summary>
-    /// Gets the Stage context for callback queueing.
+    /// Gets the delegate for posting callbacks to Stage event loop.
     /// </summary>
-    /// <returns>BaseStage instance.</returns>
-    protected override object? GetStageContext()
+    /// <returns>Callback delegate that posts to BaseStage or executes directly.</returns>
+    protected override Action<ReplyCallback, ushort, IPacket?>? GetPostToStageCallback()
     {
-        return _baseStage;
+        if (_baseStage == null) return null;
+
+        // Cast _baseStage to BaseStage and return delegate
+        var baseStage = _baseStage as Base.BaseStage;
+        if (baseStage == null) return null;
+
+        return (callback, errorCode, packet) =>
+        {
+            // If we're already in the same Stage's event loop, execute directly
+            // This prevents deadlock when Stage code awaits callback completion
+            if (Base.BaseStage.Current == baseStage)
+            {
+                // Execute directly with disposal (we're already in Stage context)
+                if (packet is IDisposable disposable)
+                {
+                    baseStage.RegisterReplyForDisposal(disposable);
+                }
+                callback(errorCode, packet);
+                // Note: DisposePendingReplies() will be called after DispatchMessageAsync completes
+            }
+            else
+            {
+                // Queue for later execution (callback arrived from network thread)
+                baseStage.PostReplyCallback(callback, errorCode, packet);
+            }
+        };
     }
 
     #region Timer Management
