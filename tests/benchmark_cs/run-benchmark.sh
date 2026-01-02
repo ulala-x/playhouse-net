@@ -23,7 +23,10 @@ echo "==========================================================================
 echo ""
 
 # 프로젝트 빌드
-echo "[1/4] Building projects..."
+echo "[1/4] Cleaning and building projects..."
+dotnet clean tests/benchmark_cs/PlayHouse.Benchmark.Shared --configuration Release > /dev/null 2>&1
+dotnet clean tests/benchmark_cs/PlayHouse.Benchmark.Server --configuration Release > /dev/null 2>&1
+dotnet clean tests/benchmark_cs/PlayHouse.Benchmark.Client --configuration Release > /dev/null 2>&1
 dotnet build tests/benchmark_cs/PlayHouse.Benchmark.Shared --configuration Release > /dev/null 2>&1
 dotnet build tests/benchmark_cs/PlayHouse.Benchmark.Server --configuration Release > /dev/null 2>&1
 dotnet build tests/benchmark_cs/PlayHouse.Benchmark.Client --configuration Release > /dev/null 2>&1
