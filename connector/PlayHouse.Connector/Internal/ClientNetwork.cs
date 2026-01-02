@@ -160,7 +160,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
         if (_lastSendHeartBeatTime.ElapsedMilliseconds > _config.HeartBeatIntervalMs)
         {
-            var packet = Packet.Empty(PacketConst.HeartBeat);
+            using var packet = Packet.Empty(PacketConst.HeartBeat);
             Send(packet, 0);
             _lastSendHeartBeatTime.Restart();
         }
@@ -288,8 +288,9 @@ internal sealed class ClientNetwork : IAsyncDisposable
         using var cts = new CancellationTokenSource(_config.RequestTimeoutMs);
         cts.Token.Register(() =>
         {
-            if (_pendingRequests.TryRemove(msgSeq, out _))
+            if (_pendingRequests.TryRemove(msgSeq, out var pending))
             {
+                pending.Dispose();
                 tcs.TrySetException(new ConnectorException(stageId, (ushort)ConnectorErrorCode.RequestTimeout, request, msgSeq));
             }
         });
@@ -361,6 +362,7 @@ internal sealed class ClientNetwork : IAsyncDisposable
         // HeartBeat 메시지는 무시
         if (parsed.MsgId == PacketConst.HeartBeat)
         {
+            packet.Dispose();
             return;
         }
 
@@ -390,11 +392,23 @@ internal sealed class ClientNetwork : IAsyncDisposable
             {
                 if (pending.Tcs != null)
                 {
+                    // Async pattern - caller owns the packet and is responsible for disposal
                     pending.Tcs.TrySetResult(packet);
                 }
                 else if (pending.Callback != null)
                 {
-                    _asyncManager.AddJob(() => pending.Callback(packet));
+                    // Callback pattern - dispose packet after callback execution
+                    _asyncManager.AddJob(() =>
+                    {
+                        try
+                        {
+                            pending.Callback(packet);
+                        }
+                        finally
+                        {
+                            packet.Dispose();
+                        }
+                    });
                 }
             }
 
@@ -402,7 +416,17 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
 
         // Push 메시지 처리 (MsgSeq == 0)
-        _asyncManager.AddJob(() => _callback.ReceiveCallback(parsed.StageId, packet));
+        _asyncManager.AddJob(() =>
+        {
+            try
+            {
+                _callback.ReceiveCallback(parsed.StageId, packet);
+            }
+            finally
+            {
+                packet.Dispose();
+            }
+        });
     }
 
     private void OnDisconnected(object? sender, Exception? exception)
