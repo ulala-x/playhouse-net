@@ -1,0 +1,26 @@
+syntax = "proto3";
+package playhouse.benchmark.echo;
+option csharp_namespace = "PlayHouse.Benchmark.Echo.Shared.Proto";
+
+message EchoRequest {
+    string content = 1;         // 가변 크기 문자열
+    int64 client_timestamp = 2; // RTT 측정용 (ticks)
+}
+
+message EchoReply {
+    string content = 1;         // 그대로 에코
+    int64 server_timestamp = 2; // 서버 처리 시각
+}
+
+message AuthenticateRequest {
+    string client_version = 1;
+}
+
+message AuthenticateReply {
+    bool success = 1;
+    string account_id = 2;
+}
+
+// API에서 Stage로 보내는 Command
+message CloseStageCommand {
+}
