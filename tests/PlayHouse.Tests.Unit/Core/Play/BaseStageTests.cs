@@ -7,6 +7,7 @@ using PlayHouse.Core.Shared;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play;
 using PlayHouse.Core.Play.Base;
+using PlayHouse.Core.Play.EventLoop;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
@@ -18,8 +19,15 @@ namespace PlayHouse.Tests.Unit.Core.Play;
 /// <summary>
 /// 단위 테스트: BaseStage의 이벤트 루프 및 Actor 관리 기능 검증
 /// </summary>
-public class BaseStageTests
+public class BaseStageTests : IDisposable
 {
+    private readonly StageEventLoopPool _eventLoopPool = new(poolSize: 2);
+
+    public void Dispose()
+    {
+        _eventLoopPool.Dispose();
+    }
+
     #region Fake Implementations
 
     private class FakeStage : IStage
@@ -113,6 +121,10 @@ public class BaseStageTests
 
         var fakeStage = new FakeStage(stageSender);
         var baseStage = new BaseStage(fakeStage, stageSender);
+
+        // EventLoop 설정
+        var eventLoop = _eventLoopPool.GetEventLoop(100);
+        baseStage.SetEventLoop(eventLoop);
 
         return (baseStage, fakeStage, stageSender);
     }
@@ -290,7 +302,7 @@ public class BaseStageTests
 
         // When (행동)
         baseStage.PostDestroy();
-        await Task.Delay(100); // 이벤트 루프 처리 대기
+        await Task.Delay(200); // EventLoop 처리 대기
 
         // Then (결과)
         fakeStage.OnDestroyCallCount.Should().Be(1, "OnDestroy가 호출되어야 함");
@@ -314,7 +326,7 @@ public class BaseStageTests
 
         // When (행동)
         baseStage.PostDestroy();
-        await Task.Delay(100); // 이벤트 루프 처리 대기
+        await Task.Delay(200); // EventLoop 처리 대기
 
         // Then (결과)
         foreach (var actor in actors)
@@ -337,7 +349,7 @@ public class BaseStageTests
             callbackExecuted = true;
             await Task.CompletedTask;
         });
-        await Task.Delay(100); // 이벤트 루프 처리 대기
+        await Task.Delay(200); // EventLoop 처리 대기
 
         // Then (결과)
         callbackExecuted.Should().BeTrue("타이머 콜백이 실행되어야 함");
@@ -364,7 +376,7 @@ public class BaseStageTests
 
         // When (행동)
         baseStage.PostAsyncBlock(asyncPacket);
-        await Task.Delay(100); // 이벤트 루프 처리 대기
+        await Task.Delay(200); // EventLoop 처리 대기
 
         // Then (결과)
         postCallbackExecuted.Should().BeTrue("PostCallback이 실행되어야 함");
