@@ -20,3 +20,7 @@ message AuthenticateReply {
     bool success = 1;
     string account_id = 2;
 }
+
+// API에서 Stage로 보내는 Command
+message CloseStageCommand {
+}
