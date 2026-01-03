@@ -1,4 +1,4 @@
-#!/bin/bash
+c#!/bin/bash
 
 # PlayHouse Echo Benchmark 실행 스크립트
 # 사용법: ./run-benchmark.sh [connections] [duration] [payload-size] [mode]
