@@ -129,6 +129,9 @@ try
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
 
+    // PlayServer를 DI에 등록
+    builder.Services.AddSingleton(playServer);
+
     // CancellationTokenSource를 DI에 등록
     builder.Services.AddSingleton(cts);
 

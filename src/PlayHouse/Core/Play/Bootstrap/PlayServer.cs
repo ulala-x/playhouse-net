@@ -571,6 +571,45 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     }
 
     /// <summary>
+    /// 외부에서 Stage를 미리 생성할 수 있도록 API 제공.
+    /// Stage가 이미 존재하는 경우에도 성공을 반환합니다.
+    /// </summary>
+    /// <param name="stageId">생성할 Stage의 ID</param>
+    /// <param name="stageType">생성할 Stage의 타입</param>
+    /// <returns>Stage가 생성되었거나 이미 존재하면 true, 실패하면 false</returns>
+    public bool CreateStageIfNotExists(long stageId, string stageType)
+    {
+        if (_dispatcher == null) return false;
+        var stage = _dispatcher.GetOrCreateStage(stageId, stageType);
+        return stage != null;
+    }
+
+    /// <summary>
+    /// Stage에 메시지를 직접 전송합니다 (Actor 컨텍스트 없이).
+    /// Stage의 OnDispatch(IPacket packet) 메서드에서 처리됩니다.
+    /// </summary>
+    /// <param name="stageId">대상 Stage ID</param>
+    /// <param name="msgId">메시지 ID</param>
+    /// <param name="payload">페이로드 (null이면 빈 페이로드)</param>
+    public void SendToStage(long stageId, string msgId, byte[]? payload = null)
+    {
+        if (_dispatcher == null) return;
+
+        var header = new Runtime.Proto.RouteHeader
+        {
+            StageId = stageId,
+            MsgId = msgId,
+            ServiceId = _options.ServiceId
+        };
+
+        var routePacket = payload != null
+            ? RoutePacket.Of(header, payload)
+            : RoutePacket.Empty(header);
+
+        _dispatcher.OnPost(new RouteMessage(routePacket));
+    }
+
+    /// <summary>
     /// 연결된 클라이언트 수를 반환합니다.
     /// </summary>
     public int ConnectedClientCount => _transportServer?.SessionCount ?? 0;

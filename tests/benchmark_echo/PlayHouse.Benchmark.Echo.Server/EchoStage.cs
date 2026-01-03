@@ -53,6 +53,10 @@ public class EchoStage(IStageSender stageSender) : IStage
                 HandleEchoRequest(actor, packet, sw);
                 break;
 
+            case "EchoSendRequest":
+                HandleEchoSendRequest(actor, packet, sw);
+                break;
+
             default:
                 // 기본 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -64,7 +68,14 @@ public class EchoStage(IStageSender stageSender) : IStage
 
     public Task OnDispatch(IPacket packet)
     {
-        // Stage 간 통신은 벤치마크에서 사용하지 않음
+        switch (packet.MsgId)
+        {
+            case "CloseStageCommand":
+                // API에서 전송한 Stage 종료 명령
+                StageSender.CloseStage();
+                break;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -79,6 +90,25 @@ public class EchoStage(IStageSender stageSender) : IStage
         };
 
         actor.ActorSender.Reply(CPacket.Of(reply));
+
+        // 메트릭 기록
+        sw.Stop();
+        var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
+        ServerMetricsCollector.Instance.RecordMessage(sw.ElapsedTicks, messageSize);
+    }
+
+    private void HandleEchoSendRequest(IActor actor, IPacket packet, Stopwatch sw)
+    {
+        var request = EchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var reply = new EchoReply
+        {
+            Content = request.Content,
+            ServerTimestamp = Stopwatch.GetTimestamp()
+        };
+
+        // Send 모드: Reply 대신 SendToClient 사용
+        actor.ActorSender.SendToClient(CPacket.Of(reply));
 
         // 메트릭 기록
         sw.Stop();
