@@ -7,6 +7,7 @@ using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play;
 using PlayHouse.Core.Play.Base;
+using PlayHouse.Core.Play.EventLoop;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh;
 using PlayHouse.Runtime.ServerMesh.Communicator;
@@ -38,6 +39,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private PlayCommunicator? _communicator;
     private PlayDispatcher? _dispatcher;
     private RequestCache? _requestCache;
+    private StageEventLoopPool? _eventLoopPool;
     private ITransportServer? _transportServer;
     private ServerAddressResolver? _addressResolver;
     private CancellationTokenSource? _cts;
@@ -118,6 +120,10 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         // 자기 자신에게 연결 (같은 서버 내 Stage 간 통신에 필요)
         _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
+        // StageEventLoopPool 생성 (CPU 코어 수만큼 EventLoop 생성)
+        var loggerFactory = _serviceProvider.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
+        _eventLoopPool = new StageEventLoopPool(poolSize: 0, loggerFactory);
+
         // PlayDispatcher 생성
         _dispatcher = new PlayDispatcher(
             _producer,
@@ -125,6 +131,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             _requestCache,
             _options.ServiceId,
             _options.ServerId,
+            _eventLoopPool,
             this, // client reply handler
             _logger);
 
@@ -222,6 +229,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         _communicator?.Stop();
         _dispatcher?.Dispose();
         _requestCache?.CancelAll();
+        _eventLoopPool?.Dispose();
 
         _cts?.Dispose();
         _cts = null;

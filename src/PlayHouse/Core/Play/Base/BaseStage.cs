@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
+using PlayHouse.Core.Play.EventLoop;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
@@ -38,6 +39,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     private readonly List<IDisposable> _pendingReplyPackets = new();
     private readonly ILogger? _logger;
     private BaseStageCmdHandler? _cmdHandler;
+    private StageEventLoop _eventLoop = null!;  // PlayDispatcher에서 설정됨
+    private StageProcessingWorkItem? _cachedWorkItem;  // 재사용을 위한 캐시된 WorkItem
 
     // AsyncLocal to track current Stage context for callback execution
     private static readonly AsyncLocal<BaseStage?> _currentStage = new();
@@ -92,6 +95,15 @@ internal sealed class BaseStage : IReplyPacketRegistry
     internal void SetCmdHandler(BaseStageCmdHandler cmdHandler)
     {
         _cmdHandler = cmdHandler;
+    }
+
+    /// <summary>
+    /// EventLoop을 설정합니다. PlayDispatcher에서 호출됩니다.
+    /// </summary>
+    /// <param name="eventLoop">Stage 메시지 처리를 담당할 EventLoop.</param>
+    internal void SetEventLoop(StageEventLoop eventLoop)
+    {
+        _eventLoop = eventLoop;
     }
 
     /// <summary>
@@ -199,24 +211,34 @@ internal sealed class BaseStage : IReplyPacketRegistry
         TryStartProcessing();
     }
 
+    /// <summary>
+    /// 메시지 처리를 시작합니다. EventLoop에 작업을 게시합니다.
+    /// </summary>
     private void TryStartProcessing()
     {
-        // CAS: Only one thread can enter the processing loop
+        // CAS: 한 번에 하나의 처리만 진행되도록 보장
         if (_isProcessing.CompareAndSet(false, true))
         {
-            _ = Task.Run(ProcessMessageLoopAsync);
+            // 캐시된 WorkItem 사용 (객체 생성 회피)
+            _cachedWorkItem ??= new StageProcessingWorkItem(this);
+            _eventLoop.Post(_cachedWorkItem);
         }
     }
 
-    private async Task ProcessMessageLoopAsync()
+    /// <summary>
+    /// EventLoop에서 호출되는 메시지 처리 메서드.
+    /// 큐에 대기 중인 모든 메시지를 배치로 처리합니다.
+    /// </summary>
+    internal async Task ProcessOneMessageAsync()
     {
-        // Set current Stage context for callback execution optimization
+        // 현재 Stage 컨텍스트 설정 (콜백 실행 최적화용)
         _currentStage.Value = this;
         try
         {
-            do
+            // 배치 처리: 큐가 빌 때까지 모든 메시지 처리
+            while (true)
             {
-                // 1. Process all callback queue first (highest priority)
+                // 1. 콜백 큐를 모두 처리 (최우선순위)
                 while (_callbackQueue.TryDequeue(out var callbackMessage))
                 {
                     try
@@ -233,7 +255,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
                     }
                 }
 
-                // 2. Process one regular message
+                // 2. 일반 메시지 처리
                 if (_messageQueue.TryDequeue(out var message))
                 {
                     try
@@ -249,17 +271,24 @@ internal sealed class BaseStage : IReplyPacketRegistry
                         message.Dispose();
                     }
                 }
-
-                // Reset processing flag
-                _isProcessing.Set(false);
-
-                // Double-check: If new messages arrived during reset, restart processing
-            } while ((!_messageQueue.IsEmpty || !_callbackQueue.IsEmpty)
-                     && _isProcessing.CompareAndSet(false, true));
+                else
+                {
+                    // 큐가 비었으면 루프 종료
+                    break;
+                }
+            }
         }
         finally
         {
             _currentStage.Value = null;
+
+            // 처리 완료 후 더 메시지가 있으면 재스케줄
+            // (await 중 새 메시지가 도착했을 수 있음)
+            _isProcessing.Set(false);
+            if (!_messageQueue.IsEmpty || !_callbackQueue.IsEmpty)
+            {
+                TryStartProcessing();
+            }
         }
     }
 
