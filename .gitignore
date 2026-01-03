@@ -69,3 +69,20 @@ nulBenchmarkDotNet.Artifacts/
 
 # Benchmark results
 benchmark-results/
+
+# C++ build artifacts
+tests/benchmark_echo/cpp_client/build/
+*.o
+*.a
+*.so
+*.out
+
+# C++ generated protobuf files
+tests/benchmark_echo/cpp_client/proto/*.pb.cc
+tests/benchmark_echo/cpp_client/proto/*.pb.h
+
+# Log files
+tests/benchmark_echo/*.log
+tests/benchmark_echo/**/*.log
+# Boost is too large - download separately
+tests/benchmark_echo/cpp_client/third_party/boost_*/
