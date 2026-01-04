@@ -1,27 +1,27 @@
 #nullable enable
 
-using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
 namespace PlayHouse.Core.Play.EventLoop;
 
 /// <summary>
-/// Stage 전용 EventLoop - Task.Run 오버헤드 제거를 위한 전용 스레드 + ConcurrentQueue 기반 구현.
+/// Stage 전용 EventLoop - Task.Run 오버헤드 제거를 위한 전용 스레드 + Channel 기반 구현.
 /// </summary>
 /// <remarks>
 /// - Task.Run의 스케줄링 오버헤드를 제거하기 위해 전용 스레드 사용
-/// - ConcurrentQueue + AutoResetEvent를 사용하여 고성능 메시지 큐 구현
+/// - Channel&lt;T&gt;를 사용하여 고성능 메시지 큐 구현
 /// - StageSynchronizationContext로 async/await continuation을 같은 스레드에서 실행
 /// </remarks>
 internal sealed class StageEventLoop : IDisposable
 {
     private readonly int _id;
-    private readonly ConcurrentQueue<IEventLoopWorkItem> _workQueue = new();
-    private readonly AutoResetEvent _wakeUp = new(false);
+    private readonly Channel<IEventLoopWorkItem> _channel;
     private readonly Thread _thread;
     private readonly StageSynchronizationContext _syncContext;
     private readonly ILogger? _logger;
-    private volatile bool _disposed;
+    private readonly ManualResetEventSlim _shutdownEvent = new(false);
+    private bool _disposed;
 
     /// <summary>
     /// EventLoop의 전용 스레드를 반환합니다.
@@ -39,6 +39,12 @@ internal sealed class StageEventLoop : IDisposable
         _id = id;
         _logger = logger;
 
+        // UnboundedChannel 생성 - SingleReader 옵션으로 성능 최적화
+        _channel = Channel.CreateUnbounded<IEventLoopWorkItem>(new UnboundedChannelOptions
+        {
+            SingleReader = true
+        });
+
         // SynchronizationContext 생성
         _syncContext = new StageSynchronizationContext(this);
 
@@ -55,7 +61,7 @@ internal sealed class StageEventLoop : IDisposable
 
     /// <summary>
     /// EventLoop의 메인 실행 루프.
-    /// ConcurrentQueue에서 작업을 읽어 순차적으로 실행합니다.
+    /// Channel에서 작업을 읽어 순차적으로 실행합니다.
     /// </summary>
     private void Run()
     {
@@ -64,27 +70,56 @@ internal sealed class StageEventLoop : IDisposable
 
         try
         {
+            // Channel에서 메시지를 동기적으로 읽어 처리
             while (!_disposed)
             {
-                // 큐가 빌 때까지 모든 작업 처리 (배치)
-                while (_workQueue.TryDequeue(out var item))
+                try
                 {
-                    ExecuteWorkItem(item);
+                    // Channel에서 항목 읽기 시도
+                    if (_channel.Reader.TryRead(out var item))
+                    {
+                        // 항목이 있으면 실행
+                        ExecuteWorkItem(item);
+                    }
+                    else
+                    {
+                        // 항목이 없으면 대기 (비동기 대기를 블로킹으로 변환)
+                        var waitTask = _channel.Reader.WaitToReadAsync();
+                        if (waitTask.IsCompletedSuccessfully)
+                        {
+                            if (!waitTask.Result)
+                            {
+                                break;  // Channel이 완료됨
+                            }
+                        }
+                        else
+                        {
+                            // Task가 아직 완료되지 않음 - 동기적으로 대기
+                            if (!waitTask.AsTask().ConfigureAwait(false).GetAwaiter().GetResult())
+                            {
+                                break;  // Channel이 완료됨
+                            }
+                        }
+                    }
                 }
-
-                // 큐가 비면 대기 (새 작업이 올 때까지)
-                if (!_disposed)
+                catch (Exception) when (_disposed)
                 {
-                    _wakeUp.WaitOne();
+                    // Dispose 중 예외는 무시
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "EventLoop-{Id}: Error in message loop", _id);
                 }
             }
         }
-        catch (Exception ex) when (!_disposed)
+        catch (Exception ex)
         {
             _logger?.LogError(ex, "EventLoop-{Id}: Fatal error in run loop", _id);
         }
         finally
         {
+            _shutdownEvent.Set();
             _logger?.LogInformation("EventLoop-{Id} stopped", _id);
         }
     }
@@ -106,7 +141,7 @@ internal sealed class StageEventLoop : IDisposable
             {
                 task.GetAwaiter().GetResult();
             }
-            // else: Task가 완료되지 않음 - continuation이 나중에 Queue로 Post될 것임
+            // else: Task가 완료되지 않음 - continuation이 나중에 Channel로 Post될 것임
         }
         catch (Exception ex)
         {
@@ -126,8 +161,11 @@ internal sealed class StageEventLoop : IDisposable
             return;
         }
 
-        _workQueue.Enqueue(item);
-        _wakeUp.Set();
+        // Channel에 작업 추가 - TryWrite는 UnboundedChannel에서 항상 성공
+        if (!_channel.Writer.TryWrite(item))
+        {
+            _logger?.LogError("EventLoop-{Id}: Failed to post work item to channel", _id);
+        }
     }
 
     /// <summary>
@@ -142,16 +180,19 @@ internal sealed class StageEventLoop : IDisposable
 
         _disposed = true;
 
-        _wakeUp.Set();  // 대기 중인 스레드 깨움
+        // Channel Writer를 완료 처리 - ReadAllAsync가 종료됨
+        _channel.Writer.Complete();
 
         // EventLoop 스레드 종료 대기
         if (_thread.IsAlive)
         {
             _logger?.LogInformation("EventLoop-{Id}: Waiting for thread to complete...", _id);
-            _thread.Join(TimeSpan.FromSeconds(5));
+            _thread.Join();
         }
 
-        _wakeUp.Dispose();
+        // ManualResetEventSlim 정리
+        _shutdownEvent.Dispose();
+
         _logger?.LogInformation("EventLoop-{Id}: Disposed", _id);
     }
 }
