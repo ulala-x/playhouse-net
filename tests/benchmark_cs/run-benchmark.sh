@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # PlayHouse Benchmark - All Modes Comparison
-# 사용법: ./run-benchmark.sh [connections] [duration]
+# 사용법: ./run-benchmark.sh [connections] [duration] [batch_size]
 # 모든 모드(RequestAsync, RequestCallback, Send) x 모든 사이즈를 테스트하고 결과를 취합합니다.
+# batch_size: 연결을 몇 개씩 배치로 생성할지 (기본: 100, 대규모 연결시 50 권장)
 
 set -e
 
@@ -13,6 +14,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # 기본값
 CONNECTIONS=${1:-10}
 DURATION=${2:-10}
+BATCH_SIZE=${3:-100}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
@@ -25,6 +27,7 @@ echo "==========================================================================
 echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s per mode"
+echo "  Batch size: $BATCH_SIZE (connections per batch)"
 echo "  Modes: RequestAsync, RequestCallback, Send"
 echo "  Payload sizes: $PAYLOAD_SIZES bytes"
 echo "================================================================================"
@@ -77,7 +80,8 @@ dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark
     --duration $DURATION \
     --request-size 64 \
     --response-size $PAYLOAD_SIZES \
-    --http-port $HTTP_PORT
+    --http-port $HTTP_PORT \
+    --batch-size $BATCH_SIZE
 
 # 정리
 echo ""
