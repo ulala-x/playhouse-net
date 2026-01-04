@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PlayHouse.Core.Shared;
 using Serilog;
 
 namespace PlayHouse.Benchmark.SS.PlayServer;

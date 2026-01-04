@@ -85,6 +85,7 @@ enum SSCallType {
 enum SSCommMode {
     REQUEST_ASYNC = 0;
     REQUEST_CALLBACK = 1;
+    SEND = 2;
 }
 
 // 벤치마크 시작 요청 (클라이언트 → 서버 트리거)
@@ -112,4 +113,32 @@ message StartSSBenchmarkReply {
     double latency_p50_ms = 9;
     double latency_p95_ms = 10;
     double latency_p99_ms = 11;
+}
+
+// ============================================
+// Echo Messages (SEND 모드 벤치마크용)
+// ============================================
+
+// 단순 Echo 메시지
+message SSEchoRequest {
+    bytes payload = 1;
+}
+
+message SSEchoReply {
+    bytes payload = 1;
+}
+
+// 클라이언트 → Stage 트리거 메시지 (Echo용)
+message TriggerSSEchoRequest {
+    int32 sequence = 1;
+    bytes payload = 2;
+    SSCommMode comm_mode = 3;
+    SSCallType call_type = 4;  // STAGE_TO_API or STAGE_TO_STAGE
+    string target_nid = 5;      // Stage→Stage용
+    int64 target_stage_id = 6;  // Stage→Stage용
+}
+
+message TriggerSSEchoReply {
+    int32 sequence = 1;
+    bytes payload = 2;
 }
