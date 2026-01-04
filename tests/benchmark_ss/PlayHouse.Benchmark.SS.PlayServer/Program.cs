@@ -123,6 +123,7 @@ try
     Log.Information("  GET  http://localhost:{HttpPort}/benchmark/stats - Get metrics", httpPort);
     Log.Information("  POST http://localhost:{HttpPort}/benchmark/reset - Reset metrics", httpPort);
     Log.Information("  POST http://localhost:{HttpPort}/benchmark/shutdown - Shutdown server", httpPort);
+    Log.Information("Note: Stages are auto-created when clients connect (DefaultStageType: BenchmarkStage)");
     Log.Information("================================================================================");
 
     // PlayServer 구성
@@ -139,6 +140,7 @@ try
         options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
         options.TcpPort = tcpPort;
         options.AuthenticateMessageId = "Authenticate";
+        options.DefaultStageType = "BenchmarkStage"; // Auto-create stages
     })
     .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
     .UseSystemController(StaticSystemController.Parse(peers));

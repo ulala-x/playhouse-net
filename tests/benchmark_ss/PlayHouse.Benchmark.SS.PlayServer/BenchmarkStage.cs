@@ -66,6 +66,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
                 await HandleStartSSBenchmarkRequest(actor, packet);
                 break;
 
+            case "TriggerSSEchoRequest":
+                await HandleTriggerSSEchoRequest(actor, packet);
+                break;
+
             default:
                 // 기본 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -80,6 +84,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         {
             case "SSBenchmarkRequest":
                 HandleSSBenchmarkRequest(packet);
+                break;
+
+            case "SSEchoRequest":
+                HandleSSEchoRequest(packet);
                 break;
 
             default:
@@ -442,5 +450,151 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
             }
             return ByteString.CopyFrom(payload);
         });
+    }
+
+    /// <summary>
+    /// 클라이언트 → Stage → Api/Stage Echo 트리거 처리
+    /// </summary>
+    private async Task HandleTriggerSSEchoRequest(IActor actor, IPacket packet)
+    {
+        var request = TriggerSSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        // SSCallType에 따라 분기
+        if (request.CallType == SSCallType.StageToApi)
+        {
+            await HandleSSEchoToApi(actor, request);
+        }
+        else if (request.CallType == SSCallType.StageToStage)
+        {
+            await HandleSSEchoToStage(actor, request);
+        }
+    }
+
+    /// <summary>
+    /// Stage → API Echo 처리 (3가지 모드: Send, RequestAsync, RequestCallback)
+    /// </summary>
+    private async Task HandleSSEchoToApi(IActor actor, TriggerSSEchoRequest request)
+    {
+        var echoRequest = new SSEchoRequest { Payload = request.Payload };
+
+        switch (request.CommMode)
+        {
+            case SSCommMode.Send:
+                // Send 모드: 응답 대기 없이 즉시 전송
+                StageSender.SendToApi("api-1", CPacket.Of(echoRequest));
+
+                // 즉시 응답 (Echo는 페이로드 그대로 반환)
+                actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                {
+                    Sequence = request.Sequence,
+                    Payload = request.Payload
+                }));
+                break;
+
+            case SSCommMode.RequestAsync:
+                // RequestAsync 모드: await 기반 비동기 호출
+                using (var reply = await StageSender.RequestToApi("api-1", CPacket.Of(echoRequest)))
+                {
+                    var echoReply = SSEchoReply.Parser.ParseFrom(reply.Payload.DataSpan);
+                    actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                    {
+                        Sequence = request.Sequence,
+                        Payload = echoReply.Payload
+                    }));
+                }
+                break;
+
+            case SSCommMode.RequestCallback:
+                // RequestCallback 모드: 콜백 기반 비동기 호출
+                var tcs = new TaskCompletionSource<IPacket>();
+                StageSender.RequestToApi("api-1", CPacket.Of(echoRequest), (errorCode, reply) =>
+                {
+                    if (errorCode == 0 && reply != null)
+                        tcs.TrySetResult(reply);
+                    else
+                        tcs.TrySetException(new Exception($"Error: {errorCode}"));
+                });
+
+                using (var reply = await tcs.Task)
+                {
+                    var echoReply = SSEchoReply.Parser.ParseFrom(reply.Payload.DataSpan);
+                    actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                    {
+                        Sequence = request.Sequence,
+                        Payload = echoReply.Payload
+                    }));
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Stage → Stage Echo 처리 (3가지 모드: Send, RequestAsync, RequestCallback)
+    /// </summary>
+    private async Task HandleSSEchoToStage(IActor actor, TriggerSSEchoRequest request)
+    {
+        var echoRequest = new SSEchoRequest { Payload = request.Payload };
+
+        switch (request.CommMode)
+        {
+            case SSCommMode.Send:
+                // Send 모드: 응답 대기 없이 즉시 전송
+                StageSender.SendToStage(request.TargetNid, request.TargetStageId, CPacket.Of(echoRequest));
+
+                // 즉시 응답 (Echo는 페이로드 그대로 반환)
+                actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                {
+                    Sequence = request.Sequence,
+                    Payload = request.Payload
+                }));
+                break;
+
+            case SSCommMode.RequestAsync:
+                // RequestAsync 모드: await 기반 비동기 호출
+                using (var reply = await StageSender.RequestToStage(request.TargetNid, request.TargetStageId, CPacket.Of(echoRequest)))
+                {
+                    var echoReply = SSEchoReply.Parser.ParseFrom(reply.Payload.DataSpan);
+                    actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                    {
+                        Sequence = request.Sequence,
+                        Payload = echoReply.Payload
+                    }));
+                }
+                break;
+
+            case SSCommMode.RequestCallback:
+                // RequestCallback 모드: 콜백 기반 비동기 호출
+                var tcs = new TaskCompletionSource<IPacket>();
+                StageSender.RequestToStage(request.TargetNid, request.TargetStageId, CPacket.Of(echoRequest), (errorCode, reply) =>
+                {
+                    if (errorCode == 0 && reply != null)
+                        tcs.TrySetResult(reply);
+                    else
+                        tcs.TrySetException(new Exception($"Error: {errorCode}"));
+                });
+
+                using (var reply = await tcs.Task)
+                {
+                    var echoReply = SSEchoReply.Parser.ParseFrom(reply.Payload.DataSpan);
+                    actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                    {
+                        Sequence = request.Sequence,
+                        Payload = echoReply.Payload
+                    }));
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Stage 간 통신 시 SSEchoRequest 수신 처리 (다른 Stage 또는 API에서 온 요청)
+    /// </summary>
+    private void HandleSSEchoRequest(IPacket packet)
+    {
+        var request = SSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        // Echo 응답 (페이로드를 그대로 반환)
+        var reply = new SSEchoReply { Payload = request.Payload };
+        StageSender.Reply(CPacket.Of(reply));
     }
 }

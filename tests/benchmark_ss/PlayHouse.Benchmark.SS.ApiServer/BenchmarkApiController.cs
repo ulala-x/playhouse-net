@@ -41,6 +41,7 @@ public class BenchmarkApiController : IApiController
         register.Add(nameof(SSBenchmarkRequest), HandleSSBenchmark);
         register.Add(nameof(StartSSBenchmarkRequest), HandleStartSSBenchmark);
         register.Add(nameof(CreateStageRequest), HandleCreateStage);
+        register.Add(nameof(SSEchoRequest), HandleSSEchoRequest);
     }
 
     /// <summary>
@@ -85,6 +86,26 @@ public class BenchmarkApiController : IApiController
 
             sender.Reply(CPacket.Of(reply));
         }
+    }
+
+    /// <summary>
+    /// Echo 요청 처리.
+    /// SSEchoRequest를 받아서 동일한 Payload를 담은 SSEchoReply를 반환합니다.
+    /// </summary>
+    private Task HandleSSEchoRequest(IPacket packet, IApiSender sender)
+    {
+        _apiSender = sender;
+
+        var request = SSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        // 그대로 Echo 응답
+        var reply = new SSEchoReply
+        {
+            Payload = request.Payload
+        };
+
+        sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
     }
 
     /// <summary>
