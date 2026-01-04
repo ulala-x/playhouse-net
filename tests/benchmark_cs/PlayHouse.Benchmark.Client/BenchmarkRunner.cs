@@ -24,7 +24,8 @@ public class BenchmarkRunner(
     ClientMetricsCollector metricsCollector,
     int stageIdOffset = 0,
     string stageName = "BenchStage",
-    int durationSeconds = 10)  // Time-based test duration for Echo mode
+    int durationSeconds = 10,  // Time-based test duration for Echo mode
+    int batchSize = 100)       // Number of connections to create per batch
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -51,6 +52,7 @@ public class BenchmarkRunner(
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
+        Log.Information("  Batch size: {BatchSize:N0}", batchSize);
 
         if (mode == BenchmarkMode.Send)
         {
@@ -68,11 +70,29 @@ public class BenchmarkRunner(
         metricsCollector.Reset();
 
         var tasks = new List<Task>();
+        var batches = (connections + batchSize - 1) / batchSize;
 
-        for (int i = 0; i < connections; i++)
+        // 연결을 배치로 나누어 점진적으로 생성
+        for (int batch = 0; batch < batches; batch++)
         {
-            var connectionId = i;
-            tasks.Add(Task.Run(async () => await RunConnectionAsync(connectionId)));
+            var start = batch * batchSize;
+            var end = Math.Min(start + batchSize, connections);
+
+            Log.Information("Connecting batch {Batch}/{Total} (connections {Start}-{End})",
+                batch + 1, batches, start + 1, end);
+
+            // 현재 배치의 연결 시작
+            for (int i = start; i < end; i++)
+            {
+                var connectionId = i;
+                tasks.Add(Task.Run(async () => await RunConnectionAsync(connectionId)));
+            }
+
+            // 배치 간 대기 (마지막 배치 제외)
+            if (batch < batches - 1)
+            {
+                await Task.Delay(500);
+            }
         }
 
         await Task.WhenAll(tasks);

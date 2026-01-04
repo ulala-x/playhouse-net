@@ -56,6 +56,11 @@ var labelOption = new Option<string>(
     description: "Label for this benchmark run (for comparison)",
     getDefaultValue: () => "");
 
+var batchSizeOption = new Option<int>(
+    name: "--batch-size",
+    description: "Number of connections to create per batch for ramp-up (default: 100)",
+    getDefaultValue: () => 100);
+
 var rootCommand = new RootCommand("PlayHouse Benchmark Client")
 {
     serverOption,
@@ -67,7 +72,8 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Client")
     durationOption,
     httpPortOption,
     outputDirOption,
-    labelOption
+    labelOption,
+    batchSizeOption
 };
 
 rootCommand.SetHandler(async (context) =>
@@ -82,8 +88,9 @@ rootCommand.SetHandler(async (context) =>
     var httpPort = context.ParseResult.GetValueForOption(httpPortOption);
     var outputDir = context.ParseResult.GetValueForOption(outputDirOption)!;
     var label = context.ParseResult.GetValueForOption(labelOption)!;
+    var batchSize = context.ParseResult.GetValueForOption(batchSizeOption);
 
-    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, duration, httpPort, outputDir, label);
+    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, duration, httpPort, outputDir, label, batchSize);
 });
 
 return await rootCommand.InvokeAsync(args);
@@ -98,7 +105,8 @@ static async Task RunBenchmarkAsync(
     int duration,
     int httpPort,
     string outputDir,
-    string label)
+    string label,
+    int batchSize)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -143,7 +151,7 @@ static async Task RunBenchmarkAsync(
         // "all" 모드 처리
         if (mode.ToLowerInvariant() == "all")
         {
-            await RunAllModesAsync(server, connections, messages, requestSize, responseSizesStr, duration, httpPort, outputDir, label, runTimestamp);
+            await RunAllModesAsync(server, connections, messages, requestSize, responseSizesStr, duration, httpPort, outputDir, label, runTimestamp, batchSize);
             return;
         }
 
@@ -217,7 +225,8 @@ static async Task RunBenchmarkAsync(
                 clientMetricsCollector,
                 stageIdOffset,
                 stageName: "BenchStage",
-                durationSeconds: duration);
+                durationSeconds: duration,
+                batchSize: batchSize);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -366,7 +375,8 @@ static async Task RunAllModesAsync(
     int httpPort,
     string outputDir,
     string label,
-    DateTime runTimestamp)
+    DateTime runTimestamp,
+    int batchSize)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -435,7 +445,7 @@ static async Task RunAllModesAsync(
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
             BenchmarkMode.RequestAsync, clientMetricsCollector, stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration);
+            stageName: "BenchStage", durationSeconds: duration, batchSize: batchSize);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -480,7 +490,7 @@ static async Task RunAllModesAsync(
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
             BenchmarkMode.RequestCallback, clientMetricsCollector, stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration);
+            stageName: "BenchStage", durationSeconds: duration, batchSize: batchSize);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -525,7 +535,7 @@ static async Task RunAllModesAsync(
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
             BenchmarkMode.Send, clientMetricsCollector, stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration);
+            stageName: "BenchStage", durationSeconds: duration, batchSize: batchSize);
         testIndex++;
 
         var startTime = DateTime.Now;
