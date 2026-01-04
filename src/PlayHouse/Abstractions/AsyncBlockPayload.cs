@@ -41,6 +41,16 @@ internal sealed class AsyncBlockPayload : IPayload
     public int Length => DataSpan.Length;
 
     /// <summary>
+    /// Transfers ownership of the payload data to a new instance.
+    /// For AsyncBlockPayload, this returns itself as it contains immutable references.
+    /// </summary>
+    public IPayload Move()
+    {
+        // AsyncBlockPayload는 콜백과 결과 참조만 담고 있으므로 자기 자신 반환
+        return this;
+    }
+
+    /// <summary>
     /// Disposes the payload. This is a no-op for async block payloads.
     /// </summary>
     public void Dispose() { }

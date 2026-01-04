@@ -33,8 +33,13 @@ var responseSizeOption = new Option<string>(
 
 var modeOption = new Option<string>(
     name: "--mode",
-    description: "Benchmark mode: request-async, request-callback, or both",
+    description: "Benchmark mode: request-async, request-callback, echo, or both",
     getDefaultValue: () => "both");
+
+var durationOption = new Option<int>(
+    name: "--duration",
+    description: "Duration in seconds for time-based echo mode (default: 10)",
+    getDefaultValue: () => 10);
 
 var httpPortOption = new Option<int>(
     name: "--http-port",
@@ -59,6 +64,7 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Client")
     requestSizeOption,
     responseSizeOption,
     modeOption,
+    durationOption,
     httpPortOption,
     outputDirOption,
     labelOption
@@ -72,11 +78,12 @@ rootCommand.SetHandler(async (context) =>
     var requestSize = context.ParseResult.GetValueForOption(requestSizeOption);
     var responseSizes = context.ParseResult.GetValueForOption(responseSizeOption)!;
     var mode = context.ParseResult.GetValueForOption(modeOption)!;
+    var duration = context.ParseResult.GetValueForOption(durationOption);
     var httpPort = context.ParseResult.GetValueForOption(httpPortOption);
     var outputDir = context.ParseResult.GetValueForOption(outputDirOption)!;
     var label = context.ParseResult.GetValueForOption(labelOption)!;
 
-    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, httpPort, outputDir, label);
+    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, duration, httpPort, outputDir, label);
 });
 
 return await rootCommand.InvokeAsync(args);
@@ -88,6 +95,7 @@ static async Task RunBenchmarkAsync(
     int requestSize,
     string responseSizesStr,
     string mode,
+    int duration,
     int httpPort,
     string outputDir,
     string label)
@@ -135,7 +143,7 @@ static async Task RunBenchmarkAsync(
         // "both" 모드 처리
         if (mode.ToLowerInvariant() == "both")
         {
-            await RunBothModesAsync(server, connections, messages, requestSize, responseSizesStr, httpPort, outputDir, label, runTimestamp);
+            await RunBothModesAsync(server, connections, messages, requestSize, responseSizesStr, duration, httpPort, outputDir, label, runTimestamp);
             return;
         }
 
@@ -144,6 +152,7 @@ static async Task RunBenchmarkAsync(
         {
             "request-async" => BenchmarkMode.RequestAsync,
             "request-callback" => BenchmarkMode.RequestCallback,
+            "echo" => BenchmarkMode.Echo,
             _ => BenchmarkMode.RequestAsync
         };
 
@@ -206,7 +215,9 @@ static async Task RunBenchmarkAsync(
                 responseSize,
                 benchmarkMode,
                 clientMetricsCollector,
-                stageIdOffset);
+                stageIdOffset,
+                stageName: "BenchStage",
+                durationSeconds: duration);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -351,6 +362,7 @@ static async Task RunBothModesAsync(
     int messages,
     int requestSize,
     string responseSizesStr,
+    int duration,
     int httpPort,
     string outputDir,
     string label,
@@ -421,7 +433,8 @@ static async Task RunBothModesAsync(
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.RequestAsync, clientMetricsCollector, stageIdOffset);
+            BenchmarkMode.RequestAsync, clientMetricsCollector, stageIdOffset,
+            stageName: "BenchStage", durationSeconds: duration);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -465,7 +478,8 @@ static async Task RunBothModesAsync(
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.RequestCallback, clientMetricsCollector, stageIdOffset);
+            BenchmarkMode.RequestCallback, clientMetricsCollector, stageIdOffset,
+            stageName: "BenchStage", durationSeconds: duration);
         testIndex++;
 
         var startTime = DateTime.Now;

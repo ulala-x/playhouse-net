@@ -54,6 +54,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         switch (packet.MsgId)
         {
+            case "EchoRequest":
+                HandleEchoRequest(actor, packet);
+                break;
+
             case "TriggerApiRequest":
                 await HandleTriggerApiRequest(actor, packet, totalSw);
                 break;
@@ -87,7 +91,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
                 break;
 
             case "SSEchoRequest":
-                HandleSSEchoRequest(packet);
+                HandleSSEchoRequestZeroCopy(packet);
                 break;
 
             default:
@@ -596,5 +600,29 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         // Echo 응답 (페이로드를 그대로 반환)
         var reply = new SSEchoReply { Payload = request.Payload };
         StageSender.Reply(CPacket.Of(reply));
+    }
+
+    /// <summary>
+    /// Zero-copy Echo 핸들러 (클라이언트 → Stage)
+    /// </summary>
+    private void HandleEchoRequest(IActor actor, IPacket packet)
+    {
+        // Zero-copy: 소유권 이전
+        var echoPayload = packet.Payload.Move();
+
+        actor.ActorSender.Reply(CPacket.Of("EchoReply", echoPayload));
+
+        // 메트릭 기록
+        ServerMetricsCollector.Instance.RecordMessage(0, packet.Payload.Length * 2);
+    }
+
+    /// <summary>
+    /// Zero-copy Stage 간 Echo 핸들러
+    /// </summary>
+    private void HandleSSEchoRequestZeroCopy(IPacket packet)
+    {
+        // Zero-copy: 소유권 이전
+        var echoPayload = packet.Payload.Move();
+        StageSender.Reply(CPacket.Of("SSEchoReply", echoPayload));
     }
 }

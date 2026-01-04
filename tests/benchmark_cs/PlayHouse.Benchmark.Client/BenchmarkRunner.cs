@@ -23,7 +23,8 @@ public class BenchmarkRunner(
     BenchmarkMode mode,
     ClientMetricsCollector metricsCollector,
     int stageIdOffset = 0,
-    string stageName = "BenchStage")
+    string stageName = "BenchStage",
+    int durationSeconds = 10)  // Time-based test duration for Echo mode
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -50,10 +51,19 @@ public class BenchmarkRunner(
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
-        Log.Information("  Messages per connection: {Messages:N0}", messagesPerConnection);
-        Log.Information("  Total messages: {Total:N0}", connections * messagesPerConnection);
-        Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
-        Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
+
+        if (mode == BenchmarkMode.Echo)
+        {
+            Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
+            Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
+        }
+        else
+        {
+            Log.Information("  Messages per connection: {Messages:N0}", messagesPerConnection);
+            Log.Information("  Total messages: {Total:N0}", connections * messagesPerConnection);
+            Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
+            Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
+        }
 
         metricsCollector.Reset();
 
@@ -106,9 +116,13 @@ public class BenchmarkRunner(
         {
             await RunRequestAsyncMode(connector, connectionId);
         }
-        else
+        else if (mode == BenchmarkMode.RequestCallback)
         {
             await RunRequestCallbackMode(connector, connectionId);
+        }
+        else if (mode == BenchmarkMode.Echo)
+        {
+            await RunEchoMode(connector, connectionId);
         }
 
         connector.Disconnect();
@@ -239,10 +253,65 @@ public class BenchmarkRunner(
                 connectionId, receivedCount, messagesPerConnection);
         }
     }
+
+    /// <summary>
+    /// Time-based Echo mode: Sends raw byte packets with "EchoRequest" MsgId for specified duration
+    /// </summary>
+    private async Task RunEchoMode(ClientConnector connector, int connectionId)
+    {
+        var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
+        var payload = CreatePayloadBytes(requestSize);
+
+        while (DateTime.UtcNow < endTime)
+        {
+            using var packet = new ClientPacket("EchoRequest", payload);
+
+            metricsCollector.RecordSent();
+
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                using var response = await connector.RequestAsync(packet);
+                sw.Stop();
+
+                if (response.MsgId == "EchoReply")
+                {
+                    metricsCollector.RecordReceived(sw.ElapsedTicks);
+                }
+                else
+                {
+                    Log.Warning("[Connection {ConnectionId}] Unexpected response: {MsgId}", connectionId, response.MsgId);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "[Connection {ConnectionId}] Echo request failed", connectionId);
+            }
+
+            // 콜백 처리
+            connector.MainThreadAction();
+        }
+    }
+
+    /// <summary>
+    /// Creates raw byte payload for Echo mode (zero-copy)
+    /// </summary>
+    private static byte[] CreatePayloadBytes(int size)
+    {
+        if (size <= 0) return Array.Empty<byte>();
+
+        var payload = new byte[size];
+        for (int i = 0; i < payload.Length; i++)
+        {
+            payload[i] = (byte)(i % 256);
+        }
+        return payload;
+    }
 }
 
 public enum BenchmarkMode
 {
     RequestAsync,
-    RequestCallback
+    RequestCallback,
+    Echo  // Zero-copy Echo mode with time-based testing
 }
