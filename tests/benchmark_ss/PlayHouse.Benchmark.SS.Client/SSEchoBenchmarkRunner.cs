@@ -23,7 +23,8 @@ public class SSEchoBenchmarkRunner(
     SSCallType callType,
     long targetStageId,
     string targetNid,
-    ClientMetricsCollector metricsCollector)
+    ClientMetricsCollector metricsCollector,
+    int durationSeconds = 0)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -51,8 +52,17 @@ public class SSEchoBenchmarkRunner(
     {
         Log.Information("[{Time:HH:mm:ss}] Starting SS Echo benchmark...", DateTime.Now);
         Log.Information("  Connections: {Connections:N0}", connections);
-        Log.Information("  Iterations per connection: {Iterations:N0}", iterationsPerConnection);
-        Log.Information("  Total messages: {Total:N0}", connections * iterationsPerConnection);
+
+        if (durationSeconds > 0)
+        {
+            Log.Information("  Duration: {Duration:N0} seconds (time-based)", durationSeconds);
+        }
+        else
+        {
+            Log.Information("  Iterations per connection: {Iterations:N0}", iterationsPerConnection);
+            Log.Information("  Total messages: {Total:N0}", connections * iterationsPerConnection);
+        }
+
         Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
         Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
         Log.Information("  CommMode: {CommMode}", commMode);
@@ -160,9 +170,6 @@ public class SSEchoBenchmarkRunner(
 
     private async Task RunEchoMessagesAsync(ClientConnector connector, int connectionId)
     {
-        // 응답 페이로드 생성 (responseSize 크기)
-        var responsePayload = CreatePayload(responseSize);
-
         // Stage→Stage: 동적으로 타겟 Stage 계산 (다음 connection의 Stage를 타겟으로 함)
         // Connection N → Stage (1000 + (N+1) % connections)
         // 예: connections=3인 경우
@@ -173,8 +180,23 @@ public class SSEchoBenchmarkRunner(
             ? 1000 + ((connectionId + 1) % connections)
             : targetStageId;
 
-        for (int i = 0; i < iterationsPerConnection; i++)
+        // Send 모드는 별도 처리 (OnReceive 콜백 사용)
+        if (commMode == SSCommMode.Send)
         {
+            await RunSendModeAsync(connector, connectionId, actualTargetStageId);
+            return;
+        }
+
+        // Time-based vs Iteration-based
+        var endTime = durationSeconds > 0 ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
+        var maxIterations = durationSeconds > 0 ? int.MaxValue : iterationsPerConnection;
+
+        for (int i = 0; i < maxIterations; i++)
+        {
+            // Time-based 모드에서 시간 초과 체크
+            if (durationSeconds > 0 && DateTime.UtcNow >= endTime)
+                break;
+
             // 요청 객체 생성 (매번 새로 생성)
             var request = new TriggerSSEchoRequest
             {
@@ -190,7 +212,6 @@ public class SSEchoBenchmarkRunner(
 
             metricsCollector.RecordSent();
 
-            var clientStartTicks = Stopwatch.GetTimestamp();
             var e2eStopwatch = Stopwatch.StartNew();
             try
             {
@@ -217,6 +238,86 @@ public class SSEchoBenchmarkRunner(
 
             // 콜백 처리
             connector.MainThreadAction();
+        }
+    }
+
+    /// <summary>
+    /// Send 모드: connector.Send() → 서버 SendToClient() → OnReceive 콜백
+    /// benchmark_cs와 동일한 방식
+    /// </summary>
+    private async Task RunSendModeAsync(ClientConnector connector, int connectionId, long actualTargetStageId)
+    {
+        var endTime = durationSeconds > 0 ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
+        var maxIterations = durationSeconds > 0 ? int.MaxValue : iterationsPerConnection;
+        var timestamps = new System.Collections.Concurrent.ConcurrentDictionary<int, long>();
+        var sequence = 0;
+
+        // OnReceive 이벤트 핸들러 등록 (서버의 SendToClient 응답 수신)
+        void OnReceiveHandler(long stageId, string stageType, IPacket packet)
+        {
+            if (packet.MsgId == "TriggerSSEchoReply")
+            {
+                // 시퀀스 번호로 타임스탬프 매칭 (간단히 최근 것 사용)
+                var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
+                metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0, ssElapsedTicks: 0);
+            }
+            packet.Dispose();
+        }
+
+        connector.OnReceive += OnReceiveHandler;
+
+        try
+        {
+            for (int i = 0; i < maxIterations; i++)
+            {
+                // Time-based 모드에서 시간 초과 체크
+                if (durationSeconds > 0 && DateTime.UtcNow >= endTime)
+                    break;
+
+                var seq = Interlocked.Increment(ref sequence);
+                timestamps[seq] = Stopwatch.GetTimestamp();
+
+                var request = new TriggerSSEchoRequest
+                {
+                    Sequence = seq,
+                    Payload = _requestPayload,
+                    CommMode = SSCommMode.Send,
+                    CallType = callType,
+                    TargetNid = targetNid,
+                    TargetStageId = actualTargetStageId
+                };
+
+                using var packet = new ClientPacket(request);
+
+                metricsCollector.RecordSent();
+
+                try
+                {
+                    connector.Send(packet);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
+                }
+
+                // 콜백 처리 (OnReceive 호출)
+                connector.MainThreadAction();
+
+                // 서버 과부하 방지
+                await Task.Yield();
+            }
+
+            // 남은 응답 처리를 위해 잠시 대기
+            var drainEnd = DateTime.UtcNow.AddMilliseconds(500);
+            while (DateTime.UtcNow < drainEnd)
+            {
+                connector.MainThreadAction();
+                await Task.Delay(10);
+            }
+        }
+        finally
+        {
+            connector.OnReceive -= OnReceiveHandler;
         }
     }
 }

@@ -68,6 +68,7 @@ public class ClientMetricsCollector
                 SentMessages = _sentMessages,
                 ReceivedMessages = _receivedMessages,
                 ThroughputMessagesPerSec = elapsedSeconds > 0 ? _receivedMessages / elapsedSeconds : 0,
+                SentThroughputMessagesPerSec = elapsedSeconds > 0 ? _sentMessages / elapsedSeconds : 0,
                 RttLatencyMeanMs = sortedLatencies.Length > 0 ? sortedLatencies.Average() : 0,
                 RttLatencyP50Ms = GetPercentile(sortedLatencies, 0.50),
                 RttLatencyP95Ms = GetPercentile(sortedLatencies, 0.95),
@@ -98,6 +99,7 @@ public record ClientMetrics
     public long SentMessages { get; init; }
     public long ReceivedMessages { get; init; }
     public double ThroughputMessagesPerSec { get; init; }
+    public double SentThroughputMessagesPerSec { get; init; }
     public double RttLatencyMeanMs { get; init; }
     public double RttLatencyP50Ms { get; init; }
     public double RttLatencyP95Ms { get; init; }

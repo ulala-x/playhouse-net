@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# PlayHouse Benchmark 실행 스크립트
-# 사용법: ./run-benchmark.sh [connections] [messages] [response-size] [mode]
+# PlayHouse Benchmark - All Modes Comparison
+# 사용법: ./run-benchmark.sh [connections] [duration]
+# 모든 모드(RequestAsync, RequestCallback, Send) x 모든 사이즈를 테스트하고 결과를 취합합니다.
 
 set -e
 
@@ -10,21 +11,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 기본값
-CONNECTIONS=${1:-100}
-MESSAGES=${2:-100}
-RESPONSE_SIZE=${3:-1024}
-MODE=${4:-request-async}
+CONNECTIONS=${1:-10}
+DURATION=${2:-10}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
+# 페이로드 크기 (콤마 구분)
+PAYLOAD_SIZES="64,256,1024,65536"
+
 echo "================================================================================"
-echo "PlayHouse Benchmark Execution Script"
+echo "PlayHouse Benchmark - All Modes Comparison"
 echo "================================================================================"
 echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
-echo "  Messages per connection: $MESSAGES"
-echo "  Response size: $RESPONSE_SIZE bytes"
-echo "  Mode: $MODE"
+echo "  Duration: ${DURATION}s per mode"
+echo "  Modes: RequestAsync, RequestCallback, Send"
+echo "  Payload sizes: $PAYLOAD_SIZES bytes"
 echo "================================================================================"
 echo ""
 
@@ -64,19 +66,23 @@ done
 
 echo "[3/4] Server started (PID: $SERVER_PID)"
 
-# 클라이언트 실행
-echo "[4/4] Running benchmark client..."
+# 클라이언트 실행 - all 모드로 모든 테스트 수행
+echo "[4/4] Running benchmarks (all modes x all sizes)..."
+echo ""
+
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark.Client.csproj" -c Release -- \
     --server 127.0.0.1:$SERVER_PORT \
     --connections $CONNECTIONS \
-    --messages $MESSAGES \
-    --response-size $RESPONSE_SIZE \
-    --mode $MODE \
+    --mode all \
+    --duration $DURATION \
+    --request-size 64 \
+    --response-size $PAYLOAD_SIZES \
     --http-port $HTTP_PORT
 
 # 정리
 echo ""
 echo "Cleaning up..."
+curl -s -m 2 -X POST http://localhost:$HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 || true
 pkill -9 -f "PlayHouse.Benchmark.Server" 2>/dev/null || true
 sleep 1
 

@@ -1,140 +1,113 @@
 #!/bin/bash
 
-# ============================================================================
-# PlayHouse Server-to-Server (S2S) Benchmark Script
-# ============================================================================
-# 사용법: ./run_benchmark.sh [옵션]
-#   --connections   클라이언트 수 (기본값: 100)
-#   --messages      연결당 메시지 수 (기본값: 10000)
-#   --request-size  요청 페이로드 크기 (기본값: 64)
-# ============================================================================
+# PlayHouse S2S Benchmark - All Modes Comparison
+# 사용법: ./run_benchmark.sh [connections] [duration]
+# 모든 모드(RequestAsync, RequestCallback, Send) x 모든 사이즈를 테스트하고 결과를 취합합니다.
 
 set -e
 
-# 기본값 설정
-CONNECTIONS=${CONNECTIONS:-1000}
-MESSAGES=${MESSAGES:-10000}
-REQUEST_SIZE=${REQUEST_SIZE:-1024}
+# 스크립트 디렉토리 기준 경로 설정
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESULT_DIR="$PROJECT_ROOT/benchmark-results"
 
-# 색상 정의
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# 기본값
+CONNECTIONS=${1:-10}
+DURATION=${2:-10}
+TCP_PORT=16110
+ZMQ_PORT=16100
+HTTP_PORT=5080
+API_HTTP_PORT=5081
+API_ZMQ_PORT=16201
 
-# 파라미터 파싱
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --connections)
-            CONNECTIONS="$2"
-            shift 2
-            ;;
-        --messages)
-            MESSAGES="$2"
-            shift 2
-            ;;
-        --request-size)
-            REQUEST_SIZE="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
+# 페이로드 크기 (콤마 구분)
+PAYLOAD_SIZES="64,256,1024,65536"
+
+echo "================================================================================"
+echo "PlayHouse S2S Benchmark - All Modes Comparison"
+echo "================================================================================"
+echo "Configuration:"
+echo "  Connections: $CONNECTIONS"
+echo "  Duration: ${DURATION}s per mode"
+echo "  Modes: RequestAsync, RequestCallback, Send"
+echo "  Payload sizes: $PAYLOAD_SIZES bytes"
+echo "================================================================================"
+echo ""
+
+# 프로젝트 빌드
+echo "[1/4] Building projects..."
+dotnet build "$SCRIPT_DIR/PlayHouse.Benchmark.SS.PlayServer/PlayHouse.Benchmark.SS.PlayServer.csproj" -c Release --verbosity quiet
+dotnet build "$SCRIPT_DIR/PlayHouse.Benchmark.SS.ApiServer/PlayHouse.Benchmark.SS.ApiServer.csproj" -c Release --verbosity quiet
+dotnet build "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" -c Release --verbosity quiet
+echo "[1/4] Build completed"
+
+# 기존 서버 프로세스 정리
+echo "[2/4] Cleaning up existing servers..."
+pkill -9 -f "PlayHouse.Benchmark.SS" 2>/dev/null || true
+sleep 2
+
+# 서버 시작
+echo "[3/4] Starting S2S benchmark servers..."
+
+# PlayServer 시작
+echo "  Starting PlayServer (TCP: $TCP_PORT, ZMQ: $ZMQ_PORT, HTTP: $HTTP_PORT)..."
+dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.PlayServer/PlayHouse.Benchmark.SS.PlayServer.csproj" \
+    -c Release -- --peers "api-1=tcp://127.0.0.1:$API_ZMQ_PORT" > /tmp/ss-playserver.log 2>&1 &
+PLAY_PID=$!
+
+sleep 3
+
+# ApiServer 시작
+echo "  Starting ApiServer (ZMQ: $API_ZMQ_PORT, HTTP: $API_HTTP_PORT)..."
+dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.ApiServer/PlayHouse.Benchmark.SS.ApiServer.csproj" \
+    -c Release -- --peers "play-1=tcp://127.0.0.1:$ZMQ_PORT" > /tmp/ss-apiserver.log 2>&1 &
+API_PID=$!
+
+# 서버 시작 대기
+max_wait=30
+waited=0
+while ! curl -s "http://localhost:$HTTP_PORT/benchmark/stats" > /dev/null 2>&1; do
+    sleep 1
+    waited=$((waited + 1))
+    if [ $waited -ge $max_wait ]; then
+        echo "Servers failed to start within ${max_wait}s"
+        echo "PlayServer log:"
+        cat /tmp/ss-playserver.log
+        echo "ApiServer log:"
+        cat /tmp/ss-apiserver.log
+        exit 1
+    fi
 done
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-log_header() {
-    echo ""
-    echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${CYAN}  $1${NC}"
-    echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════════${NC}"
-}
+echo "[3/4] Servers started (PlayServer PID: $PLAY_PID, ApiServer PID: $API_PID)"
 
-cleanup_servers() {
-    log_info "Cleaning up existing server processes..."
-    pkill -9 -f "PlayHouse.Benchmark.SS" 2>/dev/null || true
-    sleep 2
-}
+# 클라이언트 실행 - all 모드로 모든 테스트 수행
+echo "[4/4] Running S2S benchmarks (all modes x all sizes)..."
+echo ""
 
-start_servers() {
-    log_info "Starting PlayServer (TCP: 16110, ZMQ: 16100)..."
-    dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.PlayServer/PlayHouse.Benchmark.SS.PlayServer.csproj" \
-        -c Release -- --peers "api-1=tcp://127.0.0.1:16201" > /tmp/ss-playserver.log 2>&1 &
-    PLAY_PID=$!
+mkdir -p "$RESULT_DIR"
 
-    sleep 3
+dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" -c Release -- \
+    --server 127.0.0.1:$TCP_PORT \
+    --connections $CONNECTIONS \
+    --mode ss-echo \
+    --comm-mode all \
+    --duration $DURATION \
+    --request-size 64 \
+    --response-size $PAYLOAD_SIZES \
+    --http-port $HTTP_PORT \
+    --api-http-port $API_HTTP_PORT \
+    --output-dir "$RESULT_DIR"
 
-    log_info "Starting ApiServer (ZMQ: 16201)..."
-    dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.ApiServer/PlayHouse.Benchmark.SS.ApiServer.csproj" \
-        -c Release -- --peers "play-1=tcp://127.0.0.1:16100" > /tmp/ss-apiserver.log 2>&1 &
-    API_PID=$!
+# 정리
+echo ""
+echo "Cleaning up..."
+curl -s -m 2 -X POST http://localhost:$HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 || true
+curl -s -m 2 -X POST http://localhost:$API_HTTP_PORT/benchmark/shutdown > /dev/null 2>&1 || true
+pkill -9 -f "PlayHouse.Benchmark.SS" 2>/dev/null || true
+sleep 1
 
-    # 서버 준비 대기
-    local max_wait=30
-    local waited=0
-    while ! curl -s "http://localhost:5080/benchmark/stats" > /dev/null 2>&1; do
-        sleep 1
-        waited=$((waited + 1))
-        if [ $waited -ge $max_wait ]; then
-            log_error "Servers failed to start within ${max_wait}s"
-            cleanup_servers
-            exit 1
-        fi
-    done
-
-    log_success "Servers started (PlayServer PID: $PLAY_PID, ApiServer PID: $API_PID)"
-}
-
-run_benchmark() {
-    log_info "Running S2S benchmark..."
-    log_info "  Connections: $CONNECTIONS"
-    log_info "  Messages per connection: $MESSAGES"
-    log_info "  Request size: ${REQUEST_SIZE}B"
-    echo ""
-
-    dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" \
-        -c Release -- \
-        --server 127.0.0.1:16110 \
-        --connections $CONNECTIONS \
-        --messages $MESSAGES \
-        --request-size $REQUEST_SIZE \
-        --mode all
-}
-
-main() {
-    log_header "PlayHouse S2S Benchmark (Stage → API)"
-
-    mkdir -p "$RESULT_DIR"
-
-    # 빌드
-    log_info "Building projects..."
-    dotnet build "$SCRIPT_DIR/PlayHouse.Benchmark.SS.PlayServer/PlayHouse.Benchmark.SS.PlayServer.csproj" -c Release --verbosity quiet
-    dotnet build "$SCRIPT_DIR/PlayHouse.Benchmark.SS.ApiServer/PlayHouse.Benchmark.SS.ApiServer.csproj" -c Release --verbosity quiet
-    dotnet build "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" -c Release --verbosity quiet
-    log_success "Build completed"
-
-    # 기존 서버 정리
-    cleanup_servers
-
-    # 서버 시작
-    start_servers
-
-    # 벤치마크 실행
-    run_benchmark
-
-    # 정리
-    cleanup_servers
-
-    log_header "Benchmark Complete"
-}
-
-main "$@"
+echo ""
+echo "================================================================================"
+echo "S2S Benchmark completed"
+echo "================================================================================"
