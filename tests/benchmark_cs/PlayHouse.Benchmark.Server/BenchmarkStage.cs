@@ -58,6 +58,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
                 HandleBenchmarkRequest(actor, packet, sw);
                 break;
 
+            case "EchoRequest":
+                HandleEchoRequest(actor, packet, sw);
+                break;
+
             default:
                 // 기본 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -92,6 +96,22 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         // 메트릭 기록
         sw.Stop();
         var messageSize = packet.Payload.DataSpan.Length + reply.CalculateSize();
+        ServerMetricsCollector.Instance.RecordMessage(sw.ElapsedTicks, messageSize);
+    }
+
+    /// <summary>
+    /// Zero-copy Echo 핸들러
+    /// </summary>
+    private void HandleEchoRequest(IActor actor, IPacket packet, Stopwatch sw)
+    {
+        // Zero-copy: 소유권 이전
+        var echoPayload = packet.Payload.Move();
+
+        actor.ActorSender.Reply(CPacket.Of("EchoReply", echoPayload));
+
+        // 메트릭 기록
+        sw.Stop();
+        var messageSize = packet.Payload.Length * 2;  // 요청 + 응답 (동일 크기)
         ServerMetricsCollector.Instance.RecordMessage(sw.ElapsedTicks, messageSize);
     }
 

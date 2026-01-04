@@ -23,6 +23,13 @@ public interface IPayload : IDisposable
     /// Gets the length of the payload.
     /// </summary>
     int Length { get; }
+
+    /// <summary>
+    /// Transfers ownership of the payload data to a new instance.
+    /// After calling this method, the original payload becomes invalid and should not be used.
+    /// </summary>
+    /// <returns>A new IPayload instance with transferred ownership.</returns>
+    IPayload Move();
 }
 
 /// <summary>
@@ -45,8 +52,25 @@ public sealed class ArrayPoolPayload : IPayload
         _actualSize = actualSize;
     }
 
-    public ReadOnlySpan<byte> DataSpan => _rentedBuffer.AsSpan(0, _actualSize);
+    public ReadOnlySpan<byte> DataSpan => _disposed
+        ? throw new ObjectDisposedException(nameof(ArrayPoolPayload))
+        : _rentedBuffer.AsSpan(0, _actualSize);
+
     public int Length => _actualSize;
+
+    public IPayload Move()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ArrayPoolPayload));
+        }
+
+        var buffer = _rentedBuffer;
+        var size = _actualSize;
+        _rentedBuffer = null;
+        _disposed = true;
+        return new ArrayPoolPayload(buffer!, size);
+    }
 
     public void Dispose()
     {
@@ -109,6 +133,21 @@ public sealed class ArrayPoolPayloadWithOffset : IPayload
 
     public int Length => _length;
 
+    public IPayload Move()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ArrayPoolPayloadWithOffset));
+        }
+
+        var buffer = _rentedBuffer;
+        var offset = _offset;
+        var length = _length;
+        _rentedBuffer = null;
+        _disposed = true;
+        return new ArrayPoolPayloadWithOffset(buffer!, offset, length);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -145,6 +184,13 @@ public sealed class MemoryPayload(ReadOnlyMemory<byte> data) : IPayload
 {
     public ReadOnlySpan<byte> DataSpan => data.Span;
     public int Length => data.Length;
+
+    public IPayload Move()
+    {
+        // MemoryPayload는 참조만 전달하므로 복사 불필요
+        return this;
+    }
+
     public void Dispose()
     {
     }
@@ -193,6 +239,28 @@ public sealed class ProtoPayload(IMessage proto) : IPayload
     /// </summary>
     public IMessage GetProto() => proto;
 
+    public IPayload Move()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ProtoPayload));
+        }
+
+        // 이미 직렬화된 버퍼가 있으면 소유권 이전
+        if (_rentedBuffer != null)
+        {
+            var buffer = _rentedBuffer;
+            var size = _actualSize;
+            _rentedBuffer = null;
+            _disposed = true;
+            return new ArrayPoolPayload(buffer, size);
+        }
+
+        // 아직 직렬화되지 않았으면 새 ProtoPayload 반환 (proto는 불변)
+        _disposed = true;
+        return new ProtoPayload(proto);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -217,5 +285,12 @@ public sealed class EmptyPayload : IPayload
 
     public ReadOnlySpan<byte> DataSpan => ReadOnlySpan<byte>.Empty;
     public int Length => DataSpan.Length;
+
+    public IPayload Move()
+    {
+        // 싱글톤이므로 자기 자신 반환
+        return Instance;
+    }
+
     public void Dispose() { }
 }
