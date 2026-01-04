@@ -19,8 +19,13 @@ var connectionsOption = new Option<int>(
 
 var messagesOption = new Option<int>(
     name: "--messages",
-    description: "Number of messages per connection",
+    description: "Number of messages per connection (ignored if --duration is set)",
     getDefaultValue: () => 10000);
+
+var durationOption = new Option<int>(
+    name: "--duration",
+    description: "Test duration in seconds (overrides --messages if set)",
+    getDefaultValue: () => 0);
 
 var requestSizeOption = new Option<int>(
     name: "--request-size",
@@ -39,7 +44,7 @@ var modeOption = new Option<string>(
 
 var commModeOption = new Option<string>(
     name: "--comm-mode",
-    description: "Communication mode for ss-echo: send, request-async, request-callback (default: request-async)",
+    description: "Communication mode for ss-echo: send, request-async, request-callback, all (default: request-async)",
     getDefaultValue: () => "request-async");
 
 var callTypeOption = new Option<string>(
@@ -92,6 +97,7 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark Client")
     serverOption,
     connectionsOption,
     messagesOption,
+    durationOption,
     requestSizeOption,
     responseSizeOption,
     modeOption,
@@ -112,6 +118,7 @@ rootCommand.SetHandler(async (context) =>
     var server = context.ParseResult.GetValueForOption(serverOption)!;
     var connections = context.ParseResult.GetValueForOption(connectionsOption);
     var messages = context.ParseResult.GetValueForOption(messagesOption);
+    var duration = context.ParseResult.GetValueForOption(durationOption);
     var requestSize = context.ParseResult.GetValueForOption(requestSizeOption);
     var responseSizes = context.ParseResult.GetValueForOption(responseSizeOption)!;
     var mode = context.ParseResult.GetValueForOption(modeOption)!;
@@ -132,7 +139,7 @@ rootCommand.SetHandler(async (context) =>
     }
     else
     {
-        await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
+        await RunBenchmarkAsync(server, connections, messages, duration, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
     }
 });
 
@@ -194,6 +201,7 @@ static async Task RunBenchmarkAsync(
     string server,
     int connections,
     int messages,
+    int durationSeconds,
     int requestSize,
     string responseSizesStr,
     string mode,
@@ -250,7 +258,7 @@ static async Task RunBenchmarkAsync(
         // ss-echo 모드 처리
         if (mode.ToLowerInvariant() == "ss-echo")
         {
-            await RunSSEchoBenchmarkAsync(host, port, connections, messages, requestSize, responseSizesStr,
+            await RunSSEchoBenchmarkAsync(host, port, connections, messages, durationSeconds, requestSize, responseSizesStr,
                 commModeStr, callTypeStr, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
             return;
         }
@@ -936,6 +944,7 @@ static async Task RunSSEchoBenchmarkAsync(
     int port,
     int connections,
     int iterations,
+    int durationSeconds,
     int requestSize,
     string responseSizesStr,
     string commModeStr,
@@ -958,6 +967,22 @@ static async Task RunSSEchoBenchmarkAsync(
         responseSizes = new[] { 256 };
     }
 
+    // CallType 파싱
+    var callType = callTypeStr.ToLower() switch
+    {
+        "stage-to-api" => SSCallType.StageToApi,
+        "stage-to-stage" => SSCallType.StageToStage,
+        _ => SSCallType.StageToApi
+    };
+
+    // --comm-mode all인 경우 모든 모드 테스트
+    if (commModeStr.ToLower() == "all")
+    {
+        await RunAllCommModesAsync(host, port, connections, iterations, durationSeconds, requestSize, responseSizes,
+            callType, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
+        return;
+    }
+
     // CommMode 파싱
     var commMode = commModeStr.ToLower() switch
     {
@@ -965,14 +990,6 @@ static async Task RunSSEchoBenchmarkAsync(
         "request-async" => SSCommMode.RequestAsync,
         "request-callback" => SSCommMode.RequestCallback,
         _ => SSCommMode.RequestAsync
-    };
-
-    // CallType 파싱
-    var callType = callTypeStr.ToLower() switch
-    {
-        "stage-to-api" => SSCallType.StageToApi,
-        "stage-to-stage" => SSCallType.StageToStage,
-        _ => SSCallType.StageToApi
     };
 
     // 배너 출력
@@ -1240,6 +1257,232 @@ static async Task ShutdownServersAsync(string host, int httpPort, int apiHttpPor
             // 서버가 이미 종료되었거나 연결 실패 - 무시
         }
     }
+}
+
+/// <summary>
+/// 모든 CommMode에 대해 벤치마크 실행 (RequestAsync, RequestCallback, Send)
+/// </summary>
+static async Task RunAllCommModesAsync(
+    string host,
+    int port,
+    int connections,
+    int iterations,
+    int durationSeconds,
+    int requestSize,
+    int[] responseSizes,
+    SSCallType callType,
+    long targetStageId,
+    string targetNid,
+    string outputDir,
+    DateTime runTimestamp,
+    string label,
+    int httpPort,
+    int apiHttpPort)
+{
+    var commModes = new[]
+    {
+        (SSCommMode.RequestAsync, "RequestAsync"),
+        (SSCommMode.RequestCallback, "RequestCallback"),
+        (SSCommMode.Send, "Send")
+    };
+
+    var allResults = new Dictionary<string, Dictionary<int, SSEchoBenchmarkResult>>();
+
+    // 배너 출력
+    Log.Information("================================================================================");
+    Log.Information("PlayHouse SS Echo Benchmark - All Modes Comparison");
+    Log.Information("================================================================================");
+    Log.Information("Server: {Host}:{Port}", host, port);
+    Log.Information("Connections: {Connections:N0}", connections);
+    if (durationSeconds > 0)
+    {
+        Log.Information("Duration: {Duration}s per mode/size", durationSeconds);
+    }
+    else
+    {
+        Log.Information("Iterations per connection: {Iterations:N0}", iterations);
+        Log.Information("Total messages per mode: {TotalMessages:N0}", connections * iterations);
+    }
+    Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
+    Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
+    Log.Information("Modes: {Modes}", string.Join(", ", commModes.Select(m => m.Item2)));
+    Log.Information("CallType: {CallType}", callType);
+    Log.Information("================================================================================");
+    Log.Information("");
+
+    foreach (var (commMode, modeName) in commModes)
+    {
+        Log.Information("");
+        Log.Information(">>> Testing: {ModeName} <<<", modeName);
+
+        var modeResults = new Dictionary<int, SSEchoBenchmarkResult>();
+
+        foreach (var responseSize in responseSizes)
+        {
+            Log.Information("  Response Size: {ResponseSize:N0} bytes", responseSize);
+
+            var clientMetricsCollector = new ClientMetricsCollector();
+
+            var runner = new SSEchoBenchmarkRunner(
+                host,
+                port,
+                connections,
+                durationSeconds > 0 ? 0 : iterations,  // duration mode면 0으로 설정
+                requestSize,
+                responseSize,
+                commMode,
+                callType,
+                targetStageId,
+                targetNid,
+                clientMetricsCollector,
+                durationSeconds);  // duration 전달
+
+            var startTime = DateTime.Now;
+            await runner.RunAsync();
+            var endTime = DateTime.Now;
+            var totalElapsed = (endTime - startTime).TotalSeconds;
+
+            await Task.Delay(1000);
+
+            var clientMetrics = clientMetricsCollector.GetMetrics();
+
+            modeResults[responseSize] = new SSEchoBenchmarkResult
+            {
+                ResponseSize = responseSize,
+                TotalElapsedSeconds = totalElapsed,
+                ClientMetrics = clientMetrics
+            };
+
+            Log.Information("    TPS: {TPS:N0}/s, P99: {P99:F2}ms",
+                clientMetrics.ThroughputMessagesPerSec, clientMetrics.E2eLatencyP99Ms);
+
+            await Task.Delay(500);
+        }
+
+        allResults[modeName] = modeResults;
+    }
+
+    // 비교 결과 출력
+    Log.Information("");
+    LogAllModesComparison(connections, iterations, durationSeconds, requestSize, responseSizes, callType, allResults);
+
+    // 결과 저장
+    await SaveAllModesResults(outputDir, runTimestamp, label, connections, iterations, durationSeconds, requestSize,
+        callType, allResults);
+}
+
+/// <summary>
+/// 모든 모드 비교 결과 출력
+/// </summary>
+static void LogAllModesComparison(
+    int connections,
+    int iterations,
+    int durationSeconds,
+    int requestSize,
+    int[] responseSizes,
+    SSCallType callType,
+    Dictionary<string, Dictionary<int, SSEchoBenchmarkResult>> allResults)
+{
+    Log.Information("================================================================================");
+    Log.Information("SS Echo Benchmark Results - All Modes Comparison");
+    Log.Information("================================================================================");
+    if (durationSeconds > 0)
+    {
+        Log.Information("Config: {Connections:N0} CCU, {Duration}s per mode, CallType: {CallType}",
+            connections, durationSeconds, callType);
+    }
+    else
+    {
+        Log.Information("Config: {Connections:N0} CCU x {Iterations:N0} msg/conn = {Total:N0} total, CallType: {CallType}",
+            connections, iterations, connections * iterations, callType);
+    }
+    Log.Information("");
+
+    // 테이블 헤더
+    Log.Information("{RespSize,8} | {Mode,16} | {Time,6} | {TPS,9} | {P99,8} | {Mem,8} | {GC,10}",
+        "RespSize", "Mode", "Time", "TPS", "P99", "Mem", "GC");
+    Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7}",
+        "--------", "----------------", "------", "---------", "--------", "--------", "----------");
+
+    foreach (var responseSize in responseSizes)
+    {
+        foreach (var (modeName, modeResults) in allResults)
+        {
+            if (modeResults.TryGetValue(responseSize, out var result))
+            {
+                var tps = result.ClientMetrics.ThroughputMessagesPerSec;
+                var p99 = result.ClientMetrics.E2eLatencyP99Ms;
+                var mem = result.ClientMetrics.MemoryAllocatedMB;
+                var gc = $"{result.ClientMetrics.GcGen0Count}/{result.ClientMetrics.GcGen1Count}/{result.ClientMetrics.GcGen2Count}";
+
+                Log.Information("{RespSize,7:N0}B | {Mode,16} | {Time,5:F2}s | {TPS,8:N0}/s | {P99,6:F2}ms | {Mem,6:F1}MB | {GC,10}",
+                    responseSize, modeName, result.TotalElapsedSeconds, tps, p99, mem, gc);
+            }
+        }
+
+        // 모드 간 비교
+        if (allResults.Count >= 2 && responseSize != responseSizes.Last())
+        {
+            Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7}",
+                "--------", "----------------", "------", "---------", "--------", "--------", "----------");
+        }
+    }
+
+    Log.Information("================================================================================");
+}
+
+/// <summary>
+/// 모든 모드 결과 저장
+/// </summary>
+static async Task SaveAllModesResults(
+    string outputDir,
+    DateTime runTimestamp,
+    string label,
+    int connections,
+    int iterations,
+    int durationSeconds,
+    int requestSize,
+    SSCallType callType,
+    Dictionary<string, Dictionary<int, SSEchoBenchmarkResult>> allResults)
+{
+    var timestamp = runTimestamp.ToString("yyyyMMdd_HHmmss");
+    var labelSuffix = string.IsNullOrEmpty(label) ? "" : $"_{label}";
+
+    var jsonFileName = $"benchmark_ss_all_modes_{timestamp}{labelSuffix}.json";
+    var jsonPath = Path.Combine(outputDir, jsonFileName);
+
+    var jsonResult = new
+    {
+        Timestamp = runTimestamp.ToString("yyyy-MM-dd HH:mm:ss"),
+        Label = label,
+        Config = new
+        {
+            Connections = connections,
+            IterationsPerConnection = iterations,
+            DurationSeconds = durationSeconds,
+            RequestSizeBytes = requestSize,
+            CallType = callType.ToString()
+        },
+        Results = allResults.Select(kv => new
+        {
+            Mode = kv.Key,
+            Results = kv.Value.Select(r => new
+            {
+                ResponseSizeBytes = r.Key,
+                TotalElapsedSeconds = r.Value.TotalElapsedSeconds,
+                ThroughputMsgPerSec = r.Value.ClientMetrics.ThroughputMessagesPerSec,
+                E2eLatencyP99Ms = r.Value.ClientMetrics.E2eLatencyP99Ms,
+                MemoryAllocatedMB = r.Value.ClientMetrics.MemoryAllocatedMB
+            }).ToArray()
+        }).ToArray()
+    };
+
+    var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+    await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(jsonResult, jsonOptions));
+
+    Log.Information("");
+    Log.Information("Results saved to:");
+    Log.Information("  JSON: {JsonPath}", jsonPath);
 }
 
 /// <summary>

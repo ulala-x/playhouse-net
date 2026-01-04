@@ -487,8 +487,8 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
                 // Send 모드: 응답 대기 없이 즉시 전송
                 StageSender.SendToApi("api-1", CPacket.Of(echoRequest));
 
-                // 즉시 응답 (Echo는 페이로드 그대로 반환)
-                actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                // SendToClient로 응답 (Reply가 아님 - benchmark_cs와 동일하게)
+                actor.ActorSender.SendToClient(CPacket.Of(new TriggerSSEchoReply
                 {
                     Sequence = request.Sequence,
                     Payload = request.Payload
@@ -545,8 +545,8 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
                 // Send 모드: 응답 대기 없이 즉시 전송
                 StageSender.SendToStage(request.TargetNid, request.TargetStageId, CPacket.Of(echoRequest));
 
-                // 즉시 응답 (Echo는 페이로드 그대로 반환)
-                actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply
+                // SendToClient로 응답 (Reply가 아님 - benchmark_cs와 동일하게)
+                actor.ActorSender.SendToClient(CPacket.Of(new TriggerSSEchoReply
                 {
                     Sequence = request.Sequence,
                     Payload = request.Payload

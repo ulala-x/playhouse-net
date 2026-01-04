@@ -52,7 +52,7 @@ public class BenchmarkRunner(
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
 
-        if (mode == BenchmarkMode.Echo)
+        if (mode == BenchmarkMode.Send)
         {
             Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
             Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
@@ -82,6 +82,10 @@ public class BenchmarkRunner(
 
     private async Task RunConnectionAsync(int connectionId)
     {
+        // 각 Task마다 ImmediateSynchronizationContext 설정하여 폴링 지연 제거
+        SynchronizationContext.SetSynchronizationContext(
+            new ImmediateSynchronizationContext());
+
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 
@@ -120,9 +124,9 @@ public class BenchmarkRunner(
         {
             await RunRequestCallbackMode(connector, connectionId);
         }
-        else if (mode == BenchmarkMode.Echo)
+        else if (mode == BenchmarkMode.Send)
         {
-            await RunEchoMode(connector, connectionId);
+            await RunSendMode(connector, connectionId);
         }
 
         connector.Disconnect();
@@ -255,41 +259,67 @@ public class BenchmarkRunner(
     }
 
     /// <summary>
-    /// Time-based Echo mode: Sends raw byte packets with "EchoRequest" MsgId for specified duration
+    /// Time-based Send mode: Send 요청 → SendToClient 응답 (OnReceive 콜백)
     /// </summary>
-    private async Task RunEchoMode(ClientConnector connector, int connectionId)
+    private async Task RunSendMode(ClientConnector connector, int connectionId)
     {
         var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
         var payload = CreatePayloadBytes(requestSize);
+        var timestamps = new ConcurrentDictionary<int, long>();
+        var sequence = 0;
 
-        while (DateTime.UtcNow < endTime)
+        // OnReceive 이벤트 핸들러 등록 (서버의 SendToClient 응답 수신)
+        void OnReceiveHandler(long stageId, string stageType, IPacket packet)
         {
-            using var packet = new ClientPacket("EchoRequest", payload);
-
-            metricsCollector.RecordSent();
-
-            var sw = Stopwatch.StartNew();
-            try
+            if (packet.MsgId == "SendReply")
             {
-                using var response = await connector.RequestAsync(packet);
-                sw.Stop();
-
-                if (response.MsgId == "EchoReply")
-                {
-                    metricsCollector.RecordReceived(sw.ElapsedTicks);
-                }
-                else
-                {
-                    Log.Warning("[Connection {ConnectionId}] Unexpected response: {MsgId}", connectionId, response.MsgId);
-                }
+                // 시퀀스 번호로 타임스탬프 매칭 (간단히 최근 것 사용)
+                var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
+                metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0);
             }
-            catch (Exception ex)
+            packet.Dispose();
+        }
+
+        connector.OnReceive += OnReceiveHandler;
+
+        try
+        {
+            while (DateTime.UtcNow < endTime)
             {
-                Log.Error(ex, "[Connection {ConnectionId}] Echo request failed", connectionId);
+                var seq = Interlocked.Increment(ref sequence);
+                timestamps[seq] = Stopwatch.GetTimestamp();
+
+                using var packet = new ClientPacket("SendRequest", payload);
+
+                metricsCollector.RecordSent();
+
+                try
+                {
+                    connector.Send(packet);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
+                }
+
+                // 콜백 처리 (OnReceive 호출)
+                connector.MainThreadAction();
+
+                // 서버 과부하 방지
+                await Task.Yield();
             }
 
-            // 콜백 처리
-            connector.MainThreadAction();
+            // 남은 응답 처리를 위해 잠시 대기
+            var drainEnd = DateTime.UtcNow.AddMilliseconds(500);
+            while (DateTime.UtcNow < drainEnd)
+            {
+                connector.MainThreadAction();
+                await Task.Delay(10);
+            }
+        }
+        finally
+        {
+            connector.OnReceive -= OnReceiveHandler;
         }
     }
 
@@ -311,7 +341,7 @@ public class BenchmarkRunner(
 
 public enum BenchmarkMode
 {
-    RequestAsync,
-    RequestCallback,
-    Echo  // Zero-copy Echo mode with time-based testing
+    RequestAsync,     // await 기반 요청/응답 (Echo 테스트)
+    RequestCallback,  // 콜백 기반 요청/응답 (Echo 테스트)
+    Send              // Fire-and-forget (응답 없음, 시간 기반)
 }

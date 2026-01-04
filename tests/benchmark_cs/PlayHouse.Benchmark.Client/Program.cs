@@ -33,8 +33,8 @@ var responseSizeOption = new Option<string>(
 
 var modeOption = new Option<string>(
     name: "--mode",
-    description: "Benchmark mode: request-async, request-callback, echo, or both",
-    getDefaultValue: () => "both");
+    description: "Benchmark mode: request-async, request-callback, send, or all (default: all)",
+    getDefaultValue: () => "all");
 
 var durationOption = new Option<int>(
     name: "--duration",
@@ -140,10 +140,10 @@ static async Task RunBenchmarkAsync(
 
     try
     {
-        // "both" 모드 처리
-        if (mode.ToLowerInvariant() == "both")
+        // "all" 모드 처리
+        if (mode.ToLowerInvariant() == "all")
         {
-            await RunBothModesAsync(server, connections, messages, requestSize, responseSizesStr, duration, httpPort, outputDir, label, runTimestamp);
+            await RunAllModesAsync(server, connections, messages, requestSize, responseSizesStr, duration, httpPort, outputDir, label, runTimestamp);
             return;
         }
 
@@ -152,7 +152,7 @@ static async Task RunBenchmarkAsync(
         {
             "request-async" => BenchmarkMode.RequestAsync,
             "request-callback" => BenchmarkMode.RequestCallback,
-            "echo" => BenchmarkMode.Echo,
+            "send" => BenchmarkMode.Send,
             _ => BenchmarkMode.RequestAsync
         };
 
@@ -354,9 +354,9 @@ static void LogResults(
 }
 
 /// <summary>
-/// 두 모드(RequestAsync, RequestCallback)를 모두 테스트하고 비교 결과 출력
+/// 세 모드(RequestAsync, RequestCallback, Send)를 모두 테스트하고 비교 결과 출력
 /// </summary>
-static async Task RunBothModesAsync(
+static async Task RunAllModesAsync(
     string server,
     int connections,
     int messages,
@@ -391,7 +391,7 @@ static async Task RunBothModesAsync(
 
     // 배너 출력
     Log.Information("================================================================================");
-    Log.Information("PlayHouse Benchmark Client - Mode Comparison");
+    Log.Information("PlayHouse Benchmark Client - All Modes Comparison");
     Log.Information("================================================================================");
     Log.Information("Server: {Host}:{Port}", host, port);
     Log.Information("Connections: {Connections:N0}", connections);
@@ -408,6 +408,7 @@ static async Task RunBothModesAsync(
 
     var resultsRequestAsync = new List<BenchmarkResult>();
     var resultsRequestCallback = new List<BenchmarkResult>();
+    var resultsSend = new List<BenchmarkResult>();
 
     // 테스트 인덱스 (stageId 충돌 방지용)
     var testIndex = 0;
@@ -502,13 +503,58 @@ static async Task RunBothModesAsync(
         });
     }
 
+    // 3. Send 모드 테스트
+    Log.Information("");
+    Log.Information(">>> Testing Send Mode <<<");
+    await Task.Delay(1000);
+
+    foreach (var responseSize in responseSizes)
+    {
+        if (responseSizes.Length > 1)
+        {
+            Log.Information("  Response Size: {ResponseSize:N0} bytes", responseSize);
+        }
+
+        var clientMetricsCollector = new ClientMetricsCollector();
+
+        Log.Information("Resetting server metrics...");
+        await serverMetricsClient.ResetMetricsAsync();
+        await Task.Delay(500);
+
+        var stageIdOffset = testIndex * connections;
+        var runner = new BenchmarkRunner(
+            host, port, connections, messages, requestSize, responseSize,
+            BenchmarkMode.Send, clientMetricsCollector, stageIdOffset,
+            stageName: "BenchStage", durationSeconds: duration);
+        testIndex++;
+
+        var startTime = DateTime.Now;
+        await runner.RunAsync();
+        var endTime = DateTime.Now;
+        var totalElapsed = (endTime - startTime).TotalSeconds;
+
+        Log.Information("Waiting for server metrics to stabilize...");
+        await Task.Delay(1000);
+
+        var serverMetrics = await serverMetricsClient.GetMetricsAsync();
+        var clientMetrics = clientMetricsCollector.GetMetrics();
+
+        resultsSend.Add(new BenchmarkResult
+        {
+            ResponseSize = responseSize,
+            TotalElapsedSeconds = totalElapsed,
+            ServerMetrics = serverMetrics,
+            ClientMetrics = clientMetrics
+        });
+    }
+
     // 비교 결과 출력
     Log.Information("");
-    LogModeComparison(connections, messages, requestSize, responseSizes, resultsRequestAsync, resultsRequestCallback);
+    LogModeComparison(connections, messages, requestSize, responseSizes, resultsRequestAsync, resultsRequestCallback, resultsSend);
 
     // 결과 파일 저장
     await SaveComparisonResults(outputDir, runTimestamp, label, connections, messages, requestSize,
-        responseSizes, resultsRequestAsync, resultsRequestCallback);
+        responseSizes, resultsRequestAsync, resultsRequestCallback, resultsSend);
 
     // 서버 종료 요청
     Log.Information("");
@@ -526,7 +572,7 @@ static async Task RunBothModesAsync(
 }
 
 /// <summary>
-/// 두 모드 비교 결과 출력
+/// 세 모드 비교 결과 출력
 /// </summary>
 static void LogModeComparison(
     int connections,
@@ -534,55 +580,41 @@ static void LogModeComparison(
     int requestSize,
     int[] responseSizes,
     List<BenchmarkResult> resultsRequestAsync,
-    List<BenchmarkResult> resultsRequestCallback)
+    List<BenchmarkResult> resultsRequestCallback,
+    List<BenchmarkResult> resultsSend)
 {
     Log.Information("================================================================================");
-    Log.Information("Mode Comparison Results");
+    Log.Information("Benchmark Results - All Modes Comparison");
     Log.Information("================================================================================");
-    Log.Information("Config: {Connections:N0} CCU x {Messages:N0} msg, Request: {RequestSize:N0}B",
-        connections, messages, requestSize);
+    Log.Information("Config: {Connections:N0} CCU, {Duration:N0}s duration",
+        connections, messages);
     Log.Information("");
 
-    if (responseSizes.Length == 1)
+    // 테이블 헤더 출력
+    Log.Information("             |     RequestAsync     |    RequestCallback   |        Send          ");
+    Log.Information("Payload Size | TPS      | P99  | Mem| TPS      | P99  | Mem| TPS      | Mem     ");
+    Log.Information("-------------|----------|------|-------|----------|------|-------|----------|-------");
+
+    // 각 응답 크기별로 비교
+    for (int i = 0; i < responseSizes.Length; i++)
     {
-        // 단일 응답 크기: 테이블 형식 비교
-        var ra = resultsRequestAsync.FirstOrDefault();
-        var rc = resultsRequestCallback.FirstOrDefault();
+        var ra = resultsRequestAsync[i];
+        var rc = resultsRequestCallback[i];
+        var rs = resultsSend[i];
 
-        if (ra != null && rc != null)
-        {
-            var tpsDiff = ((rc.ClientMetrics.ThroughputMessagesPerSec - ra.ClientMetrics.ThroughputMessagesPerSec) / ra.ClientMetrics.ThroughputMessagesPerSec) * 100;
-            var p99Diff = ((rc.ClientMetrics.RttLatencyP99Ms - ra.ClientMetrics.RttLatencyP99Ms) / ra.ClientMetrics.RttLatencyP99Ms) * 100;
+        var raTps = ra.ClientMetrics.ThroughputMessagesPerSec;
+        var raP99 = ra.ClientMetrics.RttLatencyP99Ms;
+        var raMem = ra.ClientMetrics.MemoryAllocatedMB;
 
-            Log.Information("               | RequestAsync | RequestCallback | Diff");
-            Log.Information("---------------|--------------|-----------------|-------");
-            Log.Information("Throughput     | {RA,9:N0}/s | {RC,12:N0}/s | {Diff,6:+0.0;-0.0}%",
-                ra.ClientMetrics.ThroughputMessagesPerSec, rc.ClientMetrics.ThroughputMessagesPerSec, tpsDiff);
-            Log.Information("P99 Latency    | {RA,9:F2}ms | {RC,12:F2}ms | {Diff,6:+0.0;-0.0}%",
-                ra.ClientMetrics.RttLatencyP99Ms, rc.ClientMetrics.RttLatencyP99Ms, p99Diff);
-        }
-    }
-    else
-    {
-        // 여러 응답 크기: 각 크기별로 비교
-        Log.Information("{RespSize,8} | {RATime,6} | {RATPS,9} | {RAP99,8} | {RCTime,6} | {RCTPS,9} | {RCP99,8} | {TPSDiff,8} | {P99Diff,8}",
-            "RespSize", "RA Time", "RA TPS", "RA P99", "RC Time", "RC TPS", "RC P99", "TPS Diff", "P99 Diff");
-        Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9}",
-            "--------", "------", "---------", "--------", "------", "---------", "--------", "--------", "--------");
+        var rcTps = rc.ClientMetrics.ThroughputMessagesPerSec;
+        var rcP99 = rc.ClientMetrics.RttLatencyP99Ms;
+        var rcMem = rc.ClientMetrics.MemoryAllocatedMB;
 
-        for (int i = 0; i < responseSizes.Length; i++)
-        {
-            var ra = resultsRequestAsync[i];
-            var rc = resultsRequestCallback[i];
+        var rsTps = rs.ClientMetrics.ThroughputMessagesPerSec;
+        var rsMem = rs.ClientMetrics.MemoryAllocatedMB;
 
-            var tpsDiff = ((rc.ClientMetrics.ThroughputMessagesPerSec - ra.ClientMetrics.ThroughputMessagesPerSec) / ra.ClientMetrics.ThroughputMessagesPerSec) * 100;
-            var p99Diff = ((rc.ClientMetrics.RttLatencyP99Ms - ra.ClientMetrics.RttLatencyP99Ms) / ra.ClientMetrics.RttLatencyP99Ms) * 100;
-
-            Log.Information("{RespSize,7:N0}B | {RATime,5:F2}s | {RATPS,8:N0}/s | {RAP99,6:F2}ms | {RCTime,5:F2}s | {RCTPS,8:N0}/s | {RCP99,6:F2}ms | {TPSDiff,7:+0.0;-0.0}% | {P99Diff,7:+0.0;-0.0}%",
-                ra.ResponseSize, ra.TotalElapsedSeconds, ra.ClientMetrics.ThroughputMessagesPerSec, ra.ClientMetrics.RttLatencyP99Ms,
-                rc.TotalElapsedSeconds, rc.ClientMetrics.ThroughputMessagesPerSec, rc.ClientMetrics.RttLatencyP99Ms,
-                tpsDiff, p99Diff);
-        }
+        Log.Information("{Size,11:N0} B | {RATps,7:N0}/s| {RAP99,4:F1}ms| {RAMem,4:N0}MB| {RCTps,7:N0}/s| {RCP99,4:F1}ms| {RCMem,4:N0}MB| {RSTps,7:N0}/s| {RSMem,4:N0}MB",
+            ra.ResponseSize, raTps, raP99, raMem, rcTps, rcP99, rcMem, rsTps, rsMem);
     }
 
     Log.Information("");
@@ -601,7 +633,8 @@ static async Task SaveComparisonResults(
     int requestSize,
     int[] responseSizes,
     List<BenchmarkResult> resultsRequestAsync,
-    List<BenchmarkResult> resultsRequestCallback)
+    List<BenchmarkResult> resultsRequestCallback,
+    List<BenchmarkResult> resultsSend)
 {
     var timestamp = runTimestamp.ToString("yyyyMMdd_HHmmss");
     var labelSuffix = string.IsNullOrEmpty(label) ? "" : $"_{label}";
@@ -626,14 +659,23 @@ static async Task SaveComparisonResults(
             ResponseSizeBytes = r.ResponseSize,
             TotalElapsedSeconds = r.TotalElapsedSeconds,
             ClientThroughputMsgPerSec = r.ClientMetrics.ThroughputMessagesPerSec,
-            ClientRttLatencyP99Ms = r.ClientMetrics.RttLatencyP99Ms
+            ClientRttLatencyP99Ms = r.ClientMetrics.RttLatencyP99Ms,
+            ClientMemoryAllocatedMB = r.ClientMetrics.MemoryAllocatedMB
         }).ToArray(),
         ResultsRequestCallback = resultsRequestCallback.Select(r => new
         {
             ResponseSizeBytes = r.ResponseSize,
             TotalElapsedSeconds = r.TotalElapsedSeconds,
             ClientThroughputMsgPerSec = r.ClientMetrics.ThroughputMessagesPerSec,
-            ClientRttLatencyP99Ms = r.ClientMetrics.RttLatencyP99Ms
+            ClientRttLatencyP99Ms = r.ClientMetrics.RttLatencyP99Ms,
+            ClientMemoryAllocatedMB = r.ClientMetrics.MemoryAllocatedMB
+        }).ToArray(),
+        ResultsSend = resultsSend.Select(r => new
+        {
+            ResponseSizeBytes = r.ResponseSize,
+            TotalElapsedSeconds = r.TotalElapsedSeconds,
+            ClientThroughputMsgPerSec = r.ClientMetrics.ThroughputMessagesPerSec,
+            ClientMemoryAllocatedMB = r.ClientMetrics.MemoryAllocatedMB
         }).ToArray()
     };
 
