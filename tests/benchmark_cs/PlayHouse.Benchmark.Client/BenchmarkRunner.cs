@@ -243,8 +243,7 @@ public class BenchmarkRunner(
         var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
         // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
         var payload = _requestPayload.ToByteArray();
-        var timestamps = new ConcurrentDictionary<int, long>();
-        var sequence = 0;
+        var timestamps = new ConcurrentQueue<long>();
         var sentCount = 0;
         var receivedCount = 0;
         var inFlight = 0;
@@ -254,11 +253,14 @@ public class BenchmarkRunner(
         {
             if (packet.MsgId == "SendReply")
             {
-                // 시퀀스 번호로 타임스탬프 매칭 (간단히 최근 것 사용)
-                var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
-                metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0);
-                Interlocked.Increment(ref receivedCount);
-                Interlocked.Decrement(ref inFlight);
+                // FIFO 방식으로 타임스탬프 디큐
+                if (timestamps.TryDequeue(out var startTicks))
+                {
+                    var elapsed = Stopwatch.GetTimestamp() - startTicks;
+                    metricsCollector.RecordReceived(elapsed);
+                    Interlocked.Increment(ref receivedCount);
+                    Interlocked.Decrement(ref inFlight);
+                }
             }
             packet.Dispose();
         }
@@ -275,8 +277,7 @@ public class BenchmarkRunner(
                     await Task.Yield(); // 콜백 실행 기회 제공
                 }
 
-                var seq = Interlocked.Increment(ref sequence);
-                timestamps[seq] = Stopwatch.GetTimestamp();
+                timestamps.Enqueue(Stopwatch.GetTimestamp());
 
                 using var packet = new ClientPacket("SendRequest", payload);
 
@@ -292,6 +293,7 @@ public class BenchmarkRunner(
                 {
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
                     Interlocked.Decrement(ref inFlight); // 전송 실패 시 카운트 복구
+                    timestamps.TryDequeue(out _); // 전송 실패 시 Queue에서도 제거
                 }
             }
 
