@@ -10,20 +10,19 @@ using ClientPacket = PlayHouse.Connector.Protocol.Packet;
 namespace PlayHouse.Benchmark.Client;
 
 /// <summary>
-/// 벤치마크 시나리오를 실행합니다.
+/// 벤치마크 시나리오를 실행합니다 (duration 기반).
 /// </summary>
 public class BenchmarkRunner(
     string serverHost,
     int serverPort,
     int connections,
-    int messagesPerConnection,
     int requestSize,
     int responseSize,
     BenchmarkMode mode,
     ClientMetricsCollector metricsCollector,
     int stageIdOffset = 0,
     string stageName = "BenchStage",
-    int durationSeconds = 10,  // Time-based test duration for Echo mode
+    int durationSeconds = 10,  // Test duration in seconds
     int delayMs = 0)           // Delay between messages in milliseconds
 {
     // 재사용 버퍼
@@ -40,13 +39,10 @@ public class BenchmarkRunner(
         {
             var connected = _connectedCount;
             var failed = _failedCount;
-            var total = connected + failed;
             var failedStr = failed > 0 ? $", failed: {failed}" : "";
             Console.Write($"\r  Connecting: {connected:N0}/{connections:N0}{failedStr}    ");
         }
     }
-
-    // 요청 페이로드 미리 생성 (재사용)
 
     /// <summary>
     /// 지정된 크기의 페이로드를 생성합니다. (압축 방지를 위해 패턴으로 채움)
@@ -65,24 +61,11 @@ public class BenchmarkRunner(
 
     public async Task RunAsync()
     {
-        var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
-
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
-
-        if (isTimeBased)
-        {
-            Log.Information("  Duration: {Duration:N0} seconds (time-based)", durationSeconds);
-            Log.Information("  Message size: {RequestSize:N0} bytes", requestSize);
-        }
-        else
-        {
-            Log.Information("  Messages per connection: {Messages:N0}", messagesPerConnection);
-            Log.Information("  Total messages: {Total:N0}", connections * messagesPerConnection);
-            Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
-            Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
-        }
+        Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
+        Log.Information("  Message size: {RequestSize:N0} bytes", requestSize);
 
         metricsCollector.Reset();
 
@@ -163,11 +146,10 @@ public class BenchmarkRunner(
         // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
         var payloadBytes = _requestPayload.ToByteArray();
 
-        var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
-        var endTime = isTimeBased ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
+        var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
         var i = 0;
 
-        while (isTimeBased ? DateTime.UtcNow < endTime : i < messagesPerConnection)
+        while (DateTime.UtcNow < endTime)
         {
             using var packet = new ClientPacket("EchoRequest", payloadBytes);
 
@@ -207,34 +189,15 @@ public class BenchmarkRunner(
         var sentCount = 0;
         var timestamps = new ConcurrentDictionary<int, long>();
 
-        var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
-        var endTime = isTimeBased ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
-
-        // 동시 요청 수 제한 (backpressure) - 응답 크기에 따라 조절
-        var maxConcurrentRequests = requestSize switch
-        {
-            > 32768 => 10,   // 32KB 이상: 10개
-            > 8192 => 30,    // 8KB 이상: 30개
-            > 1024 => 50,    // 1KB 이상: 50개
-            _ => 100         // 기본: 100개
-        };
-        var semaphore = new SemaphoreSlim(maxConcurrentRequests);
+        var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
 
         // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
         var payloadBytes = _requestPayload.ToByteArray();
 
         // 메시지 전송 (Request with callback)
         var i = 0;
-        while (isTimeBased ? DateTime.UtcNow < endTime : i < messagesPerConnection)
+        while (DateTime.UtcNow < endTime)
         {
-            // 동시 요청 수 제한을 위해 semaphore 대기
-            while (semaphore.CurrentCount == 0)
-            {
-                await Task.Delay(1);
-            }
-
-            await semaphore.WaitAsync();
-
             var packet = new ClientPacket("EchoRequest", payloadBytes);
             var seq = i;
             timestamps[seq] = Stopwatch.GetTimestamp();
@@ -250,34 +213,31 @@ public class BenchmarkRunner(
                     metricsCollector.RecordReceived(elapsed);
                 }
 
-                semaphore.Release();
                 Interlocked.Increment(ref receivedCount);
-
                 packet.Dispose();
             });
 
             i++;
         }
 
-        // 모든 응답 수신 대기 (응답 크기에 따라 타임아웃 조절)
+        // 모든 응답 수신 대기
         var overallTimeoutSec = responseSize > 32768 ? 60 : 30;
         var deadline = DateTime.UtcNow.AddSeconds(overallTimeoutSec);
-        var targetCount = isTimeBased ? sentCount : messagesPerConnection;
 
-        while (receivedCount < targetCount && DateTime.UtcNow < deadline)
+        while (receivedCount < sentCount && DateTime.UtcNow < deadline)
         {
             await Task.Delay(1);
         }
 
-        if (receivedCount < targetCount)
+        if (receivedCount < sentCount)
         {
             Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
-                connectionId, receivedCount, targetCount);
+                connectionId, receivedCount, sentCount);
         }
     }
 
     /// <summary>
-    /// Time-based Send mode: Send 요청 → SendToClient 응답 (OnReceive 콜백)
+    /// Duration-based Send mode: Send 요청 → SendToClient 응답 (OnReceive 콜백)
     /// </summary>
     private async Task RunSendMode(ClientConnector connector, int connectionId)
     {
@@ -286,6 +246,8 @@ public class BenchmarkRunner(
         var payload = _requestPayload.ToByteArray();
         var timestamps = new ConcurrentDictionary<int, long>();
         var sequence = 0;
+        var sentCount = 0;
+        var receivedCount = 0;
 
         // OnReceive 이벤트 핸들러 등록 (서버의 SendToClient 응답 수신)
         void OnReceiveHandler(long stageId, string stageType, IPacket packet)
@@ -295,6 +257,7 @@ public class BenchmarkRunner(
                 // 시퀀스 번호로 타임스탬프 매칭 (간단히 최근 것 사용)
                 var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
                 metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0);
+                Interlocked.Increment(ref receivedCount);
             }
             packet.Dispose();
         }
@@ -311,6 +274,7 @@ public class BenchmarkRunner(
                 using var packet = new ClientPacket("SendRequest", payload);
 
                 metricsCollector.RecordSent();
+                Interlocked.Increment(ref sentCount);
 
                 try
                 {
@@ -320,14 +284,22 @@ public class BenchmarkRunner(
                 {
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
                 }
-
-                // ImmediateSynchronizationContext 사용으로 MainThreadAction() 불필요
-                // 서버 과부하 방지
-                await Task.Yield();
             }
 
-            // 남은 응답 처리를 위해 잠시 대기 (ImmediateSynchronizationContext로 콜백 즉시 실행)
-            await Task.Delay(500);
+            // 모든 응답 수신 대기
+            var overallTimeoutSec = responseSize > 32768 ? 60 : 30;
+            var deadline = DateTime.UtcNow.AddSeconds(overallTimeoutSec);
+
+            while (receivedCount < sentCount && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(1);
+            }
+
+            if (receivedCount < sentCount)
+            {
+                Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
+                    connectionId, receivedCount, sentCount);
+            }
         }
         finally
         {
@@ -340,5 +312,5 @@ public enum BenchmarkMode
 {
     RequestAsync,     // await 기반 요청/응답 (Echo 테스트)
     RequestCallback,  // 콜백 기반 요청/응답 (Echo 테스트)
-    Send              // Fire-and-forget (응답 없음, 시간 기반)
+    Send              // Fire-and-forget (응답 없음, duration 기반)
 }
