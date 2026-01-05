@@ -5,23 +5,8 @@ package playhouse.benchmark;
 option csharp_namespace = "PlayHouse.Benchmark.Shared.Proto";
 
 // ============================================
-// Benchmark Messages
+// Authentication Messages
 // ============================================
-
-// Benchmark 요청 (가변 크기)
-message BenchmarkRequest {
-    int32 sequence = 1;           // 메시지 시퀀스 번호
-    int32 response_size = 2;      // 응답 크기 (256, 1500, 65536)
-    int64 client_timestamp = 3;   // 클라이언트 전송 시각 (ticks)
-    bytes payload = 4;            // 가변 크기 요청 페이로드
-}
-
-// Benchmark 응답 (가변 크기)
-message BenchmarkReply {
-    int32 sequence = 1;           // 요청 시퀀스 번호
-    int64 server_timestamp = 2;   // 서버 처리 시각 (ticks)
-    bytes payload = 3;            // 가변 크기 페이로드
-}
 
 // 인증 요청
 message AuthenticateRequest {
