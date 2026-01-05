@@ -258,11 +258,15 @@ public class SSEchoBenchmarkRunner(
         {
             if (packet.MsgId == "TriggerSSEchoReply")
             {
-                // 시퀀스 번호로 타임스탬프 매칭 (간단히 최근 것 사용)
-                var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
-                metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0, ssElapsedTicks: 0);
-                Interlocked.Increment(ref receivedCount);
-                Interlocked.Decrement(ref inFlight);
+                // TriggerSSEchoReply의 sequence 필드로 타임스탬프 매칭
+                var reply = TriggerSSEchoReply.Parser.ParseFrom(packet.Payload.DataSpan);
+                if (timestamps.TryRemove(reply.Sequence, out var startTicks))
+                {
+                    var elapsed = Stopwatch.GetTimestamp() - startTicks;
+                    metricsCollector.RecordReceived(elapsed, ssElapsedTicks: 0);
+                    Interlocked.Increment(ref receivedCount);
+                    Interlocked.Decrement(ref inFlight);
+                }
             }
             packet.Dispose();
         }
@@ -306,6 +310,7 @@ public class SSEchoBenchmarkRunner(
                 {
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
                     Interlocked.Decrement(ref inFlight); // 전송 실패 시 카운트 복구
+                    timestamps.TryRemove(seq, out _); // 전송 실패 시 타임스탬프도 제거
                 }
             }
 
