@@ -16,8 +16,8 @@ DURATION=${2:-10}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
-# 페이로드 크기 (콤마 구분)
-PAYLOAD_SIZES="64,256,1024,65536,131072"
+# Echo 페이로드 크기 (배열)
+PAYLOAD_SIZES=(64 256 1024 65536 131072)
 
 # 테스트 모드
 MODES=("request-async" "request-callback" "send")
@@ -29,7 +29,7 @@ echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s per mode"
 echo "  Modes: ${MODES[@]}"
-echo "  Payload sizes: $PAYLOAD_SIZES bytes"
+echo "  Payload sizes: ${PAYLOAD_SIZES[*]} bytes (Echo: request=response)"
 echo "================================================================================"
 echo ""
 
@@ -78,14 +78,22 @@ for MODE in "${MODES[@]}"; do
     echo "Running benchmark: mode=$MODE"
     echo "================================================================================"
 
-    dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark.Client.csproj" -c Release -- \
-        --server 127.0.0.1:$SERVER_PORT \
-        --connections $CONNECTIONS \
-        --mode $MODE \
-        --duration $DURATION \
-        --request-size 64 \
-        --response-size $PAYLOAD_SIZES \
-        --http-port $HTTP_PORT
+    for SIZE in "${PAYLOAD_SIZES[@]}"; do
+        echo ""
+        echo ">>> Echo test: ${SIZE} bytes (request=${SIZE}, response=${SIZE}) <<<"
+
+        dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark.Client.csproj" -c Release -- \
+            --server 127.0.0.1:$SERVER_PORT \
+            --connections $CONNECTIONS \
+            --mode $MODE \
+            --duration $DURATION \
+            --request-size $SIZE \
+            --response-size $SIZE \
+            --http-port $HTTP_PORT
+
+        # 테스트 간 간격
+        sleep 1
+    done
 
     echo ""
     echo "Completed: $MODE"
