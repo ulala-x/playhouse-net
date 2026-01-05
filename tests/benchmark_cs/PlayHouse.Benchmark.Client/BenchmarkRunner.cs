@@ -161,12 +161,8 @@ public class BenchmarkRunner(
 
     private async Task RunRequestAsyncMode(ClientConnector connector, int connectionId)
     {
-        // 요청 객체 재사용
-        var request = new BenchmarkRequest
-        {
-            ResponseSize = responseSize,
-            Payload = _requestPayload
-        };
+        // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
+        var payloadBytes = _requestPayload.ToByteArray();
 
         var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
         var endTime = isTimeBased ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
@@ -174,11 +170,7 @@ public class BenchmarkRunner(
 
         while (isTimeBased ? DateTime.UtcNow < endTime : i < messagesPerConnection)
         {
-            // 변경되는 필드만 업데이트
-            request.Sequence = i;
-            request.ClientTimestamp = Stopwatch.GetTimestamp();
-
-            using var packet = new ClientPacket(request);
+            using var packet = new ClientPacket("EchoRequest", payloadBytes);
 
             metricsCollector.RecordSent();
 
@@ -188,7 +180,7 @@ public class BenchmarkRunner(
                 using var response = await connector.RequestAsync(packet);
                 sw.Stop();
 
-                if (response.MsgId != "BenchmarkReply")
+                if (response.MsgId != "EchoReply")
                 {
                     Log.Warning("[Connection {ConnectionId}] Unexpected response: {MsgId}", connectionId, response.MsgId);
                 }
@@ -220,7 +212,7 @@ public class BenchmarkRunner(
         var endTime = isTimeBased ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
 
         // 동시 요청 수 제한 (backpressure) - 응답 크기에 따라 조절
-        var maxConcurrentRequests = responseSize switch
+        var maxConcurrentRequests = requestSize switch
         {
             > 32768 => 10,   // 32KB 이상: 10개
             > 8192 => 30,    // 8KB 이상: 30개
@@ -229,12 +221,8 @@ public class BenchmarkRunner(
         };
         var semaphore = new SemaphoreSlim(maxConcurrentRequests);
 
-        // 요청 객체 재사용
-        var request = new BenchmarkRequest
-        {
-            ResponseSize = responseSize,
-            Payload = _requestPayload
-        };
+        // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
+        var payloadBytes = _requestPayload.ToByteArray();
 
         // 메시지 전송 (Request with callback)
         var i = 0;
@@ -248,10 +236,7 @@ public class BenchmarkRunner(
 
             await semaphore.WaitAsync();
 
-            request.Sequence = i;
-            request.ClientTimestamp = Stopwatch.GetTimestamp();
-
-            var packet = new ClientPacket(request);
+            var packet = new ClientPacket("EchoRequest", payloadBytes);
             var seq = i;
             timestamps[seq] = Stopwatch.GetTimestamp();
             metricsCollector.RecordSent();
