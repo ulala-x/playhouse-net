@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Google.Protobuf;
-using PlayHouse.Benchmark.Shared.Proto;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
 using Serilog;
@@ -283,7 +282,8 @@ public class BenchmarkRunner(
     private async Task RunSendMode(ClientConnector connector, int connectionId)
     {
         var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
-        var payload = CreatePayloadBytes(requestSize);
+        // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
+        var payload = _requestPayload.ToByteArray();
         var timestamps = new ConcurrentDictionary<int, long>();
         var sequence = 0;
 
@@ -333,21 +333,6 @@ public class BenchmarkRunner(
         {
             connector.OnReceive -= OnReceiveHandler;
         }
-    }
-
-    /// <summary>
-    /// Creates raw byte payload for Echo mode (zero-copy)
-    /// </summary>
-    private static byte[] CreatePayloadBytes(int size)
-    {
-        if (size <= 0) return Array.Empty<byte>();
-
-        var payload = new byte[size];
-        for (int i = 0; i < payload.Length; i++)
-        {
-            payload[i] = (byte)(i % 256);
-        }
-        return payload;
     }
 }
 
