@@ -25,7 +25,7 @@ public class BenchmarkRunner(
     int stageIdOffset = 0,
     string stageName = "BenchStage",
     int durationSeconds = 10,  // Time-based test duration for Echo mode
-    int batchSize = 100)       // Number of connections to create per batch
+    int delayMs = 0)           // Delay between messages in milliseconds
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -49,15 +49,16 @@ public class BenchmarkRunner(
 
     public async Task RunAsync()
     {
+        var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
+
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
-        Log.Information("  Batch size: {BatchSize:N0}", batchSize);
 
-        if (mode == BenchmarkMode.Send)
+        if (isTimeBased)
         {
-            Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
-            Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
+            Log.Information("  Duration: {Duration:N0} seconds (time-based)", durationSeconds);
+            Log.Information("  Message size: {RequestSize:N0} bytes", requestSize);
         }
         else
         {
@@ -69,30 +70,12 @@ public class BenchmarkRunner(
 
         metricsCollector.Reset();
 
-        var tasks = new List<Task>();
-        var batches = (connections + batchSize - 1) / batchSize;
-
-        // 연결을 배치로 나누어 점진적으로 생성
-        for (int batch = 0; batch < batches; batch++)
+        // 모든 연결을 동시에 시작
+        var tasks = new Task[connections];
+        for (int i = 0; i < connections; i++)
         {
-            var start = batch * batchSize;
-            var end = Math.Min(start + batchSize, connections);
-
-            Log.Information("Connecting batch {Batch}/{Total} (connections {Start}-{End})",
-                batch + 1, batches, start + 1, end);
-
-            // 현재 배치의 연결 시작
-            for (int i = start; i < end; i++)
-            {
-                var connectionId = i;
-                tasks.Add(Task.Run(async () => await RunConnectionAsync(connectionId)));
-            }
-
-            // 배치 간 대기 (마지막 배치 제외)
-            if (batch < batches - 1)
-            {
-                await Task.Delay(500);
-            }
+            var connectionId = i;
+            tasks[i] = Task.Run(async () => await RunConnectionAsync(connectionId));
         }
 
         await Task.WhenAll(tasks);
@@ -161,7 +144,11 @@ public class BenchmarkRunner(
             Payload = _requestPayload
         };
 
-        for (int i = 0; i < messagesPerConnection; i++)
+        var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
+        var endTime = isTimeBased ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
+        var i = 0;
+
+        while (isTimeBased ? DateTime.UtcNow < endTime : i < messagesPerConnection)
         {
             // 변경되는 필드만 업데이트
             request.Sequence = i;
@@ -189,16 +176,24 @@ public class BenchmarkRunner(
                 Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
             }
 
-            // 콜백 처리
-            connector.MainThreadAction();
+            // 메시지 간 딜레이
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs);
+            }
+
+            i++;
         }
     }
 
     private async Task RunRequestCallbackMode(ClientConnector connector, int connectionId)
     {
         var receivedCount = 0;
+        var sentCount = 0;
         var timestamps = new ConcurrentDictionary<int, long>();
-        var tcs = new TaskCompletionSource();
+
+        var isTimeBased = messagesPerConnection == 0 && durationSeconds > 0;
+        var endTime = isTimeBased ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
 
         // 동시 요청 수 제한 (backpressure) - 응답 크기에 따라 조절
         var maxConcurrentRequests = responseSize switch
@@ -218,12 +213,12 @@ public class BenchmarkRunner(
         };
 
         // 메시지 전송 (Request with callback)
-        for (int i = 0; i < messagesPerConnection; i++)
+        var i = 0;
+        while (isTimeBased ? DateTime.UtcNow < endTime : i < messagesPerConnection)
         {
             // 동시 요청 수 제한을 위해 semaphore 대기
             while (semaphore.CurrentCount == 0)
             {
-                connector.MainThreadAction();
                 await Task.Delay(1);
             }
 
@@ -236,6 +231,7 @@ public class BenchmarkRunner(
             var seq = i;
             timestamps[seq] = Stopwatch.GetTimestamp();
             metricsCollector.RecordSent();
+            Interlocked.Increment(ref sentCount);
 
             connector.Request(packet, response =>
             {
@@ -247,34 +243,28 @@ public class BenchmarkRunner(
                 }
 
                 semaphore.Release();
-
-                var count = Interlocked.Increment(ref receivedCount);
-                if (count >= messagesPerConnection)
-                {
-                    tcs.TrySetResult();
-                }
+                Interlocked.Increment(ref receivedCount);
 
                 packet.Dispose();
             });
 
-            // 콜백 처리를 위해 주기적으로 호출
-            connector.MainThreadAction();
+            i++;
         }
 
         // 모든 응답 수신 대기 (응답 크기에 따라 타임아웃 조절)
         var overallTimeoutSec = responseSize > 32768 ? 60 : 30;
         var deadline = DateTime.UtcNow.AddSeconds(overallTimeoutSec);
+        var targetCount = isTimeBased ? sentCount : messagesPerConnection;
 
-        while (receivedCount < messagesPerConnection && DateTime.UtcNow < deadline)
+        while (receivedCount < targetCount && DateTime.UtcNow < deadline)
         {
-            connector.MainThreadAction();
             await Task.Delay(1);
         }
 
-        if (receivedCount < messagesPerConnection)
+        if (receivedCount < targetCount)
         {
             Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
-                connectionId, receivedCount, messagesPerConnection);
+                connectionId, receivedCount, targetCount);
         }
     }
 
@@ -322,20 +312,13 @@ public class BenchmarkRunner(
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
                 }
 
-                // 콜백 처리 (OnReceive 호출)
-                connector.MainThreadAction();
-
+                // ImmediateSynchronizationContext 사용으로 MainThreadAction() 불필요
                 // 서버 과부하 방지
                 await Task.Yield();
             }
 
-            // 남은 응답 처리를 위해 잠시 대기
-            var drainEnd = DateTime.UtcNow.AddMilliseconds(500);
-            while (DateTime.UtcNow < drainEnd)
-            {
-                connector.MainThreadAction();
-                await Task.Delay(10);
-            }
+            // 남은 응답 처리를 위해 잠시 대기 (ImmediateSynchronizationContext로 콜백 즉시 실행)
+            await Task.Delay(500);
         }
         finally
         {

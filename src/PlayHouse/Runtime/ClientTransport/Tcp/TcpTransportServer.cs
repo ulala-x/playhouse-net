@@ -189,6 +189,9 @@ public sealed class TcpTransportServer : ITransportServer
             if (_sessions.TryAdd(sessionId, session))
             {
                 _logger?.LogDebug("TCP session {SessionId} accepted", sessionId);
+                // Start I/O tasks AFTER registering to avoid race condition
+                // where messages are processed before session is findable
+                session.Start();
             }
             else
             {
