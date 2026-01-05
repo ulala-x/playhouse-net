@@ -23,7 +23,8 @@ public class SSEchoBenchmarkRunner(
     long targetStageId,
     string targetNid,
     ClientMetricsCollector metricsCollector,
-    int durationSeconds = 10)
+    int durationSeconds = 10,
+    int maxInFlight = 200)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -252,6 +253,7 @@ public class SSEchoBenchmarkRunner(
         var sequence = 0;
         var sentCount = 0;
         var receivedCount = 0;
+        var inFlight = 0;
 
         // OnReceive 이벤트 핸들러 등록 (서버의 SendToClient 응답 수신)
         void OnReceiveHandler(long stageId, string stageType, IPacket packet)
@@ -262,6 +264,7 @@ public class SSEchoBenchmarkRunner(
                 var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
                 metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0, ssElapsedTicks: 0);
                 Interlocked.Increment(ref receivedCount);
+                Interlocked.Decrement(ref inFlight);
             }
             packet.Dispose();
         }
@@ -272,6 +275,12 @@ public class SSEchoBenchmarkRunner(
         {
             while (DateTime.UtcNow < endTime)
             {
+                // In-flight 제한: 최대치에 도달하면 대기
+                while (inFlight >= maxInFlight)
+                {
+                    await Task.Yield(); // 콜백 실행 기회 제공
+                }
+
                 var seq = Interlocked.Increment(ref sequence);
                 timestamps[seq] = Stopwatch.GetTimestamp();
 
@@ -289,6 +298,7 @@ public class SSEchoBenchmarkRunner(
 
                 metricsCollector.RecordSent();
                 Interlocked.Increment(ref sentCount);
+                Interlocked.Increment(ref inFlight);
 
                 try
                 {
@@ -297,21 +307,19 @@ public class SSEchoBenchmarkRunner(
                 catch (Exception ex)
                 {
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
+                    Interlocked.Decrement(ref inFlight); // 전송 실패 시 카운트 복구
                 }
             }
 
-            // 모든 응답 수신 대기
-            var overallTimeoutSec = 60;
-            var deadline = DateTime.UtcNow.AddSeconds(overallTimeoutSec);
-
-            while (receivedCount < sentCount && DateTime.UtcNow < deadline)
+            // 모든 응답 수신 대기 (남은 in-flight 요청)
+            while (inFlight > 0)
             {
-                await Task.Delay(1);
+                await Task.Yield();
             }
 
             if (receivedCount < sentCount)
             {
-                Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
+                Log.Warning("[Connection {ConnectionId}] Incomplete responses (received: {Received}/{Total})",
                     connectionId, receivedCount, sentCount);
             }
         }

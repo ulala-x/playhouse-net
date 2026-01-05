@@ -86,6 +86,11 @@ var createStagesOnlyOption = new Option<bool>(
     description: "Only create stages without running benchmark (for setup)",
     getDefaultValue: () => false);
 
+var maxInFlightOption = new Option<int>(
+    name: "--max-inflight",
+    description: "Maximum in-flight requests (default: 200)",
+    getDefaultValue: () => 200);
+
 var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark Client")
 {
     serverOption,
@@ -103,7 +108,8 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark Client")
     targetNidOption,
     outputDirOption,
     labelOption,
-    createStagesOnlyOption
+    createStagesOnlyOption,
+    maxInFlightOption
 };
 
 rootCommand.SetHandler(async (context) =>
@@ -124,6 +130,7 @@ rootCommand.SetHandler(async (context) =>
     var outputDir = context.ParseResult.GetValueForOption(outputDirOption)!;
     var label = context.ParseResult.GetValueForOption(labelOption)!;
     var createStagesOnly = context.ParseResult.GetValueForOption(createStagesOnlyOption);
+    var maxInFlight = context.ParseResult.GetValueForOption(maxInFlightOption);
 
     if (createStagesOnly)
     {
@@ -131,7 +138,7 @@ rootCommand.SetHandler(async (context) =>
     }
     else
     {
-        await RunBenchmarkAsync(server, connections, duration, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
+        await RunBenchmarkAsync(server, connections, duration, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label, maxInFlight);
     }
 });
 
@@ -204,7 +211,8 @@ static async Task RunBenchmarkAsync(
     long targetStageId,
     string targetNid,
     string outputDir,
-    string label)
+    string label,
+    int maxInFlight)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -248,7 +256,7 @@ static async Task RunBenchmarkAsync(
     {
         // Only ss-echo mode is supported (old modes removed)
         await RunSSEchoBenchmarkAsync(host, port, connections, durationSeconds, requestSize, responseSizesStr,
-            commModeStr, callTypeStr, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
+            commModeStr, callTypeStr, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort, maxInFlight);
     }
     catch (Exception ex)
     {
@@ -278,7 +286,8 @@ static async Task RunSSEchoBenchmarkAsync(
     DateTime runTimestamp,
     string label,
     int httpPort,
-    int apiHttpPort)
+    int apiHttpPort,
+    int maxInFlight)
 {
     var responseSizes = responseSizesStr
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -302,7 +311,7 @@ static async Task RunSSEchoBenchmarkAsync(
     if (commModeStr.ToLower() == "all")
     {
         await RunAllCommModesAsync(host, port, connections, durationSeconds, requestSize, responseSizes,
-            callType, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
+            callType, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort, maxInFlight);
         return;
     }
 
@@ -364,7 +373,8 @@ static async Task RunSSEchoBenchmarkAsync(
             targetStageId: targetStageId,
             targetNid: targetNid,
             metricsCollector: clientMetricsCollector,
-            durationSeconds: durationSeconds);
+            durationSeconds: durationSeconds,
+            maxInFlight: maxInFlight);
 
         var startTime = DateTime.Now;
         await runner.RunAsync();
@@ -558,7 +568,8 @@ static async Task RunAllCommModesAsync(
     DateTime runTimestamp,
     string label,
     int httpPort,
-    int apiHttpPort)
+    int apiHttpPort,
+    int maxInFlight)
 {
     var commModes = new[]
     {
@@ -607,7 +618,8 @@ static async Task RunAllCommModesAsync(
                 targetStageId: targetStageId,
                 targetNid: targetNid,
                 metricsCollector: clientMetricsCollector,
-                durationSeconds: durationSeconds);
+                durationSeconds: durationSeconds,
+                maxInFlight: maxInFlight);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
