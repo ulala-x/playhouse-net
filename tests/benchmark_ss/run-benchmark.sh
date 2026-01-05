@@ -1,8 +1,20 @@
 #!/bin/bash
 
-# PlayHouse S2S Benchmark - All Modes Comparison
-# 사용법: ./run_benchmark.sh [connections] [duration]
-# 모든 모드(RequestAsync, RequestCallback, Send) x 모든 사이즈를 테스트하고 결과를 취합합니다.
+# PlayHouse S2S Benchmark - All Modes Comparison (전체 테스트)
+#
+# 목적: 모든 통신 모드 x 모든 페이로드 사이즈를 테스트하고 결과를 비교합니다.
+#       S2S 성능 비교 및 회귀 테스트에 사용합니다.
+#
+# 사용법: ./run-benchmark.sh [connections] [duration]
+#
+# 파라미터:
+#   connections  - 동시 연결 수 (기본: 10)
+#   duration     - 테스트 시간(초) (기본: 10)
+#
+# 테스트 통신 모드: RequestAsync, RequestCallback, Send
+# 페이로드 사이즈: 64, 256, 1024, 65536 bytes
+#
+# 참고: 특정 모드/사이즈만 빠르게 테스트하려면 run-single.sh를 사용하세요.
 
 set -e
 
