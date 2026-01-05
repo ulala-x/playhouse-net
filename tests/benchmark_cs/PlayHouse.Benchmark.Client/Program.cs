@@ -263,12 +263,11 @@ static async Task RunBenchmarkAsync(
                 host,
                 port,
                 connections,
-                effectiveMessages,
                 requestSize,
                 responseSize,
                 benchmarkMode,
                 clientMetricsCollector,
-                stageIdOffset,
+                stageIdOffset: stageIdOffset,
                 stageName: "BenchStage",
                 durationSeconds: effectiveDuration,
                 delayMs: delayMs);
@@ -506,8 +505,9 @@ static async Task RunAllModesAsync(
 
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
-            host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.RequestAsync, clientMetricsCollector, stageIdOffset,
+            host, port, connections, requestSize, responseSize,
+            BenchmarkMode.RequestAsync, clientMetricsCollector,
+            stageIdOffset: stageIdOffset,
             stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
         testIndex++;
 
@@ -551,8 +551,9 @@ static async Task RunAllModesAsync(
 
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
-            host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.RequestCallback, clientMetricsCollector, stageIdOffset,
+            host, port, connections, requestSize, responseSize,
+            BenchmarkMode.RequestCallback, clientMetricsCollector,
+            stageIdOffset: stageIdOffset,
             stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
         testIndex++;
 
@@ -596,8 +597,9 @@ static async Task RunAllModesAsync(
 
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
-            host, port, connections, messages, requestSize, responseSize,
-            BenchmarkMode.Send, clientMetricsCollector, stageIdOffset,
+            host, port, connections, requestSize, responseSize,
+            BenchmarkMode.Send, clientMetricsCollector,
+            stageIdOffset: stageIdOffset,
             stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
         testIndex++;
 

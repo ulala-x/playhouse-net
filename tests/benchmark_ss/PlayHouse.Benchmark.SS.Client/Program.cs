@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Text;
 using System.Text.Json;
 using PlayHouse.Benchmark.SS.Client;
 using PlayHouse.Benchmark.SS.Shared.Proto;
@@ -17,13 +16,10 @@ var connectionsOption = new Option<int>(
     description: "Number of concurrent connections",
     getDefaultValue: () => 1);
 
-var messagesOption = new Option<int?>(
-    name: "--messages",
-    description: "Messages per connection (cannot be used with --duration)");
-
-var durationOption = new Option<int?>(
+var durationOption = new Option<int>(
     name: "--duration",
-    description: "Duration in seconds (cannot be used with --messages)");
+    description: "Duration in seconds",
+    getDefaultValue: () => 10);
 
 var requestSizeOption = new Option<int>(
     name: "--request-size",
@@ -94,7 +90,6 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark Client")
 {
     serverOption,
     connectionsOption,
-    messagesOption,
     durationOption,
     requestSizeOption,
     responseSizeOption,
@@ -115,7 +110,6 @@ rootCommand.SetHandler(async (context) =>
 {
     var server = context.ParseResult.GetValueForOption(serverOption)!;
     var connections = context.ParseResult.GetValueForOption(connectionsOption);
-    var messages = context.ParseResult.GetValueForOption(messagesOption);
     var duration = context.ParseResult.GetValueForOption(durationOption);
     var requestSize = context.ParseResult.GetValueForOption(requestSizeOption);
     var responseSizes = context.ParseResult.GetValueForOption(responseSizeOption)!;
@@ -137,28 +131,7 @@ rootCommand.SetHandler(async (context) =>
     }
     else
     {
-        // Validate mutual exclusivity of --messages and --duration
-        if (messages.HasValue && duration.HasValue)
-        {
-            Console.WriteLine("Error: --messages and --duration cannot be used together.");
-            Console.WriteLine("  Use --messages for message-count based test");
-            Console.WriteLine("  Use --duration for time-based test");
-            return;
-        }
-
-        if (!messages.HasValue && !duration.HasValue)
-        {
-            Console.WriteLine("Error: Either --messages or --duration must be specified.");
-            Console.WriteLine("  Use --messages <count> for message-count based test");
-            Console.WriteLine("  Use --duration <seconds> for time-based test");
-            return;
-        }
-
-        var isTimeBased = duration.HasValue;
-        var effectiveMessages = messages ?? 0;
-        var effectiveDuration = duration ?? 0;
-
-        await RunBenchmarkAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
+        await RunBenchmarkAsync(server, connections, duration, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
     }
 });
 
@@ -219,9 +192,7 @@ static async Task CreateStagesAsync(
 static async Task RunBenchmarkAsync(
     string server,
     int connections,
-    int messages,
     int durationSeconds,
-    bool isTimeBased,
     int requestSize,
     string responseSizesStr,
     string mode,
@@ -275,165 +246,9 @@ static async Task RunBenchmarkAsync(
 
     try
     {
-        // ss-echo 모드 처리
-        if (mode.ToLowerInvariant() == "ss-echo")
-        {
-            await RunSSEchoBenchmarkAsync(host, port, connections, messages, durationSeconds, requestSize, responseSizesStr,
-                commModeStr, callTypeStr, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
-            return;
-        }
-
-        // 모드 파싱
-        var benchmarkMode = mode.ToLowerInvariant() switch
-        {
-            "play-to-api" => BenchmarkMode.PlayToApi,
-            "play-to-stage" => BenchmarkMode.PlayToStage,
-            "stage-to-api" => BenchmarkMode.StageToApi,
-            "stage-to-stage" => BenchmarkMode.StageToStage,
-            "api-to-api" => BenchmarkMode.ApiToApi,
-            "all" => BenchmarkMode.All,
-            _ => BenchmarkMode.All
-        };
-
-        // 배너 출력
-        Log.Information("================================================================================");
-        Log.Information("PlayHouse Server-to-Server Benchmark Client");
-        Log.Information("================================================================================");
-        Log.Information("Server: {Host}:{Port}", host, port);
-        Log.Information("HTTP API: {Host}:{HttpPort}", host, httpPort);
-        Log.Information("Mode: {Mode}", benchmarkMode);
-        Log.Information("Connections: {Connections:N0}", connections);
-        if (isTimeBased)
-        {
-            Log.Information("Duration: {Duration:N0} seconds", durationSeconds);
-        }
-        else
-        {
-            Log.Information("Messages per connection: {Messages:N0}", messages);
-            Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
-        }
-        Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
-        Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
-
-        if (benchmarkMode == BenchmarkMode.PlayToStage)
-        {
-            Log.Information("Target Stage ID: {TargetStageId}", targetStageId);
-            Log.Information("Target NID: {TargetNid}", targetNid);
-        }
-
-        if (!string.IsNullOrEmpty(label))
-            Log.Information("Label: {Label}", label);
-        Log.Information("Output: {OutputDir}", Path.GetFullPath(outputDir));
-        Log.Information("================================================================================");
-
-        // 신규 내부 반복 모드 처리
-        if (benchmarkMode == BenchmarkMode.All ||
-            benchmarkMode == BenchmarkMode.StageToApi ||
-            benchmarkMode == BenchmarkMode.StageToStage ||
-            benchmarkMode == BenchmarkMode.ApiToApi)
-        {
-            await RunInternalBenchmarkAsync(host, port, messages, requestSize, responseSizesStr,
-                benchmarkMode, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
-            return;
-        }
-
-        // 구 방식 (PlayToApi, PlayToStage)
-        var serverMetricsClient = new ServerMetricsClient(host, httpPort);
-
-        // CommMode별 결과 저장 (PlayToApi 모드는 두 모드 분리, 나머지는 단일 모드)
-        var commModes = benchmarkMode == BenchmarkMode.PlayToApi
-            ? new[] { (SSCommMode.RequestAsync, "RequestAsync"), (SSCommMode.RequestCallback, "RequestCallback") }
-            : new[] { (SSCommMode.RequestAsync, "Default") };
-
-        var resultsByCommMode = new Dictionary<string, List<BenchmarkResult>>();
-
-        foreach (var (commMode, commModeName) in commModes)
-        {
-            if (benchmarkMode == BenchmarkMode.PlayToApi)
-            {
-                Log.Information("");
-                Log.Information("================================================================================");
-                Log.Information(">>> Testing: {Mode} ({CommMode}) <<<", benchmarkMode, commModeName);
-                Log.Information("================================================================================");
-            }
-
-            var allResults = new List<BenchmarkResult>();
-
-            for (int i = 0; i < responseSizes.Length; i++)
-            {
-                var responseSize = responseSizes[i];
-
-                if (responseSizes.Length > 1)
-                {
-                    Log.Information("");
-                    Log.Information(">>> Test {Current}/{Total}: Response Size = {ResponseSize:N0} bytes <<<",
-                        i + 1, responseSizes.Length, responseSize);
-                }
-
-                // 메트릭 수집기
-                var clientMetricsCollector = new ClientMetricsCollector();
-
-                // 서버 메트릭 리셋
-                Log.Information("Resetting server metrics...");
-                await serverMetricsClient.ResetMetricsAsync();
-                await Task.Delay(500);
-
-                // 벤치마크 실행
-                var runner = new BenchmarkRunner(
-                    host,
-                    port,
-                    connections,
-                    messages,
-                    requestSize,
-                    responseSize,
-                    benchmarkMode,
-                    stageId,
-                    targetStageId,
-                    targetNid,
-                    clientMetricsCollector,
-                    commMode);
-
-                var startTime = DateTime.Now;
-                await runner.RunAsync();
-                var endTime = DateTime.Now;
-                var totalElapsed = (endTime - startTime).TotalSeconds;
-
-                Log.Information("Waiting for server metrics to stabilize...");
-                await Task.Delay(1000);
-
-                // 결과 조회
-                var serverMetrics = await serverMetricsClient.GetMetricsAsync();
-                var clientMetrics = clientMetricsCollector.GetMetrics();
-
-                // 결과 저장
-                allResults.Add(new BenchmarkResult
-                {
-                    ResponseSize = responseSize,
-                    TotalElapsedSeconds = totalElapsed,
-                    ServerMetrics = serverMetrics,
-                    ClientMetrics = clientMetrics
-                });
-            }
-
-            resultsByCommMode[commModeName] = allResults;
-        }
-
-        // 통합 결과 출력
-        Log.Information("");
-        if (benchmarkMode == BenchmarkMode.PlayToApi && resultsByCommMode.Count == 2)
-        {
-            LogResultsWithCommModeComparison(connections, messages, requestSize, responseSizes, benchmarkMode, resultsByCommMode);
-        }
-        else
-        {
-            LogResults(connections, messages, requestSize, responseSizes, benchmarkMode, resultsByCommMode.Values.First());
-        }
-
-        // 결과 파일 저장
-        await SaveResultsToFile(outputDir, runTimestamp, label, connections, messages, requestSize, benchmarkMode, resultsByCommMode.Values.First());
-
-        // 서버 종료 요청
-        await ShutdownServersAsync(host, httpPort, apiHttpPort, benchmarkMode);
+        // Only ss-echo mode is supported (old modes removed)
+        await RunSSEchoBenchmarkAsync(host, port, connections, durationSeconds, requestSize, responseSizesStr,
+            commModeStr, callTypeStr, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
     }
     catch (Exception ex)
     {
@@ -445,524 +260,6 @@ static async Task RunBenchmarkAsync(
     }
 }
 
-static void LogResults(
-    int connections,
-    int messages,
-    int requestSize,
-    int[] responseSizes,
-    BenchmarkMode mode,
-    List<BenchmarkResult> results)
-{
-    Log.Information("================================================================================");
-    Log.Information("Benchmark Results Summary");
-    Log.Information("================================================================================");
-    Log.Information("Config: {Connections:N0} CCU x {Messages:N0} msg, Request: {RequestSize:N0}B, Mode: {Mode}",
-        connections, messages, requestSize, mode);
-    Log.Information("");
-
-    // 테이블 헤더
-    Log.Information("{RespSize,8} | {Elapsed,6} | {SrvTPS,9} | {SrvP99,8} | {SrvMem,8} | {SrvGC,10} | {SsP99,8} | {E2eP99,8} | {CliTPS,9} | {CliMem,8} | {CliGC,10}",
-        "RespSize", "Time", "Srv TPS", "Srv P99", "Srv Mem", "Srv GC", "SS P99", "E2E P99", "Cli TPS", "Cli Mem", "Cli GC");
-    Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9} | {D10} | {D11}",
-        "--------", "------", "---------", "--------", "--------", "----------", "--------", "--------", "---------", "--------", "----------");
-
-    foreach (var result in results)
-    {
-        var srvTps = result.ServerMetrics?.ThroughputMessagesPerSec ?? 0;
-        var srvP99 = result.ServerMetrics?.LatencyP99Ms ?? 0;
-        var srvMem = result.ServerMetrics?.MemoryAllocatedMb ?? 0;
-        var srvGc = result.ServerMetrics != null
-            ? $"{result.ServerMetrics.GcGen0Count}/{result.ServerMetrics.GcGen1Count}/{result.ServerMetrics.GcGen2Count}"
-            : "-";
-        var ssP99 = result.ClientMetrics.SsLatencyP99Ms;
-        var e2eP99 = result.ClientMetrics.E2eLatencyP99Ms;
-        var cliTps = result.ClientMetrics.ThroughputMessagesPerSec;
-        var cliMem = result.ClientMetrics.MemoryAllocatedMB;
-        var cliGc = $"{result.ClientMetrics.GcGen0Count}/{result.ClientMetrics.GcGen1Count}/{result.ClientMetrics.GcGen2Count}";
-
-        Log.Information("{RespSize,7:N0}B | {Elapsed,5:F2}s | {SrvTPS,8:N0}/s | {SrvP99,6:F2}ms | {SrvMem,6:F1}MB | {SrvGC,10} | {SsP99,6:F2}ms | {E2eP99,6:F2}ms | {CliTPS,8:N0}/s | {CliMem,6:F1}MB | {CliGC,10}",
-            result.ResponseSize, result.TotalElapsedSeconds, srvTps, srvP99, srvMem, srvGc, ssP99, e2eP99, cliTps, cliMem, cliGc);
-    }
-
-    Log.Information("");
-
-    // 각 테스트별 상세 결과
-    foreach (var result in results)
-    {
-        Log.Information("--------------------------------------------------------------------------------");
-        Log.Information("[Response Size: {ResponseSize:N0} bytes]", result.ResponseSize);
-        Log.Information("  Elapsed: {Elapsed:F2}s", result.TotalElapsedSeconds);
-
-        if (result.ServerMetrics != null)
-        {
-            Log.Information("  Server:");
-            Log.Information("    Processed   : {Processed:N0} messages", result.ServerMetrics.ProcessedMessages);
-            Log.Information("    Throughput  : {TPS:N0} msg/s ({MBps:F2} MB/s)",
-                result.ServerMetrics.ThroughputMessagesPerSec, result.ServerMetrics.ThroughputMbPerSec);
-            Log.Information("    Latency     : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
-                result.ServerMetrics.LatencyMeanMs, result.ServerMetrics.LatencyP50Ms,
-                result.ServerMetrics.LatencyP95Ms, result.ServerMetrics.LatencyP99Ms);
-            Log.Information("    Memory      : {Memory:F2} MB, GC: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}",
-                result.ServerMetrics.MemoryAllocatedMb,
-                result.ServerMetrics.GcGen0Count, result.ServerMetrics.GcGen1Count, result.ServerMetrics.GcGen2Count);
-        }
-        else
-        {
-            Log.Warning("  Server: Not available");
-        }
-
-        Log.Information("  Client:");
-        Log.Information("    Sent/Recv   : {Sent:N0} / {Recv:N0} messages",
-            result.ClientMetrics.SentMessages, result.ClientMetrics.ReceivedMessages);
-        Log.Information("    SS Latency  : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
-            result.ClientMetrics.SsLatencyMeanMs, result.ClientMetrics.SsLatencyP50Ms,
-            result.ClientMetrics.SsLatencyP95Ms, result.ClientMetrics.SsLatencyP99Ms);
-        Log.Information("    E2E Latency : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
-            result.ClientMetrics.E2eLatencyMeanMs, result.ClientMetrics.E2eLatencyP50Ms,
-            result.ClientMetrics.E2eLatencyP95Ms, result.ClientMetrics.E2eLatencyP99Ms);
-        Log.Information("    Throughput  : {TPS:N0} msg/s",
-            result.ClientMetrics.ThroughputMessagesPerSec);
-        Log.Information("    Memory      : {Memory:F2} MB, GC: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}",
-            result.ClientMetrics.MemoryAllocatedMB,
-            result.ClientMetrics.GcGen0Count, result.ClientMetrics.GcGen1Count, result.ClientMetrics.GcGen2Count);
-    }
-
-    Log.Information("================================================================================");
-}
-
-/// <summary>
-/// RequestAsync vs RequestCallback 비교 결과 출력
-/// </summary>
-static void LogResultsWithCommModeComparison(
-    int connections,
-    int messages,
-    int requestSize,
-    int[] responseSizes,
-    BenchmarkMode mode,
-    Dictionary<string, List<BenchmarkResult>> resultsByCommMode)
-{
-    Log.Information("================================================================================");
-    Log.Information("Benchmark Results: Stage → API (RequestAsync vs RequestCallback)");
-    Log.Information("================================================================================");
-    Log.Information("Config: {Connections:N0} CCU x {Messages:N0} msg/conn = {Total:N0} total",
-        connections, messages, connections * messages);
-    Log.Information("        Request: {RequestSize:N0}B, Response: {ResponseSizes}",
-        requestSize, string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
-    Log.Information("");
-
-    var asyncResults = resultsByCommMode.GetValueOrDefault("RequestAsync") ?? new List<BenchmarkResult>();
-    var callbackResults = resultsByCommMode.GetValueOrDefault("RequestCallback") ?? new List<BenchmarkResult>();
-
-    // 비교 테이블 헤더
-    Log.Information("[Stage → API Comparison]");
-    Log.Information("{RespSize,8} | {Mode,16} | {Time,6} | {CliTPS,9} | {E2eP99,8} | {SsP99,8} | {SrvMem,8} | {SrvGC,10} | {CliMem,8} | {CliGC,10}",
-        "RespSize", "Mode", "Time", "Cli TPS", "E2E P99", "SS P99", "Srv Mem", "Srv GC", "Cli Mem", "Cli GC");
-    Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9} | {D10}",
-        "--------", "----------------", "------", "---------", "--------", "--------", "--------", "----------", "--------", "----------");
-
-    for (int i = 0; i < responseSizes.Length; i++)
-    {
-        var asyncResult = i < asyncResults.Count ? asyncResults[i] : null;
-        var callbackResult = i < callbackResults.Count ? callbackResults[i] : null;
-        var responseSize = responseSizes[i];
-
-        if (asyncResult != null)
-        {
-            var cliTps = asyncResult.ClientMetrics.ThroughputMessagesPerSec;
-            var e2eP99 = asyncResult.ClientMetrics.E2eLatencyP99Ms;
-            var ssP99 = asyncResult.ClientMetrics.SsLatencyP99Ms;
-            var srvMem = asyncResult.ServerMetrics?.MemoryAllocatedMb ?? 0;
-            var srvGc = asyncResult.ServerMetrics != null
-                ? $"{asyncResult.ServerMetrics.GcGen0Count}/{asyncResult.ServerMetrics.GcGen1Count}/{asyncResult.ServerMetrics.GcGen2Count}"
-                : "-";
-            var cliMem = asyncResult.ClientMetrics.MemoryAllocatedMB;
-            var cliGc = $"{asyncResult.ClientMetrics.GcGen0Count}/{asyncResult.ClientMetrics.GcGen1Count}/{asyncResult.ClientMetrics.GcGen2Count}";
-
-            Log.Information("{RespSize,7:N0}B | {Mode,16} | {Time,5:F2}s | {CliTPS,8:N0}/s | {E2eP99,6:F2}ms | {SsP99,6:F2}ms | {SrvMem,6:F0}MB | {SrvGC,10} | {CliMem,6:F0}MB | {CliGC,10}",
-                responseSize, "RequestAsync", asyncResult.TotalElapsedSeconds, cliTps, e2eP99, ssP99, srvMem, srvGc, cliMem, cliGc);
-        }
-
-        if (callbackResult != null)
-        {
-            var cliTps = callbackResult.ClientMetrics.ThroughputMessagesPerSec;
-            var e2eP99 = callbackResult.ClientMetrics.E2eLatencyP99Ms;
-            var ssP99 = callbackResult.ClientMetrics.SsLatencyP99Ms;
-            var srvMem = callbackResult.ServerMetrics?.MemoryAllocatedMb ?? 0;
-            var srvGc = callbackResult.ServerMetrics != null
-                ? $"{callbackResult.ServerMetrics.GcGen0Count}/{callbackResult.ServerMetrics.GcGen1Count}/{callbackResult.ServerMetrics.GcGen2Count}"
-                : "-";
-            var cliMem = callbackResult.ClientMetrics.MemoryAllocatedMB;
-            var cliGc = $"{callbackResult.ClientMetrics.GcGen0Count}/{callbackResult.ClientMetrics.GcGen1Count}/{callbackResult.ClientMetrics.GcGen2Count}";
-
-            Log.Information("{RespSize,7:N0}B | {Mode,16} | {Time,5:F2}s | {CliTPS,8:N0}/s | {E2eP99,6:F2}ms | {SsP99,6:F2}ms | {SrvMem,6:F0}MB | {SrvGC,10} | {CliMem,6:F0}MB | {CliGC,10}",
-                responseSize, "RequestCallback", callbackResult.TotalElapsedSeconds, cliTps, e2eP99, ssP99, srvMem, srvGc, cliMem, cliGc);
-        }
-
-        // 비교 계산 (동일 응답 크기에 대해)
-        if (asyncResult != null && callbackResult != null)
-        {
-            var asyncCliTps = asyncResult.ClientMetrics.ThroughputMessagesPerSec;
-            var callbackCliTps = callbackResult.ClientMetrics.ThroughputMessagesPerSec;
-            var tpsDiff = asyncCliTps > 0 ? ((callbackCliTps - asyncCliTps) / asyncCliTps) * 100 : 0;
-
-            var asyncE2eP99 = asyncResult.ClientMetrics.E2eLatencyP99Ms;
-            var callbackE2eP99 = callbackResult.ClientMetrics.E2eLatencyP99Ms;
-            var latDiff = asyncE2eP99 > 0 ? ((callbackE2eP99 - asyncE2eP99) / asyncE2eP99) * 100 : 0;
-
-            var asyncSrvMem = asyncResult.ServerMetrics?.MemoryAllocatedMb ?? 0;
-            var callbackSrvMem = callbackResult.ServerMetrics?.MemoryAllocatedMb ?? 0;
-            var srvMemDiff = asyncSrvMem > 0 ? ((callbackSrvMem - asyncSrvMem) / asyncSrvMem) * 100 : 0;
-
-            var asyncCliMem = asyncResult.ClientMetrics.MemoryAllocatedMB;
-            var callbackCliMem = callbackResult.ClientMetrics.MemoryAllocatedMB;
-            var cliMemDiff = asyncCliMem > 0 ? ((callbackCliMem - asyncCliMem) / asyncCliMem) * 100 : 0;
-
-            Log.Information("{Empty,8} | {Comparison,16} | {Empty2,6} | {TpsDiff,10:+0.0;-0.0}% | {LatDiff,8:+0.0;-0.0}% | {Empty3,8} | {SrvMemDiff,8:+0.0;-0.0}% | {Empty4,10} | {CliMemDiff,8:+0.0;-0.0}% |",
-                "", "→ Callback diff", "", tpsDiff, latDiff, "", srvMemDiff, "", cliMemDiff);
-        }
-
-        if (i < responseSizes.Length - 1)
-        {
-            Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9} | {D10}",
-                "--------", "----------------", "------", "---------", "--------", "--------", "--------", "----------", "--------", "----------");
-        }
-    }
-
-    Log.Information("================================================================================");
-}
-
-/// <summary>
-/// 신규 내부 반복 벤치마크 실행 (서버 측에서 반복)
-/// </summary>
-static async Task RunInternalBenchmarkAsync(
-    string host,
-    int port,
-    int iterations,
-    int requestSize,
-    string responseSizesStr,
-    BenchmarkMode mode,
-    long targetStageId,
-    string targetNid,
-    string outputDir,
-    DateTime runTimestamp,
-    string label,
-    int httpPort,
-    int apiHttpPort)
-{
-    var responseSizes = responseSizesStr
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Select(s => int.TryParse(s, out var v) ? v : 256)
-        .ToArray();
-
-    if (responseSizes.Length == 0)
-    {
-        responseSizes = new[] { 256 };
-    }
-
-    // 테스트할 조합 결정
-    var testCases = new List<(SSCallType CallType, SSCommMode CommMode, string Name)>();
-
-    if (mode == BenchmarkMode.All || mode == BenchmarkMode.StageToApi)
-    {
-        // Stage → API 테스트만 실행
-        testCases.Add((SSCallType.StageToApi, SSCommMode.RequestAsync, "Stage → API (RequestAsync)"));
-        testCases.Add((SSCallType.StageToApi, SSCommMode.RequestCallback, "Stage → API (RequestCallback)"));
-    }
-
-    var allResults = new Dictionary<string, List<StartSSBenchmarkReply>>();
-
-    foreach (var (callType, commMode, name) in testCases)
-    {
-        Log.Information("");
-        Log.Information(">>> Testing: {Name} <<<", name);
-
-        var results = new List<StartSSBenchmarkReply>();
-
-        foreach (var responseSize in responseSizes)
-        {
-            if (responseSizes.Length > 1)
-            {
-                Log.Information("  Response Size: {ResponseSize:N0} bytes", responseSize);
-            }
-
-            var reply = await BenchmarkRunner.RunInternalBenchmarkAsync(
-                host, port, iterations, requestSize, responseSize,
-                callType, commMode, 1000, targetStageId, targetNid, "api-2");
-
-            if (reply != null)
-            {
-                results.Add(reply);
-                Log.Information("  Success: {Success}/{Total}, TPS: {TPS:N0}/s, P99: {P99:F2}ms",
-                    reply.SuccessCount, reply.TotalIterations, reply.ThroughputPerSec, reply.LatencyP99Ms);
-            }
-            else
-            {
-                Log.Warning("  Failed to execute benchmark");
-            }
-
-            await Task.Delay(500); // 잠시 대기
-        }
-
-        allResults[name] = results;
-    }
-
-    // 비교 결과 출력
-    Log.Information("");
-    LogInternalBenchmarkComparison(iterations, requestSize, responseSizes, allResults);
-
-    // 결과 파일 저장
-    await SaveInternalBenchmarkResults(outputDir, runTimestamp, label, iterations, requestSize, allResults);
-
-    // 서버 종료 요청
-    await ShutdownServersAsync(host, httpPort, apiHttpPort, mode);
-}
-
-/// <summary>
-/// 내부 반복 벤치마크 비교 결과 출력
-/// </summary>
-static void LogInternalBenchmarkComparison(
-    int iterations,
-    int requestSize,
-    int[] responseSizes,
-    Dictionary<string, List<StartSSBenchmarkReply>> allResults)
-{
-    Log.Information("================================================================================");
-    Log.Information("Server-to-Server Benchmark Results");
-    Log.Information("================================================================================");
-    Log.Information("Config: {Iterations:N0} iterations, Request: {RequestSize:N0}B", iterations, requestSize);
-    Log.Information("");
-
-    // 호출 유형별로 그룹화
-    var groups = new Dictionary<string, List<(string Name, List<StartSSBenchmarkReply> Results)>>();
-    groups["Stage → API"] = new();
-    groups["Stage → Stage"] = new();
-    groups["API → API"] = new();
-
-    foreach (var (name, results) in allResults)
-    {
-        if (name.StartsWith("Stage → API"))
-            groups["Stage → API"].Add((name, results));
-        else if (name.StartsWith("Stage → Stage"))
-            groups["Stage → Stage"].Add((name, results));
-        else if (name.StartsWith("API → API"))
-            groups["API → API"].Add((name, results));
-    }
-
-    foreach (var (groupName, tests) in groups)
-    {
-        if (tests.Count == 0) continue;
-
-        Log.Information("[{GroupName}]", groupName);
-
-        if (tests.Count == 2 && responseSizes.Length == 1)
-        {
-            // RequestAsync vs RequestCallback 비교 (단일 응답 크기)
-            var requestAsync = tests.FirstOrDefault(t => t.Name.Contains("RequestAsync")).Results?.FirstOrDefault();
-            var requestCallback = tests.FirstOrDefault(t => t.Name.Contains("RequestCallback")).Results?.FirstOrDefault();
-
-            if (requestAsync != null && requestCallback != null)
-            {
-                var tpsDiff = ((requestCallback.ThroughputPerSec - requestAsync.ThroughputPerSec) / requestAsync.ThroughputPerSec) * 100;
-                var p99Diff = ((requestCallback.LatencyP99Ms - requestAsync.LatencyP99Ms) / requestAsync.LatencyP99Ms) * 100;
-
-                Log.Information("               | RequestAsync | RequestCallback | Diff");
-                Log.Information("---------------|--------------|-----------------|-------");
-                Log.Information("Throughput     | {RA,9:N0}/s | {RC,12:N0}/s | {Diff,6:+0.0;-0.0}%",
-                    requestAsync.ThroughputPerSec, requestCallback.ThroughputPerSec, tpsDiff);
-                Log.Information("P99 Latency    | {RA,9:F2}ms | {RC,12:F2}ms | {Diff,6:+0.0;-0.0}%",
-                    requestAsync.LatencyP99Ms, requestCallback.LatencyP99Ms, p99Diff);
-            }
-        }
-        else
-        {
-            // 여러 응답 크기 또는 단일 모드
-            foreach (var (name, results) in tests)
-            {
-                Log.Information("  {Name}:", name);
-                foreach (var r in results)
-                {
-                    Log.Information("    TPS: {TPS,8:N0}/s, P99: {P99,6:F2}ms",
-                        r.ThroughputPerSec, r.LatencyP99Ms);
-                }
-            }
-        }
-
-        Log.Information("");
-    }
-
-    Log.Information("================================================================================");
-}
-
-/// <summary>
-/// 내부 반복 벤치마크 결과 파일 저장
-/// </summary>
-static async Task SaveInternalBenchmarkResults(
-    string outputDir,
-    DateTime runTimestamp,
-    string label,
-    int iterations,
-    int requestSize,
-    Dictionary<string, List<StartSSBenchmarkReply>> allResults)
-{
-    var timestamp = runTimestamp.ToString("yyyyMMdd_HHmmss");
-    var labelSuffix = string.IsNullOrEmpty(label) ? "" : $"_{label}";
-
-    // JSON 결과 파일
-    var jsonFileName = $"benchmark_ss_internal_{timestamp}{labelSuffix}.json";
-    var jsonPath = Path.Combine(outputDir, jsonFileName);
-
-    var jsonResult = new
-    {
-        Timestamp = runTimestamp.ToString("yyyy-MM-dd HH:mm:ss"),
-        Label = label,
-        Config = new
-        {
-            Iterations = iterations,
-            RequestSizeBytes = requestSize
-        },
-        Results = allResults.Select(kv => new
-        {
-            TestName = kv.Key,
-            Results = kv.Value.Select(r => new
-            {
-                CallType = r.CallType.ToString(),
-                CommMode = r.CommMode.ToString(),
-                TotalIterations = r.TotalIterations,
-                SuccessCount = r.SuccessCount,
-                FailedCount = r.FailedCount,
-                ElapsedSeconds = r.ElapsedSeconds,
-                ThroughputPerSec = r.ThroughputPerSec,
-                LatencyMeanMs = r.LatencyMeanMs,
-                LatencyP50Ms = r.LatencyP50Ms,
-                LatencyP95Ms = r.LatencyP95Ms,
-                LatencyP99Ms = r.LatencyP99Ms
-            }).ToArray()
-        }).ToArray()
-    };
-
-    var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-    await File.WriteAllTextAsync(jsonPath, System.Text.Json.JsonSerializer.Serialize(jsonResult, jsonOptions));
-
-    Log.Information("");
-    Log.Information("Results saved to:");
-    Log.Information("  JSON: {JsonPath}", jsonPath);
-}
-
-static async Task SaveResultsToFile(
-    string outputDir,
-    DateTime runTimestamp,
-    string label,
-    int connections,
-    int messages,
-    int requestSize,
-    BenchmarkMode mode,
-    List<BenchmarkResult> results)
-{
-    var timestamp = runTimestamp.ToString("yyyyMMdd_HHmmss");
-    var labelSuffix = string.IsNullOrEmpty(label) ? "" : $"_{label}";
-
-    // 1. JSON 결과 파일 (모든 테스트)
-    var jsonFileName = $"benchmark_ss_{timestamp}{labelSuffix}.json";
-    var jsonPath = Path.Combine(outputDir, jsonFileName);
-
-    var jsonResult = new
-    {
-        Timestamp = runTimestamp.ToString("yyyy-MM-dd HH:mm:ss"),
-        Label = label,
-        Config = new
-        {
-            Connections = connections,
-            MessagesPerConnection = messages,
-            TotalMessages = connections * messages,
-            RequestSizeBytes = requestSize,
-            Mode = mode.ToString()
-        },
-        Results = results.Select(r => new
-        {
-            ResponseSizeBytes = r.ResponseSize,
-            TotalElapsedSeconds = r.TotalElapsedSeconds,
-            Server = r.ServerMetrics != null ? new
-            {
-                ProcessedMessages = r.ServerMetrics.ProcessedMessages,
-                ThroughputMsgPerSec = r.ServerMetrics.ThroughputMessagesPerSec,
-                ThroughputMBPerSec = r.ServerMetrics.ThroughputMbPerSec,
-                LatencyMeanMs = r.ServerMetrics.LatencyMeanMs,
-                LatencyP50Ms = r.ServerMetrics.LatencyP50Ms,
-                LatencyP95Ms = r.ServerMetrics.LatencyP95Ms,
-                LatencyP99Ms = r.ServerMetrics.LatencyP99Ms,
-                MemoryAllocatedMB = r.ServerMetrics.MemoryAllocatedMb,
-                GcGen0 = r.ServerMetrics.GcGen0Count,
-                GcGen1 = r.ServerMetrics.GcGen1Count,
-                GcGen2 = r.ServerMetrics.GcGen2Count
-            } : null,
-            Client = new
-            {
-                SentMessages = r.ClientMetrics.SentMessages,
-                ReceivedMessages = r.ClientMetrics.ReceivedMessages,
-                SsLatencyMeanMs = r.ClientMetrics.SsLatencyMeanMs,
-                SsLatencyP50Ms = r.ClientMetrics.SsLatencyP50Ms,
-                SsLatencyP95Ms = r.ClientMetrics.SsLatencyP95Ms,
-                SsLatencyP99Ms = r.ClientMetrics.SsLatencyP99Ms,
-                E2eLatencyMeanMs = r.ClientMetrics.E2eLatencyMeanMs,
-                E2eLatencyP50Ms = r.ClientMetrics.E2eLatencyP50Ms,
-                E2eLatencyP95Ms = r.ClientMetrics.E2eLatencyP95Ms,
-                E2eLatencyP99Ms = r.ClientMetrics.E2eLatencyP99Ms,
-                ThroughputMsgPerSec = r.ClientMetrics.ThroughputMessagesPerSec,
-                MemoryAllocatedMB = r.ClientMetrics.MemoryAllocatedMB,
-                GcGen0 = r.ClientMetrics.GcGen0Count,
-                GcGen1 = r.ClientMetrics.GcGen1Count,
-                GcGen2 = r.ClientMetrics.GcGen2Count
-            }
-        }).ToArray()
-    };
-
-    var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
-    await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(jsonResult, jsonOptions));
-
-    // 2. CSV 요약 파일 (누적)
-    var csvPath = Path.Combine(outputDir, "benchmark_ss_summary.csv");
-    var csvExists = File.Exists(csvPath);
-
-    var csvBuilder = new StringBuilder();
-    if (!csvExists)
-    {
-        // 헤더 추가
-        csvBuilder.AppendLine("Timestamp,Label,CCU,MsgPerConn,TotalMsg,ReqSize,RespSize,Mode,ElapsedSec," +
-            "Srv_Processed,Srv_TPS,Srv_MBps,Srv_LatMean,Srv_LatP50,Srv_LatP95,Srv_LatP99,Srv_MemMB,Srv_GC0,Srv_GC1,Srv_GC2," +
-            "Cli_Sent,Cli_Recv,Cli_SsMean,Cli_SsP50,Cli_SsP95,Cli_SsP99,Cli_E2eMean,Cli_E2eP50,Cli_E2eP95,Cli_E2eP99,Cli_TPS,Cli_MemMB,Cli_GC0,Cli_GC1,Cli_GC2");
-    }
-
-    foreach (var r in results)
-    {
-        csvBuilder.Append($"{runTimestamp:yyyy-MM-dd HH:mm:ss},{label},{connections},{messages},{connections * messages},{requestSize},{r.ResponseSize},{mode},{r.TotalElapsedSeconds:F2},");
-
-        if (r.ServerMetrics != null)
-        {
-            csvBuilder.Append($"{r.ServerMetrics.ProcessedMessages},{r.ServerMetrics.ThroughputMessagesPerSec:F0},{r.ServerMetrics.ThroughputMbPerSec:F2}," +
-                $"{r.ServerMetrics.LatencyMeanMs:F2},{r.ServerMetrics.LatencyP50Ms:F2},{r.ServerMetrics.LatencyP95Ms:F2},{r.ServerMetrics.LatencyP99Ms:F2}," +
-                $"{r.ServerMetrics.MemoryAllocatedMb:F2},{r.ServerMetrics.GcGen0Count},{r.ServerMetrics.GcGen1Count},{r.ServerMetrics.GcGen2Count},");
-        }
-        else
-        {
-            csvBuilder.Append(",,,,,,,,,,");
-        }
-
-        csvBuilder.AppendLine($"{r.ClientMetrics.SentMessages},{r.ClientMetrics.ReceivedMessages}," +
-            $"{r.ClientMetrics.SsLatencyMeanMs:F2},{r.ClientMetrics.SsLatencyP50Ms:F2},{r.ClientMetrics.SsLatencyP95Ms:F2},{r.ClientMetrics.SsLatencyP99Ms:F2}," +
-            $"{r.ClientMetrics.E2eLatencyMeanMs:F2},{r.ClientMetrics.E2eLatencyP50Ms:F2},{r.ClientMetrics.E2eLatencyP95Ms:F2},{r.ClientMetrics.E2eLatencyP99Ms:F2}," +
-            $"{r.ClientMetrics.ThroughputMessagesPerSec:F0},{r.ClientMetrics.MemoryAllocatedMB:F2}," +
-            $"{r.ClientMetrics.GcGen0Count},{r.ClientMetrics.GcGen1Count},{r.ClientMetrics.GcGen2Count}");
-    }
-
-    await File.AppendAllTextAsync(csvPath, csvBuilder.ToString());
-
-    Log.Information("");
-    Log.Information("Results saved to:");
-    Log.Information("  Log:  {LogPath}", Path.Combine(outputDir, $"benchmark_ss_{timestamp}{labelSuffix}.log"));
-    Log.Information("  JSON: {JsonPath}", jsonPath);
-    Log.Information("  CSV:  {CsvPath}", csvPath);
-}
-
 /// <summary>
 /// SS Echo 벤치마크 실행 (TriggerSSEchoRequest 사용)
 /// </summary>
@@ -970,7 +267,6 @@ static async Task RunSSEchoBenchmarkAsync(
     string host,
     int port,
     int connections,
-    int iterations,
     int durationSeconds,
     int requestSize,
     string responseSizesStr,
@@ -1005,7 +301,7 @@ static async Task RunSSEchoBenchmarkAsync(
     // --comm-mode all인 경우 모든 모드 테스트
     if (commModeStr.ToLower() == "all")
     {
-        await RunAllCommModesAsync(host, port, connections, iterations, durationSeconds, requestSize, responseSizes,
+        await RunAllCommModesAsync(host, port, connections, durationSeconds, requestSize, responseSizes,
             callType, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort);
         return;
     }
@@ -1026,8 +322,7 @@ static async Task RunSSEchoBenchmarkAsync(
     Log.Information("Server: {Host}:{Port}", host, port);
     Log.Information("HTTP API: {Host}:{HttpPort}", host, httpPort);
     Log.Information("Connections: {Connections:N0}", connections);
-    Log.Information("Iterations per connection: {Iterations:N0}", iterations);
-    Log.Information("Total messages: {TotalMessages:N0}", connections * iterations);
+    Log.Information("Duration: {Duration:N0} seconds", durationSeconds);
     Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
     Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
     Log.Information("CommMode: {CommMode}", commMode);
@@ -1059,18 +354,17 @@ static async Task RunSSEchoBenchmarkAsync(
 
         // 벤치마크 실행
         var runner = new SSEchoBenchmarkRunner(
-            host,
-            port,
-            connections,
-            iterations,
-            requestSize,
-            responseSize,
-            commMode,
-            callType,
-            targetStageId,
-            targetNid,
-            clientMetricsCollector,
-            durationSeconds);
+            serverHost: host,
+            serverPort: port,
+            connections: connections,
+            requestSize: requestSize,
+            responseSize: responseSize,
+            commMode: commMode,
+            callType: callType,
+            targetStageId: targetStageId,
+            targetNid: targetNid,
+            metricsCollector: clientMetricsCollector,
+            durationSeconds: durationSeconds);
 
         var startTime = DateTime.Now;
         await runner.RunAsync();
@@ -1100,10 +394,10 @@ static async Task RunSSEchoBenchmarkAsync(
 
     // 비교 결과 출력
     Log.Information("");
-    LogSSEchoResults(connections, iterations, requestSize, responseSizes, commMode, callType, allResults);
+    LogSSEchoResults(connections, durationSeconds, requestSize, responseSizes, commMode, callType, allResults);
 
     // 결과 파일 저장
-    await SaveSSEchoResults(outputDir, runTimestamp, label, connections, iterations, requestSize,
+    await SaveSSEchoResults(outputDir, runTimestamp, label, connections, durationSeconds, requestSize,
         commMode, callType, targetStageId, targetNid, allResults);
 
     // 서버 종료 요청 (비활성화 - 벤치마크 스크립트에서 처리)
@@ -1116,7 +410,7 @@ static async Task RunSSEchoBenchmarkAsync(
 /// </summary>
 static void LogSSEchoResults(
     int connections,
-    int iterations,
+    int durationSeconds,
     int requestSize,
     int[] responseSizes,
     SSCommMode commMode,
@@ -1126,8 +420,8 @@ static void LogSSEchoResults(
     Log.Information("================================================================================");
     Log.Information("SS Echo Benchmark Results");
     Log.Information("================================================================================");
-    Log.Information("Config: {Connections:N0} connections x {Iterations:N0} iterations = {Total:N0} messages",
-        connections, iterations, connections * iterations);
+    Log.Information("Config: {Connections:N0} connections, {Duration:N0} seconds duration",
+        connections, durationSeconds);
     Log.Information("        Request: {RequestSize:N0}B, CommMode: {CommMode}, CallType: {CallType}",
         requestSize, commMode, callType);
     Log.Information("");
@@ -1185,7 +479,7 @@ static async Task SaveSSEchoResults(
     DateTime runTimestamp,
     string label,
     int connections,
-    int iterations,
+    int durationSeconds,
     int requestSize,
     SSCommMode commMode,
     SSCallType callType,
@@ -1207,8 +501,7 @@ static async Task SaveSSEchoResults(
         Config = new
         {
             Connections = connections,
-            IterationsPerConnection = iterations,
-            TotalMessages = connections * iterations,
+            DurationSeconds = durationSeconds,
             RequestSizeBytes = requestSize,
             CommMode = commMode.ToString(),
             CallType = callType.ToString(),
@@ -1249,52 +542,12 @@ static async Task SaveSSEchoResults(
 }
 
 /// <summary>
-/// 서버 종료 요청
-/// </summary>
-static async Task ShutdownServersAsync(string host, int httpPort, int apiHttpPort, BenchmarkMode mode)
-{
-    Log.Information("");
-    Log.Information("Sending shutdown requests to servers...");
-
-    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-
-    // PlayServer 종료 요청 (모든 모드에서 필요)
-    try
-    {
-        await httpClient.PostAsync($"http://{host}:{httpPort}/benchmark/shutdown", null);
-        Log.Information("  PlayServer shutdown initiated (port {Port})", httpPort);
-    }
-    catch (Exception)
-    {
-        // 서버가 이미 종료되었거나 연결 실패 - 무시
-    }
-
-    // ApiServer 종료 요청 (PlayToApi, StageToApi, ApiToApi 모드에서 필요)
-    if (mode == BenchmarkMode.PlayToApi ||
-        mode == BenchmarkMode.StageToApi ||
-        mode == BenchmarkMode.ApiToApi ||
-        mode == BenchmarkMode.All)
-    {
-        try
-        {
-            await httpClient.PostAsync($"http://{host}:{apiHttpPort}/benchmark/shutdown", null);
-            Log.Information("  ApiServer shutdown initiated (port {Port})", apiHttpPort);
-        }
-        catch (Exception)
-        {
-            // 서버가 이미 종료되었거나 연결 실패 - 무시
-        }
-    }
-}
-
-/// <summary>
 /// 모든 CommMode에 대해 벤치마크 실행 (RequestAsync, RequestCallback, Send)
 /// </summary>
 static async Task RunAllCommModesAsync(
     string host,
     int port,
     int connections,
-    int iterations,
     int durationSeconds,
     int requestSize,
     int[] responseSizes,
@@ -1322,15 +575,7 @@ static async Task RunAllCommModesAsync(
     Log.Information("================================================================================");
     Log.Information("Server: {Host}:{Port}", host, port);
     Log.Information("Connections: {Connections:N0}", connections);
-    if (durationSeconds > 0)
-    {
-        Log.Information("Duration: {Duration}s per mode/size", durationSeconds);
-    }
-    else
-    {
-        Log.Information("Iterations per connection: {Iterations:N0}", iterations);
-        Log.Information("Total messages per mode: {TotalMessages:N0}", connections * iterations);
-    }
+    Log.Information("Duration: {Duration:N0} seconds per mode/size", durationSeconds);
     Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
     Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
     Log.Information("Modes: {Modes}", string.Join(", ", commModes.Select(m => m.Item2)));
@@ -1352,18 +597,17 @@ static async Task RunAllCommModesAsync(
             var clientMetricsCollector = new ClientMetricsCollector();
 
             var runner = new SSEchoBenchmarkRunner(
-                host,
-                port,
-                connections,
-                durationSeconds > 0 ? 0 : iterations,  // duration mode면 0으로 설정
-                requestSize,
-                responseSize,
-                commMode,
-                callType,
-                targetStageId,
-                targetNid,
-                clientMetricsCollector,
-                durationSeconds);  // duration 전달
+                serverHost: host,
+                serverPort: port,
+                connections: connections,
+                requestSize: requestSize,
+                responseSize: responseSize,
+                commMode: commMode,
+                callType: callType,
+                targetStageId: targetStageId,
+                targetNid: targetNid,
+                metricsCollector: clientMetricsCollector,
+                durationSeconds: durationSeconds);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -1392,10 +636,10 @@ static async Task RunAllCommModesAsync(
 
     // 비교 결과 출력
     Log.Information("");
-    LogAllModesComparison(connections, iterations, durationSeconds, requestSize, responseSizes, callType, allResults);
+    LogAllModesComparison(connections, durationSeconds, requestSize, responseSizes, callType, allResults);
 
     // 결과 저장
-    await SaveAllModesResults(outputDir, runTimestamp, label, connections, iterations, durationSeconds, requestSize,
+    await SaveAllModesResults(outputDir, runTimestamp, label, connections, durationSeconds, requestSize,
         callType, allResults);
 }
 
@@ -1404,7 +648,6 @@ static async Task RunAllCommModesAsync(
 /// </summary>
 static void LogAllModesComparison(
     int connections,
-    int iterations,
     int durationSeconds,
     int requestSize,
     int[] responseSizes,
@@ -1414,16 +657,8 @@ static void LogAllModesComparison(
     Log.Information("================================================================================");
     Log.Information("SS Echo Benchmark Results - All Modes Comparison");
     Log.Information("================================================================================");
-    if (durationSeconds > 0)
-    {
-        Log.Information("Config: {Connections:N0} CCU, {Duration}s per mode, CallType: {CallType}",
-            connections, durationSeconds, callType);
-    }
-    else
-    {
-        Log.Information("Config: {Connections:N0} CCU x {Iterations:N0} msg/conn = {Total:N0} total, CallType: {CallType}",
-            connections, iterations, connections * iterations, callType);
-    }
+    Log.Information("Config: {Connections:N0} CCU, {Duration:N0}s per mode, CallType: {CallType}",
+        connections, durationSeconds, callType);
     Log.Information("");
 
     // 테이블 헤더
@@ -1467,7 +702,6 @@ static async Task SaveAllModesResults(
     DateTime runTimestamp,
     string label,
     int connections,
-    int iterations,
     int durationSeconds,
     int requestSize,
     SSCallType callType,
@@ -1486,7 +720,6 @@ static async Task SaveAllModesResults(
         Config = new
         {
             Connections = connections,
-            IterationsPerConnection = iterations,
             DurationSeconds = durationSeconds,
             RequestSizeBytes = requestSize,
             CallType = callType.ToString()
@@ -1511,17 +744,6 @@ static async Task SaveAllModesResults(
     Log.Information("");
     Log.Information("Results saved to:");
     Log.Information("  JSON: {JsonPath}", jsonPath);
-}
-
-/// <summary>
-/// 단일 벤치마크 테스트 결과
-/// </summary>
-internal class BenchmarkResult
-{
-    public int ResponseSize { get; set; }
-    public double TotalElapsedSeconds { get; set; }
-    public ServerMetricsResponse? ServerMetrics { get; set; }
-    public ClientMetrics ClientMetrics { get; set; } = new();
 }
 
 /// <summary>

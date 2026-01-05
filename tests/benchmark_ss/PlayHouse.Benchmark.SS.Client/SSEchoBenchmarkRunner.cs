@@ -10,13 +10,12 @@ using ClientPacket = PlayHouse.Connector.Protocol.Packet;
 namespace PlayHouse.Benchmark.SS.Client;
 
 /// <summary>
-/// SS Echo 벤치마크 시나리오를 실행합니다 (TriggerSSEchoRequest 사용).
+/// SS Echo 벤치마크 시나리오를 실행합니다 (duration 기반, TriggerSSEchoRequest 사용).
 /// </summary>
 public class SSEchoBenchmarkRunner(
     string serverHost,
     int serverPort,
     int connections,
-    int iterationsPerConnection,
     int requestSize,
     int responseSize,
     SSCommMode commMode,
@@ -24,7 +23,7 @@ public class SSEchoBenchmarkRunner(
     long targetStageId,
     string targetNid,
     ClientMetricsCollector metricsCollector,
-    int durationSeconds = 0)
+    int durationSeconds = 10)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -68,17 +67,7 @@ public class SSEchoBenchmarkRunner(
     {
         Log.Information("[{Time:HH:mm:ss}] Starting SS Echo benchmark...", DateTime.Now);
         Log.Information("  Connections: {Connections:N0}", connections);
-
-        if (durationSeconds > 0)
-        {
-            Log.Information("  Duration: {Duration:N0} seconds (time-based)", durationSeconds);
-        }
-        else
-        {
-            Log.Information("  Iterations per connection: {Iterations:N0}", iterationsPerConnection);
-            Log.Information("  Total messages: {Total:N0}", connections * iterationsPerConnection);
-        }
-
+        Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
         Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
         Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
         Log.Information("  CommMode: {CommMode}", commMode);
@@ -206,16 +195,11 @@ public class SSEchoBenchmarkRunner(
             return;
         }
 
-        // Time-based vs Iteration-based
-        var endTime = durationSeconds > 0 ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
-        var maxIterations = durationSeconds > 0 ? int.MaxValue : iterationsPerConnection;
+        // Duration-based
+        var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
 
-        for (int i = 0; i < maxIterations; i++)
+        for (int i = 0; DateTime.UtcNow < endTime; i++)
         {
-            // Time-based 모드에서 시간 초과 체크
-            if (durationSeconds > 0 && DateTime.UtcNow >= endTime)
-                break;
-
             // 요청 객체 생성 (매번 새로 생성)
             var request = new TriggerSSEchoRequest
             {
@@ -263,10 +247,11 @@ public class SSEchoBenchmarkRunner(
     /// </summary>
     private async Task RunSendModeAsync(ClientConnector connector, int connectionId, long actualTargetStageId)
     {
-        var endTime = durationSeconds > 0 ? DateTime.UtcNow.AddSeconds(durationSeconds) : DateTime.MaxValue;
-        var maxIterations = durationSeconds > 0 ? int.MaxValue : iterationsPerConnection;
+        var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
         var timestamps = new System.Collections.Concurrent.ConcurrentDictionary<int, long>();
         var sequence = 0;
+        var sentCount = 0;
+        var receivedCount = 0;
 
         // OnReceive 이벤트 핸들러 등록 (서버의 SendToClient 응답 수신)
         void OnReceiveHandler(long stageId, string stageType, IPacket packet)
@@ -276,6 +261,7 @@ public class SSEchoBenchmarkRunner(
                 // 시퀀스 번호로 타임스탬프 매칭 (간단히 최근 것 사용)
                 var elapsed = Stopwatch.GetTimestamp() - timestamps.Values.FirstOrDefault();
                 metricsCollector.RecordReceived(elapsed > 0 ? elapsed : 0, ssElapsedTicks: 0);
+                Interlocked.Increment(ref receivedCount);
             }
             packet.Dispose();
         }
@@ -284,12 +270,8 @@ public class SSEchoBenchmarkRunner(
 
         try
         {
-            for (int i = 0; i < maxIterations; i++)
+            while (DateTime.UtcNow < endTime)
             {
-                // Time-based 모드에서 시간 초과 체크
-                if (durationSeconds > 0 && DateTime.UtcNow >= endTime)
-                    break;
-
                 var seq = Interlocked.Increment(ref sequence);
                 timestamps[seq] = Stopwatch.GetTimestamp();
 
@@ -306,6 +288,7 @@ public class SSEchoBenchmarkRunner(
                 using var packet = new ClientPacket(request);
 
                 metricsCollector.RecordSent();
+                Interlocked.Increment(ref sentCount);
 
                 try
                 {
@@ -315,11 +298,22 @@ public class SSEchoBenchmarkRunner(
                 {
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
                 }
-
             }
 
-            // 남은 응답 처리를 위해 잠시 대기
-            await Task.Delay(500);
+            // 모든 응답 수신 대기
+            var overallTimeoutSec = 60;
+            var deadline = DateTime.UtcNow.AddSeconds(overallTimeoutSec);
+
+            while (receivedCount < sentCount && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(1);
+            }
+
+            if (receivedCount < sentCount)
+            {
+                Log.Warning("[Connection {ConnectionId}] Timeout waiting for responses (received: {Received}/{Total})",
+                    connectionId, receivedCount, sentCount);
+            }
         }
         finally
         {
