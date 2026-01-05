@@ -33,6 +33,22 @@ public class SSEchoBenchmarkRunner(
     private readonly CountdownEvent _connectionCountdown = new(connections);
     private readonly ManualResetEventSlim _allConnectionsReady = new(false);
 
+    // 연결 진행 카운터
+    private int _connectedCount;
+    private int _failedCount;
+    private readonly object _progressLock = new();
+
+    private void UpdateConnectionProgress()
+    {
+        lock (_progressLock)
+        {
+            var connected = _connectedCount;
+            var failed = _failedCount;
+            var failedStr = failed > 0 ? $", failed: {failed}" : "";
+            Console.Write($"\r  Connecting: {connected:N0}/{connections:N0}{failedStr}    ");
+        }
+    }
+
     /// <summary>
     /// 지정된 크기의 페이로드를 생성합니다. (압축 방지를 위해 패턴으로 채움)
     /// </summary>
@@ -88,6 +104,10 @@ public class SSEchoBenchmarkRunner(
 
         await Task.WhenAll(tasks);
 
+        // 진행 상황 줄 마무리 후 최종 결과
+        Console.WriteLine();
+        Log.Information("  Connected: {Connected:N0}/{Total:N0} (failed: {Failed:N0})",
+            _connectedCount, connections, _failedCount);
         Log.Information("[{Time:HH:mm:ss}] SS Echo benchmark completed.", DateTime.Now);
     }
 
@@ -106,7 +126,8 @@ public class SSEchoBenchmarkRunner(
         var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchmarkStage");
         if (!connected)
         {
-            Log.Warning("[Connection {ConnectionId}] Failed to connect to stage {StageId}.", connectionId, stageId);
+            Interlocked.Increment(ref _failedCount);
+            UpdateConnectionProgress();
             // 카운트다운에서 신호 (다른 연결이 무한 대기하지 않도록)
             if (callType == SSCallType.StageToStage)
             {
@@ -120,13 +141,15 @@ public class SSEchoBenchmarkRunner(
         {
             using (var authPacket = ClientPacket.Empty("Authenticate"))
             {
-                var authReply = await connector.AuthenticateAsync(authPacket);
-                Log.Debug("[Connection {ConnectionId}] Authentication succeeded. Reply: {MsgId}", connectionId, authReply.MsgId);
+                await connector.AuthenticateAsync(authPacket);
+                Interlocked.Increment(ref _connectedCount);
+                UpdateConnectionProgress();
             }
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Error(ex, "[Connection {ConnectionId}] Authentication failed", connectionId);
+            Interlocked.Increment(ref _failedCount);
+            UpdateConnectionProgress();
             connector.Disconnect();
             if (callType == SSCallType.StageToStage)
             {
@@ -139,6 +162,7 @@ public class SSEchoBenchmarkRunner(
         if (callType == SSCallType.StageToStage)
         {
             Log.Debug("[Connection {ConnectionId}] Signaling connection ready...", connectionId);
+            // Stage→Stage에서는 connectionCountdown 신호를 별도로 보냄
             _connectionCountdown.Signal();
 
             // 비동기 대기
