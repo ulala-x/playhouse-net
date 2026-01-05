@@ -64,6 +64,11 @@ var delayMsOption = new Option<int>(
     description: "Delay between messages in milliseconds (0 = no delay)",
     getDefaultValue: () => 0);
 
+var maxInFlightOption = new Option<int>(
+    name: "--max-inflight",
+    description: "Maximum in-flight requests (default: 200)",
+    getDefaultValue: () => 200);
+
 var rootCommand = new RootCommand("PlayHouse Benchmark Client")
 {
     serverOption,
@@ -77,7 +82,8 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Client")
     outputDirOption,
     labelOption,
     connectOnlyOption,
-    delayMsOption
+    delayMsOption,
+    maxInFlightOption
 };
 
 rootCommand.SetHandler(async (context) =>
@@ -94,6 +100,7 @@ rootCommand.SetHandler(async (context) =>
     var label = context.ParseResult.GetValueForOption(labelOption)!;
     var connectOnly = context.ParseResult.GetValueForOption(connectOnlyOption);
     var delayMs = context.ParseResult.GetValueForOption(delayMsOption);
+    var maxInFlight = context.ParseResult.GetValueForOption(maxInFlightOption);
 
     if (connectOnly)
     {
@@ -122,7 +129,7 @@ rootCommand.SetHandler(async (context) =>
         int? messagesValue = messages;
         int? durationValue = duration;
 
-        await RunBenchmarkAsync(server, connections, messagesValue, durationValue, requestSize, responseSizes, mode, httpPort, outputDir, label, delayMs);
+        await RunBenchmarkAsync(server, connections, messagesValue, durationValue, requestSize, responseSizes, mode, httpPort, outputDir, label, delayMs, maxInFlight);
     }
 });
 
@@ -139,7 +146,8 @@ static async Task RunBenchmarkAsync(
     int httpPort,
     string outputDir,
     string label,
-    int delayMs)
+    int delayMs,
+    int maxInFlight)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -189,7 +197,7 @@ static async Task RunBenchmarkAsync(
         // "all" 모드 처리
         if (mode.ToLowerInvariant() == "all")
         {
-            await RunAllModesAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, delayMs);
+            await RunAllModesAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, delayMs, maxInFlight);
             return;
         }
 
@@ -270,7 +278,8 @@ static async Task RunBenchmarkAsync(
                 stageIdOffset: stageIdOffset,
                 stageName: "BenchStage",
                 durationSeconds: effectiveDuration,
-                delayMs: delayMs);
+                delayMs: delayMs,
+                maxInFlight: maxInFlight);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -431,7 +440,8 @@ static async Task RunAllModesAsync(
     string outputDir,
     string label,
     DateTime runTimestamp,
-    int delayMs)
+    int delayMs,
+    int maxInFlight)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -508,7 +518,7 @@ static async Task RunAllModesAsync(
             host, port, connections, requestSize, responseSize,
             BenchmarkMode.RequestAsync, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
+            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs, maxInFlight: maxInFlight);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -554,7 +564,7 @@ static async Task RunAllModesAsync(
             host, port, connections, requestSize, responseSize,
             BenchmarkMode.RequestCallback, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
+            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs, maxInFlight: maxInFlight);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -600,7 +610,7 @@ static async Task RunAllModesAsync(
             host, port, connections, requestSize, responseSize,
             BenchmarkMode.Send, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
+            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs, maxInFlight: maxInFlight);
         testIndex++;
 
         var startTime = DateTime.Now;
