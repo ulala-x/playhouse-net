@@ -5,17 +5,18 @@
 # 목적: 특정 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
 #       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
 #
-# 사용법: ./run-single.sh <mode> <size> [connections] [duration]
+# 사용법: ./run-single.sh <mode> <size> [connections] [duration] [max-inflight]
 #
 # 파라미터:
 #   mode         - 테스트 모드 (필수): request-async, request-callback, send
 #   size         - 페이로드 크기 (필수, bytes): 64, 1024, 65536 등
 #   connections  - 동시 연결 수 (선택, 기본: 10)
 #   duration     - 테스트 시간(초) (선택, 기본: 10)
+#   max-inflight - 최대 동시 요청 수 (선택, 기본: 200)
 #
 # 예시:
 #   ./run-single.sh request-async 1024
-#   ./run-single.sh send 65536 100 30
+#   ./run-single.sh send 65536 100 30 500
 #
 # 참고: 모든 모드/사이즈를 비교 테스트하려면 run-benchmark.sh를 사용하세요.
 
@@ -45,6 +46,7 @@ MODE=$1
 SIZE=$2
 CONNECTIONS=${3:-10}
 DURATION=${4:-10}
+MAX_INFLIGHT=${5:-200}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
@@ -67,6 +69,7 @@ echo "  Mode: $MODE"
 echo "  Payload size: $SIZE bytes (Echo: request=response)"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s"
+echo "  Max in-flight: $MAX_INFLIGHT"
 echo "================================================================================"
 echo ""
 
@@ -115,9 +118,10 @@ dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark
     --connections $CONNECTIONS \
     --mode $MODE \
     --duration $DURATION \
-    --request-size $SIZE \
+    --message-size $SIZE \
     --response-size $SIZE \
-    --http-port $HTTP_PORT
+    --http-port $HTTP_PORT \
+    --max-inflight $MAX_INFLIGHT
 
 # 정리
 echo ""

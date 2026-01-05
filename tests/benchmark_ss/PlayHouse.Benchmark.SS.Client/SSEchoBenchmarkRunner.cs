@@ -16,8 +16,7 @@ public class SSEchoBenchmarkRunner(
     string serverHost,
     int serverPort,
     int connections,
-    int requestSize,
-    int responseSize,
+    int messageSize,
     SSCommMode commMode,
     SSCallType callType,
     long targetStageId,
@@ -27,7 +26,7 @@ public class SSEchoBenchmarkRunner(
     int maxInFlight = 200)
 {
     // 재사용 버퍼
-    private readonly ByteString _requestPayload = CreatePayload(requestSize);
+    private readonly ByteString _requestPayload = CreatePayload(messageSize);
 
     // 연결 동기화용 카운트다운 (Stage→Stage에서 모든 연결이 완료된 후 메시지 전송 시작)
     private readonly CountdownEvent _connectionCountdown = new(connections);
@@ -69,8 +68,7 @@ public class SSEchoBenchmarkRunner(
         Log.Information("[{Time:HH:mm:ss}] Starting SS Echo benchmark...", DateTime.Now);
         Log.Information("  Connections: {Connections:N0}", connections);
         Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
-        Log.Information("  Request size: {RequestSize:N0} bytes", requestSize);
-        Log.Information("  Response size: {ResponseSize:N0} bytes", responseSize);
+        Log.Information("  Message size: {MessageSize:N0} bytes (Echo: request=response)", messageSize);
         Log.Information("  CommMode: {CommMode}", commMode);
         Log.Information("  CallType: {CallType}", callType);
 
