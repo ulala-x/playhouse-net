@@ -1,8 +1,23 @@
 #!/bin/bash
 
-# PlayHouse Benchmark - Duration Based Test
-# 사용법: ./run_duration_benchmark.sh [connections] [duration]
-# 각 모드(RequestAsync, RequestCallback, Send)를 순차적으로 실행하여 duration 기반으로 테스트합니다.
+# PlayHouse Benchmark - Single Test (단일 테스트)
+#
+# 목적: 특정 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
+#       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
+#
+# 사용법: ./run-single.sh <mode> <size> [connections] [duration]
+#
+# 파라미터:
+#   mode         - 테스트 모드 (필수): request-async, request-callback, send
+#   size         - 페이로드 크기 (필수, bytes): 64, 1024, 65536 등
+#   connections  - 동시 연결 수 (선택, 기본: 10)
+#   duration     - 테스트 시간(초) (선택, 기본: 10)
+#
+# 예시:
+#   ./run-single.sh request-async 1024
+#   ./run-single.sh send 65536 100 30
+#
+# 참고: 모든 모드/사이즈를 비교 테스트하려면 run-benchmark.sh를 사용하세요.
 
 set -e
 
@@ -10,26 +25,48 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# 기본값
-CONNECTIONS=${1:-100}
-DURATION=${2:-10}
+# 파라미터 검증
+if [ -z "$1" ] || [ -z "$2" ]; then
+    echo "사용법: $0 <mode> <size> [connections] [duration]"
+    echo ""
+    echo "파라미터:"
+    echo "  mode        - 테스트 모드 (필수): request-async, request-callback, send"
+    echo "  size        - 페이로드 크기 (필수, bytes)"
+    echo "  connections - 동시 연결 수 (선택, 기본: 10)"
+    echo "  duration    - 테스트 시간(초) (선택, 기본: 10)"
+    echo ""
+    echo "예시:"
+    echo "  $0 request-async 1024"
+    echo "  $0 send 65536 100 30"
+    exit 1
+fi
+
+MODE=$1
+SIZE=$2
+CONNECTIONS=${3:-10}
+DURATION=${4:-10}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
-# Echo 페이로드 크기 (배열)
-PAYLOAD_SIZES=(64 256 1024 65536 131072)
-
-# 테스트 모드
-MODES=("request-async" "request-callback" "send")
+# Mode 검증
+case "$MODE" in
+    request-async|request-callback|send)
+        ;;
+    *)
+        echo "Error: Invalid mode '$MODE'"
+        echo "Valid modes: request-async, request-callback, send"
+        exit 1
+        ;;
+esac
 
 echo "================================================================================"
-echo "PlayHouse Benchmark - Duration Based Test"
+echo "PlayHouse Benchmark - Single Test"
 echo "================================================================================"
 echo "Configuration:"
+echo "  Mode: $MODE"
+echo "  Payload size: $SIZE bytes (Echo: request=response)"
 echo "  Connections: $CONNECTIONS"
-echo "  Duration: ${DURATION}s per mode"
-echo "  Modes: ${MODES[@]}"
-echo "  Payload sizes: ${PAYLOAD_SIZES[*]} bytes (Echo: request=response)"
+echo "  Duration: ${DURATION}s"
 echo "================================================================================"
 echo ""
 
@@ -69,42 +106,18 @@ done
 
 echo "[3/4] Server started (PID: $SERVER_PID)"
 
-# 각 모드별로 벤치마크 실행
-echo "[4/4] Running benchmarks..."
+# 벤치마크 실행
+echo "[4/4] Running benchmark..."
 echo ""
 
-for MODE in "${MODES[@]}"; do
-    echo "================================================================================"
-    echo "Running benchmark: mode=$MODE"
-    echo "================================================================================"
-
-    for SIZE in "${PAYLOAD_SIZES[@]}"; do
-        echo ""
-        echo ">>> Echo test: ${SIZE} bytes (request=${SIZE}, response=${SIZE}) <<<"
-
-        dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark.Client.csproj" -c Release -- \
-            --server 127.0.0.1:$SERVER_PORT \
-            --connections $CONNECTIONS \
-            --mode $MODE \
-            --duration $DURATION \
-            --request-size $SIZE \
-            --response-size $SIZE \
-            --http-port $HTTP_PORT
-
-        # 테스트 간 간격
-        sleep 1
-    done
-
-    echo ""
-    echo "Completed: $MODE"
-    echo ""
-
-    # 모드 간 간격 (서버 안정화)
-    if [ "$MODE" != "${MODES[-1]}" ]; then
-        echo "Waiting for server stabilization..."
-        sleep 2
-    fi
-done
+dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark.Client.csproj" -c Release -- \
+    --server 127.0.0.1:$SERVER_PORT \
+    --connections $CONNECTIONS \
+    --mode $MODE \
+    --duration $DURATION \
+    --request-size $SIZE \
+    --response-size $SIZE \
+    --http-port $HTTP_PORT
 
 # 정리
 echo ""
@@ -115,5 +128,5 @@ sleep 1
 
 echo ""
 echo "================================================================================"
-echo "Duration-based benchmark completed"
+echo "Benchmark completed"
 echo "================================================================================"
