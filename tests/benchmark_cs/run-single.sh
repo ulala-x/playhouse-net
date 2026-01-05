@@ -28,17 +28,18 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 파라미터 검증
 if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "사용법: $0 <mode> <size> [connections] [duration]"
+    echo "사용법: $0 <mode> <size> [connections] [duration] [max-inflight]"
     echo ""
     echo "파라미터:"
-    echo "  mode        - 테스트 모드 (필수): request-async, request-callback, send"
-    echo "  size        - 페이로드 크기 (필수, bytes)"
-    echo "  connections - 동시 연결 수 (선택, 기본: 10)"
-    echo "  duration    - 테스트 시간(초) (선택, 기본: 10)"
+    echo "  mode         - 테스트 모드 (필수): request-async, request-callback, send"
+    echo "  size         - 페이로드 크기 (필수, bytes)"
+    echo "  connections  - 동시 연결 수 (선택, 기본: 10)"
+    echo "  duration     - 테스트 시간(초) (선택, 기본: 10)"
+    echo "  max-inflight - 최대 동시 요청 수 (선택, 기본: 200)"
     echo ""
     echo "예시:"
     echo "  $0 request-async 1024"
-    echo "  $0 send 65536 100 30"
+    echo "  $0 send 65536 100 30 500"
     exit 1
 fi
 
