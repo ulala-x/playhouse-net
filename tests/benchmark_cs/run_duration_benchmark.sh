@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 기본값
-CONNECTIONS=${1:-10000}
+CONNECTIONS=${1:-100}
 DURATION=${2:-10}
 SERVER_PORT=16110
 HTTP_PORT=5080

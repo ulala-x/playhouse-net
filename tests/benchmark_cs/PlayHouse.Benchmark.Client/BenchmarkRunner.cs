@@ -30,6 +30,23 @@ public class BenchmarkRunner(
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
 
+    // 연결 진행 카운터
+    private int _connectedCount;
+    private int _failedCount;
+    private readonly object _progressLock = new();
+
+    private void UpdateConnectionProgress()
+    {
+        lock (_progressLock)
+        {
+            var connected = _connectedCount;
+            var failed = _failedCount;
+            var total = connected + failed;
+            var failedStr = failed > 0 ? $", failed: {failed}" : "";
+            Console.Write($"\r  Connecting: {connected:N0}/{connections:N0}{failedStr}    ");
+        }
+    }
+
     // 요청 페이로드 미리 생성 (재사용)
 
     /// <summary>
@@ -80,6 +97,10 @@ public class BenchmarkRunner(
 
         await Task.WhenAll(tasks);
 
+        // 진행 상황 줄 마무리 후 최종 결과
+        Console.WriteLine();
+        Log.Information("  Connected: {Connected:N0}/{Total:N0} (failed: {Failed:N0})",
+            _connectedCount, connections, _failedCount);
         Log.Information("[{Time:HH:mm:ss}] Benchmark completed.", DateTime.Now);
     }
 
@@ -98,7 +119,8 @@ public class BenchmarkRunner(
         var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, stageName);
         if (!connected)
         {
-            Log.Warning("[Connection {ConnectionId}] Failed to connect", connectionId);
+            var failed = Interlocked.Increment(ref _failedCount);
+            UpdateConnectionProgress();
             return;
         }
 
@@ -107,13 +129,15 @@ public class BenchmarkRunner(
         {
             using (var authPacket = ClientPacket.Empty("AuthenticateRequest"))
             {
-                var authReply = await connector.AuthenticateAsync(authPacket);
-                Log.Information("[Connection {ConnectionId}] Authentication succeeded. Reply: {MsgId}", connectionId, authReply.MsgId);
+                await connector.AuthenticateAsync(authPacket);
+                var count = Interlocked.Increment(ref _connectedCount);
+                UpdateConnectionProgress();
             }
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Error(ex, "[Connection {ConnectionId}] Authentication failed", connectionId);
+            Interlocked.Increment(ref _failedCount);
+            UpdateConnectionProgress();
             connector.Disconnect();
             return;
         }
