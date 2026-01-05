@@ -16,18 +16,16 @@ public class BenchmarkRunner(
     string serverHost,
     int serverPort,
     int connections,
-    int requestSize,
-    int responseSize,
+    int messageSize,
     BenchmarkMode mode,
     ClientMetricsCollector metricsCollector,
     int stageIdOffset = 0,
     string stageName = "BenchStage",
     int durationSeconds = 10,  // Test duration in seconds
-    int delayMs = 0,           // Delay between messages in milliseconds
     int maxInFlight = 200)     // Maximum in-flight requests
 {
     // 재사용 버퍼
-    private readonly ByteString _requestPayload = CreatePayload(requestSize);
+    private readonly ByteString _requestPayload = CreatePayload(messageSize);
 
     // 연결 진행 카운터
     private int _connectedCount;
@@ -66,7 +64,7 @@ public class BenchmarkRunner(
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
         Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
-        Log.Information("  Message size: {RequestSize:N0} bytes", requestSize);
+        Log.Information("  Message size: {MessageSize:N0} bytes", messageSize);
 
         metricsCollector.Reset();
 
@@ -172,12 +170,6 @@ public class BenchmarkRunner(
             catch (Exception ex)
             {
                 Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
-            }
-
-            // 메시지 간 딜레이
-            if (delayMs > 0)
-            {
-                await Task.Delay(delayMs);
             }
 
             i++;

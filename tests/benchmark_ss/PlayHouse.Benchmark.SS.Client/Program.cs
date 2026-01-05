@@ -21,9 +21,9 @@ var durationOption = new Option<int>(
     description: "Duration in seconds",
     getDefaultValue: () => 10);
 
-var requestSizeOption = new Option<int>(
-    name: "--request-size",
-    description: "Request payload size in bytes",
+var messageSizeOption = new Option<int>(
+    name: "--message-size",
+    description: "Message payload size in bytes (request=response for Echo)",
     getDefaultValue: () => 64);
 
 var responseSizeOption = new Option<string>(
@@ -96,7 +96,7 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark Client")
     serverOption,
     connectionsOption,
     durationOption,
-    requestSizeOption,
+    messageSizeOption,
     responseSizeOption,
     modeOption,
     commModeOption,
@@ -117,7 +117,7 @@ rootCommand.SetHandler(async (context) =>
     var server = context.ParseResult.GetValueForOption(serverOption)!;
     var connections = context.ParseResult.GetValueForOption(connectionsOption);
     var duration = context.ParseResult.GetValueForOption(durationOption);
-    var requestSize = context.ParseResult.GetValueForOption(requestSizeOption);
+    var messageSize = context.ParseResult.GetValueForOption(messageSizeOption);
     var responseSizes = context.ParseResult.GetValueForOption(responseSizeOption)!;
     var mode = context.ParseResult.GetValueForOption(modeOption)!;
     var commMode = context.ParseResult.GetValueForOption(commModeOption)!;
@@ -138,7 +138,7 @@ rootCommand.SetHandler(async (context) =>
     }
     else
     {
-        await RunBenchmarkAsync(server, connections, duration, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label, maxInFlight);
+        await RunBenchmarkAsync(server, connections, duration, messageSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label, maxInFlight);
     }
 });
 
@@ -200,7 +200,7 @@ static async Task RunBenchmarkAsync(
     string server,
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     string responseSizesStr,
     string mode,
     string commModeStr,
@@ -255,7 +255,7 @@ static async Task RunBenchmarkAsync(
     try
     {
         // Only ss-echo mode is supported (old modes removed)
-        await RunSSEchoBenchmarkAsync(host, port, connections, durationSeconds, requestSize, responseSizesStr,
+        await RunSSEchoBenchmarkAsync(host, port, connections, durationSeconds, messageSize, responseSizesStr,
             commModeStr, callTypeStr, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort, maxInFlight);
     }
     catch (Exception ex)
@@ -276,7 +276,7 @@ static async Task RunSSEchoBenchmarkAsync(
     int port,
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     string responseSizesStr,
     string commModeStr,
     string callTypeStr,
@@ -310,7 +310,7 @@ static async Task RunSSEchoBenchmarkAsync(
     // --comm-mode all인 경우 모든 모드 테스트
     if (commModeStr.ToLower() == "all")
     {
-        await RunAllCommModesAsync(host, port, connections, durationSeconds, requestSize, responseSizes,
+        await RunAllCommModesAsync(host, port, connections, durationSeconds, messageSize, responseSizes,
             callType, targetStageId, targetNid, outputDir, runTimestamp, label, httpPort, apiHttpPort, maxInFlight);
         return;
     }
@@ -332,7 +332,7 @@ static async Task RunSSEchoBenchmarkAsync(
     Log.Information("HTTP API: {Host}:{HttpPort}", host, httpPort);
     Log.Information("Connections: {Connections:N0}", connections);
     Log.Information("Duration: {Duration:N0} seconds", durationSeconds);
-    Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
+    Log.Information("Message size: {RequestSize:N0} bytes", messageSize);
     Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
     Log.Information("CommMode: {CommMode}", commMode);
     Log.Information("CallType: {CallType}", callType);
@@ -366,8 +366,7 @@ static async Task RunSSEchoBenchmarkAsync(
             serverHost: host,
             serverPort: port,
             connections: connections,
-            requestSize: requestSize,
-            responseSize: responseSize,
+            messageSize: messageSize,
             commMode: commMode,
             callType: callType,
             targetStageId: targetStageId,
@@ -404,10 +403,10 @@ static async Task RunSSEchoBenchmarkAsync(
 
     // 비교 결과 출력
     Log.Information("");
-    LogSSEchoResults(connections, durationSeconds, requestSize, responseSizes, commMode, callType, allResults);
+    LogSSEchoResults(connections, durationSeconds, messageSize, responseSizes, commMode, callType, allResults);
 
     // 결과 파일 저장
-    await SaveSSEchoResults(outputDir, runTimestamp, label, connections, durationSeconds, requestSize,
+    await SaveSSEchoResults(outputDir, runTimestamp, label, connections, durationSeconds, messageSize,
         commMode, callType, targetStageId, targetNid, allResults);
 
     // 서버 종료 요청 (비활성화 - 벤치마크 스크립트에서 처리)
@@ -421,7 +420,7 @@ static async Task RunSSEchoBenchmarkAsync(
 static void LogSSEchoResults(
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     int[] responseSizes,
     SSCommMode commMode,
     SSCallType callType,
@@ -433,7 +432,7 @@ static void LogSSEchoResults(
     Log.Information("Config: {Connections:N0} connections, {Duration:N0} seconds duration",
         connections, durationSeconds);
     Log.Information("        Request: {RequestSize:N0}B, CommMode: {CommMode}, CallType: {CallType}",
-        requestSize, commMode, callType);
+        messageSize, commMode, callType);
     Log.Information("");
 
     // 테이블 헤더
@@ -490,7 +489,7 @@ static async Task SaveSSEchoResults(
     string label,
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     SSCommMode commMode,
     SSCallType callType,
     long targetStageId,
@@ -512,7 +511,7 @@ static async Task SaveSSEchoResults(
         {
             Connections = connections,
             DurationSeconds = durationSeconds,
-            RequestSizeBytes = requestSize,
+            RequestSizeBytes = messageSize,
             CommMode = commMode.ToString(),
             CallType = callType.ToString(),
             TargetStageId = targetStageId,
@@ -559,7 +558,7 @@ static async Task RunAllCommModesAsync(
     int port,
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     int[] responseSizes,
     SSCallType callType,
     long targetStageId,
@@ -587,7 +586,7 @@ static async Task RunAllCommModesAsync(
     Log.Information("Server: {Host}:{Port}", host, port);
     Log.Information("Connections: {Connections:N0}", connections);
     Log.Information("Duration: {Duration:N0} seconds per mode/size", durationSeconds);
-    Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
+    Log.Information("Message size: {RequestSize:N0} bytes", messageSize);
     Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
     Log.Information("Modes: {Modes}", string.Join(", ", commModes.Select(m => m.Item2)));
     Log.Information("CallType: {CallType}", callType);
@@ -611,8 +610,7 @@ static async Task RunAllCommModesAsync(
                 serverHost: host,
                 serverPort: port,
                 connections: connections,
-                requestSize: requestSize,
-                responseSize: responseSize,
+                messageSize: messageSize,
                 commMode: commMode,
                 callType: callType,
                 targetStageId: targetStageId,
@@ -648,10 +646,10 @@ static async Task RunAllCommModesAsync(
 
     // 비교 결과 출력
     Log.Information("");
-    LogAllModesComparison(connections, durationSeconds, requestSize, responseSizes, callType, allResults);
+    LogAllModesComparison(connections, durationSeconds, messageSize, responseSizes, callType, allResults);
 
     // 결과 저장
-    await SaveAllModesResults(outputDir, runTimestamp, label, connections, durationSeconds, requestSize,
+    await SaveAllModesResults(outputDir, runTimestamp, label, connections, durationSeconds, messageSize,
         callType, allResults);
 }
 
@@ -661,7 +659,7 @@ static async Task RunAllCommModesAsync(
 static void LogAllModesComparison(
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     int[] responseSizes,
     SSCallType callType,
     Dictionary<string, Dictionary<int, SSEchoBenchmarkResult>> allResults)
@@ -715,7 +713,7 @@ static async Task SaveAllModesResults(
     string label,
     int connections,
     int durationSeconds,
-    int requestSize,
+    int messageSize,
     SSCallType callType,
     Dictionary<string, Dictionary<int, SSEchoBenchmarkResult>> allResults)
 {
@@ -733,7 +731,7 @@ static async Task SaveAllModesResults(
         {
             Connections = connections,
             DurationSeconds = durationSeconds,
-            RequestSizeBytes = requestSize,
+            RequestSizeBytes = messageSize,
             CallType = callType.ToString()
         },
         Results = allResults.Select(kv => new

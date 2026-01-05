@@ -5,11 +5,12 @@
 # 목적: 모든 통신 모드 x 모든 페이로드 사이즈를 테스트하고 결과를 비교합니다.
 #       S2S 성능 비교 및 회귀 테스트에 사용합니다.
 #
-# 사용법: ./run-benchmark.sh [connections] [duration]
+# 사용법: ./run-benchmark.sh [connections] [duration] [max-inflight]
 #
 # 파라미터:
 #   connections  - 동시 연결 수 (기본: 10)
 #   duration     - 테스트 시간(초) (기본: 10)
+#   max-inflight - 최대 동시 요청 수 (기본: 200)
 #
 # 테스트 통신 모드: RequestAsync, RequestCallback, Send
 # 페이로드 사이즈: 64, 256, 1024, 65536 bytes
@@ -26,6 +27,7 @@ RESULT_DIR="$PROJECT_ROOT/benchmark-results"
 # 기본값
 CONNECTIONS=${1:-10}
 DURATION=${2:-10}
+MAX_INFLIGHT=${3:-200}
 TCP_PORT=16110
 ZMQ_PORT=16100
 HTTP_PORT=5080
@@ -41,6 +43,7 @@ echo "==========================================================================
 echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s per mode"
+echo "  Max in-flight: $MAX_INFLIGHT"
 echo "  Modes: RequestAsync, RequestCallback, Send"
 echo "  Payload sizes: $PAYLOAD_SIZES bytes"
 echo "================================================================================"
@@ -105,11 +108,12 @@ dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchm
     --mode ss-echo \
     --comm-mode all \
     --duration $DURATION \
-    --request-size 64 \
+    --message-size 64 \
     --response-size $PAYLOAD_SIZES \
     --http-port $HTTP_PORT \
     --api-http-port $API_HTTP_PORT \
-    --output-dir "$RESULT_DIR"
+    --output-dir "$RESULT_DIR" \
+    --max-inflight $MAX_INFLIGHT
 
 # 정리
 echo ""

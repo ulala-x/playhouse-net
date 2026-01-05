@@ -5,12 +5,13 @@
 # 목적: 모든 통신 모드 x 모든 페이로드 사이즈를 테스트하고 결과를 비교합니다.
 #       성능 비교 및 회귀 테스트에 사용합니다.
 #
-# 사용법: ./run-benchmark.sh [connections] [duration] [batch_size]
+# 사용법: ./run-benchmark.sh [connections] [duration] [batch_size] [max-inflight]
 #
 # 파라미터:
 #   connections  - 동시 연결 수 (기본: 10)
 #   duration     - 테스트 시간(초) (기본: 10)
 #   batch_size   - 연결 배치 크기 (기본: 100, 대규모 연결시 50 권장)
+#   max-inflight - 최대 동시 요청 수 (기본: 200)
 #
 # 테스트 모드: RequestAsync, RequestCallback, Send
 # 페이로드 사이즈: 64, 256, 1024, 65536 bytes
@@ -27,6 +28,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONNECTIONS=${1:-10}
 DURATION=${2:-10}
 BATCH_SIZE=${3:-100}
+MAX_INFLIGHT=${4:-200}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
@@ -40,6 +42,7 @@ echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s per mode"
 echo "  Batch size: $BATCH_SIZE (connections per batch)"
+echo "  Max in-flight: $MAX_INFLIGHT"
 echo "  Modes: RequestAsync, RequestCallback, Send"
 echo "  Payload sizes: $PAYLOAD_SIZES bytes"
 echo "================================================================================"
@@ -90,10 +93,10 @@ dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark
     --connections $CONNECTIONS \
     --mode all \
     --duration $DURATION \
-    --request-size 64 \
+    --message-size 64 \
     --response-size $PAYLOAD_SIZES \
     --http-port $HTTP_PORT \
-    --batch-size $BATCH_SIZE
+    --max-inflight $MAX_INFLIGHT
 
 # 정리
 echo ""
