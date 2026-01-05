@@ -24,8 +24,7 @@ public class SSEchoBenchmarkRunner(
     long targetStageId,
     string targetNid,
     ClientMetricsCollector metricsCollector,
-    int durationSeconds = 0,
-    int batchSize = 100)
+    int durationSeconds = 0)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -77,34 +76,14 @@ public class SSEchoBenchmarkRunner(
             Log.Information("  Target NID: {TargetNid}", targetNid);
         }
 
-        Log.Information("  Batch size: {BatchSize:N0}", batchSize);
-
         metricsCollector.Reset();
 
-        var tasks = new List<Task>();
-        var batches = (connections + batchSize - 1) / batchSize;
-
-        // 연결을 배치로 나누어 점진적으로 생성
-        for (int batch = 0; batch < batches; batch++)
+        // 모든 연결을 동시에 시작
+        var tasks = new Task[connections];
+        for (int i = 0; i < connections; i++)
         {
-            var start = batch * batchSize;
-            var end = Math.Min(start + batchSize, connections);
-
-            Log.Information("Connecting batch {Batch}/{Total} (connections {Start}-{End})",
-                batch + 1, batches, start + 1, end);
-
-            // 현재 배치의 연결 시작
-            for (int i = start; i < end; i++)
-            {
-                var connectionId = i;
-                tasks.Add(Task.Run(async () => await RunConnectionAsync(connectionId)));
-            }
-
-            // 배치 간 대기 (마지막 배치 제외)
-            if (batch < batches - 1)
-            {
-                await Task.Delay(500);
-            }
+            var connectionId = i;
+            tasks[i] = Task.Run(async () => await RunConnectionAsync(connectionId));
         }
 
         await Task.WhenAll(tasks);
@@ -162,11 +141,10 @@ public class SSEchoBenchmarkRunner(
             Log.Debug("[Connection {ConnectionId}] Signaling connection ready...", connectionId);
             _connectionCountdown.Signal();
 
-            // 비동기 대기 (하트비트 처리를 위해 짧은 간격으로 폴링)
+            // 비동기 대기
             while (!_allConnectionsReady.IsSet)
             {
-                connector.MainThreadAction(); // 하트비트 처리
-                await Task.Delay(10); // 짧은 대기
+                await Task.Delay(10);
 
                 if (_connectionCountdown.IsSet && !_allConnectionsReady.IsSet)
                 {
@@ -176,11 +154,7 @@ public class SSEchoBenchmarkRunner(
             Log.Debug("[Connection {ConnectionId}] All connections ready, starting echo messages", connectionId);
 
             // Stage가 서버에서 완전히 등록될 시간을 줌
-            for (int w = 0; w < 50; w++)
-            {
-                connector.MainThreadAction();
-                await Task.Delay(10);
-            }
+            await Task.Delay(500);
         }
 
         // Echo 메시지 전송
@@ -256,9 +230,6 @@ public class SSEchoBenchmarkRunner(
             {
                 Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
             }
-
-            // 콜백 처리
-            connector.MainThreadAction();
         }
     }
 
@@ -321,20 +292,10 @@ public class SSEchoBenchmarkRunner(
                     Log.Error(ex, "[Connection {ConnectionId}] Send request failed", connectionId);
                 }
 
-                // 콜백 처리 (OnReceive 호출)
-                connector.MainThreadAction();
-
-                // 서버 과부하 방지
-                await Task.Yield();
             }
 
             // 남은 응답 처리를 위해 잠시 대기
-            var drainEnd = DateTime.UtcNow.AddMilliseconds(500);
-            while (DateTime.UtcNow < drainEnd)
-            {
-                connector.MainThreadAction();
-                await Task.Delay(10);
-            }
+            await Task.Delay(500);
         }
         finally
         {

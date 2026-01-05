@@ -16,10 +16,9 @@ var connectionsOption = new Option<int>(
     description: "Number of concurrent connections",
     getDefaultValue: () => 1);
 
-var messagesOption = new Option<int>(
+var messagesOption = new Option<int?>(
     name: "--messages",
-    description: "Number of messages per connection",
-    getDefaultValue: () => 10000);
+    description: "Number of messages per connection (cannot be used with --duration)");
 
 var requestSizeOption = new Option<int>(
     name: "--request-size",
@@ -36,10 +35,9 @@ var modeOption = new Option<string>(
     description: "Benchmark mode: request-async, request-callback, send, or all (default: all)",
     getDefaultValue: () => "all");
 
-var durationOption = new Option<int>(
+var durationOption = new Option<int?>(
     name: "--duration",
-    description: "Duration in seconds for time-based echo mode (default: 10)",
-    getDefaultValue: () => 10);
+    description: "Duration in seconds for time-based test (cannot be used with --messages)");
 
 var httpPortOption = new Option<int>(
     name: "--http-port",
@@ -56,10 +54,15 @@ var labelOption = new Option<string>(
     description: "Label for this benchmark run (for comparison)",
     getDefaultValue: () => "");
 
-var batchSizeOption = new Option<int>(
-    name: "--batch-size",
-    description: "Number of connections to create per batch for ramp-up (default: 100)",
-    getDefaultValue: () => 100);
+var connectOnlyOption = new Option<bool>(
+    name: "--connect-only",
+    description: "Test connection establishment only (no message sending)",
+    getDefaultValue: () => false);
+
+var delayMsOption = new Option<int>(
+    name: "--delay-ms",
+    description: "Delay between messages in milliseconds (0 = no delay)",
+    getDefaultValue: () => 0);
 
 var rootCommand = new RootCommand("PlayHouse Benchmark Client")
 {
@@ -73,7 +76,8 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Client")
     httpPortOption,
     outputDirOption,
     labelOption,
-    batchSizeOption
+    connectOnlyOption,
+    delayMsOption
 };
 
 rootCommand.SetHandler(async (context) =>
@@ -88,9 +92,38 @@ rootCommand.SetHandler(async (context) =>
     var httpPort = context.ParseResult.GetValueForOption(httpPortOption);
     var outputDir = context.ParseResult.GetValueForOption(outputDirOption)!;
     var label = context.ParseResult.GetValueForOption(labelOption)!;
-    var batchSize = context.ParseResult.GetValueForOption(batchSizeOption);
+    var connectOnly = context.ParseResult.GetValueForOption(connectOnlyOption);
+    var delayMs = context.ParseResult.GetValueForOption(delayMsOption);
 
-    await RunBenchmarkAsync(server, connections, messages, requestSize, responseSizes, mode, duration, httpPort, outputDir, label, batchSize);
+    if (connectOnly)
+    {
+        await RunConnectOnlyTestAsync(server, connections);
+    }
+    else
+    {
+        // Validate mutual exclusivity of --messages and --duration
+        if (messages.HasValue && duration.HasValue)
+        {
+            Console.WriteLine("Error: --messages and --duration cannot be used together.");
+            Console.WriteLine("  Use --messages for message-count based test");
+            Console.WriteLine("  Use --duration for time-based test");
+            return;
+        }
+
+        if (!messages.HasValue && !duration.HasValue)
+        {
+            Console.WriteLine("Error: Either --messages or --duration must be specified.");
+            Console.WriteLine("  Use --messages <count> for message-count based test");
+            Console.WriteLine("  Use --duration <seconds> for time-based test (default: 10s)");
+            return;
+        }
+
+        // Determine test mode
+        int? messagesValue = messages;
+        int? durationValue = duration;
+
+        await RunBenchmarkAsync(server, connections, messagesValue, durationValue, requestSize, responseSizes, mode, httpPort, outputDir, label, delayMs);
+    }
 });
 
 return await rootCommand.InvokeAsync(args);
@@ -98,15 +131,15 @@ return await rootCommand.InvokeAsync(args);
 static async Task RunBenchmarkAsync(
     string server,
     int connections,
-    int messages,
+    int? messages,
+    int? duration,
     int requestSize,
     string responseSizesStr,
     string mode,
-    int duration,
     int httpPort,
     string outputDir,
     string label,
-    int batchSize)
+    int delayMs)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -130,6 +163,11 @@ static async Task RunBenchmarkAsync(
         responseSizes = new[] { 256 };
     }
 
+    // Determine test mode: message-count based or duration based
+    var isTimeBased = duration.HasValue;
+    var effectiveMessages = messages ?? 0;  // 0 means unlimited (time-based)
+    var effectiveDuration = duration ?? 0;  // 0 means unlimited (message-based)
+
     // 출력 디렉토리 생성
     Directory.CreateDirectory(outputDir);
 
@@ -151,7 +189,7 @@ static async Task RunBenchmarkAsync(
         // "all" 모드 처리
         if (mode.ToLowerInvariant() == "all")
         {
-            await RunAllModesAsync(server, connections, messages, requestSize, responseSizesStr, duration, httpPort, outputDir, label, runTimestamp, batchSize);
+            await RunAllModesAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, delayMs);
             return;
         }
 
@@ -172,8 +210,15 @@ static async Task RunBenchmarkAsync(
         Log.Information("HTTP API: {Host}:{HttpPort}", host, httpPort);
         Log.Information("Mode: {Mode}", benchmarkMode);
         Log.Information("Connections: {Connections:N0}", connections);
-        Log.Information("Messages per connection: {Messages:N0}", messages);
-        Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
+        if (isTimeBased)
+        {
+            Log.Information("Duration: {Duration:N0} seconds", effectiveDuration);
+        }
+        else
+        {
+            Log.Information("Messages per connection: {Messages:N0}", effectiveMessages);
+            Log.Information("Total messages: {TotalMessages:N0}", connections * effectiveMessages);
+        }
         Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
         Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
         if (!string.IsNullOrEmpty(label))
@@ -218,15 +263,15 @@ static async Task RunBenchmarkAsync(
                 host,
                 port,
                 connections,
-                messages,
+                effectiveMessages,
                 requestSize,
                 responseSize,
                 benchmarkMode,
                 clientMetricsCollector,
                 stageIdOffset,
                 stageName: "BenchStage",
-                durationSeconds: duration,
-                batchSize: batchSize);
+                durationSeconds: effectiveDuration,
+                delayMs: delayMs);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -252,24 +297,24 @@ static async Task RunBenchmarkAsync(
 
         // 통합 결과 출력
         Log.Information("");
-        LogResults(connections, messages, requestSize, responseSizes, benchmarkMode, allResults);
+        LogResults(connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, responseSizes, benchmarkMode, allResults);
 
         // 결과 파일 저장
-        await SaveResultsToFile(outputDir, runTimestamp, label, connections, messages, requestSize, benchmarkMode, allResults);
+        await SaveResultsToFile(outputDir, runTimestamp, label, connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, benchmarkMode, allResults);
 
-        // 서버 종료 요청
-        Log.Information("");
-        Log.Information("Sending shutdown request to server...");
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        try
-        {
-            await httpClient.PostAsync($"http://{host}:{httpPort}/benchmark/shutdown", null);
-            Log.Information("Server shutdown initiated");
-        }
-        catch (Exception)
-        {
-            // 서버가 이미 종료되었거나 연결 실패 - 무시
-        }
+        // 서버 종료 요청은 스크립트가 담당 (여러 모드를 순차 실행하는 경우)
+        // Log.Information("");
+        // Log.Information("Sending shutdown request to server...");
+        // using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        // try
+        // {
+        //     await httpClient.PostAsync($"http://{host}:{httpPort}/benchmark/shutdown", null);
+        //     Log.Information("Server shutdown initiated");
+        // }
+        // catch (Exception)
+        // {
+        //     // 서버가 이미 종료되었거나 연결 실패 - 무시
+        // }
     }
     catch (Exception ex)
     {
@@ -284,6 +329,8 @@ static async Task RunBenchmarkAsync(
 static void LogResults(
     int connections,
     int messages,
+    int duration,
+    bool isTimeBased,
     int requestSize,
     int[] responseSizes,
     BenchmarkMode mode,
@@ -292,8 +339,16 @@ static void LogResults(
     Log.Information("================================================================================");
     Log.Information("Benchmark Results Summary");
     Log.Information("================================================================================");
-    Log.Information("Config: {Connections:N0} CCU x {Messages:N0} msg, Request: {RequestSize:N0}B, Mode: {Mode}",
-        connections, messages, requestSize, mode);
+    if (isTimeBased)
+    {
+        Log.Information("Config: {Connections:N0} CCU x {Duration:N0}s, Request: {RequestSize:N0}B, Mode: {Mode}",
+            connections, duration, requestSize, mode);
+    }
+    else
+    {
+        Log.Information("Config: {Connections:N0} CCU x {Messages:N0} msg, Request: {RequestSize:N0}B, Mode: {Mode}",
+            connections, messages, requestSize, mode);
+    }
     Log.Information("");
 
     // 테이블 헤더
@@ -369,14 +424,15 @@ static async Task RunAllModesAsync(
     string server,
     int connections,
     int messages,
+    int duration,
+    bool isTimeBased,
     int requestSize,
     string responseSizesStr,
-    int duration,
     int httpPort,
     string outputDir,
     string label,
     DateTime runTimestamp,
-    int batchSize)
+    int delayMs)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -405,8 +461,15 @@ static async Task RunAllModesAsync(
     Log.Information("================================================================================");
     Log.Information("Server: {Host}:{Port}", host, port);
     Log.Information("Connections: {Connections:N0}", connections);
-    Log.Information("Messages per connection: {Messages:N0}", messages);
-    Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
+    if (isTimeBased)
+    {
+        Log.Information("Duration: {Duration:N0} seconds", duration);
+    }
+    else
+    {
+        Log.Information("Messages per connection: {Messages:N0}", messages);
+        Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
+    }
     Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
     Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
     if (!string.IsNullOrEmpty(label))
@@ -445,7 +508,7 @@ static async Task RunAllModesAsync(
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
             BenchmarkMode.RequestAsync, clientMetricsCollector, stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, batchSize: batchSize);
+            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -490,7 +553,7 @@ static async Task RunAllModesAsync(
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
             BenchmarkMode.RequestCallback, clientMetricsCollector, stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, batchSize: batchSize);
+            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -535,7 +598,7 @@ static async Task RunAllModesAsync(
         var runner = new BenchmarkRunner(
             host, port, connections, messages, requestSize, responseSize,
             BenchmarkMode.Send, clientMetricsCollector, stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, batchSize: batchSize);
+            stageName: "BenchStage", durationSeconds: duration, delayMs: delayMs);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -702,6 +765,8 @@ static async Task SaveResultsToFile(
     string label,
     int connections,
     int messages,
+    int duration,
+    bool isTimeBased,
     int requestSize,
     BenchmarkMode mode,
     List<BenchmarkResult> results)
@@ -720,8 +785,10 @@ static async Task SaveResultsToFile(
         Config = new
         {
             Connections = connections,
-            MessagesPerConnection = messages,
-            TotalMessages = connections * messages,
+            MessagesPerConnection = isTimeBased ? (int?)null : messages,
+            DurationSeconds = isTimeBased ? duration : (int?)null,
+            IsTimeBased = isTimeBased,
+            TotalMessages = isTimeBased ? (int?)null : connections * messages,
             RequestSizeBytes = requestSize,
             Mode = mode.ToString()
         },
@@ -804,6 +871,43 @@ static async Task SaveResultsToFile(
     Log.Information("  Log:  {LogPath}", Path.Combine(outputDir, $"benchmark_{timestamp}{labelSuffix}.log"));
     Log.Information("  JSON: {JsonPath}", jsonPath);
     Log.Information("  CSV:  {CsvPath}", csvPath);
+}
+
+/// <summary>
+/// 연결 + 인증만 테스트 (패킷 전송 없음)
+/// </summary>
+static async Task RunConnectOnlyTestAsync(string server, int connections)
+{
+    // 서버 주소 파싱
+    var parts = server.Split(':');
+    if (parts.Length != 2 || !int.TryParse(parts[1], out var port))
+    {
+        Console.WriteLine("Invalid server address format. Use: host:port");
+        return;
+    }
+
+    var host = parts[0];
+
+    // Serilog 설정
+    Log.Logger = new LoggerConfiguration()
+        .MinimumLevel.Information()
+        .WriteTo.Console(
+            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+        .CreateLogger();
+
+    try
+    {
+        var test = new ConnectionOnlyTest(host, port, connections);
+        await test.RunAsync();
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Connection test failed");
+    }
+    finally
+    {
+        await Log.CloseAndFlushAsync();
+    }
 }
 
 /// <summary>

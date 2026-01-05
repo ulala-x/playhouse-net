@@ -17,15 +17,13 @@ var connectionsOption = new Option<int>(
     description: "Number of concurrent connections",
     getDefaultValue: () => 1);
 
-var messagesOption = new Option<int>(
+var messagesOption = new Option<int?>(
     name: "--messages",
-    description: "Number of messages per connection (ignored if --duration is set)",
-    getDefaultValue: () => 10000);
+    description: "Messages per connection (cannot be used with --duration)");
 
-var durationOption = new Option<int>(
+var durationOption = new Option<int?>(
     name: "--duration",
-    description: "Test duration in seconds (overrides --messages if set)",
-    getDefaultValue: () => 0);
+    description: "Duration in seconds (cannot be used with --messages)");
 
 var requestSizeOption = new Option<int>(
     name: "--request-size",
@@ -139,7 +137,28 @@ rootCommand.SetHandler(async (context) =>
     }
     else
     {
-        await RunBenchmarkAsync(server, connections, messages, duration, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
+        // Validate mutual exclusivity of --messages and --duration
+        if (messages.HasValue && duration.HasValue)
+        {
+            Console.WriteLine("Error: --messages and --duration cannot be used together.");
+            Console.WriteLine("  Use --messages for message-count based test");
+            Console.WriteLine("  Use --duration for time-based test");
+            return;
+        }
+
+        if (!messages.HasValue && !duration.HasValue)
+        {
+            Console.WriteLine("Error: Either --messages or --duration must be specified.");
+            Console.WriteLine("  Use --messages <count> for message-count based test");
+            Console.WriteLine("  Use --duration <seconds> for time-based test");
+            return;
+        }
+
+        var isTimeBased = duration.HasValue;
+        var effectiveMessages = messages ?? 0;
+        var effectiveDuration = duration ?? 0;
+
+        await RunBenchmarkAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, requestSize, responseSizes, mode, commMode, callType, httpPort, apiHttpPort, stageId, targetStageId, targetNid, outputDir, label);
     }
 });
 
@@ -202,6 +221,7 @@ static async Task RunBenchmarkAsync(
     int connections,
     int messages,
     int durationSeconds,
+    bool isTimeBased,
     int requestSize,
     string responseSizesStr,
     string mode,
@@ -283,8 +303,15 @@ static async Task RunBenchmarkAsync(
         Log.Information("HTTP API: {Host}:{HttpPort}", host, httpPort);
         Log.Information("Mode: {Mode}", benchmarkMode);
         Log.Information("Connections: {Connections:N0}", connections);
-        Log.Information("Messages per connection: {Messages:N0}", messages);
-        Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
+        if (isTimeBased)
+        {
+            Log.Information("Duration: {Duration:N0} seconds", durationSeconds);
+        }
+        else
+        {
+            Log.Information("Messages per connection: {Messages:N0}", messages);
+            Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
+        }
         Log.Information("Request size: {RequestSize:N0} bytes", requestSize);
         Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
 
@@ -1042,7 +1069,8 @@ static async Task RunSSEchoBenchmarkAsync(
             callType,
             targetStageId,
             targetNid,
-            clientMetricsCollector);
+            clientMetricsCollector,
+            durationSeconds);
 
         var startTime = DateTime.Now;
         await runner.RunAsync();

@@ -27,10 +27,10 @@ internal sealed class TcpTransportSession : ITransportSession
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger? _logger;
     private readonly CancellationTokenSource _cts;
-    private readonly Task _receiveTask;
-    private readonly Task _processTask;
+    private Task? _receiveTask;
+    private Task? _processTask;
     private readonly Channel<SendItem> _sendChannel;
-    private readonly Task _sendTask;
+    private Task? _sendTask;
 
     private DateTime _lastActivity;
     private bool _disposed;
@@ -79,13 +79,20 @@ internal sealed class TcpTransportSession : ITransportSession
             SingleReader = true,
             SingleWriter = false
         });
+    }
 
-        // Start I/O tasks
+    /// <summary>
+    /// Starts the I/O tasks for receiving, processing, and sending messages.
+    /// This should be called AFTER the session is registered in the session dictionary
+    /// to avoid race conditions where messages are processed before the session is findable.
+    /// </summary>
+    public void Start()
+    {
         _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
         _processTask = Task.Run(() => ProcessMessagesAsync(_cts.Token));
         _sendTask = Task.Run(() => SendLoopAsync(_cts.Token));
 
-        _logger?.LogDebug("TCP session {SessionId} started", sessionId);
+        _logger?.LogDebug("TCP session {SessionId} started", SessionId);
     }
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
@@ -201,10 +208,13 @@ internal sealed class TcpTransportSession : ITransportSession
             // Complete send channel
             _sendChannel.Writer.Complete();
 
-            // Wait for tasks with timeout
-            var timeout = Task.Delay(TimeSpan.FromSeconds(5));
-            var completed = Task.WhenAll(_receiveTask, _processTask, _sendTask);
-            await Task.WhenAny(completed, timeout);
+            // Wait for tasks with timeout (if they were started)
+            if (_receiveTask != null && _processTask != null && _sendTask != null)
+            {
+                var timeout = Task.Delay(TimeSpan.FromSeconds(5));
+                var completed = Task.WhenAll(_receiveTask, _processTask, _sendTask);
+                await Task.WhenAny(completed, timeout);
+            }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)

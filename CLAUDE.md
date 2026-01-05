@@ -39,6 +39,41 @@
   testActor.OnAuthenticateCalled.Should().BeTrue();
   ```
 
+## Connector 콜백 처리 규칙
+
+### ImmediateSynchronizationContext 사용 (벤치마크)
+- **벤치마크에서는 `ImmediateSynchronizationContext`를 사용**하여 콜백 폴링 제거
+- 이 경우 `MainThreadAction()` 호출 불필요 (콜백이 즉시 실행됨)
+- 예시:
+  ```csharp
+  // 각 Task마다 ImmediateSynchronizationContext 설정
+  SynchronizationContext.SetSynchronizationContext(
+      new ImmediateSynchronizationContext());
+
+  var connector = new ClientConnector();
+  connector.Init(new ConnectorConfig());
+
+  // MainThreadAction() 호출 불필요!
+  // 콜백은 await 후 즉시 실행됨
+  ```
+
+### MainThreadAction() 사용 (일반 테스트)
+- SynchronizationContext가 없는 환경에서는 `MainThreadAction()` 호출 필요
+- 큐에 쌓인 콜백을 메인 스레드에서 처리
+- 예시:
+  ```csharp
+  // SynchronizationContext 없이 사용하는 경우
+  connector.Request(packet, response => { /* 콜백 */ });
+
+  // 주기적으로 MainThreadAction() 호출 필요
+  connector.MainThreadAction();
+  ```
+
+### Send 모드 동작
+- Send 모드는 fire-and-forget이 **아님**
+- 흐름: 클라이언트 `Send()` → 서버 처리 → 서버 `SendToClient()` → 클라이언트 `OnReceive` 콜백
+- Send 요청에 Send 응답이 있음
+
 ## 메시지 정의 규칙
 
 ### Proto 메시지 사용

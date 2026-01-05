@@ -27,8 +27,7 @@ public class BenchmarkRunner(
     string targetNid,
     ClientMetricsCollector metricsCollector,
     SSCommMode commMode = SSCommMode.RequestAsync,
-    int serverHttpPort = 5080,
-    int batchSize = 100)
+    int serverHttpPort = 5080)
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(requestSize);
@@ -180,36 +179,16 @@ public class BenchmarkRunner(
             Log.Information("  Target NID: {TargetNid}", targetNid);
         }
 
-        Log.Information("  Batch size: {BatchSize:N0}", batchSize);
-
         // 서버와 클라이언트 메트릭을 동시에 Reset하여 측정 범위 통일
         await ResetServerMetricsAsync();
         metricsCollector.Reset();
 
-        var tasks = new List<Task>();
-        var batches = (connections + batchSize - 1) / batchSize;
-
-        // 연결을 배치로 나누어 점진적으로 생성
-        for (int batch = 0; batch < batches; batch++)
+        // 모든 연결을 동시에 시작
+        var tasks = new Task[connections];
+        for (int i = 0; i < connections; i++)
         {
-            var start = batch * batchSize;
-            var end = Math.Min(start + batchSize, connections);
-
-            Log.Information("Connecting batch {Batch}/{Total} (connections {Start}-{End})",
-                batch + 1, batches, start + 1, end);
-
-            // 현재 배치의 연결 시작
-            for (int i = start; i < end; i++)
-            {
-                var connectionId = i;
-                tasks.Add(Task.Run(async () => await RunConnectionAsync(connectionId)));
-            }
-
-            // 배치 간 대기 (마지막 배치 제외)
-            if (batch < batches - 1)
-            {
-                await Task.Delay(500);
-            }
+            var connectionId = i;
+            tasks[i] = Task.Run(async () => await RunConnectionAsync(connectionId));
         }
 
         await Task.WhenAll(tasks);
@@ -265,7 +244,6 @@ public class BenchmarkRunner(
             while (true)
             {
                 await Task.Delay(1000);
-                connector.MainThreadAction(); // 콜백 처리
             }
         }
 
@@ -415,9 +393,6 @@ public class BenchmarkRunner(
             {
                 Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
             }
-
-            // 콜백 처리
-            connector.MainThreadAction();
         }
     }
 
@@ -466,9 +441,6 @@ public class BenchmarkRunner(
             {
                 Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
             }
-
-            // 콜백 처리
-            connector.MainThreadAction();
         }
     }
 }
