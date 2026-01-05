@@ -20,8 +20,8 @@ HTTP_PORT=5080
 API_HTTP_PORT=5081
 API_ZMQ_PORT=16201
 
-# 페이로드 크기 (콤마 구분)
-PAYLOAD_SIZES="64,256,1024,65536,131072"
+# Echo 페이로드 크기 (배열)
+PAYLOAD_SIZES=(64 256 1024 65536 131072)
 
 # 통신 모드 배열
 COMM_MODES=("request-async" "request-callback" "send")
@@ -33,7 +33,7 @@ echo "Configuration:"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s per mode"
 echo "  Modes: ${COMM_MODES[*]}"
-echo "  Payload sizes: $PAYLOAD_SIZES bytes"
+echo "  Payload sizes: ${PAYLOAD_SIZES[*]} bytes (Echo: request=response)"
 echo "================================================================================"
 echo ""
 
@@ -96,17 +96,25 @@ for COMM_MODE in "${COMM_MODES[@]}"; do
     echo "Testing mode: $COMM_MODE"
     echo "----------------------------------------"
 
-    dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" -c Release -- \
-        --server 127.0.0.1:$TCP_PORT \
-        --connections $CONNECTIONS \
-        --mode ss-echo \
-        --comm-mode $COMM_MODE \
-        --duration $DURATION \
-        --request-size 64 \
-        --response-size $PAYLOAD_SIZES \
-        --http-port $HTTP_PORT \
-        --api-http-port $API_HTTP_PORT \
-        --output-dir "$RESULT_DIR"
+    for SIZE in "${PAYLOAD_SIZES[@]}"; do
+        echo ""
+        echo ">>> Echo test: ${SIZE} bytes (request=${SIZE}, response=${SIZE}) <<<"
+
+        dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" -c Release -- \
+            --server 127.0.0.1:$TCP_PORT \
+            --connections $CONNECTIONS \
+            --mode ss-echo \
+            --comm-mode $COMM_MODE \
+            --duration $DURATION \
+            --request-size $SIZE \
+            --response-size $SIZE \
+            --http-port $HTTP_PORT \
+            --api-http-port $API_HTTP_PORT \
+            --output-dir "$RESULT_DIR"
+
+        # 테스트 간 간격
+        sleep 1
+    done
 
     echo ""
 
