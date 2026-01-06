@@ -21,14 +21,12 @@ internal sealed class TcpTransportSession : ITransportSession
 {
     private readonly Socket _socket;
     private readonly Stream _stream;
-    private readonly Pipe _receivePipe;
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger? _logger;
     private readonly CancellationTokenSource _cts;
-    private Task? _receiveTask;
-    private Task? _processTask;
+    private Task? _receiveAndProcessTask;
     private readonly Channel<SendItem> _sendChannel;
     private Task? _sendTask;
 
@@ -67,13 +65,6 @@ internal sealed class TcpTransportSession : ITransportSession
         // Configure socket
         ConfigureSocket();
 
-        // Configure receive pipe
-        var pipeOptions = new PipeOptions(
-            pauseWriterThreshold: options.PauseWriterThreshold,
-            resumeWriterThreshold: options.ResumeWriterThreshold,
-            useSynchronizationContext: false);
-        _receivePipe = new Pipe(pipeOptions);
-
         // Configure send channel
         _sendChannel = Channel.CreateUnbounded<SendItem>(new UnboundedChannelOptions
         {
@@ -83,17 +74,15 @@ internal sealed class TcpTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Starts the I/O tasks for receiving, processing, and sending messages.
-    /// This should be called AFTER the session is registered in the session dictionary
-    /// to avoid race conditions where messages are processed before the session is findable.
+    /// Starts the I/O tasks for receiving and sending messages.
+    /// Combined receiving and processing into one task to minimize overhead.
     /// </summary>
     public void Start()
     {
-        _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
-        _processTask = Task.Run(() => ProcessMessagesAsync(_cts.Token));
+        _receiveAndProcessTask = Task.Run(() => ReceiveAndProcessLoopAsync(_cts.Token));
         _sendTask = Task.Run(() => SendLoopAsync(_cts.Token));
 
-        _logger?.LogDebug("TCP session {SessionId} started", SessionId);
+        _logger?.LogDebug("TCP session {SessionId} started (2 tasks)", SessionId);
     }
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
@@ -215,10 +204,10 @@ internal sealed class TcpTransportSession : ITransportSession
             _sendChannel.Writer.Complete();
 
             // Wait for tasks with timeout (if they were started)
-            if (_receiveTask != null && _processTask != null && _sendTask != null)
+            if (_receiveAndProcessTask != null && _sendTask != null)
             {
                 var timeout = Task.Delay(TimeSpan.FromSeconds(5));
-                var completed = Task.WhenAll(_receiveTask, _processTask, _sendTask);
+                var completed = Task.WhenAll(_receiveAndProcessTask, _sendTask);
                 await Task.WhenAny(completed, timeout);
             }
         }
@@ -250,69 +239,40 @@ internal sealed class TcpTransportSession : ITransportSession
         }
     }
 
-    private async Task ReceiveLoopAsync(CancellationToken ct)
+    /// <summary>
+    /// Combined loop for receiving data and processing messages.
+    /// This eliminates the need for IO.Pipelines and one extra task per session.
+    /// </summary>
+    private async Task ReceiveAndProcessLoopAsync(CancellationToken ct)
     {
-        var writer = _receivePipe.Writer;
+        // Use a linear buffer for receiving and parsing
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize * 2);
+        int bytesInBuffer = 0;
 
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                var memory = writer.GetMemory(_options.ReceiveBufferSize);
-                var bytesRead = await _stream.ReadAsync(memory, ct);
-
-                if (bytesRead == 0)
+                // Read from stream into available buffer space
+                var availableMemory = buffer.AsMemory(bytesInBuffer);
+                if (availableMemory.Length == 0)
                 {
-                    _logger?.LogDebug("Session {SessionId} closed by remote", SessionId);
-                    break;
+                    // Buffer full - need to expand (should not happen with correct sizing)
+                    var newBuffer = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, bytesInBuffer).CopyTo(newBuffer);
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = newBuffer;
+                    availableMemory = buffer.AsMemory(bytesInBuffer);
                 }
 
-                writer.Advance(bytesRead);
-                var result = await writer.FlushAsync(ct);
+                int bytesRead = await _stream.ReadAsync(availableMemory, ct);
+                if (bytesRead == 0) break;
 
-                if (result.IsCompleted) break;
-
+                bytesInBuffer += bytesRead;
                 _lastActivity = DateTime.UtcNow;
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error in receive loop for session {SessionId}", SessionId);
-        }
-        finally
-        {
-            await writer.CompleteAsync();
-        }
-    }
 
-    private async Task ProcessMessagesAsync(CancellationToken ct)
-    {
-        var reader = _receivePipe.Reader;
-
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var result = await reader.ReadAsync(ct);
-                var buffer = result.Buffer;
-
-                while (TryParseMessage(ref buffer, out var msgId, out var msgSeq, out var stageId, out var payload))
-                {
-                    try
-                    {
-                        // Fire-and-forget: no await for high throughput
-                        _onMessage(this, msgId, msgSeq, stageId, payload);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError(ex, "Error processing message {MsgId} on session {SessionId}", msgId, SessionId);
-                    }
-                }
-
-                reader.AdvanceTo(buffer.Start, buffer.End);
-
-                if (result.IsCompleted) break;
+                // Parse and dispatch all complete messages in the buffer
+                bytesInBuffer = ParseAndDispatchMessages(buffer, bytesInBuffer);
 
                 // Check heartbeat timeout
                 if (DateTime.UtcNow - _lastActivity > _options.HeartbeatTimeout)
@@ -325,88 +285,98 @@ internal sealed class TcpTransportSession : ITransportSession
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error processing messages for session {SessionId}", SessionId);
+            if (!_disposed)
+                _logger?.LogError(ex, "Error in receive loop for session {SessionId}", SessionId);
         }
         finally
         {
-            await reader.CompleteAsync();
+            ArrayPool<byte>.Shared.Return(buffer);
             await DisconnectAsync();
         }
     }
 
     /// <summary>
-    /// Parses a message from the buffer.
-    /// TCP adds a 4-byte length prefix for stream framing.
+    /// Synchronously parses and dispatches all complete messages in the buffer.
+    /// Returns the number of bytes remaining in the buffer.
+    /// </summary>
+    private int ParseAndDispatchMessages(byte[] buffer, int bytesInBuffer)
+    {
+        int consumed = 0;
+        while (true)
+        {
+            var remainingSpan = buffer.AsSpan(consumed, bytesInBuffer - consumed);
+            if (TryParseMessage(remainingSpan, out var msgId, out var msgSeq, out var stageId, out var payload, out int packetSize))
+            {
+                try
+                {
+                    _onMessage(this, msgId, msgSeq, stageId, payload);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error processing message {MsgId} on session {SessionId}", msgId, SessionId);
+                }
+                consumed += packetSize;
+            }
+            else
+            {
+                break; // Incomplete packet
+            }
+        }
+
+        // Move remaining data to the beginning
+        if (consumed > 0)
+        {
+            int remaining = bytesInBuffer - consumed;
+            if (remaining > 0)
+            {
+                buffer.AsSpan(consumed, remaining).CopyTo(buffer);
+                return remaining;
+            }
+            return 0;
+        }
+
+        return bytesInBuffer;
+    }
+
+    /// <summary>
+    /// Parses a single message from the byte span.
     /// </summary>
     private bool TryParseMessage(
-        ref ReadOnlySequence<byte> buffer,
+        ReadOnlySpan<byte> span,
         out string msgId,
         out ushort msgSeq,
         out long stageId,
-        out IPayload payload)
+        out IPayload payload,
+        out int totalPacketSize)
     {
         msgId = string.Empty;
         msgSeq = 0;
         stageId = 0;
         payload = null!;
+        totalPacketSize = 0;
 
-        // Need at least 4 bytes for length prefix
-        if (buffer.Length < 4) return false;
+        if (span.Length < 4) return false;
 
-        // Read length prefix
-        Span<byte> lengthBytes = stackalloc byte[4];
-        buffer.Slice(0, 4).CopyTo(lengthBytes);
-        var packetLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBytes);
-
-        // Validate length
+        var packetLength = BinaryPrimitives.ReadInt32LittleEndian(span);
         if (packetLength <= 0 || packetLength > _options.MaxPacketSize)
         {
             throw new InvalidDataException($"Invalid packet length: {packetLength}");
         }
 
-        // Check if we have the complete packet
-        if (buffer.Length < 4 + packetLength) return false;
+        totalPacketSize = 4 + packetLength;
+        if (span.Length < totalPacketSize) return false;
 
-        // Extract packet data and parse using shared codec
-        var packetBuffer = buffer.Slice(4, packetLength);
-
-        // Zero-copy optimization: avoid ToArray() when possible
-        if (packetBuffer.IsSingleSegment)
+        var bodySpan = span.Slice(4, packetLength);
+        if (!MessageCodec.TryParseMessage(bodySpan, out msgId, out msgSeq, out stageId, out var payloadOffset))
         {
-            // Single segment: use directly without copying
-            var span = packetBuffer.FirstSpan;
-            if (!MessageCodec.TryParseMessage(span, out msgId, out msgSeq, out stageId, out var payloadOffset))
-            {
-                throw new InvalidDataException("Invalid message format");
-            }
-
-            // Copy payload to ArrayPool buffer: Stage processes asynchronously while Pipe buffer is reused
-            var payloadLength = span.Length - payloadOffset;
-            var rentedBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
-            span.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
-            payload = new ArrayPoolPayload(rentedBuffer, payloadLength);
-        }
-        else
-        {
-            // Multiple segments (rare): use ArrayPool with single copy optimization
-            var rentedBuffer = ArrayPool<byte>.Shared.Rent((int)packetLength);
-            packetBuffer.CopyTo(rentedBuffer);
-
-            if (!MessageCodec.TryParseMessage(rentedBuffer.AsSpan(0, (int)packetLength), out msgId, out msgSeq, out stageId, out var payloadOffset))
-            {
-                ArrayPool<byte>.Shared.Return(rentedBuffer);
-                throw new InvalidDataException("Invalid message format");
-            }
-
-            // No second copy: use offset-based payload (ArrayPoolPayloadWithOffset.Dispose() handles buffer return)
-            var payloadLength = (int)packetLength - payloadOffset;
-            payload = new ArrayPoolPayloadWithOffset(rentedBuffer, payloadOffset, payloadLength);
+            throw new InvalidDataException("Invalid message format");
         }
 
-        // Advance buffer
-        buffer = buffer.Slice(4 + packetLength);
+        var payloadLength = packetLength - payloadOffset;
+        var rentedBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+        bodySpan.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
+        payload = new ArrayPoolPayload(rentedBuffer, payloadLength);
 
         return true;
     }
-
 }
