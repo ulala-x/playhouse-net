@@ -1,5 +1,6 @@
 #nullable enable
 
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
@@ -19,19 +20,18 @@ internal sealed class GlobalTaskPool : IDisposable
     private readonly int _minPoolSize;
     private readonly int _maxPoolSize;
     private int _currentPoolSize;
-    private int _busyWorkerCount;
+    private int _idleWorkerCount; // 작업을 기다리고 있는 일꾼 수
+    private long _lastIdleTimestamp; // 마지막으로 일꾼이 한가해졌던 시간
 
     /// <summary>
     /// GlobalTaskPool의 새 인스턴스를 초기화합니다.
     /// </summary>
-    /// <param name="minPoolSize">최소 유지할 워커 수.</param>
-    /// <param name="maxPoolSize">최대 확장 가능한 워커 수.</param>
-    /// <param name="logger">로거 인스턴스.</param>
     public GlobalTaskPool(int minPoolSize, int maxPoolSize, ILogger? logger = null)
     {
         _minPoolSize = minPoolSize;
         _maxPoolSize = maxPoolSize;
         _logger = logger;
+        _lastIdleTimestamp = Stopwatch.GetTimestamp();
         
         _workQueue = Channel.CreateUnbounded<ITaskPoolWorkItem>(new UnboundedChannelOptions
         {
@@ -61,7 +61,8 @@ internal sealed class GlobalTaskPool : IDisposable
     }
 
     /// <summary>
-    /// 작업을 풀에 게시합니다. 필요시 워커를 동적으로 확장합니다.
+    /// 작업을 풀에 게시합니다. 
+    /// 기존 워커들이 '긴 대기'에 빠져 기아 상태일 때만 워커를 확장합니다.
     /// </summary>
     public void Post(ITaskPoolWorkItem item)
     {
@@ -71,11 +72,26 @@ internal sealed class GlobalTaskPool : IDisposable
             return;
         }
 
-        // 모든 워커가 일하고 있고, 최대치에 도달하지 않았다면 추가 워커 생성
-        // (큐에 쌓이는 속도가 처리 속도보다 빠를 때 대응)
-        if (_busyWorkerCount >= _currentPoolSize && _currentPoolSize < _maxPoolSize)
+        // 기아 상태(Starvation) 감지: 
+        // 유휴 일꾼이 없고, 마지막 유휴 발생 후 일정 시간(100ms)이 지났다면
+        // 현재 일꾼들이 'Long Wait' 상태라고 판단하여 확장 시도.
+        if (Volatile.Read(ref _idleWorkerCount) == 0 && _currentPoolSize < _maxPoolSize)
         {
-            SpawnWorker();
+            long now = Stopwatch.GetTimestamp();
+            long lastIdle = Volatile.Read(ref _lastIdleTimestamp);
+            
+            // 100ms 동안 아무도 돌아오지 않았다면 보충군 투입
+            if (now - lastIdle > (Stopwatch.Frequency / 10))
+            {
+                // 생성 전 다시 한번 체크 (Double-check)
+                if (Interlocked.Read(ref _lastIdleTimestamp) == lastIdle)
+                {
+                    // 생성 시간을 갱신하여 연속 생성을 방지 (Throttling)
+                    Interlocked.Exchange(ref _lastIdleTimestamp, now);
+                    SpawnWorker();
+                    _logger?.LogDebug("Worker expanded to {Count} due to starvation (Long Wait detected)", _currentPoolSize);
+                }
+            }
         }
     }
 
@@ -87,63 +103,57 @@ internal sealed class GlobalTaskPool : IDisposable
             {
                 ITaskPoolWorkItem? item;
 
-                // 1. 비동기로 작업 대기 (유휴 시간 체크 포함)
-                if (!_workQueue.Reader.TryRead(out item))
+                // 1. 유휴 상태 진입 기록
+                Interlocked.Increment(ref _idleWorkerCount);
+                Interlocked.Exchange(ref _lastIdleTimestamp, Stopwatch.GetTimestamp());
+
+                try
                 {
-                    // 최소 수량을 초과한 워커는 일정 시간 대기 후 종료 (Retirement)
+                    // 작업을 기다림
                     if (_currentPoolSize > _minPoolSize)
                     {
+                        // 최소 수량 초과 워커는 유휴 시간 체크
                         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30)); // 30초 유휴 시 종료
-
+                        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
                         try
                         {
                             if (!await _workQueue.Reader.WaitToReadAsync(timeoutCts.Token)) break;
-                            if (!_workQueue.Reader.TryRead(out item)) continue;
                         }
                         catch (OperationCanceledException)
                         {
-                            // 유휴 시간 초과 - 워커 종료
+                            // 30초 동안 일이 없으면 퇴장
                             if (Interlocked.Decrement(ref _currentPoolSize) >= _minPoolSize)
                             {
-                                _logger?.LogDebug("Worker Task-{Id} retired due to inactivity", id);
+                                _logger?.LogDebug("Worker Task-{Id} retired", id);
                                 return;
                             }
-                            // 만약 그 사이 최소 수량 밑으로 내려갔다면 다시 복구
                             Interlocked.Increment(ref _currentPoolSize);
                         }
                     }
                     else
                     {
-                        // 최소 수량 워커는 무한 대기
                         if (!await _workQueue.Reader.WaitToReadAsync(ct)) break;
-                        if (!_workQueue.Reader.TryRead(out item)) continue;
                     }
-                }
 
-                if (item == null) continue;
-
-                // 2. 작업 실행
-                Interlocked.Increment(ref _busyWorkerCount);
-                try
-                {
-                    await item.ExecuteAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogError(ex, "Error executing work item in Worker Task-{Id}", id);
+                    if (!_workQueue.Reader.TryRead(out item)) continue;
                 }
                 finally
                 {
-                    Interlocked.Decrement(ref _busyWorkerCount);
+                    // 작업 시작 전 유휴 상태 해제
+                    Interlocked.Decrement(ref _idleWorkerCount);
+                }
+
+                // 2. 로직 실행
+                if (item != null)
+                {
+                    await item.ExecuteAsync();
                 }
             }
         }
         catch (OperationCanceledException) { }
-        finally
+        catch (Exception ex)
         {
-            // 예기치 않은 종료 시 카운트 보정
-            // Interlocked.Decrement(ref _currentPoolSize); // 정상 retirement와 중복될 수 있어 주의 필요
+            _logger?.LogError(ex, "Error in Worker Task-{Id}", id);
         }
     }
 
