@@ -144,36 +144,47 @@ public class BenchmarkRunner(
     {
         // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
         var payloadBytes = _requestPayload.ToByteArray();
-
         var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
-        var i = 0;
+        
+        // SemaphoreSlim으로 인플라이트 제어
+        using var semaphore = new SemaphoreSlim(maxInFlight);
+        var tasks = new List<Task>();
 
         while (DateTime.UtcNow < endTime)
         {
-            using var packet = new ClientPacket("EchoRequest", payloadBytes);
+            await semaphore.WaitAsync();
 
-            metricsCollector.RecordSent();
-
-            var sw = Stopwatch.StartNew();
-            try
+            var task = Task.Run(async () =>
             {
-                using var response = await connector.RequestAsync(packet);
-                sw.Stop();
-
-                if (response.MsgId != "EchoReply")
+                var sw = Stopwatch.StartNew();
+                try
                 {
-                    Log.Warning("[Connection {ConnectionId}] Unexpected response: {MsgId}", connectionId, response.MsgId);
+                    using var packet = new ClientPacket("EchoRequest", payloadBytes);
+                    metricsCollector.RecordSent();
+                    using var response = await connector.RequestAsync(packet);
+                    sw.Stop();
+                    metricsCollector.RecordReceived(sw.ElapsedTicks);
                 }
-
-                metricsCollector.RecordReceived(sw.ElapsedTicks);
-            }
-            catch (Exception ex)
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "[Connection {ConnectionId}] Request failed", connectionId);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+            
+            tasks.Add(task);
+            
+            // 너무 많은 Task 객체가 쌓이지 않도록 주기적으로 정리
+            if (tasks.Count > maxInFlight * 2)
             {
-                Log.Error(ex, "[Connection {ConnectionId}] Request failed at message {Sequence}", connectionId, i);
+                tasks.RemoveAll(t => t.IsCompleted);
             }
-
-            i++;
         }
+
+        await Task.WhenAll(tasks);
     }
 
     private async Task RunRequestCallbackMode(ClientConnector connector, int connectionId)

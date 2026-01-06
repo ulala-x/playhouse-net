@@ -237,6 +237,9 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// </summary>
     private void TryStartProcessing()
     {
+        // 최적화: CAS 호출 전 먼저 체크하여 불필요한 경합 방지
+        if (_isProcessing.Value) return;
+
         // CAS: 한 번에 하나의 처리만 진행되도록 보장
         if (_isProcessing.CompareAndSet(false, true))
         {
@@ -283,9 +286,36 @@ internal sealed class BaseStage : IReplyPacketRegistry
                 {
                     try
                     {
-                        var task = DispatchMessageAsync(message);
+                        // Inlined processing logic for maximum performance
+                        Task task;
+                        switch (message)
+                        {
+                            case StageMessage.ClientRouteMessage clientRouteMessage:
+                                task = ProcessClientRouteAsync(clientRouteMessage);
+                                break;
+                            case StageMessage.RouteMessage routeMessage:
+                                task = DispatchRoutePacketAsync(routeMessage.Packet);
+                                break;
+                            case StageMessage.TimerMessage timerMessage:
+                                task = timerMessage.Callback.Invoke();
+                                break;
+                            case StageMessage.AsyncMessage asyncMessage:
+                                task = asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
+                                break;
+                            case StageMessage.JoinActorMessage joinActorMessage:
+                                task = ProcessJoinActorAsync(joinActorMessage);
+                                break;
+                            case StageMessage.DisconnectMessage disconnectMessage:
+                                task = ProcessDisconnectAsync(disconnectMessage.AccountId);
+                                break;
+                            case StageMessage.DestroyMessage:
+                                task = HandleDestroyAsync();
+                                break;
+                            default:
+                                task = Task.CompletedTask;
+                                break;
+                        }
                         
-                        // 동기적으로 완료된 경우 await 오버헤드 회피
                         if (task.IsCompleted)
                         {
                             task.GetAwaiter().GetResult();
@@ -297,7 +327,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
                     }
                     catch (Exception ex)
                     {
-                        _logger?.LogError(ex, "Unhandled exception in Stage {StageId}", StageId);
+                        _logger?.LogError(ex, "Unhandled exception in Stage {StageId} while processing {Type}", StageId, message.GetType().Name);
                     }
                     finally
                     {
@@ -325,48 +355,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         }
     }
 
-    private async Task DispatchMessageAsync(StageMessage message)
-    {
-        try
-        {
-            switch (message)
-            {
-                case StageMessage.RouteMessage routeMessage:
-                    await DispatchRoutePacketAsync(routeMessage.Packet);
-                    break;
-
-                case StageMessage.TimerMessage timerMessage:
-                    await timerMessage.Callback.Invoke();
-                    break;
-
-                case StageMessage.AsyncMessage asyncMessage:
-                    await asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
-                    break;
-
-                case StageMessage.ClientRouteMessage clientRouteMessage:
-                    await ProcessClientRouteAsync(clientRouteMessage);
-                    break;
-
-                case StageMessage.JoinActorMessage joinActorMessage:
-                    await ProcessJoinActorAsync(joinActorMessage);
-                    break;
-
-                case StageMessage.DisconnectMessage disconnectMessage:
-                    await ProcessDisconnectAsync(disconnectMessage.AccountId);
-                    break;
-
-                case StageMessage.DestroyMessage:
-                    await HandleDestroyAsync();
-                    break;
-            }
-        }
-        finally
-        {
-            DisposePendingReplies();
-        }
-    }
-
-    private async Task DispatchRoutePacketAsync(RoutePacket packet)
+    private Task DispatchRoutePacketAsync(RoutePacket packet)
     {
         // Set current header for reply routing
         StageSender.SetCurrentHeader(packet.Header);
@@ -376,27 +365,41 @@ internal sealed class BaseStage : IReplyPacketRegistry
             var msgId = packet.MsgId;
             var accountIdString = packet.AccountId.ToString();
 
+            Task task;
             // Check if this is a system message
             if (IsSystemMessage(msgId))
             {
-                await HandleSystemMessageAsync(msgId, packet);
+                task = HandleSystemMessageAsync(msgId, packet);
             }
             else if (packet.AccountId != 0 && _actors.TryGetValue(accountIdString, out var baseActor))
             {
                 // Client message (Actor exists)
                 var contentPacket = CreateContentPacket(packet);
-                await Stage.OnDispatch(baseActor.Actor, contentPacket);
+                task = Stage.OnDispatch(baseActor.Actor, contentPacket);
             }
             else
             {
                 // Server-to-server message (no Actor context)
                 var contentPacket = CreateContentPacket(packet);
-                await Stage.OnDispatch(contentPacket);
+                task = Stage.OnDispatch(contentPacket);
             }
+
+            if (!task.IsCompleted)
+            {
+                return task.ContinueWith(t => 
+                {
+                    StageSender.ClearCurrentHeader();
+                    if (t.IsFaulted) throw t.Exception!;
+                }, TaskScheduler.Default);
+            }
+
+            StageSender.ClearCurrentHeader();
+            return task;
         }
-        finally
+        catch
         {
             StageSender.ClearCurrentHeader();
+            throw;
         }
     }
 
@@ -462,7 +465,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <summary>
     /// Processes client route message by finding actor and dispatching to Stage.OnDispatch.
     /// </summary>
-    private async Task ProcessClientRouteAsync(StageMessage.ClientRouteMessage message)
+    private Task ProcessClientRouteAsync(StageMessage.ClientRouteMessage message)
     {
         var baseActor = message.Actor;
 
@@ -497,20 +500,35 @@ internal sealed class BaseStage : IReplyPacketRegistry
                 {
                     // Pass payload directly to CPacket - ownership transferred
                     using var packet = CPacket.Of(message.MsgId, payload);
-                    await Stage.OnDispatch(baseActor.Actor, packet);
-                    // packet.Dispose() will handle payload cleanup
+                    var task = Stage.OnDispatch(baseActor.Actor, packet);
+                    
+                    // 만약 동기적으로 완료되지 않았다면, 헤더 정리를 위한 continuation이 필요함
+                    if (!task.IsCompleted)
+                    {
+                        return task.ContinueWith(t => 
+                        {
+                            StageSender.ClearCurrentHeader();
+                            if (t.IsFaulted) throw t.Exception!;
+                        }, TaskScheduler.Default);
+                    }
+                    
+                    // 동기 완료 시 즉시 헤더 정리
+                    StageSender.ClearCurrentHeader();
+                    return task;
                 }
             }
-            finally
+            catch
             {
-                // Clear current header after dispatch
                 StageSender.ClearCurrentHeader();
+                throw;
             }
         }
         else
         {
             _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", message.AccountId, message.MsgId);
         }
+        
+        return Task.CompletedTask;
     }
 
     /// <summary>
