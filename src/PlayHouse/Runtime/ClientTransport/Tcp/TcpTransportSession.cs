@@ -42,6 +42,7 @@ internal sealed class TcpTransportSession : ITransportSession
     public bool IsAuthenticated { get; set; }
     public long StageId { get; set; }
     public bool IsConnected => !_disposed && _socket.Connected;
+    public object? ProcessorContext { get; set; }
 
     internal TcpTransportSession(
         long sessionId,

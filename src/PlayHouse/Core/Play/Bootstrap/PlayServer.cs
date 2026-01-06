@@ -322,7 +322,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         if (session.IsAuthenticated && !string.IsNullOrEmpty(session.AccountId))
         {
             // Direct routing without ClientRouteMessage allocation (perf: avoid heap alloc per message)
-            _dispatcher?.RouteClientMessage(stageId, session.AccountId, msgId, msgSeq, session.SessionId, payload);
+            _dispatcher?.RouteClientMessage(session, stageId, session.AccountId, msgId, msgSeq, session.SessionId, payload);
         }
         else
         {
@@ -536,6 +536,9 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         {
             _logger.LogDebug("Session {SessionId} disconnected", session.SessionId);
         }
+
+        // Clear routing context
+        session.ProcessorContext = null;
 
         // 인증된 세션인 경우 DisconnectMessage 전달
         if (session.IsAuthenticated && !string.IsNullOrEmpty(session.AccountId) && session.StageId != 0)

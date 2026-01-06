@@ -88,6 +88,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
     public bool IsAuthenticated { get; set; }
     public long StageId { get; set; }
     public bool IsConnected => !_disposed && _webSocket.State == WebSocketState.Open;
+    public object? ProcessorContext { get; set; }
 
     internal WebSocketTransportSession(
         long sessionId,
@@ -160,30 +161,33 @@ internal sealed class WebSocketTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Send loop that processes queued messages from the channel.
+    /// Send loop that processes queued messages from the channel using batching.
     /// </summary>
     private async Task SendLoopAsync(CancellationToken ct)
     {
         try
         {
-            await foreach (var item in _sendChannel.Reader.ReadAllAsync(ct))
+            while (await _sendChannel.Reader.WaitToReadAsync(ct))
             {
-                try
+                while (_sendChannel.Reader.TryRead(out var item))
                 {
-                    await _webSocket.SendAsync(
-                        item.Buffer.AsMemory(0, item.Size),
-                        WebSocketMessageType.Binary,
-                        endOfMessage: true,
-                        ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
-                    break;
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                    try
+                    {
+                        await _webSocket.SendAsync(
+                            item.Buffer.AsMemory(0, item.Size),
+                            WebSocketMessageType.Binary,
+                            endOfMessage: true,
+                            ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
+                        break;
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(item.Buffer);
+                    }
                 }
             }
         }
