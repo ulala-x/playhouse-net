@@ -2,7 +2,6 @@
 
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using PlayHouse.Core.Play.Base;
 
 namespace PlayHouse.Core.Play.EventLoop;
 
@@ -62,95 +61,57 @@ internal sealed class StageEventLoop : IDisposable
 
     /// <summary>
     /// EventLoop의 메인 실행 루프.
-    /// Channel에서 작업을 읽어 순차적으로 실행하며, 같은 Stage의 작업은 배치로 처리합니다.
+    /// Channel에서 작업을 읽어 순차적으로 실행합니다.
     /// </summary>
     private void Run()
     {
         // SynchronizationContext 설정 - await의 continuation이 이 스레드에서 실행됨
         SynchronizationContext.SetSynchronizationContext(_syncContext);
 
-        // 배치 처리를 위한 임시 버퍼 (할당 최소화)
-        var workItems = new List<IEventLoopWorkItem>(1024);
-        var stageGroups = new Dictionary<BaseStage, List<IEventLoopWorkItem>>();
-        var orderOfStages = new List<BaseStage>();
-
         try
         {
+            // Channel에서 메시지를 동기적으로 읽어 처리
             while (!_disposed)
             {
                 try
                 {
-                    // 1. 최대한 많이 긁어모음 (Aggregation)
+                    // Channel에서 항목 읽기 시도 (배치 처리 지원)
                     if (_channel.Reader.TryRead(out var item))
                     {
-                        workItems.Add(item);
-                        while (workItems.Count < 1024 && _channel.Reader.TryRead(out item))
+                        ExecuteWorkItem(item);
+
+                        // 부하가 높을 때 루프 오버헤드를 줄이기 위해 연속해서 더 읽음
+                        int batchCount = 1;
+                        while (batchCount < 128 && _channel.Reader.TryRead(out item))
                         {
-                            workItems.Add(item);
+                            ExecuteWorkItem(item);
+                            batchCount++;
                         }
                     }
                     else
                     {
+                        // 항목이 없으면 대기 (비동기 대기를 블로킹으로 변환)
                         var waitTask = _channel.Reader.WaitToReadAsync();
                         if (waitTask.IsCompletedSuccessfully)
                         {
-                            if (!waitTask.Result) break;
+                            if (!waitTask.Result)
+                            {
+                                break;  // Channel이 완료됨
+                            }
                         }
                         else
                         {
-                            if (!waitTask.AsTask().ConfigureAwait(false).GetAwaiter().GetResult()) break;
+                            // Task가 아직 완료되지 않음 - 동기적으로 대기
+                            if (!waitTask.AsTask().ConfigureAwait(false).GetAwaiter().GetResult())
+                            {
+                                break;  // Channel이 완료됨
+                            }
                         }
-                        continue;
                     }
-
-                    // 2. Stage별 그룹화 (순서 보장하며 묶음)
-                    for (int i = 0; i < workItems.Count; i++)
-                    {
-                        var work = workItems[i];
-                        var stage = work.Stage;
-
-                        if (stage == null)
-                        {
-                            // 전역 작업은 즉시 실행하거나 별도 처리 (순차성 위해 즉시 실행 추천)
-                            ExecuteWorkItem(work);
-                            continue;
-                        }
-
-                        if (!stageGroups.TryGetValue(stage, out var group))
-                        {
-                            group = new List<IEventLoopWorkItem>();
-                            stageGroups[stage] = group;
-                            orderOfStages.Add(stage);
-                        }
-                        group.Add(work);
-                    }
-
-                    // 3. 그룹별 일괄 실행 (Bundle Execution)
-                    for (int i = 0; i < orderOfStages.Count; i++)
-                    {
-                        var stage = orderOfStages[i];
-                        var batch = stageGroups[stage];
-                        
-                        // Stage에게 일괄 처리를 맡김 (Context Switch 1번으로 단축)
-                        var task = stage.ExecuteBatchAsync(batch);
-                        if (task.IsCompleted)
-                        {
-                            task.GetAwaiter().GetResult();
-                        }
-                        else
-                        {
-                            task.GetAwaiter().GetResult(); // EventLoop 스레드 유지하며 대기
-                        }
-                        
-                        batch.Clear();
-                    }
-                    
-                    workItems.Clear();
-                    stageGroups.Clear();
-                    orderOfStages.Clear();
                 }
                 catch (Exception) when (_disposed)
                 {
+                    // Dispose 중 예외는 무시
                     break;
                 }
                 catch (Exception ex)

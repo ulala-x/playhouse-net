@@ -20,16 +20,27 @@ namespace PlayHouse.Core.Play.Base;
 /// Base class that manages Stage lifecycle and event loop.
 /// </summary>
 /// <remarks>
-/// BaseStage uses a global EventLoop for message processing.
-/// Individual queues are removed to minimize memory and scheduling overhead.
+/// BaseStage implements a lock-free event loop using ConcurrentQueue and AtomicBoolean.
+/// All messages are processed sequentially on the event loop to ensure thread safety
+/// when accessing Stage state.
+///
+/// Event Loop Pattern:
+/// 1. Messages are enqueued via Post()
+/// 2. CAS operation ensures only one processing loop runs at a time
+/// 3. Loop processes all queued messages
+/// 4. Loop exits when queue is empty (double-check for race conditions)
 /// </remarks>
 internal sealed class BaseStage : IReplyPacketRegistry
 {
+    private readonly ConcurrentQueue<StageMessage> _messageQueue = new();
+    private readonly ConcurrentQueue<StageMessage.ReplyCallbackMessage> _callbackQueue = new();
+    private readonly AtomicBoolean _isProcessing = new(false);
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
     private readonly ILogger? _logger;
     private BaseStageCmdHandler? _cmdHandler;
     private StageEventLoop _eventLoop = null!;  // PlayDispatcher에서 설정됨
+    private StageProcessingWorkItem? _cachedWorkItem;  // 재사용을 위한 캐시된 WorkItem
 
     // Pool for ClientRouteMessage to avoid heap allocations
     internal static readonly Microsoft.Extensions.ObjectPool.ObjectPool<StageMessage.ClientRouteMessage> _clientRouteMessagePool = 
@@ -135,8 +146,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <param name="packet">The route packet to process.</param>
     public void Post(RoutePacket packet)
     {
-        var msg = new StageMessage.RouteMessage(packet) { Stage = this };
-        _eventLoop.Post(msg);
+        _messageQueue.Enqueue(new StageMessage.RouteMessage(packet));
+        TryStartProcessing();
     }
 
     /// <summary>
@@ -146,8 +157,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <param name="callback">Timer callback.</param>
     internal void PostTimerCallback(long timerId, TimerCallbackDelegate callback)
     {
-        var msg = new StageMessage.TimerMessage(timerId, callback) { Stage = this };
-        _eventLoop.Post(msg);
+        _messageQueue.Enqueue(new StageMessage.TimerMessage(timerId, callback));
+        TryStartProcessing();
     }
 
     /// <summary>
@@ -156,8 +167,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <param name="asyncPacket">AsyncBlock packet.</param>
     internal void PostAsyncBlock(AsyncBlockPacket asyncPacket)
     {
-        var msg = new StageMessage.AsyncMessage(asyncPacket) { Stage = this };
-        _eventLoop.Post(msg);
+        _messageQueue.Enqueue(new StageMessage.AsyncMessage(asyncPacket));
+        TryStartProcessing();
     }
 
     /// <summary>
@@ -168,8 +179,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <param name="packet">Reply packet.</param>
     internal void PostReplyCallback(ReplyCallback callback, ushort errorCode, IPacket? packet)
     {
-        var msg = new StageMessage.ReplyCallbackMessage(callback, errorCode, packet) { Stage = this };
-        _eventLoop.Post(msg);
+        _callbackQueue.Enqueue(new StageMessage.ReplyCallbackMessage(callback, errorCode, packet));
+        TryStartProcessing();
     }
 
     /// <summary>
@@ -179,8 +190,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     {
         var message = _clientRouteMessagePool.Get();
         message.Update(actor, accountId, msgId, msgSeq, sid, payload);
-        message.Stage = this;
-        _eventLoop.Post(message);
+        _messageQueue.Enqueue(message);
+        TryStartProcessing();
     }
 
     /// <summary>
@@ -192,8 +203,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
         {
             var message = _clientRouteMessagePool.Get();
             message.Update(actor, accountId, msgId, msgSeq, sid, payload);
-            message.Stage = this;
-            _eventLoop.Post(message);
+            _messageQueue.Enqueue(message);
+            TryStartProcessing();
         }
         else
         {
@@ -207,8 +218,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// </summary>
     internal void PostJoinActor(StageMessage.JoinActorMessage message)
     {
-        message.Stage = this;
-        _eventLoop.Post(message);
+        _messageQueue.Enqueue(message);
+        TryStartProcessing();
     }
 
     /// <summary>
@@ -217,74 +228,134 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <param name="accountId">Account ID of disconnected client.</param>
     internal void PostDisconnect(string accountId)
     {
-        var msg = new StageMessage.DisconnectMessage(accountId) { Stage = this };
-        _eventLoop.Post(msg);
+        _messageQueue.Enqueue(new StageMessage.DisconnectMessage(accountId));
+        TryStartProcessing();
     }
 
     /// <summary>
-    /// EventLoop에서 메시지를 처리할 때 컨텍스트를 설정합니다.
+    /// 메시지 처리를 시작합니다. EventLoop에 작업을 게시합니다.
     /// </summary>
-    internal static IDisposable SetCurrentContext(BaseStage stage)
+    private void TryStartProcessing()
     {
-        _currentStage.Value = stage;
-        return new ContextScope();
-    }
+        // 최적화: CAS 호출 전 먼저 체크하여 불필요한 경합 방지
+        if (_isProcessing.Value) return;
 
-    private sealed class ContextScope : IDisposable
-    {
-        public void Dispose() => _currentStage.Value = null;
+        // CAS: 한 번에 하나의 처리만 진행되도록 보장
+        if (_isProcessing.CompareAndSet(false, true))
+        {
+            // 캐시된 WorkItem 사용 (객체 생성 회피)
+            _cachedWorkItem ??= new StageProcessingWorkItem(this);
+            _eventLoop.Post(_cachedWorkItem);
+        }
     }
 
     /// <summary>
-    /// Executes a batch of work items for this stage in a single context setup.
-    /// This significantly reduces overhead by setting headers and cleaning up once per batch.
+    /// EventLoop에서 호출되는 메시지 처리 메서드.
+    /// 큐에 대기 중인 모든 메시지를 배치로 처리합니다.
     /// </summary>
-    internal async Task ExecuteBatchAsync(List<IEventLoopWorkItem> batch)
+    internal async Task ProcessOneMessageAsync()
     {
+        // 현재 Stage 컨텍스트 설정 (콜백 실행 최적화용)
         _currentStage.Value = this;
         try
         {
-            for (int i = 0; i < batch.Count; i++)
+            // 배치 처리: 큐가 빌 때까지 모든 메시지 처리
+            bool hasMore = true;
+            while (hasMore)
             {
-                var item = batch[i];
-                try
+                // 1. 콜백 큐를 모두 처리 (최우선순위)
+                while (_callbackQueue.TryDequeue(out var callbackMessage))
                 {
-                    var task = item.ExecuteAsync();
-                    if (task.IsCompleted)
+                    try
                     {
-                        task.GetAwaiter().GetResult();
+                        if (callbackMessage.Packet is IDisposable disposable)
+                        {
+                            RegisterReplyForDisposal(disposable);
+                        }
+                        callbackMessage.Callback(callbackMessage.ErrorCode, callbackMessage.Packet);
                     }
-                    else
+                    finally
                     {
-                        await task;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogError(ex, "Error executing batched work item in Stage {StageId}", StageId);
-                }
-                finally
-                {
-                    if (item is IDisposable disposable)
-                    {
-                        disposable.Dispose();
+                        DisposePendingReplies();
                     }
                 }
+
+                // 2. 일반 메시지 처리 (최대 100개씩 끊어서 처리하여 콜백 큐 반응성 확보)
+                int processedCount = 0;
+                while (processedCount < 100 && _messageQueue.TryDequeue(out var message))
+                {
+                    try
+                    {
+                        // Inlined processing logic for maximum performance
+                        Task task;
+                        switch (message)
+                        {
+                            case StageMessage.ClientRouteMessage clientRouteMessage:
+                                task = ProcessClientRouteAsync(clientRouteMessage);
+                                break;
+                            case StageMessage.RouteMessage routeMessage:
+                                task = DispatchRoutePacketAsync(routeMessage.Packet);
+                                break;
+                            case StageMessage.TimerMessage timerMessage:
+                                task = timerMessage.Callback.Invoke();
+                                break;
+                            case StageMessage.AsyncMessage asyncMessage:
+                                task = asyncMessage.AsyncPacket.PostCallback.Invoke(asyncMessage.AsyncPacket.Result);
+                                break;
+                            case StageMessage.JoinActorMessage joinActorMessage:
+                                task = ProcessJoinActorAsync(joinActorMessage);
+                                break;
+                            case StageMessage.DisconnectMessage disconnectMessage:
+                                task = ProcessDisconnectAsync(disconnectMessage.AccountId);
+                                break;
+                            case StageMessage.DestroyMessage:
+                                task = HandleDestroyAsync();
+                                break;
+                            default:
+                                task = Task.CompletedTask;
+                                break;
+                        }
+                        
+                        if (task.IsCompleted)
+                        {
+                            task.GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            await task;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Unhandled exception in Stage {StageId} while processing {Type}", StageId, message.GetType().Name);
+                    }
+                    finally
+                    {
+                        message.Dispose();
+                        DisposePendingReplies();
+                    }
+                    processedCount++;
+                }
+
+                // 큐가 비었는지 확인
+                hasMore = !_messageQueue.IsEmpty || !_callbackQueue.IsEmpty;
             }
         }
         finally
         {
             _currentStage.Value = null;
-            // Batch level cleanup
-            DisposePendingReplies();
+
+            // 처리 완료 후 더 메시지가 있으면 재스케줄
+            // (await 중 새 메시지가 도착했을 수 있음)
+            _isProcessing.Set(false);
+            if (!_messageQueue.IsEmpty || !_callbackQueue.IsEmpty)
+            {
+                TryStartProcessing();
+            }
         }
     }
 
-    #endregion
-
-    #region Message Handlers (Internal)
-
-    internal Task DispatchRoutePacketAsync(RoutePacket packet)
+    private Task DispatchRoutePacketAsync(RoutePacket packet)
     {
         // Set current header for reply routing
         StageSender.SetCurrentHeader(packet.Header);
@@ -318,19 +389,16 @@ internal sealed class BaseStage : IReplyPacketRegistry
                 return task.ContinueWith(t => 
                 {
                     StageSender.ClearCurrentHeader();
-                    DisposePendingReplies();
                     if (t.IsFaulted) throw t.Exception!;
                 }, TaskScheduler.Default);
             }
 
             StageSender.ClearCurrentHeader();
-            DisposePendingReplies();
             return task;
         }
         catch
         {
             StageSender.ClearCurrentHeader();
-            DisposePendingReplies();
             throw;
         }
     }
@@ -361,7 +429,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         }
     }
 
-    internal async Task HandleDestroyAsync()
+    private async Task HandleDestroyAsync()
     {
         // Destroy all actors
         foreach (var baseActor in _actors.Values.ToList())
@@ -397,7 +465,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <summary>
     /// Processes client route message by finding actor and dispatching to Stage.OnDispatch.
     /// </summary>
-    internal Task ProcessClientRouteAsync(StageMessage.ClientRouteMessage message)
+    private Task ProcessClientRouteAsync(StageMessage.ClientRouteMessage message)
     {
         var baseActor = message.Actor;
 
@@ -440,21 +508,18 @@ internal sealed class BaseStage : IReplyPacketRegistry
                         return task.ContinueWith(t => 
                         {
                             StageSender.ClearCurrentHeader();
-                            DisposePendingReplies();
                             if (t.IsFaulted) throw t.Exception!;
                         }, TaskScheduler.Default);
                     }
                     
                     // 동기 완료 시 즉시 헤더 정리
                     StageSender.ClearCurrentHeader();
-                    DisposePendingReplies();
                     return task;
                 }
             }
             catch
             {
                 StageSender.ClearCurrentHeader();
-                DisposePendingReplies();
                 throw;
             }
         }
@@ -463,7 +528,6 @@ internal sealed class BaseStage : IReplyPacketRegistry
             _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", message.AccountId, message.MsgId);
         }
         
-        DisposePendingReplies();
         return Task.CompletedTask;
     }
 
@@ -471,7 +535,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// Processes actor join by checking for existing actor (reconnection) or new join.
     /// Sends auth reply after processing.
     /// </summary>
-    internal async Task ProcessJoinActorAsync(StageMessage.JoinActorMessage message)
+    private async Task ProcessJoinActorAsync(StageMessage.JoinActorMessage message)
     {
         var actor = message.Actor;
         var accountId = actor.AccountId;
@@ -558,8 +622,6 @@ internal sealed class BaseStage : IReplyPacketRegistry
                 StageId,
                 errorCode,
                 ReadOnlySpan<byte>.Empty);
-            
-            DisposePendingReplies();
         }
     }
 
@@ -567,7 +629,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// Processes client disconnect by calling OnConnectionChanged(false).
     /// Does not remove or destroy the Actor.
     /// </summary>
-    internal async Task ProcessDisconnectAsync(string accountId)
+    private async Task ProcessDisconnectAsync(string accountId)
     {
         if (_actors.TryGetValue(accountId, out var baseActor))
         {
@@ -584,7 +646,6 @@ internal sealed class BaseStage : IReplyPacketRegistry
         {
             _logger?.LogWarning("Actor {AccountId} not found for disconnect notification", accountId);
         }
-        DisposePendingReplies();
     }
 
     #endregion
@@ -773,7 +834,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// </summary>
     internal void PostDestroy()
     {
-        _eventLoop.Post(new StageMessage.DestroyMessage() { Stage = this });
+        _messageQueue.Enqueue(new StageMessage.DestroyMessage());
+        TryStartProcessing();
     }
 
     #endregion
@@ -782,13 +844,9 @@ internal sealed class BaseStage : IReplyPacketRegistry
 /// <summary>
 /// Base class for Stage event loop messages.
 /// </summary>
-internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
+internal abstract class StageMessage : IDisposable
 {
-    public BaseStage? Stage { get; internal set; }
-
     public virtual void Dispose() { }
-
-    public abstract Task ExecuteAsync();
 
     /// <summary>
     /// Message containing a route packet.
@@ -806,8 +864,6 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
         {
             Packet.Dispose();
         }
-
-        public override Task ExecuteAsync() => Stage!.DispatchRoutePacketAsync(Packet);
     }
 
     /// <summary>
@@ -823,8 +879,6 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
             TimerId = timerId;
             Callback = callback;
         }
-
-        public override Task ExecuteAsync() => Callback.Invoke();
     }
 
     /// <summary>
@@ -838,8 +892,6 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
         {
             AsyncPacket = asyncPacket;
         }
-
-        public override Task ExecuteAsync() => AsyncPacket.PostCallback.Invoke(AsyncPacket.Result);
     }
 
     /// <summary>
@@ -857,21 +909,12 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
             ErrorCode = errorCode;
             Packet = packet;
         }
-
-        public override Task ExecuteAsync()
-        {
-            Callback(ErrorCode, Packet);
-            return Task.CompletedTask;
-        }
     }
 
     /// <summary>
     /// Message to destroy the Stage.
     /// </summary>
-    public sealed class DestroyMessage : StageMessage
-    {
-        public override Task ExecuteAsync() => Stage!.HandleDestroyAsync();
-    }
+    public sealed class DestroyMessage : StageMessage { }
 
     /// <summary>
     /// Message for client route to actor.
@@ -918,13 +961,10 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
             Payload?.Dispose();
             Payload = null;
             Actor = null;
-            Stage = null;
             
             // Return to pool
             BaseStage._clientRouteMessagePool.Return(this);
         }
-
-        public override Task ExecuteAsync() => Stage!.ProcessClientRouteAsync(this);
     }
 
     /// <summary>
@@ -956,8 +996,6 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
         {
             Payload?.Dispose();
         }
-
-        public override Task ExecuteAsync() => Stage!.ProcessJoinActorAsync(this);
     }
 
     /// <summary>
@@ -971,7 +1009,5 @@ internal abstract class StageMessage : IDisposable, IEventLoopWorkItem
         {
             AccountId = accountId;
         }
-
-        public override Task ExecuteAsync() => Stage!.ProcessDisconnectAsync(AccountId);
     }
 }
