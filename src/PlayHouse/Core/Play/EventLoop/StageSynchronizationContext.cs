@@ -18,7 +18,9 @@ internal sealed class StageSynchronizationContext : SynchronizationContext
     /// </summary>
     public override void Post(SendOrPostCallback d, object? state)
     {
-        _eventLoop.Post(new ContinuationWorkItem(d, state));
+        // 현재 실행 중인 Stage 정보를 함께 전달 (배치 처리 그룹화용)
+        var currentStage = Base.BaseStage.Current;
+        _eventLoop.Post(new ContinuationWorkItem(currentStage, d, state));
     }
 
     /// <summary>
@@ -38,7 +40,8 @@ internal sealed class StageSynchronizationContext : SynchronizationContext
         using var resetEvent = new ManualResetEventSlim(false);
         Exception? exception = null;
 
-        _eventLoop.Post(new ContinuationWorkItem(_ =>
+        var currentStage = Base.BaseStage.Current;
+        _eventLoop.Post(new ContinuationWorkItem(currentStage, _ =>
         {
             try
             {
