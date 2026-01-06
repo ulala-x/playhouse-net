@@ -31,26 +31,34 @@ var logDirOption = new Option<string>(
     description: "Directory for log files",
     getDefaultValue: () => "logs");
 
+var taskPoolSizeOption = new Option<int>(
+    name: "--task-pool-size",
+    description: "Number of shared worker tasks",
+    getDefaultValue: () => 200);
+
 var rootCommand = new RootCommand("PlayHouse Benchmark Server")
 {
     tcpPortOption,
     zmqPortOption,
     httpPortOption,
-    logDirOption
+    logDirOption,
+    taskPoolSizeOption
 };
 
 var tcpPort = 0;
 var zmqPort = 0;
 var httpPort = 0;
 var logDir = "logs";
+var taskPoolSize = 200;
 
-rootCommand.SetHandler((tcp, zmq, http, logDirectory) =>
+rootCommand.SetHandler((tcp, zmq, http, logDirectory, poolSize) =>
 {
     tcpPort = tcp;
     zmqPort = zmq;
     httpPort = http;
     logDir = logDirectory;
-}, tcpPortOption, zmqPortOption, httpPortOption, logDirOption);
+    taskPoolSize = poolSize;
+}, tcpPortOption, zmqPortOption, httpPortOption, logDirOption, taskPoolSizeOption);
 
 await rootCommand.InvokeAsync(args);
 
@@ -109,6 +117,7 @@ try
         options.TcpPort = tcpPort;
         options.AuthenticateMessageId = "AuthenticateRequest";
         options.DefaultStageType = "BenchmarkStage";
+        options.TaskPoolSize = taskPoolSize;
     })
     .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
     .UseSystemController<BenchmarkSystemController>();

@@ -56,6 +56,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RequestCache requestCache,
         ushort serviceId,
         string nid,
+        int taskPoolSize = 200, // Default to 200
         IClientReplyHandler? clientReplyHandler = null,
         ILogger? logger = null)
     {
@@ -69,8 +70,8 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
         _timerManager = new TimerManager(OnTimerCallback, logger);
         
-        // 고정된 200개의 워커 Task 풀 생성
-        _taskPool = new GlobalTaskPool(200, logger);
+        // 사용자가 지정한 크기의 워커 Task 풀 생성
+        _taskPool = new GlobalTaskPool(taskPoolSize, logger);
     }
 
     #region IPlayDispatcher Implementation
