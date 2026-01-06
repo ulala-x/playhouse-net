@@ -14,6 +14,8 @@ using PlayHouse.Runtime.Proto;
 using Xunit;
 using NSubstitute;
 
+using PlayHouse.Core.Play.TaskPool;
+
 namespace PlayHouse.Tests.Unit.Core.Play;
 
 /// <summary>
@@ -21,11 +23,11 @@ namespace PlayHouse.Tests.Unit.Core.Play;
 /// </summary>
 public class BaseStageTests : IDisposable
 {
-    private readonly StageEventLoopPool _eventLoopPool = new(poolSize: 2);
+    private readonly GlobalTaskPool _taskPool = new(poolSize: 4);
 
     public void Dispose()
     {
-        _eventLoopPool.Dispose();
+        _taskPool.Dispose();
     }
 
     #region Fake Implementations
@@ -122,9 +124,8 @@ public class BaseStageTests : IDisposable
         var fakeStage = new FakeStage(stageSender);
         var baseStage = new BaseStage(fakeStage, stageSender);
 
-        // EventLoop 설정
-        var eventLoop = _eventLoopPool.GetEventLoop(100);
-        baseStage.SetEventLoop(eventLoop);
+        // TaskPool 설정
+        baseStage.SetTaskPool(_taskPool);
 
         return (baseStage, fakeStage, stageSender);
     }

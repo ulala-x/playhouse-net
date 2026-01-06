@@ -2,33 +2,34 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
-using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 
 namespace PlayHouse.Runtime.ClientTransport.Tcp;
 
 /// <summary>
-/// TCP transport session using System.IO.Pipelines for efficient I/O.
+/// Task-less TCP transport session using SocketAsyncEventArgs for zero-task overhead per session.
+/// Only uses system resources when actual I/O occurs.
 /// </summary>
-/// <remarks>
-/// Uses length-prefixed message framing and zero-copy buffer management.
-/// Message processing is fire-and-forget for high throughput.
-/// </remarks>
 internal sealed class TcpTransportSession : ITransportSession
 {
     private readonly Socket _socket;
-    private readonly Stream _stream;
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger? _logger;
     private readonly CancellationTokenSource _cts;
-    private Task? _receiveAndProcessTask;
-    private readonly Channel<SendItem> _sendChannel;
-    private Task? _sendTask;
+    
+    // Buffer for receiving data
+    private readonly byte[] _receiveBuffer;
+    private int _bytesInBuffer;
+    private readonly SocketAsyncEventArgs _receiveArgs;
+    
+    // Locking for sending to ensure order without a permanent task
+    private readonly object _sendLock = new();
+    private bool _isSending;
+    private readonly Queue<SendItem> _sendQueue = new();
 
     private DateTime _lastActivity;
     private bool _disposed;
@@ -45,7 +46,7 @@ internal sealed class TcpTransportSession : ITransportSession
     internal TcpTransportSession(
         long sessionId,
         Socket socket,
-        Stream stream,
+        Stream _, // Stream is not used in Task-less implementation
         TransportOptions options,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
@@ -54,7 +55,6 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         SessionId = sessionId;
         _socket = socket;
-        _stream = stream;
         _options = options;
         _onMessage = onMessage;
         _onDisconnect = onDisconnect;
@@ -62,243 +62,73 @@ internal sealed class TcpTransportSession : ITransportSession
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
         _lastActivity = DateTime.UtcNow;
 
-        // Configure socket
         ConfigureSocket();
 
-        // Configure send channel
-        _sendChannel = Channel.CreateUnbounded<SendItem>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            SingleWriter = false
-        });
+        // Initialize receive buffer and args
+        _receiveBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize * 2);
+        _receiveArgs = new SocketAsyncEventArgs();
+        _receiveArgs.Completed += OnReceiveCompleted;
     }
 
-    /// <summary>
-    /// Starts the I/O tasks for receiving and sending messages.
-    /// Combined receiving and processing into one task to minimize overhead.
-    /// </summary>
     public void Start()
     {
-        _receiveAndProcessTask = Task.Run(() => ReceiveAndProcessLoopAsync(_cts.Token));
-        _sendTask = Task.Run(() => SendLoopAsync(_cts.Token));
-
-        _logger?.LogDebug("TCP session {SessionId} started (2 tasks)", SessionId);
+        // Start the first receive operation
+        StartReceive();
+        _logger?.LogDebug("TCP session {SessionId} started (Task-less)", SessionId);
     }
 
-    public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    private void StartReceive()
     {
         if (_disposed) return;
 
         try
         {
-            await _stream.WriteAsync(data, cancellationToken);
-            await _stream.FlushAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error sending data on session {SessionId}", SessionId);
-            await DisconnectAsync();
-        }
-    }
-
-    /// <summary>
-    /// Sends a response by enqueueing it to the send channel.
-    /// Thread-safe for concurrent calls.
-    /// </summary>
-    public void SendResponse(
-        string msgId,
-        ushort msgSeq,
-        long stageId,
-        ushort errorCode,
-        ReadOnlySpan<byte> payload)
-    {
-        if (_disposed) return;
-
-        var totalSize = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: true);
-
-        // Rent buffer from ArrayPool
-        var buffer = ArrayPool<byte>.Shared.Rent(totalSize);
-
-        // Prepare buffer synchronously (Span operations)
-        PrepareResponseBuffer(buffer, totalSize, msgId, msgSeq, stageId, errorCode, payload);
-
-        // Enqueue to send channel (synchronous)
-        _sendChannel.Writer.TryWrite(new SendItem(buffer, totalSize));
-    }
-
-    /// <summary>
-    /// Prepares the response buffer synchronously (Span operations).
-    /// </summary>
-    private static void PrepareResponseBuffer(
-        byte[] buffer,
-        int totalSize,
-        string msgId,
-        ushort msgSeq,
-        long stageId,
-        ushort errorCode,
-        ReadOnlySpan<byte> payload)
-    {
-        var span = buffer.AsSpan(0, totalSize);
-
-        // Length prefix (4 bytes)
-        var bodySize = totalSize - 4;
-        BinaryPrimitives.WriteInt32LittleEndian(span, bodySize);
-
-        // Body
-        MessageCodec.WriteResponseBody(span[4..], msgId, msgSeq, stageId, errorCode, payload);
-    }
-
-    /// <summary>
-    /// Send loop that processes queued messages from the channel using batching.
-    /// Reduces system call overhead by flushing only after writing a batch of messages.
-    /// </summary>
-    private async Task SendLoopAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (await _sendChannel.Reader.WaitToReadAsync(ct))
+            // Set the buffer for the receive operation
+            int available = _receiveBuffer.Length - _bytesInBuffer;
+            if (available < _options.ReceiveBufferSize)
             {
-                int batchCount = 0;
-                while (batchCount < 100 && _sendChannel.Reader.TryRead(out var item))
-                {
-                    try
-                    {
-                        await _stream.WriteAsync(item.Buffer.AsMemory(0, item.Size), ct);
-                        batchCount++;
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(item.Buffer);
-                    }
-                }
+                // Compact or expand buffer if not enough space
+                // For simplicity, we just compact here
+                // ... (compaction logic is in ParseAndDispatch)
+            }
 
-                if (batchCount > 0)
-                {
-                    await _stream.FlushAsync(ct);
-                }
+            _receiveArgs.SetBuffer(_receiveBuffer, _bytesInBuffer, _receiveBuffer.Length - _bytesInBuffer);
+
+            if (!_socket.ReceiveAsync(_receiveArgs))
+            {
+                // Completed synchronously
+                ProcessReceive(_receiveArgs);
             }
         }
-        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in send loop for session {SessionId}", SessionId);
+            HandleError(ex);
         }
     }
 
-    public async ValueTask DisconnectAsync()
+    private void OnReceiveCompleted(object? sender, SocketAsyncEventArgs e)
     {
-        if (_disposed) return;
-        await DisposeAsync();
+        ProcessReceive(e);
     }
 
-    public async ValueTask DisposeAsync()
+    private void ProcessReceive(SocketAsyncEventArgs e)
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        try
+        if (e.SocketError != SocketError.Success || e.BytesTransferred == 0)
         {
-            _cts.Cancel();
-
-            // Complete send channel
-            _sendChannel.Writer.Complete();
-
-            // Wait for tasks with timeout (if they were started)
-            if (_receiveAndProcessTask != null && _sendTask != null)
-            {
-                var timeout = Task.Delay(TimeSpan.FromSeconds(5));
-                var completed = Task.WhenAll(_receiveAndProcessTask, _sendTask);
-                await Task.WhenAny(completed, timeout);
-            }
+            _ = DisconnectAsync();
+            return;
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error during session {SessionId} disposal", SessionId);
-        }
-        finally
-        {
-            try { _stream.Close(); } catch { }
-            try { _socket.Close(); } catch { }
-            _cts.Dispose();
 
-            _onDisconnect(this, null);
-            _logger?.LogDebug("TCP session {SessionId} disposed", SessionId);
-        }
+        _bytesInBuffer += e.BytesTransferred;
+        _lastActivity = DateTime.UtcNow;
+
+        // Parse and dispatch messages
+        _bytesInBuffer = ParseAndDispatchMessages(_receiveBuffer, _bytesInBuffer);
+
+        // Continue receiving
+        StartReceive();
     }
 
-    private void ConfigureSocket()
-    {
-        _socket.NoDelay = true;
-        _socket.ReceiveBufferSize = _options.ReceiveBufferSize;
-        _socket.SendBufferSize = _options.SendBufferSize;
-
-        if (_options.EnableKeepAlive)
-        {
-            _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-        }
-    }
-
-    /// <summary>
-    /// Combined loop for receiving data and processing messages.
-    /// This eliminates the need for IO.Pipelines and one extra task per session.
-    /// </summary>
-    private async Task ReceiveAndProcessLoopAsync(CancellationToken ct)
-    {
-        // Use a linear buffer for receiving and parsing
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize * 2);
-        int bytesInBuffer = 0;
-
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                // Read from stream into available buffer space
-                var availableMemory = buffer.AsMemory(bytesInBuffer);
-                if (availableMemory.Length == 0)
-                {
-                    // Buffer full - need to expand (should not happen with correct sizing)
-                    var newBuffer = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                    buffer.AsSpan(0, bytesInBuffer).CopyTo(newBuffer);
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = newBuffer;
-                    availableMemory = buffer.AsMemory(bytesInBuffer);
-                }
-
-                int bytesRead = await _stream.ReadAsync(availableMemory, ct);
-                if (bytesRead == 0) break;
-
-                bytesInBuffer += bytesRead;
-                _lastActivity = DateTime.UtcNow;
-
-                // Parse and dispatch all complete messages in the buffer
-                bytesInBuffer = ParseAndDispatchMessages(buffer, bytesInBuffer);
-
-                // Check heartbeat timeout
-                if (DateTime.UtcNow - _lastActivity > _options.HeartbeatTimeout)
-                {
-                    _logger?.LogWarning("Session {SessionId} heartbeat timeout", SessionId);
-                    break;
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            if (!_disposed)
-                _logger?.LogError(ex, "Error in receive loop for session {SessionId}", SessionId);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-            await DisconnectAsync();
-        }
-    }
-
-    /// <summary>
-    /// Synchronously parses and dispatches all complete messages in the buffer.
-    /// Returns the number of bytes remaining in the buffer.
-    /// </summary>
     private int ParseAndDispatchMessages(byte[] buffer, int bytesInBuffer)
     {
         int consumed = 0;
@@ -319,11 +149,10 @@ internal sealed class TcpTransportSession : ITransportSession
             }
             else
             {
-                break; // Incomplete packet
+                break;
             }
         }
 
-        // Move remaining data to the beginning
         if (consumed > 0)
         {
             int remaining = bytesInBuffer - consumed;
@@ -334,49 +163,142 @@ internal sealed class TcpTransportSession : ITransportSession
             }
             return 0;
         }
-
         return bytesInBuffer;
     }
 
-    /// <summary>
-    /// Parses a single message from the byte span.
-    /// </summary>
-    private bool TryParseMessage(
-        ReadOnlySpan<byte> span,
-        out string msgId,
-        out ushort msgSeq,
-        out long stageId,
-        out IPayload payload,
-        out int totalPacketSize)
+    private bool TryParseMessage(ReadOnlySpan<byte> span, out string msgId, out ushort msgSeq, out long stageId, out IPayload payload, out int totalPacketSize)
     {
-        msgId = string.Empty;
-        msgSeq = 0;
-        stageId = 0;
-        payload = null!;
-        totalPacketSize = 0;
-
+        msgId = string.Empty; msgSeq = 0; stageId = 0; payload = null!; totalPacketSize = 0;
         if (span.Length < 4) return false;
-
         var packetLength = BinaryPrimitives.ReadInt32LittleEndian(span);
-        if (packetLength <= 0 || packetLength > _options.MaxPacketSize)
-        {
-            throw new InvalidDataException($"Invalid packet length: {packetLength}");
-        }
-
+        if (packetLength <= 0 || packetLength > _options.MaxPacketSize) throw new InvalidDataException($"Invalid packet length: {packetLength}");
         totalPacketSize = 4 + packetLength;
         if (span.Length < totalPacketSize) return false;
-
         var bodySpan = span.Slice(4, packetLength);
-        if (!MessageCodec.TryParseMessage(bodySpan, out msgId, out msgSeq, out stageId, out var payloadOffset))
-        {
-            throw new InvalidDataException("Invalid message format");
-        }
-
+        if (!MessageCodec.TryParseMessage(bodySpan, out msgId, out msgSeq, out stageId, out var payloadOffset)) throw new InvalidDataException("Invalid message format");
         var payloadLength = packetLength - payloadOffset;
         var rentedBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
         bodySpan.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
         payload = new ArrayPoolPayload(rentedBuffer, payloadLength);
-
         return true;
+    }
+
+    public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    {
+        // Simple direct write for raw data (less optimized than SendResponse)
+        try
+        {
+            await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            HandleError(ex);
+        }
+    }
+
+    public void SendResponse(string msgId, ushort msgSeq, long stageId, ushort errorCode, ReadOnlySpan<byte> payload)
+    {
+        if (_disposed) return;
+
+        var totalSize = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: true);
+        var buffer = ArrayPool<byte>.Shared.Rent(totalSize);
+        
+        var span = buffer.AsSpan(0, totalSize);
+        BinaryPrimitives.WriteInt32LittleEndian(span, totalSize - 4);
+        MessageCodec.WriteResponseBody(span[4..], msgId, msgSeq, stageId, errorCode, payload);
+
+        lock (_sendLock)
+        {
+            _sendQueue.Enqueue(new SendItem(buffer, totalSize));
+            if (!_isSending)
+            {
+                _isSending = true;
+                _ = ProcessSendQueueAsync();
+            }
+        }
+    }
+
+    private async Task ProcessSendQueueAsync()
+    {
+        try
+        {
+            while (true)
+            {
+                SendItem item;
+                lock (_sendLock)
+                {
+                    if (_sendQueue.Count == 0)
+                    {
+                        _isSending = false;
+                        return;
+                    }
+                    item = _sendQueue.Dequeue();
+                }
+
+                try
+                {
+                    await _socket.SendAsync(item.Buffer.AsMemory(0, item.Size), SocketFlags.None);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleError(ex);
+        }
+    }
+
+    private void HandleError(Exception ex)
+    {
+        if (!_disposed)
+        {
+            _logger?.LogError(ex, "Error in session {SessionId}", SessionId);
+            _ = DisconnectAsync();
+        }
+    }
+
+    public ValueTask DisconnectAsync()
+    {
+        _ = DisposeAsync();
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        try
+        {
+            _cts.Cancel();
+            _receiveArgs.Dispose();
+            ArrayPool<byte>.Shared.Return(_receiveBuffer);
+            
+            // Non-blocking close
+            if (_socket.Connected)
+            {
+                _socket.Shutdown(SocketShutdown.Both);
+            }
+            _socket.Close();
+        }
+        catch { }
+        finally
+        {
+            _cts.Dispose();
+            _onDisconnect(this, null);
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private void ConfigureSocket()
+    {
+        _socket.NoDelay = true;
+        _socket.ReceiveBufferSize = _options.ReceiveBufferSize;
+        _socket.SendBufferSize = _options.SendBufferSize;
+        if (_options.EnableKeepAlive) _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
     }
 }

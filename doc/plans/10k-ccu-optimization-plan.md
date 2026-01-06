@@ -1,50 +1,46 @@
-# [계획서] 10,000 CCU 대응을 위한 통합 메시징 및 세션 최적화
+# [계획서] 고정 워커 Task 풀 아키텍처를 이용한 10,000 CCU 성능 최적화
 
 ## 1. 개요 (Overview)
-PlayHouse-NET의 현재 구조는 Stage별로 독립적인 큐와 스케줄링 로직을 가짐으로써 발생하는 **물리적 파편화 오버헤드**로 인해 10,000 CCU 상황에서 TPS가 급락합니다. 본 계획은 "10,000개의 Stage를 10,000명의 Actor처럼" 가볍게 처리하기 위한 **통합 메시징 아키텍처** 도입을 목표로 합니다.
+PlayHouse-NET의 성능 병목인 '세션별 상주 Task'와 'Stage별 스케줄링 파편화'를 해결하기 위해, 시스템 전체의 실행 자원을 고정된 수치로 관리하는 **워커 Task 풀(Worker Task Pool)** 모델을 도입함. 10,000명의 접속자가 들어와도 서버의 물리적 부하(Context Switching)를 일정하게 유지하는 것이 핵심 목표임.
 
-## 2. 핵심 문제 정의 (Root Cause)
-1. **과도한 상주 Task:** 세션당 3개(수신, 처리, 송신)의 비동기 루프가 상주하여 3만 개의 Task가 시스템 자원을 낭비함.
-2. **스케줄링의 벽:** 10,000개의 독립된 큐를 순회하며 발생하는 컨텍스트 스위칭 및 캐시 미스 비용.
-3. **원자적 연산 경합:** 10,000개 큐에 대한 개별 CAS(Compare-and-swap) 연산이 CPU 버스 경합 유발.
+## 2. 핵심 아키텍처 (Core Architecture)
 
-## 3. 새로운 설계 원칙 (Core Design Principles)
+### A. 물리 스레드 계층 (Physical Threads)
+- **설정:** `Environment.ProcessorCount` (예: 16개)
+- **역할:** .NET ThreadPool 위에서 실제로 CPU 연산을 수행하는 물리적 단위.
 
-### A. 통합 메일박스 (Unified Mailbox)
-- **개념:** 각 Stage가 가졌던 `ConcurrentQueue`를 제거하고, `EventLoop` 스레드가 소유한 **단일 통합 큐**로 메시지를 집중함.
-- **이점:** 10,000개의 큐를 확인할 필요 없이 단 하나의 큐에서 메시지를 뭉텅이로 꺼내 처리(Bulk Drain) 가능. 큐 확인 오버헤드가 CCU에 무관하게 일정해짐.
+### B. 실행 Task 풀 계층 (Worker Task Pool)
+- **설정:** 고정된 개수 (예: 200개, 설정 가능하도록 구현)
+- **동작 방식:**
+  - 시스템 시작 시 고정된 개수의 비동기 루프(`Task`)를 생성하여 상주 시킴.
+  - 전역 작업 큐를 공유하며, 처리 대기 중인 Stage를 꺼내어 로직을 실행.
+  - **비동기 대기 최적화:** 로직 중 `await` 발생 시 해당 Task는 즉시 스레드를 반환하여 다른 Task가 실행될 수 있도록 양보함.
+- **크기 결정 로직 (Little's Law):**
+  - 공식: `Task 풀 크기 = 코어 수 * (1 + 대기시간 / 처리시간)`
+  - 목표: CPU 점유율 80~90%를 유지하면서 Latency(P99)가 튀지 않는 최소한의 크기 유지.
 
-### B. 상주 Task 최소화 (Task Diet)
-- **수신 루프 통합:** 데이터 수신(`Receive`)과 메시지 디스패치(`Process`)를 하나의 Task로 통합하여 세션당 상주 Task를 최소 1개로 축소.
-- **기회주의적 실행:** 메시지가 없는 세션은 실제 CPU 자원을 거의 소모하지 않는 완전한 비동기 상태(Idle) 유지.
+### C. 논리 Stage 계층 (Thin Stage Model)
+- **상태:** 10,000개의 Stage는 개별 무한 루프나 상주 Task 없이 **큐(Mailbox)**와 **데이터**만 보유함.
+- **순차성 보장:** 특정 워커 Task가 Stage를 처리 중일 때 다른 워커가 중복 접근하지 못하도록 **Busy Flag** 기반의 Lock-free 스케줄링 수행.
 
-### C. 비동기 순차 보장 (Sequential Async Execution)
-- **Busy Flag:** 특정 Stage의 메시지가 처리 중(혹은 `await` 중)일 때, 해당 Stage를 위한 다음 메시지는 실행 대기 상태로 유지하여 **Thread-safety** 보장.
-- **Async/Await 편의성 유지:** 개발자는 기존처럼 락(Lock) 없이 순차적인 비동기 코드를 작성 가능.
+## 3. 네트워크 레이어 다이어트 (Loop-less Network)
+- `TcpTransportSession` 내부의 `ReceiveLoop`, `SendLoop` 등 모든 상주형 `Task.Run` 제거.
+- .NET의 `Socket.ReceiveAsync` 및 이벤트 콜백 방식을 활용하여, **데이터가 수신된 시점에만** 잠시 워커 자원을 소모하도록 변경.
 
-## 4. 상세 구현 계획
+## 4. 세부 구현 로드맵
 
-### 1단계: 네트워크 레이어 Task 통합 (3 -> 1)
-- `TcpTransportSession`의 비동기 루프 구조 변경.
-- `IO.Pipelines`를 활용하여 수신 즉시 파싱 및 EventLoop 큐로 전달.
+### [1단계] 네트워크 상주 Task 제거
+- `TcpTransportSession`의 `while(true)` 루프 제거 및 이벤트 기반 수신/송신 구조로 개편.
 
-### 2단계: Stage 큐 제거 및 통합 큐 도입
-- `BaseStage` 내부의 `_messageQueue`와 `_isProcessing` 로직 제거.
-- `PlayDispatcher`가 메시지를 Stage 객체가 아닌 해당 `EventLoop`의 통합 큐로 직접 전달.
+### [2단계] 전역 워커 Task 풀 엔진 구현
+- 고정된 개수의 Task가 작업을 수행하는 스케줄러(`TaskPoolDispatcher`) 구현.
+- 풀 크기를 런타임/설정에서 조정 가능하도록 처리.
 
-### 3단계: EventLoop 배치 스케줄러 고도화
-- 통합 큐에서 한 번에 여러 메시지를 꺼내오는 Batch Read 구현.
-- 꺼내온 메시지들을 행선지(Stage)별로 묶어서 실행하는 **Bundling** 기법 적용 (캐시 효율 극대화).
+### [3단계] Stage 스케줄링 연동
+- `BaseStage`와 `PlayDispatcher`가 전역 풀과 연동되도록 수정.
+- 비동기 중단/재개(`Continuation`) 시에도 동일한 워커 풀 내에서 순차 실행되도록 `SynchronizationContext` 연동.
 
-### 4단계: 비동기 Continuation 추적
-- `StageSynchronizationContext`를 통해 `await` 이후 돌아오는 작업도 어느 Stage 소속인지 명확히 판별하여 순차성 보장 루프에 포함.
-
-## 5. 기대 효과 (Expected Outcomes)
-- **성능:** 10,000 CCU 상황에서 현재 대비 **5배 이상의 TPS 향상** (10만 msg/s 이상 목표).
-- **확장성:** Stage의 개수가 늘어나도 물리적 오버헤드가 비례하지 않는 선형적 확장성 확보.
-- **안정성:** 수만 개의 Task가 유발하던 스케줄링 Spike 현상 제거 및 일정한 Latency 보장.
-
-## 6. 로드맵 (Roadmap)
-1. `TcpTransportSession` 수신 루프 통합 및 검증.
-2. `BaseStage` 큐 제거 및 `EventLoop` 통합 큐 기반 라우팅 구현.
-3. 10,000 CCU 벤치마크 수행 및 결과 분석.
+## 5. 기대 효과
+- **관리 비용 고정:** 10,000 CCU 상황에서도 관리 대상 Task가 30,000개에서 200개로 **99% 감소**.
+- **확장성:** Stage나 Actor의 개수에 시스템 성능이 민감하게 반응하지 않는 견고한 아키텍처 확보.
+- **편의성:** 개발자는 여전히 락(Lock) 없이 순차적인 비동기 비즈니스 로직 작성 가능.

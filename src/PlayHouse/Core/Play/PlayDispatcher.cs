@@ -8,6 +8,7 @@ using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Play.Base.Command;
 using PlayHouse.Core.Play.EventLoop;
+using PlayHouse.Core.Play.TaskPool;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ServerMesh.Communicator;
@@ -39,7 +40,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly TimerManager _timerManager;
-    private readonly StageEventLoopPool _eventLoopPool;
+    private readonly GlobalTaskPool _taskPool;
     private readonly ushort _serviceId;
     private readonly string _nid;
     private readonly ILogger? _logger;
@@ -55,7 +56,6 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RequestCache requestCache,
         ushort serviceId,
         string nid,
-        StageEventLoopPool eventLoopPool,
         IClientReplyHandler? clientReplyHandler = null,
         ILogger? logger = null)
     {
@@ -64,11 +64,13 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         _requestCache = requestCache;
         _serviceId = serviceId;
         _nid = nid;
-        _eventLoopPool = eventLoopPool;
         _clientReplyHandler = clientReplyHandler;
         _logger = logger;
 
         _timerManager = new TimerManager(OnTimerCallback, logger);
+        
+        // 고정된 200개의 워커 Task 풀 생성
+        _taskPool = new GlobalTaskPool(200, logger);
     }
 
     #region IPlayDispatcher Implementation
@@ -373,9 +375,8 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RegisterCommands(cmdHandler);
         baseStage.SetCmdHandler(cmdHandler);
 
-        // Stage ID를 기반으로 EventLoop 할당
-        var eventLoop = _eventLoopPool.GetEventLoop(stageId);
-        baseStage.SetEventLoop(eventLoop);
+        // Stage ID를 기반으로 EventLoop 할당 (기존 로직 제거 및 워커 풀 할당)
+        baseStage.SetTaskPool(_taskPool);
 
         return baseStage;
     }
@@ -487,8 +488,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             ProcessDestroy(stageId);
         }
 
-        // EventLoopPool은 외부에서 생성되어 주입되므로 여기서 Dispose하지 않음
-        // PlayServer 같은 상위 레벨에서 관리해야 함
+        _taskPool.Dispose();
     }
 }
 
