@@ -75,11 +75,18 @@ internal sealed class StageEventLoop : IDisposable
             {
                 try
                 {
-                    // Channel에서 항목 읽기 시도
+                    // Channel에서 항목 읽기 시도 (배치 처리 지원)
                     if (_channel.Reader.TryRead(out var item))
                     {
-                        // 항목이 있으면 실행
                         ExecuteWorkItem(item);
+
+                        // 부하가 높을 때 루프 오버헤드를 줄이기 위해 연속해서 더 읽음
+                        int batchCount = 1;
+                        while (batchCount < 128 && _channel.Reader.TryRead(out item))
+                        {
+                            ExecuteWorkItem(item);
+                            batchCount++;
+                        }
                     }
                     else
                     {

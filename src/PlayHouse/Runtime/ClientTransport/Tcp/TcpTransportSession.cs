@@ -159,27 +159,32 @@ internal sealed class TcpTransportSession : ITransportSession
     }
 
     /// <summary>
-    /// Send loop that processes queued messages from the channel.
+    /// Send loop that processes queued messages from the channel using batching.
+    /// Reduces system call overhead by flushing only after writing a batch of messages.
     /// </summary>
     private async Task SendLoopAsync(CancellationToken ct)
     {
         try
         {
-            await foreach (var item in _sendChannel.Reader.ReadAllAsync(ct))
+            while (await _sendChannel.Reader.WaitToReadAsync(ct))
             {
-                try
+                int batchCount = 0;
+                while (batchCount < 100 && _sendChannel.Reader.TryRead(out var item))
                 {
-                    await _stream.WriteAsync(item.Buffer.AsMemory(0, item.Size), ct);
+                    try
+                    {
+                        await _stream.WriteAsync(item.Buffer.AsMemory(0, item.Size), ct);
+                        batchCount++;
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(item.Buffer);
+                    }
+                }
+
+                if (batchCount > 0)
+                {
                     await _stream.FlushAsync(ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogError(ex, "Error sending data on session {SessionId}", SessionId);
-                    break;
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(item.Buffer);
                 }
             }
         }

@@ -236,7 +236,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
         try
         {
             // 배치 처리: 큐가 빌 때까지 모든 메시지 처리
-            while (true)
+            bool hasMore = true;
+            while (hasMore)
             {
                 // 1. 콜백 큐를 모두 처리 (최우선순위)
                 while (_callbackQueue.TryDequeue(out var callbackMessage))
@@ -255,12 +256,23 @@ internal sealed class BaseStage : IReplyPacketRegistry
                     }
                 }
 
-                // 2. 일반 메시지 처리
-                if (_messageQueue.TryDequeue(out var message))
+                // 2. 일반 메시지 처리 (최대 100개씩 끊어서 처리하여 콜백 큐 반응성 확보)
+                int processedCount = 0;
+                while (processedCount < 100 && _messageQueue.TryDequeue(out var message))
                 {
                     try
                     {
-                        await DispatchMessageAsync(message);
+                        var task = DispatchMessageAsync(message);
+                        
+                        // 동기적으로 완료된 경우 await 오버헤드 회피
+                        if (task.IsCompleted)
+                        {
+                            task.GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            await task;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -269,13 +281,13 @@ internal sealed class BaseStage : IReplyPacketRegistry
                     finally
                     {
                         message.Dispose();
+                        DisposePendingReplies();
                     }
+                    processedCount++;
                 }
-                else
-                {
-                    // 큐가 비었으면 루프 종료
-                    break;
-                }
+
+                // 큐가 비었는지 확인
+                hasMore = !_messageQueue.IsEmpty || !_callbackQueue.IsEmpty;
             }
         }
         finally
