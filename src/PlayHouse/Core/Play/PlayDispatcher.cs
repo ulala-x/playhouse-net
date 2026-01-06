@@ -9,6 +9,7 @@ using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Play.Base.Command;
 using PlayHouse.Core.Play.EventLoop;
 using PlayHouse.Core.Shared;
+using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
@@ -186,6 +187,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     {
         if (_stages.TryGetValue(message.StageId, out var baseStage))
         {
+            // Optimization: Bind actor and stage to session context for direct routing
+            message.Session.ProcessorContext = new ActorContext(baseStage, message.Actor);
+
             // Forward to BaseStage's message queue
             baseStage.PostJoinActor(new Base.StageMessage.JoinActorMessage(
                 message.Actor,
@@ -221,17 +225,33 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     }
 
     /// <summary>
+    /// Context used to bind an actor and its stage directly to a transport session.
+    /// This allows direct message routing, skipping dictionary lookups for high performance.
+    /// </summary>
+    internal sealed record ActorContext(BaseStage Stage, BaseActor Actor);
+
+    /// <summary>
     /// Routes a client message directly to Stage without creating ClientRouteMessage object.
     /// This avoids heap allocation for every client message.
     /// </summary>
+    /// <param name="session">The transport session that received the message.</param>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="accountId">Account ID for actor routing.</param>
     /// <param name="msgId">Message ID.</param>
     /// <param name="msgSeq">Message sequence number.</param>
     /// <param name="sid">Session ID.</param>
     /// <param name="payload">Message payload.</param>
-    public void RouteClientMessage(long stageId, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
+    public void RouteClientMessage(ITransportSession session, long stageId, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
     {
+        // Optimization: Use ProcessorContext for direct routing if available
+        if (session.ProcessorContext is ActorContext context)
+        {
+            // Direct post to stage loop - skips dispatcher and stage actor lookups
+            context.Stage.PostClientRoute(context.Actor, accountId, msgId, msgSeq, sid, payload);
+            return;
+        }
+
+        // Slow path: dictionary lookup
         if (_stages.TryGetValue(stageId, out var baseStage))
         {
             baseStage.PostClientRoute(accountId, msgId, msgSeq, sid, payload);

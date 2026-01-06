@@ -42,6 +42,11 @@ internal sealed class BaseStage : IReplyPacketRegistry
     private StageEventLoop _eventLoop = null!;  // PlayDispatcher에서 설정됨
     private StageProcessingWorkItem? _cachedWorkItem;  // 재사용을 위한 캐시된 WorkItem
 
+    // Pool for ClientRouteMessage to avoid heap allocations
+    internal static readonly Microsoft.Extensions.ObjectPool.ObjectPool<StageMessage.ClientRouteMessage> _clientRouteMessagePool = 
+        new Microsoft.Extensions.ObjectPool.DefaultObjectPool<StageMessage.ClientRouteMessage>(
+            new Microsoft.Extensions.ObjectPool.DefaultPooledObjectPolicy<StageMessage.ClientRouteMessage>());
+
     // AsyncLocal to track current Stage context for callback execution
     private static readonly AsyncLocal<BaseStage?> _currentStage = new();
 
@@ -181,15 +186,31 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// <summary>
     /// Posts a client route message to the Stage event loop.
     /// </summary>
-    /// <param name="accountId">Account ID for actor routing.</param>
-    /// <param name="msgId">Message ID.</param>
-    /// <param name="msgSeq">Message sequence number.</param>
-    /// <param name="sid">Session ID.</param>
-    /// <param name="payload">Message payload.</param>
+    internal void PostClientRoute(BaseActor actor, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
+    {
+        var message = _clientRouteMessagePool.Get();
+        message.Update(actor, accountId, msgId, msgSeq, sid, payload);
+        _messageQueue.Enqueue(message);
+        TryStartProcessing();
+    }
+
+    /// <summary>
+    /// Posts a client route message to the Stage event loop.
+    /// </summary>
     internal void PostClientRoute(string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
     {
-        _messageQueue.Enqueue(new StageMessage.ClientRouteMessage(accountId, msgId, msgSeq, sid, payload));
-        TryStartProcessing();
+        if (_actors.TryGetValue(accountId, out var actor))
+        {
+            var message = _clientRouteMessagePool.Get();
+            message.Update(actor, accountId, msgId, msgSeq, sid, payload);
+            _messageQueue.Enqueue(message);
+            TryStartProcessing();
+        }
+        else
+        {
+            _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
+            payload.Dispose();
+        }
     }
 
     /// <summary>
@@ -443,7 +464,15 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// </summary>
     private async Task ProcessClientRouteAsync(StageMessage.ClientRouteMessage message)
     {
-        if (_actors.TryGetValue(message.AccountId, out var baseActor))
+        var baseActor = message.Actor;
+
+        // If actor is not pre-resolved (slow path), look it up now
+        if (baseActor == null)
+        {
+            _actors.TryGetValue(message.AccountId, out baseActor);
+        }
+
+        if (baseActor != null)
         {
             // Create RouteHeader for client message reply routing
             var header = new RouteHeader
@@ -874,14 +903,23 @@ internal abstract class StageMessage : IDisposable
     /// </summary>
     public sealed class ClientRouteMessage : StageMessage
     {
-        public string AccountId { get; }
-        public string MsgId { get; }
-        public ushort MsgSeq { get; }
-        public long Sid { get; }
+        public BaseActor? Actor { get; private set; }
+        public string AccountId { get; private set; } = "";
+        public string MsgId { get; private set; } = "";
+        public ushort MsgSeq { get; private set; }
+        public long Sid { get; private set; }
         public IPayload? Payload { get; private set; }
 
-        public ClientRouteMessage(string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
+        public ClientRouteMessage() { }
+
+        public ClientRouteMessage(BaseActor? actor, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
         {
+            Update(actor, accountId, msgId, msgSeq, sid, payload);
+        }
+
+        internal void Update(BaseActor? actor, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
+        {
+            Actor = actor;
             AccountId = accountId;
             MsgId = msgId;
             MsgSeq = msgSeq;
@@ -903,6 +941,11 @@ internal abstract class StageMessage : IDisposable
         public override void Dispose()
         {
             Payload?.Dispose();
+            Payload = null;
+            Actor = null;
+            
+            // Return to pool
+            BaseStage._clientRouteMessagePool.Return(this);
         }
     }
 

@@ -42,6 +42,12 @@ public interface ITransportSession : IAsyncDisposable
     bool IsConnected { get; }
 
     /// <summary>
+    /// Gets or sets an optional context for message routing (e.g., BaseStage/BaseActor reference).
+    /// Used for performance optimization to avoid dictionary lookups.
+    /// </summary>
+    object? ProcessorContext { get; set; }
+
+    /// <summary>
     /// Sends data to the remote endpoint.
     /// </summary>
     /// <param name="data">The data to send.</param>
