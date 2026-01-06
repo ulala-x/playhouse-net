@@ -212,15 +212,21 @@ static async Task RunBenchmarkAsync(
         Log.Information("Connections: {Connections:N0}", connections);
         if (isTimeBased)
         {
-            Log.Information("Duration: {Duration:N0} seconds", effectiveDuration);
+            Log.Information("Duration: {Duration:N0} seconds per test", effectiveDuration);
         }
         else
         {
             Log.Information("Messages per connection: {Messages:N0}", effectiveMessages);
-            Log.Information("Total messages: {TotalMessages:N0}", connections * effectiveMessages);
         }
-        Log.Information("Message size: {MessageSize:N0} bytes", messageSize);
-        Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
+        
+        if (mode.ToLowerInvariant() == "all" || responseSizes.Length > 1)
+        {
+            Log.Information("Message size: (Variable) {Sizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
+        }
+        else
+        {
+            Log.Information("Message size: {MessageSize:N0} bytes", messageSize);
+        }
         if (!string.IsNullOrEmpty(label))
             Log.Information("Label: {Label}", label);
         Log.Information("Output: {OutputDir}", Path.GetFullPath(outputDir));
@@ -263,7 +269,7 @@ static async Task RunBenchmarkAsync(
                 host,
                 port,
                 connections,
-                messageSize,
+                responseSize, // Use current iteration's size
                 benchmarkMode,
                 clientMetricsCollector,
                 stageIdOffset: stageIdOffset,
@@ -504,7 +510,7 @@ static async Task RunAllModesAsync(
 
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
-            host, port, connections, messageSize,
+            host, port, connections, responseSize,
             BenchmarkMode.RequestAsync, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
             stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight);
@@ -550,7 +556,7 @@ static async Task RunAllModesAsync(
 
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
-            host, port, connections, messageSize,
+            host, port, connections, responseSize,
             BenchmarkMode.RequestCallback, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
             stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight);
@@ -596,7 +602,7 @@ static async Task RunAllModesAsync(
 
         var stageIdOffset = testIndex * connections;
         var runner = new BenchmarkRunner(
-            host, port, connections, messageSize,
+            host, port, connections, responseSize,
             BenchmarkMode.Send, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
             stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight);

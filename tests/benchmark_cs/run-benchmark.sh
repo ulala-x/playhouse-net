@@ -5,18 +5,20 @@
 # 목적: 모든 통신 모드 x 모든 페이로드 사이즈를 테스트하고 결과를 비교합니다.
 #       성능 비교 및 회귀 테스트에 사용합니다.
 #
-# 사용법: ./run-benchmark.sh [connections] [duration] [batch_size] [max-inflight]
+# 사용법: ./run-benchmark.sh [mode] [sizes] [connections] [duration] [max-inflight]
 #
-# 파라미터:
+# 파라미터 (공백으로 구분):
+#   mode         - 테스트 모드 (기본: all): request-async, request-callback, send, all
+#   sizes        - 페이로드 크기 리스트 (기본: 64,256,1024,65536)
 #   connections  - 동시 연결 수 (기본: 10)
 #   duration     - 테스트 시간(초) (기본: 10)
-#   batch_size   - 연결 배치 크기 (기본: 100, 대규모 연결시 50 권장)
 #   max-inflight - 최대 동시 요청 수 (기본: 200)
 #
-# 테스트 모드: RequestAsync, RequestCallback, Send
-# 페이로드 사이즈: 64, 256, 1024, 65536 bytes
+# 예시:
+#   ./run-benchmark.sh all 1024 100 10 500
+#   ./run-benchmark.sh send 64,256 50 20 100
 #
-# 참고: 특정 모드/사이즈만 빠르게 테스트하려면 run-single.sh를 사용하세요.
+# 참고: 특정 모드/사이즈 하나만 빠르게 테스트하려면 run-single.sh를 사용하세요.
 
 set -e
 
@@ -25,26 +27,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 기본값
-CONNECTIONS=${1:-10}
-DURATION=${2:-10}
-BATCH_SIZE=${3:-100}
-MAX_INFLIGHT=${4:-200}
+MODE=${1:-all}
+PAYLOAD_SIZES=${2:-"64,256,1024,65536"}
+CONNECTIONS=${3:-10}
+DURATION=${4:-10}
+MAX_INFLIGHT=${5:-200}
+
+# 콤마 사용 여부 체크 (사용자가 실수로 콤마로 인자를 구분한 경우 경고)
+if [[ "$1" == *","* ]] && [ -z "$2" ]; then
+    echo "Warning: Detected comma in the first argument. Did you mean to use spaces?"
+    echo "Correct usage: ./run-benchmark.sh mode size connections duration inflight"
+    echo "Example: ./run-benchmark.sh all 1024 100 10 200"
+    echo ""
+fi
 SERVER_PORT=16110
 HTTP_PORT=5080
-
-# 페이로드 크기 (콤마 구분)
-PAYLOAD_SIZES="64,256,1024,65536"
 
 echo "================================================================================"
 echo "PlayHouse Benchmark - All Modes Comparison"
 echo "================================================================================"
 echo "Configuration:"
+echo "  Mode: $MODE"
+echo "  Payload sizes: $PAYLOAD_SIZES bytes"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s per mode"
-echo "  Batch size: $BATCH_SIZE (connections per batch)"
 echo "  Max in-flight: $MAX_INFLIGHT"
-echo "  Modes: RequestAsync, RequestCallback, Send"
-echo "  Payload sizes: $PAYLOAD_SIZES bytes"
 echo "================================================================================"
 echo ""
 
@@ -91,7 +98,7 @@ echo ""
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Client/PlayHouse.Benchmark.Client.csproj" -c Release -- \
     --server 127.0.0.1:$SERVER_PORT \
     --connections $CONNECTIONS \
-    --mode all \
+    --mode $MODE \
     --duration $DURATION \
     --message-size 64 \
     --response-size $PAYLOAD_SIZES \
