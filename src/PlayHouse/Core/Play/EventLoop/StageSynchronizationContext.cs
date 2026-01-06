@@ -1,73 +1,40 @@
+using PlayHouse.Core.Play.Base;
+using PlayHouse.Core.Play.TaskPool;
+
 namespace PlayHouse.Core.Play.EventLoop;
 
 /// <summary>
-/// Stage EventLoop에서 async/await의 continuation을 같은 스레드에서 실행하도록 보장하는 SynchronizationContext
+/// Stage의 비동기 Continuation을 워커 Task 풀에서 실행하도록 관리하는 컨텍스트.
 /// </summary>
 internal sealed class StageSynchronizationContext : SynchronizationContext
 {
-    private readonly StageEventLoop _eventLoop;
+    private readonly GlobalTaskPool _taskPool;
 
-    public StageSynchronizationContext(StageEventLoop eventLoop)
+    public StageSynchronizationContext(GlobalTaskPool taskPool)
     {
-        _eventLoop = eventLoop;
+        _taskPool = taskPool;
     }
 
-    /// <summary>
-    /// 비동기 메시지를 EventLoop에 게시
-    /// await의 continuation이 EventLoop 큐에 추가됨
-    /// </summary>
     public override void Post(SendOrPostCallback d, object? state)
     {
-        _eventLoop.Post(new ContinuationWorkItem(d, state));
+        var currentStage = BaseStage.Current;
+        if (currentStage != null)
+        {
+            // Stage 컨텍스트가 있으면 해당 Stage의 메일박스에 넣어서 순차성 유지
+            currentStage.PostContinuation(d, state);
+        }
+        else
+        {
+            // 컨텍스트가 없으면(드문 경우) 직접 풀에 게시
+            _taskPool.Post(new ContinuationWorkItem(d, state));
+        }
     }
 
-    /// <summary>
-    /// 동기 메시지를 EventLoop에 전송
-    /// 현재 스레드가 EventLoop 스레드면 직접 실행, 아니면 대기
-    /// </summary>
     public override void Send(SendOrPostCallback d, object? state)
     {
-        // 현재 스레드가 EventLoop 스레드면 직접 실행
-        if (Thread.CurrentThread == _eventLoop.Thread)
-        {
-            d(state);
-            return;
-        }
-
-        // 다른 스레드에서 호출된 경우 대기하며 실행
-        using var resetEvent = new ManualResetEventSlim(false);
-        Exception? exception = null;
-
-        _eventLoop.Post(new ContinuationWorkItem(_ =>
-        {
-            try
-            {
-                d(state);
-            }
-            catch (Exception ex)
-            {
-                exception = ex;
-            }
-            finally
-            {
-                resetEvent.Set();
-            }
-        }, null));
-
-        resetEvent.Wait();
-
-        if (exception != null)
-        {
-            throw exception;
-        }
+        // 동기 실행은 직접 수행
+        d(state);
     }
 
-    /// <summary>
-    /// SynchronizationContext의 복사본 생성
-    /// EventLoop는 단일 인스턴스이므로 자기 자신을 반환
-    /// </summary>
-    public override SynchronizationContext CreateCopy()
-    {
-        return this;
-    }
+    public override SynchronizationContext CreateCopy() => this;
 }

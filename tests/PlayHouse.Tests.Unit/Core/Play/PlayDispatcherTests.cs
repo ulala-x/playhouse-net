@@ -86,7 +86,6 @@ public class PlayDispatcherTests : IDisposable
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly PlayProducer _producer;
-    private readonly StageEventLoopPool _eventLoopPool;
     private readonly PlayDispatcher _dispatcher;
 
     public PlayDispatcherTests()
@@ -94,7 +93,6 @@ public class PlayDispatcherTests : IDisposable
         _communicator = Substitute.For<IClientCommunicator>();
         _requestCache = new RequestCache();
         _producer = new PlayProducer();
-        _eventLoopPool = new StageEventLoopPool(poolSize: 2); // 테스트용 2개 EventLoop
 
         // Register test stage type
         _producer.Register(
@@ -107,14 +105,12 @@ public class PlayDispatcherTests : IDisposable
             _communicator,
             _requestCache,
             serviceId: 1,
-            nid: "1:1",
-            _eventLoopPool);
+            nid: "1:1");
     }
 
     public void Dispose()
     {
         _dispatcher.Dispose();
-        _eventLoopPool.Dispose();
     }
 
     [Fact(DisplayName = "StageCount - 초기값은 0이다")]
@@ -257,14 +253,12 @@ public class PlayDispatcherTests : IDisposable
     public async Task Dispose_CleansUpAllStages()
     {
         // Given (전제조건)
-        using var eventLoopPool = new StageEventLoopPool(poolSize: 2);
         var dispatcher = new PlayDispatcher(
             _producer,
             _communicator,
             _requestCache,
             serviceId: 1,
-            nid: "1:1",
-            eventLoopPool);
+            nid: "1:1");
 
         var packet1 = CreateCreateStagePacket(100, "test_stage");
         var packet2 = CreateCreateStagePacket(101, "test_stage");
