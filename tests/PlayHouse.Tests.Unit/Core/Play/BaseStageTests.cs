@@ -23,7 +23,7 @@ namespace PlayHouse.Tests.Unit.Core.Play;
 /// </summary>
 public class BaseStageTests : IDisposable
 {
-    private readonly GlobalTaskPool _taskPool = new(poolSize: 4);
+    private readonly GlobalTaskPool _taskPool = new(minPoolSize: 4, maxPoolSize: 16);
 
     public void Dispose()
     {

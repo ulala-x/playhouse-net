@@ -31,10 +31,15 @@ var logDirOption = new Option<string>(
     description: "Directory for log files",
     getDefaultValue: () => "logs");
 
-var taskPoolSizeOption = new Option<int>(
-    name: "--task-pool-size",
-    description: "Number of shared worker tasks",
-    getDefaultValue: () => 200);
+var minPoolSizeOption = new Option<int>(
+    name: "--min-pool-size",
+    description: "Minimum worker tasks",
+    getDefaultValue: () => 100);
+
+var maxPoolSizeOption = new Option<int>(
+    name: "--max-pool-size",
+    description: "Maximum worker tasks",
+    getDefaultValue: () => 1000);
 
 var rootCommand = new RootCommand("PlayHouse Benchmark Server")
 {
@@ -42,23 +47,26 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Server")
     zmqPortOption,
     httpPortOption,
     logDirOption,
-    taskPoolSizeOption
+    minPoolSizeOption,
+    maxPoolSizeOption
 };
 
 var tcpPort = 0;
 var zmqPort = 0;
 var httpPort = 0;
 var logDir = "logs";
-var taskPoolSize = 200;
+var minPoolSize = 100;
+var maxPoolSize = 1000;
 
-rootCommand.SetHandler((tcp, zmq, http, logDirectory, poolSize) =>
+rootCommand.SetHandler((tcp, zmq, http, logDirectory, minPool, maxPool) =>
 {
     tcpPort = tcp;
     zmqPort = zmq;
     httpPort = http;
     logDir = logDirectory;
-    taskPoolSize = poolSize;
-}, tcpPortOption, zmqPortOption, httpPortOption, logDirOption, taskPoolSizeOption);
+    minPoolSize = minPool;
+    maxPoolSize = maxPool;
+}, tcpPortOption, zmqPortOption, httpPortOption, logDirOption, minPoolSizeOption, maxPoolSizeOption);
 
 await rootCommand.InvokeAsync(args);
 
@@ -117,7 +125,8 @@ try
         options.TcpPort = tcpPort;
         options.AuthenticateMessageId = "AuthenticateRequest";
         options.DefaultStageType = "BenchmarkStage";
-        options.TaskPoolSize = taskPoolSize;
+        options.MinTaskPoolSize = minPoolSize;
+        options.MaxTaskPoolSize = maxPoolSize;
     })
     .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
     .UseSystemController<BenchmarkSystemController>();

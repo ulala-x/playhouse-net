@@ -126,7 +126,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             _requestCache,
             _options.ServiceId,
             _options.ServerId,
-            _options.TaskPoolSize,
+            _options.MinTaskPoolSize,
+            _options.MaxTaskPoolSize,
             this, // client reply handler
             _logger);
 

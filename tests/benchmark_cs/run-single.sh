@@ -5,7 +5,7 @@
 # 목적: 특정 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
 #       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
 #
-# 사용법: ./run-single.sh <mode> <size> [connections] [duration] [max-inflight] [task-pool-size]
+# 사용법: ./run-single.sh <mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size]
 #
 # 파라미터:
 #   mode           - 테스트 모드 (필수): request-async, request-callback, send
@@ -13,11 +13,12 @@
 #   connections    - 동시 연결 수 (선택, 기본: 10)
 #   duration       - 테스트 시간(초) (선택, 기본: 10)
 #   max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)
-#   task-pool-size - 워커 Task 풀 크기 (선택, 기본: 200)
+#   min-pool-size  - 최소 워커 수 (선택, 기본: 100)
+#   max-pool-size  - 최대 워커 수 (선택, 기본: 1000)
 #
 # 예시:
 #   ./run-single.sh request-async 1024
-#   ./run-single.sh send 65536 100 30 500 1000
+#   ./run-single.sh send 65536 100 30 500 100 500
 #
 # 참고: 모든 모드/사이즈를 비교 테스트하려면 run-benchmark.sh를 사용하세요.
 
@@ -29,7 +30,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 파라미터 검증
 if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "사용법: $0 <mode> <size> [connections] [duration] [max-inflight] [task-pool-size]"
+    echo "사용법: $0 <mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size]"
     echo ""
     echo "파라미터:"
     echo "  mode           - 테스트 모드 (필수): request-async, request-callback, send"
@@ -37,11 +38,12 @@ if [ -z "$1" ] || [ -z "$2" ]; then
     echo "  connections    - 동시 연결 수 (선택, 기본: 10)"
     echo "  duration       - 테스트 시간(초) (선택, 기본: 10)"
     echo "  max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)"
-    echo "  task-pool-size - 워커 Task 풀 크기 (선택, 기본: 200)"
+    echo "  min-pool-size  - 최소 워커 수 (선택, 기본: 100)"
+    echo "  max-pool-size  - 최대 워커 수 (선택, 기본: 1000)"
     echo ""
     echo "예시:"
     echo "  $0 request-async 1024"
-    echo "  $0 send 65536 100 30 500 1000"
+    echo "  $0 send 65536 100 30 500 100 500"
     exit 1
 fi
 
@@ -50,7 +52,8 @@ SIZE=$2
 CONNECTIONS=${3:-10}
 DURATION=${4:-10}
 MAX_INFLIGHT=${5:-200}
-TASK_POOL_SIZE=${6:-200}
+MIN_POOL_SIZE=${6:-100}
+MAX_POOL_SIZE=${7:-1000}
 SERVER_PORT=16110
 HTTP_PORT=5080
 
@@ -74,7 +77,7 @@ echo "  Payload size: $SIZE bytes (Echo: request=response)"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s"
 echo "  Max in-flight: $MAX_INFLIGHT"
-echo "  Task pool size: $TASK_POOL_SIZE"
+echo "  Pool size: $MIN_POOL_SIZE ~ $MAX_POOL_SIZE"
 echo "================================================================================"
 echo ""
 
@@ -96,7 +99,8 @@ echo "[3/4] Starting benchmark server (port $SERVER_PORT, HTTP API port $HTTP_PO
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.Server/PlayHouse.Benchmark.Server.csproj" -c Release -- \
     --tcp-port $SERVER_PORT \
     --http-port $HTTP_PORT \
-    --task-pool-size $TASK_POOL_SIZE > /tmp/benchmark-server.log 2>&1 &
+    --min-pool-size $MIN_POOL_SIZE \
+    --max-pool-size $MAX_POOL_SIZE > /tmp/benchmark-server.log 2>&1 &
 
 SERVER_PID=$!
 
