@@ -50,9 +50,14 @@ public sealed class PlayServerOption
     public string DefaultStageType { get; set; } = string.Empty;
 
     /// <summary>
-    /// 동시 실행을 담당할 워커 Task 풀의 크기. (기본값: 100)
+    /// 동시 실행을 담당할 워커 Task 풀의 최소 크기. (기본값: 100)
     /// </summary>
-    public int TaskPoolSize { get; set; } = 100;
+    public int MinTaskPoolSize { get; set; } = 100;
+
+    /// <summary>
+    /// 동시 실행을 담당할 워커 Task 풀의 최대 크기. (기본값: 1000)
+    /// </summary>
+    public int MaxTaskPoolSize { get; set; } = 1000;
 
     #region Transport Configuration
 
