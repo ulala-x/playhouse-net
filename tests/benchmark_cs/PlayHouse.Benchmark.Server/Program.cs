@@ -102,9 +102,9 @@ try
     Log.Information("PlayHouse Benchmark Server");
     Log.Information("================================================================================");
 
-    // 지능형 메모리 풀 웜업 (차등 정책 적용)
-    Log.Information("Warming up SmartMessagePool (Granular policies)...");
-    MessagePool.WarmUp(1.0f); // 표준 계수로 웜업
+    // 지능형 메모리 풀 웜업 (설정된 개수만큼 물리 커밋)
+    Log.Information("Warming up SmartMessagePool (pre-allocating buffers based on config)...");
+    MessagePool.WarmUp(); 
     Log.Information("SmartMessagePool deep warm-up completed.");
 
     Log.Information("ZMQ Port (server-to-server): {ZmqPort}", zmqPort);
