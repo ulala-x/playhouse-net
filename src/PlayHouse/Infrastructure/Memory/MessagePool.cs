@@ -31,6 +31,9 @@ public static class MessagePool
     [ThreadStatic]
     private static Stack<byte[]>?[]? _localCache;
 
+    // 현재 활성화된 설정 보관
+    private static MessagePoolConfig _currentConfig = new();
+
     static MessagePool()
     {
         for (int i = 0; i < BUCKET_COUNT; i++)
@@ -47,6 +50,7 @@ public static class MessagePool
     /// </summary>
     public static void ApplyConfig(MessagePoolConfig config)
     {
+        _currentConfig = config;
         _maxL1Capacity = config.MaxL1Capacity;
 
         for (int i = 0; i < BUCKET_COUNT; i++)
@@ -61,21 +65,20 @@ public static class MessagePool
     }
 
     /// <summary>
-    /// 버킷별 정책에 맞춰 메모리 풀을 미리 채웁니다.
+    /// 설정된 정책에 맞춰 메모리 풀을 미리 채우고 물리 메모리에 즉시 커밋합니다.
     /// </summary>
-    /// <param name="scaleFactor">정책상 Min 수치에 곱할 계수 (1.0 = 표준 웜업)</param>
-    public static void WarmUp(float scaleFactor = 1.0f)
+    public static void WarmUp()
     {
         for (int i = 0; i < BUCKET_COUNT; i++)
         {
             int size = GetBucketSize(i);
             
-            // 버킷 크기에 따라 웜업 수치 결정
+            // [개선] 설정 객체에 명시된 숫자를 그대로 사용 (투명성 확보)
             int warmupCount;
-            if (size <= 1024) warmupCount = (int)(20000 * scaleFactor);
-            else if (size <= 8192) warmupCount = (int)(5000 * scaleFactor);
-            else if (size <= 65536) warmupCount = (int)(500 * scaleFactor);
-            else warmupCount = (int)(10 * scaleFactor);
+            if (size <= 1024) warmupCount = _currentConfig.TinyWarmUpCount;
+            else if (size <= 8192) warmupCount = _currentConfig.SmallWarmUpCount;
+            else if (size <= 65536) warmupCount = _currentConfig.MediumWarmUpCount;
+            else warmupCount = _currentConfig.LargeWarmUpCount;
 
             for (int j = 0; j < warmupCount; j++)
             {
