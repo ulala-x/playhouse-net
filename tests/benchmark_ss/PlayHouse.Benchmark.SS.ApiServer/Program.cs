@@ -10,6 +10,7 @@ using PlayHouse.Benchmark.SS.ApiServer;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Extensions;
+using PlayHouse.Infrastructure.Memory;
 using Serilog;
 using Serilog.Events;
 
@@ -50,13 +51,25 @@ var logDirOption = new Option<string>(
     description: "Directory for log files",
     getDefaultValue: () => "logs");
 
+var minPoolSizeOption = new Option<int>(
+    name: "--min-pool-size",
+    description: "Minimum worker tasks",
+    getDefaultValue: () => 100);
+
+var maxPoolSizeOption = new Option<int>(
+    name: "--max-pool-size",
+    description: "Maximum worker tasks",
+    getDefaultValue: () => 1000);
+
 var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark API Server")
 {
     zmqPortOption,
     httpPortOption,
     serverIdOption,
     peersOption,
-    logDirOption
+    logDirOption,
+    minPoolSizeOption,
+    maxPoolSizeOption
 };
 
 var zmqPort = 0;
@@ -64,15 +77,19 @@ var httpPort = 0;
 var serverId = "api-1";
 var peers = "play-1=tcp://127.0.0.1:16100";
 var logDir = "logs";
+var minPoolSize = 100;
+var maxPoolSize = 1000;
 
-rootCommand.SetHandler((zmq, http, sid, peersStr, logDirectory) =>
+rootCommand.SetHandler((zmq, http, sid, peersStr, logDirectory, minPool, maxPool) =>
 {
     zmqPort = zmq;
     httpPort = http;
     serverId = sid;
     peers = peersStr;
     logDir = logDirectory;
-}, zmqPortOption, httpPortOption, serverIdOption, peersOption, logDirOption);
+    minPoolSize = minPool;
+    maxPoolSize = maxPool;
+}, zmqPortOption, httpPortOption, serverIdOption, peersOption, logDirOption, minPoolSizeOption, maxPoolSizeOption);
 
 await rootCommand.InvokeAsync(args);
 
@@ -129,6 +146,8 @@ try
         options.ServiceType = ServiceType.Api;
         options.ServerId = serverId;
         options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
+        options.MinTaskPoolSize = minPoolSize;
+        options.MaxTaskPoolSize = maxPoolSize;
     })
     .UseSystemController(StaticSystemController.Parse(peers))
     .UseController<BenchmarkApiController>();
@@ -187,8 +206,8 @@ try
     });
 
     // MessagePool Prewarm (런타임 할당 방지)
-    Net.Zmq.MessagePool.Shared.Prewarm(Net.Zmq.MessageSize.K2, 500);
-    Log.Information("MessagePool prewarmed: K2 x 500");
+    MessagePool.WarmUp();
+    Log.Information("Managed MessagePool warmed up.");
 
     // ApiServer 시작
     await apiServer.StartAsync();

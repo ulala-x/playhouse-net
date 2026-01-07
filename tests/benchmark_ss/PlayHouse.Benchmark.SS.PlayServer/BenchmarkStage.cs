@@ -85,6 +85,7 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     /// </summary>
     private async Task HandleTriggerSSEchoRequest(IActor actor, IPacket packet)
     {
+        var sw = Stopwatch.StartNew();
         var request = TriggerSSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // SSCallType에 따라 분기
@@ -96,6 +97,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         {
             await HandleSSEchoToStage(actor, request);
         }
+
+        // 메트릭 기록 (처리가 완료된 시점)
+        sw.Stop();
+        ServerMetricsCollector.Instance.RecordMessage(sw.ElapsedTicks, packet.Payload.Length * 2);
     }
 
     /// <summary>
@@ -233,8 +238,14 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     /// </summary>
     private void HandleSSEchoRequestZeroCopy(IPacket packet)
     {
+        var sw = Stopwatch.StartNew();
+
         // Zero-copy: 소유권 이전
         var echoPayload = packet.Payload.Move();
         StageSender.Reply(CPacket.Of("SSEchoReply", echoPayload));
+
+        // 메트릭 기록
+        sw.Stop();
+        ServerMetricsCollector.Instance.RecordMessage(sw.ElapsedTicks, packet.Payload.Length * 2);
     }
 }

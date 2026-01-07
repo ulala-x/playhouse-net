@@ -36,6 +36,16 @@ public sealed class ApiServerOption
     public int RequestTimeoutMs { get; set; } = 30000;
 
     /// <summary>
+    /// 동시 실행을 담당할 워커 Task 풀의 최소 크기. (기본값: 100)
+    /// </summary>
+    public int MinTaskPoolSize { get; set; } = 100;
+
+    /// <summary>
+    /// 동시 실행을 담당할 워커 Task 풀의 최대 크기. (기본값: 1000)
+    /// </summary>
+    public int MaxTaskPoolSize { get; set; } = 1000;
+
+    /// <summary>
     /// 설정 유효성 검증.
     /// </summary>
     public void Validate()
