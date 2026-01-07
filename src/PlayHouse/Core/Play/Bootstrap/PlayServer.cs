@@ -9,6 +9,7 @@ using PlayHouse.Core.Play;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Play.EventLoop;
 using PlayHouse.Core.Shared;
+using PlayHouse.Infrastructure.Memory;
 using PlayHouse.Runtime.ServerMesh;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Discovery;
@@ -108,6 +109,9 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     {
         if (_isRunning)
             throw new InvalidOperationException("Server is already running");
+
+        // [개선] 메모리 풀 설정 적용
+        MessagePool.ApplyConfig(_options.MessagePool);
 
         _cts = new CancellationTokenSource();
         _requestCache = new RequestCache();
