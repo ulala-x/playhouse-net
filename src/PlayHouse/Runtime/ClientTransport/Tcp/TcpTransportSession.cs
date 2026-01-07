@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
+using PlayHouse.Infrastructure.Memory;
 
 namespace PlayHouse.Runtime.ClientTransport.Tcp;
 
@@ -64,8 +65,8 @@ internal sealed class TcpTransportSession : ITransportSession
 
         ConfigureSocket();
 
-        // Initialize receive buffer and args
-        _receiveBuffer = ArrayPool<byte>.Shared.Rent(_options.ReceiveBufferSize * 2);
+        // Initialize receive buffer and args using MessagePool
+        _receiveBuffer = MessagePool.Rent(_options.ReceiveBufferSize * 2);
         _receiveArgs = new SocketAsyncEventArgs();
         _receiveArgs.Completed += OnReceiveCompleted;
     }
@@ -74,7 +75,7 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         // Start the first receive operation
         StartReceive();
-        _logger?.LogDebug("TCP session {SessionId} started (Task-less)", SessionId);
+        _logger?.LogDebug("TCP session {SessionId} started (Task-less with MessagePool)", SessionId);
     }
 
     private void StartReceive()
@@ -83,15 +84,6 @@ internal sealed class TcpTransportSession : ITransportSession
 
         try
         {
-            // Set the buffer for the receive operation
-            int available = _receiveBuffer.Length - _bytesInBuffer;
-            if (available < _options.ReceiveBufferSize)
-            {
-                // Compact or expand buffer if not enough space
-                // For simplicity, we just compact here
-                // ... (compaction logic is in ParseAndDispatch)
-            }
-
             _receiveArgs.SetBuffer(_receiveBuffer, _bytesInBuffer, _receiveBuffer.Length - _bytesInBuffer);
 
             if (!_socket.ReceiveAsync(_receiveArgs))
@@ -177,15 +169,17 @@ internal sealed class TcpTransportSession : ITransportSession
         var bodySpan = span.Slice(4, packetLength);
         if (!MessageCodec.TryParseMessage(bodySpan, out msgId, out msgSeq, out stageId, out var payloadOffset)) throw new InvalidDataException("Invalid message format");
         var payloadLength = packetLength - payloadOffset;
-        var rentedBuffer = ArrayPool<byte>.Shared.Rent(payloadLength);
+        
+        // Use MessagePool for payload data
+        var rentedBuffer = MessagePool.Rent(payloadLength);
         bodySpan.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
-        payload = new ArrayPoolPayload(rentedBuffer, payloadLength);
+        payload = MessagePoolPayload.Create(rentedBuffer, payloadLength);
+        
         return true;
     }
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
-        // Simple direct write for raw data (less optimized than SendResponse)
         try
         {
             await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
@@ -201,7 +195,9 @@ internal sealed class TcpTransportSession : ITransportSession
         if (_disposed) return;
 
         var totalSize = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: true);
-        var buffer = ArrayPool<byte>.Shared.Rent(totalSize);
+        
+        // Use MessagePool for output buffer
+        var buffer = MessagePool.Rent(totalSize);
         
         var span = buffer.AsSpan(0, totalSize);
         BinaryPrimitives.WriteInt32LittleEndian(span, totalSize - 4);
@@ -241,7 +237,8 @@ internal sealed class TcpTransportSession : ITransportSession
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.Return(item.Buffer);
+                    // Return to MessagePool
+                    MessagePool.Return(item.Buffer);
                 }
             }
         }
@@ -275,9 +272,10 @@ internal sealed class TcpTransportSession : ITransportSession
         {
             _cts.Cancel();
             _receiveArgs.Dispose();
-            ArrayPool<byte>.Shared.Return(_receiveBuffer);
             
-            // Non-blocking close
+            // Return receive buffer to MessagePool
+            MessagePool.Return(_receiveBuffer);
+            
             if (_socket.Connected)
             {
                 _socket.Shutdown(SocketShutdown.Both);

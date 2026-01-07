@@ -6,6 +6,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Benchmark.Server;
 using PlayHouse.Bootstrap;
 using PlayHouse.Extensions;
+using PlayHouse.Infrastructure.Memory;
 using Serilog;
 using Serilog.Events;
 using Serilog.Extensions.Logging;
@@ -100,6 +101,12 @@ try
     Log.Information("================================================================================");
     Log.Information("PlayHouse Benchmark Server");
     Log.Information("================================================================================");
+
+    // 지능형 메모리 풀 웜업 (차등 정책 적용)
+    Log.Information("Warming up SmartMessagePool (Granular policies)...");
+    MessagePool.WarmUp(1.0f); // 표준 계수로 웜업
+    Log.Information("SmartMessagePool deep warm-up completed.");
+
     Log.Information("ZMQ Port (server-to-server): {ZmqPort}", zmqPort);
     Log.Information("TCP Port (client connections): {TcpPort}", tcpPort);
     Log.Information("HTTP API Port: {HttpPort}", httpPort);
@@ -180,6 +187,9 @@ try
     // 정리
     await app.StopAsync();
     await playServer.StopAsync();
+
+    // 메모리 풀 통계 출력
+    MessagePool.PrintStats(s => Log.Information(s));
 
     Log.Information("Server stopped.");
 }
