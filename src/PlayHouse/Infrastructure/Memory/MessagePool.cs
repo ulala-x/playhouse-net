@@ -8,46 +8,47 @@ using Microsoft.Extensions.Logging;
 namespace PlayHouse.Infrastructure.Memory;
 
 /// <summary>
-/// 버킷별 차등 정책과 모니터링 기능을 갖춘 지능형 메시지 전용 메모리 풀.
-/// 작은 버퍼는 넉넉하게, 큰 버퍼는 효율적으로 관리합니다.
+/// 버킷별 차등 정책과 모니터링, 자동 축소 기능을 갖춘 지능형 메시지 전용 메모리 풀.
 /// </summary>
 public static class MessagePool
 {
     private const int BUCKET_COUNT = 53;
     private static int _maxL1Capacity = 64;
 
-    // 버킷별 최대 보관 가능 개수 (L2)
+    private static MessagePoolConfig _currentConfig = new();
     private static readonly int[] _maxCapacities = new int[BUCKET_COUNT];
+    private static readonly int[] _warmUpCounts = new int[BUCKET_COUNT];
+    private static readonly int[] _bucketSizes = new int[BUCKET_COUNT];
     
-    // 모니터링 지표
     private static readonly long[] _rentCounts = new long[BUCKET_COUNT];
     private static readonly long[] _allocationCounts = new long[BUCKET_COUNT];
     private static readonly long[] _returnRejectedCounts = new long[BUCKET_COUNT];
+    private static readonly long[] _lastAccessTicks = new long[BUCKET_COUNT];
 
-    // L2: 전역 공유 스택
     private static readonly ConcurrentStack<byte[]>[] _globalPool = new ConcurrentStack<byte[]>[BUCKET_COUNT];
 
-    // L1: 스레드별 로컬 캐시
     [ThreadStatic]
     private static Stack<byte[]>?[]? _localCache;
 
-    // 현재 활성화된 설정 보관
-    private static MessagePoolConfig _currentConfig = new();
+    private static Timer? _trimTimer;
 
     static MessagePool()
     {
+        // [CGDK10 53단계 버킷 사이즈 명시적 초기화]
         for (int i = 0; i < BUCKET_COUNT; i++)
         {
+            if (i <= 7) _bucketSizes[i] = (i + 1) * 128; // 128 ~ 1024
+            else if (i <= 14) _bucketSizes[i] = 1024 + (i - 7) * 1024; // 2048 ~ 8192
+            else if (i <= 28) _bucketSizes[i] = 8192 + (i - 14) * 4096; // 12288 ~ 65536
+            else if (i <= 43) _bucketSizes[i] = 65536 + (i - 28) * 16384; // 81920 ~ 311296
+            else _bucketSizes[i] = 311296 + (i - 43) * 65536; // 376832 ~ 966656 (approx to 1MB)
+
             _globalPool[i] = new ConcurrentStack<byte[]>();
         }
         
-        // 기본 설정 적용
         ApplyConfig(new MessagePoolConfig());
     }
 
-    /// <summary>
-    /// 외부 설정을 메모리 풀에 적용합니다.
-    /// </summary>
     public static void ApplyConfig(MessagePoolConfig config)
     {
         _currentConfig = config;
@@ -55,127 +56,110 @@ public static class MessagePool
 
         for (int i = 0; i < BUCKET_COUNT; i++)
         {
-            int size = GetBucketSize(i);
-            if (size <= 1024) _maxCapacities[i] = config.MaxTinyCount;
-            else if (size <= 8192) _maxCapacities[i] = config.MaxSmallCount;
-            else if (size <= 65536) _maxCapacities[i] = config.MaxMediumCount;
-            else if (size <= 262144) _maxCapacities[i] = config.MaxLargeCount;
-            else _maxCapacities[i] = config.MaxHugeCount;
+            int size = _bucketSizes[i];
+            if (size <= 1024) { _maxCapacities[i] = config.MaxTinyCount; _warmUpCounts[i] = config.TinyWarmUpCount; }
+            else if (size <= 8192) { _maxCapacities[i] = config.MaxSmallCount; _warmUpCounts[i] = config.SmallWarmUpCount; }
+            else if (size <= 65536) { _maxCapacities[i] = config.MaxMediumCount; _warmUpCounts[i] = config.MediumWarmUpCount; }
+            else if (size <= 311296) { _maxCapacities[i] = config.MaxLargeCount; _warmUpCounts[i] = config.LargeWarmUpCount; }
+            else { _maxCapacities[i] = config.MaxHugeCount; _warmUpCounts[i] = 10; }
+        }
+
+        _trimTimer?.Dispose();
+        if (_currentConfig.EnableAutoTrim)
+            _trimTimer = new Timer(_ => TrimPool(), null, _currentConfig.TrimCheckInterval, _currentConfig.TrimCheckInterval);
+    }
+
+    private static void TrimPool()
+    {
+        long now = Stopwatch.GetTimestamp();
+        long thresholdTicks = (long)(_currentConfig.IdleThreshold.TotalSeconds * Stopwatch.Frequency);
+
+        for (int i = 0; i < BUCKET_COUNT; i++)
+        {
+            if (_globalPool[i].Count > _warmUpCounts[i] && (now - Volatile.Read(ref _lastAccessTicks[i])) > thresholdTicks)
+            {
+                int toRemove = Math.Max(10, (_globalPool[i].Count - _warmUpCounts[i]) / 5);
+                for (int j = 0; j < toRemove; j++) if (_globalPool[i].TryPop(out _)) { } else break;
+            }
         }
     }
 
-    /// <summary>
-    /// 설정된 정책에 맞춰 메모리 풀을 미리 채우고 물리 메모리에 즉시 커밋합니다.
-    /// </summary>
     public static void WarmUp()
     {
         for (int i = 0; i < BUCKET_COUNT; i++)
         {
-            int size = GetBucketSize(i);
-            
-            // [개선] 설정 객체에 명시된 숫자를 그대로 사용 (투명성 확보)
-            int warmupCount;
-            if (size <= 1024) warmupCount = _currentConfig.TinyWarmUpCount;
-            else if (size <= 8192) warmupCount = _currentConfig.SmallWarmUpCount;
-            else if (size <= 65536) warmupCount = _currentConfig.MediumWarmUpCount;
-            else warmupCount = _currentConfig.LargeWarmUpCount;
-
-            for (int j = 0; j < warmupCount; j++)
+            for (int j = 0; j < _warmUpCounts[i]; j++)
             {
-                var buffer = new byte[size];
-                buffer.AsSpan().Clear(); // 물리 메모리 커밋 강제
+                var buffer = new byte[_bucketSizes[i]];
+                buffer.AsSpan().Clear();
                 _globalPool[i].Push(buffer);
             }
+            Volatile.Write(ref _lastAccessTicks[i], Stopwatch.GetTimestamp());
         }
     }
 
     public static byte[] Rent(int size)
     {
         if (size <= 0) return Array.Empty<byte>();
-        if (size > 1048576) return new byte[size];
+        if (size > _bucketSizes[BUCKET_COUNT - 1]) return new byte[size];
 
         int index = GetBucketIndex(size);
         Interlocked.Increment(ref _rentCounts[index]);
+        Volatile.Write(ref _lastAccessTicks[index], Stopwatch.GetTimestamp());
 
-        // 1. L1 캐시 확인
         _localCache ??= new Stack<byte[]>[BUCKET_COUNT];
         var localStack = _localCache[index] ??= new Stack<byte[]>(_maxL1Capacity);
-
         if (localStack.TryPop(out var buffer)) return buffer;
-
-        // 2. L2 전역 풀 확인
         if (_globalPool[index].TryPop(out buffer)) return buffer;
 
-        // 3. 새로 생성 (풀 고갈 시)
         Interlocked.Increment(ref _allocationCounts[index]);
-        return new byte[GetBucketSize(index)];
+        return new byte[_bucketSizes[index]];
     }
 
     public static void Return(byte[] buffer)
     {
         if (buffer == null || buffer.Length == 0) return;
+        int index = GetBucketIndex(buffer.Length);
+        if (index >= BUCKET_COUNT || buffer.Length != _bucketSizes[index]) return;
 
-        int size = buffer.Length;
-        if (size > 1048576) return;
-
-        int index = GetBucketIndex(size);
-        if (buffer.Length != GetBucketSize(index)) return;
-
-        // 1. L1 캐시 반납 시도
         _localCache ??= new Stack<byte[]>[BUCKET_COUNT];
         var localStack = _localCache[index] ??= new Stack<byte[]>(_maxL1Capacity);
-
-        if (localStack.Count < _maxL1Capacity)
-        {
-            localStack.Push(buffer);
-            return;
-        }
-
-        // 2. L2 전역 풀 반납 (용량 제한 체크)
-        if (_globalPool[index].Count < _maxCapacities[index])
-        {
-            _globalPool[index].Push(buffer);
-        }
-        else
-        {
-            // 풀이 가득 참 - 반납 거부 (GC에 맡김)
-            Interlocked.Increment(ref _returnRejectedCounts[index]);
-        }
-    }
-
-    /// <summary>
-    /// 현재 풀의 상태 지표를 출력합니다.
-    /// </summary>
-    public static void PrintStats(Action<string> logAction)
-    {
-        logAction("=== MessagePool Stats ===");
-        for (int i = 0; i < BUCKET_COUNT; i++)
-        {
-            long allocs = Volatile.Read(ref _allocationCounts[i]);
-            if (allocs > 0 || _globalPool[i].Count > 0)
-            {
-                logAction($"Bucket {i} ({GetBucketSize(i)}B): GlobalPool={_globalPool[i].Count}/{_maxCapacities[i]}, NewAllocs={allocs}, Rejected={_returnRejectedCounts[i]}");
-            }
-        }
+        if (localStack.Count < _maxL1Capacity) { localStack.Push(buffer); return; }
+        if (_globalPool[index].Count < _maxCapacities[index]) _globalPool[index].Push(buffer);
+        else Interlocked.Increment(ref _returnRejectedCounts[index]);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int GetBucketIndex(int size)
     {
-        if (size <= 1024) return (size - 1) >> 7;
-        if (size <= 8192) return 8 + ((size - 1025) >> 10);
-        if (size <= 65536) return 15 + ((size - 8193) >> 12);
-        if (size <= 262144) return 29 + ((size - 65537) >> 14);
-        return 44 + ((size - 262145) >> 16);
+        // Binary search for the correct bucket index
+        int low = 0;
+        int high = BUCKET_COUNT - 1;
+        int index = high;
+
+        while (low <= high)
+        {
+            int mid = low + ((high - low) >> 1);
+            if (_bucketSizes[mid] >= size)
+            {
+                index = mid;
+                high = mid - 1;
+            }
+            else
+            {
+                low = mid + 1;
+            }
+        }
+        return index;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetBucketSize(int index)
+    public static int GetBucketSize(int index) => _bucketSizes[index];
+
+    public static void PrintStats(Action<string> logAction)
     {
-        if (index <= 7) return (index + 1) * 128;
-        if (index <= 14) return 1024 + (index - 7) * 1024;
-        if (index <= 28) return 8192 + (index - 14) * 4096;
-        if (index <= 43) return 65536 + (index - 28) * 16384;
-        return 262144 + (index - 43) * 65536;
+        logAction("=== MessagePool Stats ===");
+        for (int i = 0; i < BUCKET_COUNT; i++)
+            if (Volatile.Read(ref _allocationCounts[i]) > 0 || _globalPool[i].Count > 0)
+                logAction($"Bucket {i} ({_bucketSizes[i]}B): GlobalPool={_globalPool[i].Count}/{_maxCapacities[i]}, NewAllocs={_allocationCounts[i]}, Rejected={_returnRejectedCounts[i]}");
     }
 }

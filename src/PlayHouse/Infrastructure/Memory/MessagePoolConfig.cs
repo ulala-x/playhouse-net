@@ -21,6 +21,20 @@ public sealed class MessagePoolConfig
     public int MediumWarmUpCount { get; set; } = 500;
     public int LargeWarmUpCount { get; set; } = 10;
 
-    // --- [3] 기타 설정 ---
-    public int MaxL1Capacity { get; set; } = 64;
-}
+        // --- [3] 기타 설정 ---
+
+        public int MaxL1Capacity { get; set; } = 64;
+
+    
+
+        // --- [4] 자동 축소(Trim) 설정 ---
+
+        public bool EnableAutoTrim { get; set; } = true;
+
+        public TimeSpan TrimCheckInterval { get; set; } = TimeSpan.FromSeconds(30); // 30초마다 체크
+
+        public TimeSpan IdleThreshold { get; set; } = TimeSpan.FromSeconds(60);     // 60초간 유휴 시 축소 시작
+
+    }
+
+    
