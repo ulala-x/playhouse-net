@@ -14,7 +14,7 @@ namespace PlayHouse.Infrastructure.Memory;
 public static class MessagePool
 {
     private const int BUCKET_COUNT = 53;
-    private const int MAX_L1_CAPACITY = 64; // 스레드별 로컬 보관 최대 개수
+    private static int _maxL1Capacity = 64;
 
     // 버킷별 최대 보관 가능 개수 (L2)
     private static readonly int[] _maxCapacities = new int[BUCKET_COUNT];
@@ -36,19 +36,27 @@ public static class MessagePool
         for (int i = 0; i < BUCKET_COUNT; i++)
         {
             _globalPool[i] = new ConcurrentStack<byte[]>();
-            
-            // [차등 정책 설정]
+        }
+        
+        // 기본 설정 적용
+        ApplyConfig(new MessagePoolConfig());
+    }
+
+    /// <summary>
+    /// 외부 설정을 메모리 풀에 적용합니다.
+    /// </summary>
+    public static void ApplyConfig(MessagePoolConfig config)
+    {
+        _maxL1Capacity = config.MaxL1Capacity;
+
+        for (int i = 0; i < BUCKET_COUNT; i++)
+        {
             int size = GetBucketSize(i);
-            if (size <= 1024) // 1KB 이하: 아주 넉넉하게 (최대 10만 개)
-                _maxCapacities[i] = 100000;
-            else if (size <= 8192) // 8KB 이하: 넉넉하게 (최대 2만 개)
-                _maxCapacities[i] = 20000;
-            else if (size <= 65536) // 64KB 이하: 적당하게 (최대 5천 개)
-                _maxCapacities[i] = 5000;
-            else if (size <= 262144) // 256KB 이하: 엄격하게 (최대 500 개)
-                _maxCapacities[i] = 500;
-            else // 1MB 이하: 최소한으로 (최대 100 개)
-                _maxCapacities[i] = 100;
+            if (size <= 1024) _maxCapacities[i] = config.MaxTinyCount;
+            else if (size <= 8192) _maxCapacities[i] = config.MaxSmallCount;
+            else if (size <= 65536) _maxCapacities[i] = config.MaxMediumCount;
+            else if (size <= 262144) _maxCapacities[i] = config.MaxLargeCount;
+            else _maxCapacities[i] = config.MaxHugeCount;
         }
     }
 
@@ -88,7 +96,7 @@ public static class MessagePool
 
         // 1. L1 캐시 확인
         _localCache ??= new Stack<byte[]>[BUCKET_COUNT];
-        var localStack = _localCache[index] ??= new Stack<byte[]>(MAX_L1_CAPACITY);
+        var localStack = _localCache[index] ??= new Stack<byte[]>(_maxL1Capacity);
 
         if (localStack.TryPop(out var buffer)) return buffer;
 
@@ -112,9 +120,9 @@ public static class MessagePool
 
         // 1. L1 캐시 반납 시도
         _localCache ??= new Stack<byte[]>[BUCKET_COUNT];
-        var localStack = _localCache[index] ??= new Stack<byte[]>(MAX_L1_CAPACITY);
+        var localStack = _localCache[index] ??= new Stack<byte[]>(_maxL1Capacity);
 
-        if (localStack.Count < MAX_L1_CAPACITY)
+        if (localStack.Count < _maxL1Capacity)
         {
             localStack.Push(buffer);
             return;

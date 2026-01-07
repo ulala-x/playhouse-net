@@ -2,6 +2,7 @@
 
 using System.Security.Cryptography.X509Certificates;
 using PlayHouse.Abstractions;
+using PlayHouse.Infrastructure.Memory;
 using PlayHouse.Runtime.ClientTransport;
 
 namespace PlayHouse.Core.Play.Bootstrap;
@@ -58,6 +59,11 @@ public sealed class PlayServerOption
     /// 동시 실행을 담당할 워커 Task 풀의 최대 크기. (기본값: 1000)
     /// </summary>
     public int MaxTaskPoolSize { get; set; } = 1000;
+
+    /// <summary>
+    /// 메시지 전용 메모리 풀 설정.
+    /// </summary>
+    public MessagePoolConfig MessagePool { get; set; } = new();
 
     #region Transport Configuration
 
