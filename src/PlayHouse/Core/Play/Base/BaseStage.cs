@@ -35,6 +35,11 @@ internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
         new Microsoft.Extensions.ObjectPool.DefaultObjectPool<StageMessage.ClientRouteMessage>(
             new Microsoft.Extensions.ObjectPool.DefaultPooledObjectPolicy<StageMessage.ClientRouteMessage>());
 
+    // Pool for ContinuationMessage to avoid heap allocations
+    internal static readonly Microsoft.Extensions.ObjectPool.ObjectPool<StageMessage.ContinuationMessage> _continuationMessagePool = 
+        new Microsoft.Extensions.ObjectPool.DefaultObjectPool<StageMessage.ContinuationMessage>(
+            new Microsoft.Extensions.ObjectPool.DefaultPooledObjectPolicy<StageMessage.ContinuationMessage>());
+
     // AsyncLocal to track current Stage context
     private static readonly AsyncLocal<BaseStage?> _currentStage = new();
 
@@ -184,7 +189,10 @@ internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
     /// </summary>
     internal void PostContinuation(SendOrPostCallback callback, object? state)
     {
-        _mailbox.Enqueue(new StageMessage.ContinuationMessage(callback, state) { Stage = this });
+        var msg = _continuationMessagePool.Get();
+        msg.Update(callback, state);
+        msg.Stage = this;
+        _mailbox.Enqueue(msg);
         ScheduleExecution();
     }
 
@@ -452,8 +460,31 @@ internal abstract class StageMessage : IDisposable
     /// <summary>
     /// 비동기 Continuation을 래핑하는 메시지
     /// </summary>
-    public sealed class ContinuationMessage(SendOrPostCallback callback, object? state) : StageMessage
+    public sealed class ContinuationMessage : StageMessage
     {
-        public override Task ExecuteAsync() { callback(state); return Task.CompletedTask; }
+        private SendOrPostCallback? _callback;
+        private object? _state;
+
+        public ContinuationMessage() { }
+
+        internal void Update(SendOrPostCallback callback, object? state)
+        {
+            _callback = callback;
+            _state = state;
+        }
+
+        public override Task ExecuteAsync()
+        {
+            _callback?.Invoke(_state);
+            return Task.CompletedTask;
+        }
+
+        public override void Dispose()
+        {
+            _callback = null;
+            _state = null;
+            Stage = null;
+            BaseStage._continuationMessagePool.Return(this);
+        }
     }
 }
