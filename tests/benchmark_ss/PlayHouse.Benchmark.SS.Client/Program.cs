@@ -348,6 +348,7 @@ static async Task RunSSEchoBenchmarkAsync(
     Log.Information("Output: {OutputDir}", Path.GetFullPath(outputDir));
     Log.Information("================================================================================");
 
+    var serverMetricsClient = new ServerMetricsClient(host, httpPort);
     var allResults = new List<SSEchoBenchmarkResult>();
 
     foreach (var responseSize in responseSizes)
@@ -360,6 +361,11 @@ static async Task RunSSEchoBenchmarkAsync(
 
         // 메트릭 수집기
         var clientMetricsCollector = new ClientMetricsCollector();
+
+        // 서버 메트릭 리셋
+        Log.Information("Resetting server metrics...");
+        await serverMetricsClient.ResetMetricsAsync();
+        await Task.Delay(1000);
 
         // 벤치마크 실행
         var runner = new SSEchoBenchmarkRunner(
@@ -380,10 +386,11 @@ static async Task RunSSEchoBenchmarkAsync(
         var endTime = DateTime.Now;
         var totalElapsed = (endTime - startTime).TotalSeconds;
 
-        Log.Information("Waiting for metrics to stabilize...");
-        await Task.Delay(1000);
+        Log.Information("Waiting for server to cleanup stages and stabilize metrics...");
+        await Task.Delay(3000);
 
         // 결과 조회
+        var serverMetrics = await serverMetricsClient.GetMetricsAsync();
         var clientMetrics = clientMetricsCollector.GetMetrics();
 
         // 결과 저장
@@ -391,6 +398,7 @@ static async Task RunSSEchoBenchmarkAsync(
         {
             ResponseSize = responseSize,
             TotalElapsedSeconds = totalElapsed,
+            ServerMetrics = serverMetrics,
             ClientMetrics = clientMetrics
         });
 
@@ -429,53 +437,76 @@ static void LogSSEchoResults(
     Log.Information("================================================================================");
     Log.Information("SS Echo Benchmark Results");
     Log.Information("================================================================================");
-    Log.Information("Config: {Connections:N0} connections, {Duration:N0} seconds duration",
-        connections, durationSeconds);
-    Log.Information("        Request: {RequestSize:N0}B, CommMode: {CommMode}, CallType: {CallType}",
-        messageSize, commMode, callType);
-    Log.Information("");
-
-    // 테이블 헤더
-    Log.Information("{RespSize,8} | {Elapsed,6} | {E2eP99,8} | {SsP99,8} | {CliTPS,9} | {CliMem,8} | {CliGC,10}",
-        "RespSize", "Time", "E2E P99", "SS P99", "Cli TPS", "Cli Mem", "Cli GC");
-    Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7}",
-        "--------", "------", "--------", "--------", "---------", "--------", "----------");
-
-    foreach (var result in results)
-    {
-        var e2eP99 = result.ClientMetrics.E2eLatencyP99Ms;
-        var ssP99 = result.ClientMetrics.SsLatencyP99Ms;
-        var cliTps = result.ClientMetrics.ThroughputMessagesPerSec;
-        var cliMem = result.ClientMetrics.MemoryAllocatedMB;
-        var cliGc = $"{result.ClientMetrics.GcGen0Count}/{result.ClientMetrics.GcGen1Count}/{result.ClientMetrics.GcGen2Count}";
-
-        Log.Information("{RespSize,7:N0}B | {Elapsed,5:F2}s | {E2eP99,6:F2}ms | {SsP99,6:F2}ms | {CliTPS,8:N0}/s | {CliMem,6:F1}MB | {CliGC,10}",
-            result.ResponseSize, result.TotalElapsedSeconds, e2eP99, ssP99, cliTps, cliMem, cliGc);
-    }
-
-    Log.Information("");
-
-    // 각 테스트별 상세 결과
-    foreach (var result in results)
-    {
-        Log.Information("--------------------------------------------------------------------------------");
-        Log.Information("[Response Size: {ResponseSize:N0} bytes]", result.ResponseSize);
-        Log.Information("  Elapsed: {Elapsed:F2}s", result.TotalElapsedSeconds);
-        Log.Information("  Client:");
-        Log.Information("    Sent/Recv   : {Sent:N0} / {Recv:N0} messages",
-            result.ClientMetrics.SentMessages, result.ClientMetrics.ReceivedMessages);
-        Log.Information("    SS Latency  : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
-            result.ClientMetrics.SsLatencyMeanMs, result.ClientMetrics.SsLatencyP50Ms,
-            result.ClientMetrics.SsLatencyP95Ms, result.ClientMetrics.SsLatencyP99Ms);
-        Log.Information("    E2E Latency : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
-            result.ClientMetrics.E2eLatencyMeanMs, result.ClientMetrics.E2eLatencyP50Ms,
-            result.ClientMetrics.E2eLatencyP95Ms, result.ClientMetrics.E2eLatencyP99Ms);
-        Log.Information("    Throughput  : {TPS:N0} msg/s",
-            result.ClientMetrics.ThroughputMessagesPerSec);
-        Log.Information("    Memory      : {Memory:F2} MB, GC: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}",
-            result.ClientMetrics.MemoryAllocatedMB,
-            result.ClientMetrics.GcGen0Count, result.ClientMetrics.GcGen1Count, result.ClientMetrics.GcGen2Count);
-    }
+        Log.Information("Config: {Connections:N0} connections, {Duration:N0} seconds duration",
+            connections, durationSeconds);
+        Log.Information("        Request: {RequestSize:N0}B, CommMode: {CommMode}, CallType: {CallType}",
+            messageSize, commMode, callType);
+        Log.Information("");
+    
+        // 테이블 헤더 (C-S 벤치마크와 동일한 형식)
+        Log.Information("{RespSize,8} | {Elapsed,6} | {SrvTPS,9} | {SrvP99,8} | {SrvMem,8} | {SrvGC,10} | {CliRTT,8} | {CliTPS,9} | {CliMem,8} | {CliGC,10}",
+            "RespSize", "Time", "Srv TPS", "Srv P99", "Srv Mem", "Srv GC", "Cli RTT", "Cli TPS", "Cli Mem", "Cli GC");
+        Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9} | {D10}",
+            "--------", "------", "---------", "--------", "--------", "----------", "--------", "---------", "--------", "----------");
+    
+        foreach (var result in results)
+        {
+            var srvTps = result.ServerMetrics?.ThroughputMessagesPerSec ?? 0;
+            var srvP99 = result.ServerMetrics?.LatencyP99Ms ?? 0;
+            var srvMem = result.ServerMetrics?.MemoryAllocatedMb ?? 0;
+            var srvGc = result.ServerMetrics != null
+                ? $"{result.ServerMetrics.GcGen0Count}/{result.ServerMetrics.GcGen1Count}/{result.ServerMetrics.GcGen2Count}"
+                : "-";
+            
+            // SS 벤치마크에서는 Cli RTT가 E2E Latency임
+            var cliRtt = result.ClientMetrics.E2eLatencyP99Ms;
+            var cliTps = result.ClientMetrics.ThroughputMessagesPerSec;
+            var cliMem = result.ClientMetrics.MemoryAllocatedMB;
+            var cliGc = $"{result.ClientMetrics.GcGen0Count}/{result.ClientMetrics.GcGen1Count}/{result.ClientMetrics.GcGen2Count}";
+    
+            Log.Information("{RespSize,7:N0}B | {Elapsed,5:F2}s | {SrvTPS,8:N0}/s | {SrvP99,6:F2}ms | {SrvMem,6:F1}MB | {SrvGC,10} | {CliRTT,6:F2}ms | {CliTPS,8:N0}/s | {CliMem,6:F1}MB | {CliGC,10}",
+                result.ResponseSize, result.TotalElapsedSeconds, srvTps, srvP99, srvMem, srvGc, cliRtt, cliTps, cliMem, cliGc);
+        }
+    
+        Log.Information("");
+    
+        // 각 테스트별 상세 결과
+        foreach (var result in results)
+        {
+            Log.Information("--------------------------------------------------------------------------------");
+            Log.Information("[Response Size: {ResponseSize:N0} bytes]", result.ResponseSize);
+            Log.Information("  Elapsed: {Elapsed:F2}s", result.TotalElapsedSeconds);
+    
+            if (result.ServerMetrics != null)
+            {
+                Log.Information("  Server:");
+                Log.Information("    Processed   : {Processed:N0} messages", result.ServerMetrics.ProcessedMessages);
+                Log.Information("    Throughput  : {TPS:N0} msg/s ({MBps:F2} MB/s)",
+                    result.ServerMetrics.ThroughputMessagesPerSec, result.ServerMetrics.ThroughputMbPerSec);
+                Log.Information("    Latency     : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
+                    result.ServerMetrics.LatencyMeanMs, result.ServerMetrics.LatencyP50Ms,
+                    result.ServerMetrics.LatencyP95Ms, result.ServerMetrics.LatencyP99Ms);
+                Log.Information("    Memory      : {Memory:F2} MB, GC: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}",
+                    result.ServerMetrics.MemoryAllocatedMb,
+                    result.ServerMetrics.GcGen0Count, result.ServerMetrics.GcGen1Count, result.ServerMetrics.GcGen2Count);
+            }
+    
+            Log.Information("  Client:");
+            Log.Information("    Sent/Recv   : {Sent:N0} / {Recv:N0} messages",
+                result.ClientMetrics.SentMessages, result.ClientMetrics.ReceivedMessages);
+            Log.Information("    SS Latency  : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
+                result.ClientMetrics.SsLatencyMeanMs, result.ClientMetrics.SsLatencyP50Ms,
+                result.ClientMetrics.SsLatencyP95Ms, result.ClientMetrics.SsLatencyP99Ms);
+            Log.Information("    E2E Latency : Mean={Mean:F2}ms, P50={P50:F2}ms, P95={P95:F2}ms, P99={P99:F2}ms",
+                result.ClientMetrics.E2eLatencyMeanMs, result.ClientMetrics.E2eLatencyP50Ms,
+                result.ClientMetrics.E2eLatencyP95Ms, result.ClientMetrics.E2eLatencyP99Ms);
+            Log.Information("    Throughput  : {TPS:N0} msg/s",
+                result.ClientMetrics.ThroughputMessagesPerSec);
+            Log.Information("    Memory      : {Memory:F2} MB, GC: Gen0={Gen0}, Gen1={Gen1}, Gen2={Gen2}",
+                result.ClientMetrics.MemoryAllocatedMB,
+                result.ClientMetrics.GcGen0Count, result.ClientMetrics.GcGen1Count, result.ClientMetrics.GcGen2Count);
+        }
+    
 
     Log.Information("================================================================================");
 }
@@ -521,6 +552,20 @@ static async Task SaveSSEchoResults(
         {
             ResponseSizeBytes = r.ResponseSize,
             TotalElapsedSeconds = r.TotalElapsedSeconds,
+            Server = r.ServerMetrics != null ? new
+            {
+                ProcessedMessages = r.ServerMetrics.ProcessedMessages,
+                ThroughputMsgPerSec = r.ServerMetrics.ThroughputMessagesPerSec,
+                ThroughputMBPerSec = r.ServerMetrics.ThroughputMbPerSec,
+                LatencyMeanMs = r.ServerMetrics.LatencyMeanMs,
+                LatencyP50Ms = r.ServerMetrics.LatencyP50Ms,
+                LatencyP95Ms = r.ServerMetrics.LatencyP95Ms,
+                LatencyP99Ms = r.ServerMetrics.LatencyP99Ms,
+                MemoryAllocatedMB = r.ServerMetrics.MemoryAllocatedMb,
+                GcGen0 = r.ServerMetrics.GcGen0Count,
+                GcGen1 = r.ServerMetrics.GcGen1Count,
+                GcGen2 = r.ServerMetrics.GcGen2Count
+            } : null,
             Client = new
             {
                 SentMessages = r.ClientMetrics.SentMessages,
@@ -577,6 +622,7 @@ static async Task RunAllCommModesAsync(
         (SSCommMode.Send, "Send")
     };
 
+    var serverMetricsClient = new ServerMetricsClient(host, httpPort);
     var allResults = new Dictionary<string, Dictionary<int, SSEchoBenchmarkResult>>();
 
     // 배너 출력
@@ -606,6 +652,11 @@ static async Task RunAllCommModesAsync(
 
             var clientMetricsCollector = new ClientMetricsCollector();
 
+            // 서버 메트릭 리셋
+            Log.Information("Resetting server metrics...");
+            await serverMetricsClient.ResetMetricsAsync();
+            await Task.Delay(500);
+
             var runner = new SSEchoBenchmarkRunner(
                 serverHost: host,
                 serverPort: port,
@@ -624,14 +675,17 @@ static async Task RunAllCommModesAsync(
             var endTime = DateTime.Now;
             var totalElapsed = (endTime - startTime).TotalSeconds;
 
+            Log.Information("Waiting for server metrics to stabilize...");
             await Task.Delay(1000);
 
+            var serverMetrics = await serverMetricsClient.GetMetricsAsync();
             var clientMetrics = clientMetricsCollector.GetMetrics();
 
             modeResults[responseSize] = new SSEchoBenchmarkResult
             {
                 ResponseSize = responseSize,
                 TotalElapsedSeconds = totalElapsed,
+                ServerMetrics = serverMetrics,
                 ClientMetrics = clientMetrics
             };
 
@@ -672,10 +726,10 @@ static void LogAllModesComparison(
     Log.Information("");
 
     // 테이블 헤더
-    Log.Information("{RespSize,8} | {Mode,16} | {Time,6} | {TPS,9} | {P99,8} | {Mem,8} | {GC,10}",
-        "RespSize", "Mode", "Time", "TPS", "P99", "Mem", "GC");
-    Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7}",
-        "--------", "----------------", "------", "---------", "--------", "--------", "----------");
+    Log.Information("{RespSize,8} | {Mode,16} | {Time,6} | {SrvTPS,9} | {SrvP99,8} | {SrvMem,8} | {SrvGC,10} | {CliRTT,8} | {CliTPS,9} | {CliMem,8} | {CliGC,10}",
+        "RespSize", "Mode", "Time", "Srv TPS", "Srv P99", "Srv Mem", "Srv GC", "Cli RTT", "Cli TPS", "Cli Mem", "Cli GC");
+    Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9} | {D10} | {D11}",
+        "--------", "----------------", "------", "---------", "--------", "--------", "----------", "--------", "---------", "--------", "----------");
 
     foreach (var responseSize in responseSizes)
     {
@@ -683,21 +737,28 @@ static void LogAllModesComparison(
         {
             if (modeResults.TryGetValue(responseSize, out var result))
             {
-                var tps = result.ClientMetrics.ThroughputMessagesPerSec;
-                var p99 = result.ClientMetrics.E2eLatencyP99Ms;
-                var mem = result.ClientMetrics.MemoryAllocatedMB;
-                var gc = $"{result.ClientMetrics.GcGen0Count}/{result.ClientMetrics.GcGen1Count}/{result.ClientMetrics.GcGen2Count}";
+                var srvTps = result.ServerMetrics?.ThroughputMessagesPerSec ?? 0;
+                var srvP99 = result.ServerMetrics?.LatencyP99Ms ?? 0;
+                var srvMem = result.ServerMetrics?.MemoryAllocatedMb ?? 0;
+                var srvGc = result.ServerMetrics != null
+                    ? $"{result.ServerMetrics.GcGen0Count}/{result.ServerMetrics.GcGen1Count}/{result.ServerMetrics.GcGen2Count}"
+                    : "-";
+                
+                var cliRtt = result.ClientMetrics.E2eLatencyP99Ms;
+                var cliTps = result.ClientMetrics.ThroughputMessagesPerSec;
+                var cliMem = result.ClientMetrics.MemoryAllocatedMB;
+                var cliGc = $"{result.ClientMetrics.GcGen0Count}/{result.ClientMetrics.GcGen1Count}/{result.ClientMetrics.GcGen2Count}";
 
-                Log.Information("{RespSize,7:N0}B | {Mode,16} | {Time,5:F2}s | {TPS,8:N0}/s | {P99,6:F2}ms | {Mem,6:F1}MB | {GC,10}",
-                    responseSize, modeName, result.TotalElapsedSeconds, tps, p99, mem, gc);
+                Log.Information("{RespSize,7:N0}B | {Mode,16} | {Time,5:F2}s | {SrvTPS,8:N0}/s | {SrvP99,6:F2}ms | {SrvMem,6:F1}MB | {SrvGC,10} | {CliRTT,6:F2}ms | {CliTPS,8:N0}/s | {CliMem,6:F1}MB | {CliGC,10}",
+                    responseSize, modeName, result.TotalElapsedSeconds, srvTps, srvP99, srvMem, srvGc, cliRtt, cliTps, cliMem, cliGc);
             }
         }
 
         // 모드 간 비교
         if (allResults.Count >= 2 && responseSize != responseSizes.Last())
         {
-            Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7}",
-                "--------", "----------------", "------", "---------", "--------", "--------", "----------");
+            Log.Information("{D1} | {D2} | {D3} | {D4} | {D5} | {D6} | {D7} | {D8} | {D9} | {D10} | {D11}",
+                "--------", "----------------", "------", "---------", "--------", "--------", "----------", "--------", "---------", "--------", "----------");
         }
     }
 
@@ -763,5 +824,6 @@ internal class SSEchoBenchmarkResult
 {
     public int ResponseSize { get; set; }
     public double TotalElapsedSeconds { get; set; }
+    public ServerMetricsResponse? ServerMetrics { get; set; }
     public ClientMetrics ClientMetrics { get; set; } = new();
 }

@@ -5,18 +5,20 @@
 # 목적: 특정 통신 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
 #       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
 #
-# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight]
+# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size]
 #
 # 파라미터:
-#   comm-mode    - 통신 모드 (필수): request-async, request-callback, send
-#   size         - 페이로드 크기 (필수, bytes): 64, 1024, 65536 등
-#   connections  - 동시 연결 수 (선택, 기본: 10)
-#   duration     - 테스트 시간(초) (선택, 기본: 10)
-#   max-inflight - 최대 동시 요청 수 (선택, 기본: 200)
+#   comm-mode      - 통신 모드 (필수): request-async, request-callback, send
+#   size           - 페이로드 크기 (필수, bytes): 64, 1024, 65536 등
+#   connections    - 동시 연결 수 (선택, 기본: 10)
+#   duration       - 테스트 시간(초) (선택, 기본: 10)
+#   max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)
+#   min-pool-size  - 최소 워커 수 (선택, 기본: 100)
+#   max-pool-size  - 최대 워커 수 (선택, 기본: 1000)
 #
 # 예시:
 #   ./run-single.sh request-async 1024
-#   ./run-single.sh send 65536 100 30 500
+#   ./run-single.sh send 65536 100 30 500 100 500
 #
 # 참고: 모든 모드/사이즈를 비교 테스트하려면 run-benchmark.sh를 사용하세요.
 
@@ -29,18 +31,20 @@ RESULT_DIR="$PROJECT_ROOT/benchmark-results"
 
 # 파라미터 검증
 if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "사용법: $0 <comm-mode> <size> [connections] [duration] [max-inflight]"
+    echo "사용법: $0 <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size]"
     echo ""
     echo "파라미터:"
-    echo "  comm-mode    - 통신 모드 (필수): request-async, request-callback, send"
-    echo "  size         - 페이로드 크기 (필수, bytes)"
-    echo "  connections  - 동시 연결 수 (선택, 기본: 10)"
-    echo "  duration     - 테스트 시간(초) (선택, 기본: 10)"
-    echo "  max-inflight - 최대 동시 요청 수 (선택, 기본: 200)"
+    echo "  comm-mode      - 통신 모드 (필수): request-async, request-callback, send"
+    echo "  size           - 페이로드 크기 (필수, bytes)"
+    echo "  connections    - 동시 연결 수 (선택, 기본: 10)"
+    echo "  duration       - 테스트 시간(초) (선택, 기본: 10)"
+    echo "  max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)"
+    echo "  min-pool-size  - 최소 워커 수 (선택, 기본: 100)"
+    echo "  max-pool-size  - 최대 워커 수 (선택, 기본: 1000)"
     echo ""
     echo "예시:"
     echo "  $0 request-async 1024"
-    echo "  $0 send 65536 100 30 500"
+    echo "  $0 send 65536 100 30 500 100 500"
     exit 1
 fi
 
@@ -49,6 +53,8 @@ SIZE=$2
 CONNECTIONS=${3:-10}
 DURATION=${4:-10}
 MAX_INFLIGHT=${5:-200}
+MIN_POOL_SIZE=${6:-100}
+MAX_POOL_SIZE=${7:-1000}
 TCP_PORT=16110
 ZMQ_PORT=16100
 HTTP_PORT=5080
@@ -75,6 +81,7 @@ echo "  Payload size: $SIZE bytes (Echo: request=response)"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s"
 echo "  Max in-flight: $MAX_INFLIGHT"
+echo "  Pool size: $MIN_POOL_SIZE ~ $MAX_POOL_SIZE"
 echo "================================================================================"
 echo ""
 
@@ -96,7 +103,9 @@ echo "[3/4] Starting S2S benchmark servers..."
 # PlayServer 시작
 echo "  Starting PlayServer (TCP: $TCP_PORT, ZMQ: $ZMQ_PORT, HTTP: $HTTP_PORT)..."
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.PlayServer/PlayHouse.Benchmark.SS.PlayServer.csproj" \
-    -c Release -- --peers "api-1=tcp://127.0.0.1:$API_ZMQ_PORT" > /tmp/ss-playserver.log 2>&1 &
+    -c Release -- --tcp-port $TCP_PORT --http-port $HTTP_PORT --zmq-port $ZMQ_PORT \
+    --min-pool-size $MIN_POOL_SIZE --max-pool-size $MAX_POOL_SIZE \
+    --peers "api-1=tcp://127.0.0.1:$API_ZMQ_PORT" > /tmp/ss-playserver.log 2>&1 &
 PLAY_PID=$!
 
 sleep 3
@@ -104,7 +113,9 @@ sleep 3
 # ApiServer 시작
 echo "  Starting ApiServer (ZMQ: $API_ZMQ_PORT, HTTP: $API_HTTP_PORT)..."
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.ApiServer/PlayHouse.Benchmark.SS.ApiServer.csproj" \
-    -c Release -- --peers "play-1=tcp://127.0.0.1:$ZMQ_PORT" > /tmp/ss-apiserver.log 2>&1 &
+    -c Release -- --zmq-port $API_ZMQ_PORT --http-port $API_HTTP_PORT \
+    --min-pool-size $MIN_POOL_SIZE --max-pool-size $MAX_POOL_SIZE \
+    --peers "play-1=tcp://127.0.0.1:$ZMQ_PORT" > /tmp/ss-apiserver.log 2>&1 &
 API_PID=$!
 
 # 서버 시작 대기

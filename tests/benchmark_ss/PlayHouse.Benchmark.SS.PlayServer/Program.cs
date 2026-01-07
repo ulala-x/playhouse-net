@@ -8,6 +8,7 @@ using PlayHouse.Abstractions.System;
 using PlayHouse.Benchmark.SS.PlayServer;
 using PlayHouse.Bootstrap;
 using PlayHouse.Extensions;
+using PlayHouse.Infrastructure.Memory;
 using Serilog;
 using Serilog.Events;
 using Serilog.Extensions.Logging;
@@ -54,6 +55,16 @@ var logDirOption = new Option<string>(
     description: "Directory for log files",
     getDefaultValue: () => "logs");
 
+var minPoolSizeOption = new Option<int>(
+    name: "--min-pool-size",
+    description: "Minimum worker tasks",
+    getDefaultValue: () => 100);
+
+var maxPoolSizeOption = new Option<int>(
+    name: "--max-pool-size",
+    description: "Maximum worker tasks",
+    getDefaultValue: () => 1000);
+
 var rootCommand = new RootCommand("PlayHouse Benchmark Server (Server-to-Server)")
 {
     tcpPortOption,
@@ -61,7 +72,9 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Server (Server-to-Server)
     httpPortOption,
     serverIdOption,
     peersOption,
-    logDirOption
+    logDirOption,
+    minPoolSizeOption,
+    maxPoolSizeOption
 };
 
 var tcpPort = 0;
@@ -70,6 +83,8 @@ var httpPort = 0;
 var serverId = "play-1";
 var peers = "";
 var logDir = "logs";
+var minPoolSize = 100;
+var maxPoolSize = 1000;
 
 rootCommand.SetHandler((context) =>
 {
@@ -79,6 +94,8 @@ rootCommand.SetHandler((context) =>
     serverId = context.ParseResult.GetValueForOption(serverIdOption)!;
     peers = context.ParseResult.GetValueForOption(peersOption)!;
     logDir = context.ParseResult.GetValueForOption(logDirOption)!;
+    minPoolSize = context.ParseResult.GetValueForOption(minPoolSizeOption);
+    maxPoolSize = context.ParseResult.GetValueForOption(maxPoolSizeOption);
 });
 
 await rootCommand.InvokeAsync(args);
@@ -141,6 +158,8 @@ try
         options.TcpPort = tcpPort;
         options.AuthenticateMessageId = "Authenticate";
         options.DefaultStageType = "BenchmarkStage"; // Auto-create stages
+        options.MinTaskPoolSize = minPoolSize;
+        options.MaxTaskPoolSize = maxPoolSize;
     })
     .UseStage<BenchmarkStage, BenchmarkActor>("BenchmarkStage")
     .UseSystemController(StaticSystemController.Parse(peers));
@@ -167,8 +186,8 @@ try
     app.MapControllers();
 
     // MessagePool Prewarm (런타임 할당 방지)
-    Net.Zmq.MessagePool.Shared.Prewarm(Net.Zmq.MessageSize.K2, 500);
-    Log.Information("MessagePool prewarmed: K2 x 500");
+    MessagePool.WarmUp();
+    Log.Information("Managed MessagePool warmed up.");
 
     // PlayServer 시작
     await playServer.StartAsync();

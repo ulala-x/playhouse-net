@@ -1,5 +1,5 @@
 using PlayHouse.Core.Play.Base;
-using PlayHouse.Core.Play.TaskPool;
+using PlayHouse.Core.Shared.TaskPool;
 
 namespace PlayHouse.Core.Play.EventLoop;
 

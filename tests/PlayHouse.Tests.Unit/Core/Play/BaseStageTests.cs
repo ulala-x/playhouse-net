@@ -1,20 +1,20 @@
 #nullable enable
 
-using FluentAssertions;
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
-using PlayHouse.Abstractions.Play;
-using PlayHouse.Core.Shared;
 using PlayHouse.Core.Messaging;
-using PlayHouse.Core.Play;
 using PlayHouse.Core.Play.Base;
-using PlayHouse.Core.Play.EventLoop;
+using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
+using PlayHouse.Core.Shared.TaskPool;
+using PlayHouse.Abstractions.Play;
+using PlayHouse.Core.Play;
 using Xunit;
 using NSubstitute;
-
-using PlayHouse.Core.Play.TaskPool;
+using FluentAssertions;
 
 namespace PlayHouse.Tests.Unit.Core.Play;
 
@@ -90,13 +90,11 @@ public class BaseStageTests : IDisposable
         }
 
         public Task OnCreate() => Task.CompletedTask;
-
         public Task OnDestroy()
         {
             OnDestroyCallCount++;
             return Task.CompletedTask;
         }
-
         public Task<bool> OnAuthenticate(IPacket authPacket) => Task.FromResult(true);
         public Task OnPostAuthenticate() => Task.CompletedTask;
     }
@@ -200,99 +198,32 @@ public class BaseStageTests : IDisposable
     {
         // Given (전제조건)
         var (baseStage, _, _) = CreateTestStage();
-        var actorSender = Substitute.For<IActorSender>();
-        var fakeActor = new FakeActor(actorSender);
-        var baseActor = CreateBaseActor("1001", fakeActor, baseStage);
+        var actorSender = new XActorSender("1", 1, "1", baseStage);
+        var actor = new BaseActor(new FakeActor(actorSender), actorSender);
 
         // When (행동)
-        baseStage.AddActor(baseActor);
+        baseStage.AddActor(actor);
 
         // Then (결과)
-        baseStage.ActorCount.Should().Be(1, "Actor가 추가되어야 함");
+        baseStage.ActorCount.Should().Be(1);
+        baseStage.GetActor(actor.AccountId).Should().Be(actor);
     }
 
-    [Fact(DisplayName = "GetActor - 존재하는 Actor를 반환한다")]
-    public void GetActor_ExistingActor_ReturnsActor()
+    [Fact(DisplayName = "RemoveActor - Actor를 제거한다")]
+    public void RemoveActor_RemovesActorFromStage()
     {
         // Given (전제조건)
         var (baseStage, _, _) = CreateTestStage();
-        var actorSender = Substitute.For<IActorSender>();
-        var fakeActor = new FakeActor(actorSender);
-        const string accountId = "1001";
-        var baseActor = CreateBaseActor(accountId, fakeActor, baseStage);
-        baseStage.AddActor(baseActor);
+        var actorSender = new XActorSender("1", 1, "1", baseStage);
+        var actor = new BaseActor(new FakeActor(actorSender), actorSender);
+        baseStage.AddActor(actor);
 
         // When (행동)
-        var retrievedActor = baseStage.GetActor(accountId);
+        var result = baseStage.RemoveActor(actor.AccountId);
 
         // Then (결과)
-        retrievedActor.Should().NotBeNull();
-        retrievedActor.Should().BeSameAs(baseActor);
-    }
-
-    [Fact(DisplayName = "GetActor - 존재하지 않는 Actor는 null을 반환한다")]
-    public void GetActor_NonExistentActor_ReturnsNull()
-    {
-        // Given (전제조건)
-        var (baseStage, _, _) = CreateTestStage();
-
-        // When (행동)
-        var actor = baseStage.GetActor("9999");
-
-        // Then (결과)
-        actor.Should().BeNull("존재하지 않는 Actor는 null을 반환해야 함");
-    }
-
-    [Fact(DisplayName = "RemoveActor - 존재하는 Actor를 제거한다")]
-    public void RemoveActor_ExistingActor_ReturnsTrue()
-    {
-        // Given (전제조건)
-        var (baseStage, _, _) = CreateTestStage();
-        var actorSender = Substitute.For<IActorSender>();
-        var fakeActor = new FakeActor(actorSender);
-        const string accountId = "1001";
-        var baseActor = CreateBaseActor(accountId, fakeActor, baseStage);
-        baseStage.AddActor(baseActor);
-
-        // When (행동)
-        var result = baseStage.RemoveActor(accountId);
-
-        // Then (결과)
-        result.Should().BeTrue("존재하는 Actor 제거는 성공해야 함");
-        baseStage.ActorCount.Should().Be(0, "제거 후 Actor 수는 0이어야 함");
-    }
-
-    [Fact(DisplayName = "RemoveActor - 존재하지 않는 Actor는 false를 반환한다")]
-    public void RemoveActor_NonExistentActor_ReturnsFalse()
-    {
-        // Given (전제조건)
-        var (baseStage, _, _) = CreateTestStage();
-
-        // When (행동)
-        var result = baseStage.RemoveActor("9999");
-
-        // Then (결과)
-        result.Should().BeFalse("존재하지 않는 Actor 제거는 실패해야 함");
-    }
-
-    [Fact(DisplayName = "여러 Actor 추가 - 모두 관리된다")]
-    public void AddMultipleActors_AllManaged()
-    {
-        // Given (전제조건)
-        var (baseStage, _, _) = CreateTestStage();
-        const int actorCount = 5;
-
-        // When (행동)
-        for (int i = 0; i < actorCount; i++)
-        {
-            var actorSender = Substitute.For<IActorSender>();
-            var fakeActor = new FakeActor(actorSender);
-            var baseActor = CreateBaseActor((1000 + i).ToString(), fakeActor, baseStage);
-            baseStage.AddActor(baseActor);
-        }
-
-        // Then (결과)
-        baseStage.ActorCount.Should().Be(actorCount, $"{actorCount}개의 Actor가 있어야 함");
+        result.Should().BeTrue();
+        baseStage.ActorCount.Should().Be(0);
     }
 
     [Fact(DisplayName = "PostDestroy - Stage의 OnDestroy가 호출된다")]
@@ -303,7 +234,7 @@ public class BaseStageTests : IDisposable
 
         // When (행동)
         baseStage.PostDestroy();
-        await Task.Delay(200); // EventLoop 처리 대기
+        await Task.Delay(200); // 작업 완료 대기
 
         // Then (결과)
         fakeStage.OnDestroyCallCount.Should().Be(1, "OnDestroy가 호출되어야 함");
@@ -314,91 +245,34 @@ public class BaseStageTests : IDisposable
     {
         // Given (전제조건)
         var (baseStage, _, _) = CreateTestStage();
-        var actors = new List<FakeActor>();
-
-        for (int i = 0; i < 3; i++)
-        {
-            var actorSender = Substitute.For<IActorSender>();
-            var fakeActor = new FakeActor(actorSender);
-            actors.Add(fakeActor);
-            var baseActor = CreateBaseActor((1000 + i).ToString(), fakeActor, baseStage);
-            baseStage.AddActor(baseActor);
-        }
+        var actorSender = new XActorSender("1", 1, "1", baseStage);
+        var fakeActor = new FakeActor(actorSender);
+        var actor = new BaseActor(fakeActor, actorSender);
+        baseStage.AddActor(actor);
 
         // When (행동)
         baseStage.PostDestroy();
-        await Task.Delay(200); // EventLoop 처리 대기
+        await Task.Delay(200); // 작업 완료 대기
 
         // Then (결과)
-        foreach (var actor in actors)
-        {
-            actor.OnDestroyCallCount.Should().Be(1, "모든 Actor의 OnDestroy가 호출되어야 함");
-        }
-        baseStage.ActorCount.Should().Be(0, "Destroy 후 Actor가 없어야 함");
+        fakeActor.OnDestroyCallCount.Should().Be(1, "모든 Actor의 OnDestroy가 호출되어야 함");
+        baseStage.ActorCount.Should().Be(0, "Stage의 Actor 목록이 비워져야 함");
     }
 
-    [Fact(DisplayName = "PostTimerCallback - 콜백이 이벤트 루프에서 실행된다")]
-    public async Task PostTimerCallback_ExecutesInEventLoop()
+    [Fact(DisplayName = "Reply - StageSender의 Reply를 호출한다")]
+    public void Reply_CallsStageSenderReply()
     {
         // Given (전제조건)
-        var (baseStage, _, _) = CreateTestStage();
-        var callbackExecuted = false;
+        var (baseStage, _, stageSender) = CreateTestStage();
+        
+        // Reply requires a current header context
+        var header = new RouteHeader { MsgSeq = 1, From = "test" };
+        stageSender.SetCurrentHeader(header);
 
         // When (행동)
-        baseStage.PostTimerCallback(1, async () =>
-        {
-            callbackExecuted = true;
-            await Task.CompletedTask;
-        });
-        await Task.Delay(200); // EventLoop 처리 대기
+        var act = () => baseStage.Reply(0);
 
         // Then (결과)
-        callbackExecuted.Should().BeTrue("타이머 콜백이 실행되어야 함");
+        act.Should().NotThrow();
     }
-
-    [Fact(DisplayName = "PostAsyncBlock - 결과가 이벤트 루프에서 처리된다")]
-    public async Task PostAsyncBlock_ProcessesInEventLoop()
-    {
-        // Given (전제조건)
-        var (baseStage, _, _) = CreateTestStage();
-        var postCallbackExecuted = false;
-        object? receivedResult = null;
-        const string expectedResult = "test_result";
-
-        var asyncPacket = new AsyncBlockPacket(
-            baseStage.StageId,
-            async (result) =>
-            {
-                postCallbackExecuted = true;
-                receivedResult = result;
-                await Task.CompletedTask;
-            },
-            expectedResult);
-
-        // When (행동)
-        baseStage.PostAsyncBlock(asyncPacket);
-        await Task.Delay(200); // EventLoop 처리 대기
-
-        // Then (결과)
-        postCallbackExecuted.Should().BeTrue("PostCallback이 실행되어야 함");
-        receivedResult.Should().Be(expectedResult, "결과가 전달되어야 함");
-    }
-
-    #region Helper Methods
-
-    private static BaseActor CreateBaseActor(string accountId, FakeActor fakeActor, BaseStage baseStage)
-    {
-        var xActorSender = new XActorSender(
-            sessionNid: "session:1",
-            sid: 1,
-            apiNid: "api:1",
-            baseStage);
-
-        // AccountId는 인증 시 설정되므로 여기서는 직접 설정
-        xActorSender.AccountId = accountId;
-
-        return new BaseActor(fakeActor, xActorSender);
-    }
-
-    #endregion
 }

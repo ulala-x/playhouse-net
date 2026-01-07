@@ -10,7 +10,7 @@ using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Runtime.ClientTransport;
-using PlayHouse.Core.Play.TaskPool;
+using PlayHouse.Core.Shared.TaskPool;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
 using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
