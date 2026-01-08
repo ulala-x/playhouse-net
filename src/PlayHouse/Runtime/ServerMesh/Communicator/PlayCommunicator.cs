@@ -29,6 +29,15 @@ internal sealed class PlayCommunicator : ICommunicator, ICommunicateListener
     public bool IsRunning { get; private set; }
 
     /// <summary>
+    /// Gets or sets the diagnostic level for performance testing.
+    /// </summary>
+    public int DiagnosticLevel
+    {
+        get => _server.DiagnosticLevel;
+        set => _server.DiagnosticLevel = value;
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="PlayCommunicator"/> class.
     /// </summary>
     /// <param name="config">Server configuration.</param>

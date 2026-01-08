@@ -374,10 +374,8 @@ static async Task RunSSEchoBenchmarkAsync(
             connections: connections,
             messageSize: messageSize,
             commMode: commMode,
-            callType: callType,
             targetStageId: targetStageId,
             targetNid: targetNid,
-            metricsCollector: clientMetricsCollector,
             durationSeconds: durationSeconds,
             maxInFlight: maxInFlight);
 
@@ -663,10 +661,8 @@ static async Task RunAllCommModesAsync(
                 connections: connections,
                 messageSize: messageSize,
                 commMode: commMode,
-                callType: callType,
                 targetStageId: targetStageId,
                 targetNid: targetNid,
-                metricsCollector: clientMetricsCollector,
                 durationSeconds: durationSeconds,
                 maxInFlight: maxInFlight);
 

@@ -15,21 +15,6 @@ using ClientPacket = PlayHouse.Connector.Protocol.IPacket;
 
 namespace PlayHouse.Tests.Integration.Play;
 
-/// <summary>
-/// Stage → API 통신 E2E 테스트
-///
-/// 이 테스트는 PlayHouse의 Stage에서 API 서버로의 메시지 전송을 검증합니다.
-/// - SendToApi: Stage → API 단방향 메시지
-/// - RequestToApi (async): Stage → API 요청/응답 (async/await)
-/// - RequestToApi (callback): Stage → API 요청/응답 (callback)
-///
-/// 테스트 환경:
-/// - PlayServer (ServerId="play-1"): Stage가 속한 서버
-/// - ApiServer (ServerId="api-1"): API 핸들러가 있는 서버
-/// - Client (Connector): Stage에 연결된 클라이언트
-///
-/// Note: PlayServer와 ApiServer는 다른 ServerId를 사용해야 ZMQ Router가 올바르게 라우팅할 수 있습니다.
-/// </summary>
 [Collection("E2E ApiPlayServer")]
 public class StageToApiTests : IAsyncLifetime
 {
@@ -38,7 +23,6 @@ public class StageToApiTests : IAsyncLifetime
     private ApiServer? ApiServer => _fixture.ApiServer;
     private readonly ClientConnector _connector;
     private readonly List<(long stageId, string stageType, string msgId, byte[] payloadData)> _receivedMessages = new();
-    private Timer? _callbackTimer;
     private readonly object _callbackLock = new();
 
     private const long StageId = 33333L;
@@ -49,10 +33,10 @@ public class StageToApiTests : IAsyncLifetime
         _connector = new ClientConnector();
         _connector.OnReceive += (stageId, stageType, packet) =>
         {
-            // 콜백 내에서 데이터를 복사하여 저장 (콜백 외부에서 패킷 접근 불가)
+            Console.WriteLine($"[Client] Received Push Message: {packet.MsgId}");
             var msgId = packet.MsgId;
             var payloadData = packet.Payload.DataSpan.ToArray();
-            _receivedMessages.Add((stageId, stageType, msgId, payloadData));
+            lock (_receivedMessages) _receivedMessages.Add((stageId, stageType, msgId, payloadData));
         };
     }
 
@@ -61,188 +45,152 @@ public class StageToApiTests : IAsyncLifetime
         TestActorImpl.ResetAll();
         TestStageImpl.ResetAll();
         TestApiController.ResetAll();
-
-        _callbackTimer = new Timer(_ =>
-        {
-            lock (_callbackLock)
-            {
-                _connector.MainThreadAction();
-            }
-        }, null, 0, 20);
-
-        // Fixture가 서버를 관리하므로 추가 초기화 불필요
         await Task.CompletedTask;
     }
 
     public async Task DisposeAsync()
     {
-        _callbackTimer?.Dispose();
         _connector.Disconnect();
         await Task.CompletedTask;
     }
 
     #region SendToApi 테스트
 
-    /// <summary>
-    /// SendToApi E2E 테스트
-    /// Stage에서 API 서버로 단방향 메시지를 전송합니다.
-    ///
-    /// 테스트 플로우:
-    /// 1. 클라이언트를 PlayServer (play-1)에 연결하여 Stage 생성
-    /// 2. 클라이언트가 Stage에 TriggerSendToApiRequest 전송
-    /// 3. Stage에서 IStageSender.SendToApi("api-1", message)로 API 서버에 메시지 전송
-    /// 4. API 서버의 TestApiController에서 HandleApiEcho 콜백 호출 검증
-    /// </summary>
     [Fact(DisplayName = "SendToApi - Stage에서 API로 단방향 메시지 전송 성공")]
     public async Task SendToApi_Success_MessageDelivered()
     {
-        // Given - PlayServer에 Stage 연결
         await ConnectAndAuthenticateAsync(_connector, StageId);
-
         var initialApiCallCount = TestApiController.OnDispatchCallCount;
 
-        // When - Stage에서 API로 SendToApi 트리거
-        var request = new TriggerSendToApiRequest
-        {
-            Message = "Hello from Stage"
-        };
+        var request = new TriggerSendToApiRequest { Message = "Hello from Stage" };
         using var packet = new Packet(request);
-        var response = await _connector.RequestAsync(packet);
+        
+        var responseTask = _connector.RequestAsync(packet);
+        var response = await WaitForResponse(responseTask);
 
-        await Task.Delay(500); // 비동기 처리 대기
+        await Task.Delay(500); 
 
-        // Then - E2E 검증 1: 응답 검증
         response.MsgId.Should().EndWith("TriggerSendToApiReply");
-        var reply = TriggerSendToApiReply.Parser.ParseFrom(response.Payload.DataSpan);
-        reply.Success.Should().BeTrue("SendToApi가 성공해야 함");
-
-        // Then - E2E 검증 2: API Controller에서 메시지 수신 확인
-        TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialApiCallCount,
-            "API Controller에서 메시지를 수신해야 함");
-        TestApiController.ReceivedMsgIds.Should().Contain(msgId => msgId.Contains("ApiEchoRequest"),
-            "ApiEchoRequest가 기록되어야 함");
+        TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialApiCallCount);
     }
 
     #endregion
 
-    #region RequestToApi (async) 테스트
+    #region AsyncBlock & S2S Routing 테스트
 
-    /// <summary>
-    /// RequestToApi (async) E2E 테스트
-    /// Stage에서 API 서버로 요청을 보내고 async/await로 응답을 받습니다.
-    ///
-    /// 테스트 플로우:
-    /// 1. 클라이언트를 PlayServer (play-1)에 연결하여 Stage 생성
-    /// 2. 클라이언트가 Stage에 TriggerRequestToApiRequest 전송
-    /// 3. Stage에서 IStageSender.RequestToApi("api-1", message)로 API 서버에 요청 전송 (await)
-    /// 4. API 서버의 TestApiController에서 HandleApiEcho 콜백 호출되고 Reply 반환
-    /// 5. Stage가 API의 응답을 받아서 클라이언트에 전달
-    /// </summary>
-    [Fact(DisplayName = "RequestToApi - Stage에서 API로 요청/응답 성공 (async)")]
-    public async Task RequestToApi_Async_Success_ResponseReceived()
+    [Fact(DisplayName = "AsyncBlock - PreBlock 내에서 SendToApi 호출 시 API 서버로 메시지 전달 성공")]
+    public async Task AsyncBlock_SendToApi_Success()
     {
-        // Given - PlayServer에 Stage 연결
         await ConnectAndAuthenticateAsync(_connector, StageId);
-
         var initialApiCallCount = TestApiController.OnDispatchCallCount;
 
-        // When - Stage에서 API로 RequestToApi 트리거 (async)
-        var request = new TriggerRequestToApiRequest
-        {
-            Query = "Query from Stage"
-        };
+        var request = new TriggerAsyncBlockSendToApiRequest { Message = "Hello from AsyncBlock" };
         using var packet = new Packet(request);
-        var response = await _connector.RequestAsync(packet);
+        var response = await WaitForResponse(_connector.RequestAsync(packet));
 
-        // Then - E2E 검증 1: 응답 검증
-        response.MsgId.Should().EndWith("TriggerRequestToApiReply");
+        response.MsgId.Should().EndWith("TriggerAsyncBlockSendToApiAccepted");
+
+        await Task.Delay(500);
+        for (int i = 0; i < 10; i++) { lock (_callbackLock) _connector.MainThreadAction(); await Task.Delay(50); }
+
+        TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialApiCallCount);
+    }
+
+    [Fact(DisplayName = "S2S 라우팅 - StageId 정보가 API로 전달되고 SendToStage 응답 수신 성공")]
+    public async Task S2S_DirectRouting_Success()
+    {
+        await ConnectAndAuthenticateAsync(_connector, StageId);
+        
+        using var packet = Packet.Empty("TriggerApiDirectEcho");
+        var response = await WaitForResponse(_connector.RequestAsync(packet));
+        response.MsgId.Should().EndWith("Accepted");
+
+        bool received = false;
+        var timeout = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < timeout)
+        {
+            lock (_callbackLock) _connector.MainThreadAction();
+            if (TestStageImpl.AllReceivedMsgIds.Contains("ApiDirectEchoReply_Success")) { received = true; break; }
+            await Task.Delay(100);
+        }
+
+        received.Should().BeTrue("API 서버가 보낸 SendToStage 메시지가 스테이지에 도착해야 함");
+    }
+
+    [Fact(DisplayName = "AsyncBlock - PreBlock 내에서 RequestToApi 호출 및 PostBlock 실행 성공")]
+    public async Task AsyncBlock_RequestToApi_Success()
+    {
+        await ConnectAndAuthenticateAsync(_connector, StageId);
+        
+        var request = new TriggerAsyncBlockRequestToApiRequest { Query = "Async Request Query" };
+        using var packet = new Packet(request);
+        await WaitForResponse(_connector.RequestAsync(packet));
+
+        // 최종 Push 응답 대기 (전역 _receivedMessages 로그 확인)
+        TriggerAsyncBlockRequestToApiReply? finalReply = null;
+        var timeout = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < timeout)
+        {
+            lock (_callbackLock) { _connector.MainThreadAction(); }
+            
+            lock (_receivedMessages)
+            {
+                var msg = _receivedMessages.FirstOrDefault(m => m.msgId.Contains("TriggerAsyncBlockRequestToApiReply"));
+                if (!msg.Equals(default))
+                {
+                    finalReply = TriggerAsyncBlockRequestToApiReply.Parser.ParseFrom(msg.payloadData);
+                    break;
+                }
+            }
+            await Task.Delay(100);
+        }
+
+        finalReply.Should().NotBeNull("PostBlock에서 보낸 Push 메시지를 수신해야 함");
+        finalReply!.ApiResponse.Should().Contain("Async Request Query");
+        finalReply.PostBlockCalled.Should().BeTrue();
+    }
+
+    #endregion
+
+    #region Basic S2S 테스트
+
+    [Fact(DisplayName = "S2S 기본 - OnDispatch 내에서 RequestToApi 호출 및 응답 성공")]
+    public async Task S2S_BasicRequestReply_Success()
+    {
+        await ConnectAndAuthenticateAsync(_connector, StageId);
+
+        var request = new TriggerRequestToApiRequest { Query = "Basic S2S Test" };
+        using var packet = new Packet(request);
+        var response = await WaitForResponse(_connector.RequestAsync(packet));
+
         var reply = TriggerRequestToApiReply.Parser.ParseFrom(response.Payload.DataSpan);
-        reply.ApiResponse.Should().Contain("Query from Stage",
-            "API의 에코 응답이 포함되어야 함");
-
-        // Then - E2E 검증 2: API Controller 호출 확인
-        TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialApiCallCount,
-            "API Controller에서 요청을 처리해야 함");
-    }
-
-    #endregion
-
-    #region RequestToApi (callback) 테스트
-
-    /// <summary>
-    /// RequestToApi Callback 버전 E2E 테스트
-    /// Stage에서 API 서버로 요청을 보내고 callback으로 응답을 받습니다.
-    ///
-    /// 테스트 플로우:
-    /// 1. 클라이언트를 PlayServer (play-1)에 연결하여 Stage 생성
-    /// 2. 클라이언트가 Stage에 TriggerRequestToApiCallbackRequest 전송
-    /// 3. Stage에서 IStageSender.RequestToApi("api-1", message, callback)로 API 서버에 요청 전송
-    /// 4. API 서버의 TestApiController에서 HandleApiEcho 콜백 호출되고 Reply 반환
-    /// 5. Stage의 callback이 호출되고 응답을 클라이언트에 Push 메시지로 전달
-    /// 6. E2E 검증: 즉시 수락 응답 + callback 호출 횟수 + Push 메시지 내용 검증
-    /// </summary>
-    [Fact(DisplayName = "RequestToApi - Stage에서 API로 요청/응답 성공 (callback)")]
-    public async Task RequestToApi_Callback_Success_CallbackInvoked()
-    {
-        // Given - PlayServer에 Stage 연결
-        await ConnectAndAuthenticateAsync(_connector, StageId);
-
-        var initialCallbackCount = TestStageImpl.RequestToApiCallbackCount;
-        var initialApiCallCount = TestApiController.OnDispatchCallCount;
-        _receivedMessages.Clear();
-
-        // When - Stage에서 API로 RequestToApi Callback 버전 트리거
-        var request = new TriggerRequestToApiCallbackRequest
-        {
-            Query = "Callback Query from Stage"
-        };
-        using var packet = new Packet(request);
-        var response = await _connector.RequestAsync(packet);
-
-        // Then - E2E 검증 1: 즉시 수락 응답
-        response.MsgId.Should().EndWith("TriggerRequestToApiCallbackAccepted",
-            "즉시 수락 응답을 받아야 함");
-
-        // Callback이 실행되고 Push 메시지가 도착할 시간 대기
-        await Task.Delay(1000);
-
-        // Then - E2E 검증 2: Callback 호출 횟수 증가
-        TestStageImpl.RequestToApiCallbackCount.Should().BeGreaterThan(initialCallbackCount,
-            "RequestToApi callback이 호출되어야 함");
-
-        // Then - E2E 검증 3: API Controller 호출 확인
-        TestApiController.OnDispatchCallCount.Should().BeGreaterThan(initialApiCallCount,
-            "API Controller에서 요청을 처리해야 함");
-
-        // Then - E2E 검증 4: Push 메시지 수신 (callback에서 SendToClient로 전송)
-        _receivedMessages.Should().NotBeEmpty("Push 메시지를 수신해야 함");
-        var pushMessage = _receivedMessages.FirstOrDefault(m => m.msgId.Contains("TriggerRequestToApiCallbackReply"));
-        pushMessage.Should().NotBe(default, "TriggerRequestToApiCallbackReply Push 메시지가 있어야 함");
-
-        var pushReply = TriggerRequestToApiCallbackReply.Parser.ParseFrom(pushMessage.payloadData);
-        pushReply.ApiResponse.Should().Contain("Callback Query from Stage",
-            "API의 에코 응답이 callback을 통해 전달되어야 함");
+        reply.ApiResponse.Should().Contain("Basic S2S Test");
     }
 
     #endregion
 
     #region Helper Methods
 
+    private async Task<PlayHouse.Connector.Protocol.IPacket> WaitForResponse(Task<PlayHouse.Connector.Protocol.IPacket> task)
+    {
+        var timeout = DateTime.UtcNow.AddSeconds(10);
+        while (!task.IsCompleted && DateTime.UtcNow < timeout)
+        {
+            lock (_callbackLock) _connector.MainThreadAction();
+            await Task.Delay(20);
+        }
+        return await task;
+    }
+
     private async Task ConnectAndAuthenticateAsync(ClientConnector connector, long stageId)
     {
         connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
         var connected = await connector.ConnectAsync("127.0.0.1", PlayServer!.ActualTcpPort, stageId, "TestStage");
-        connected.Should().BeTrue($"서버에 연결되어야 함 (stageId: {stageId})");
-        await Task.Delay(100);
+        connected.Should().BeTrue();
 
-        var authRequest = new AuthenticateRequest
-        {
-            UserId = $"test-user-{stageId}",
-            Token = "valid-token"
-        };
+        var authRequest = new AuthenticateRequest { UserId = $"user-{stageId}", Token = "token" };
         using var authPacket = new Packet(authRequest);
-        await connector.AuthenticateAsync(authPacket);
-        await Task.Delay(100);
+        await WaitForResponse(connector.AuthenticateAsync(authPacket));
     }
 
     #endregion

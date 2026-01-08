@@ -4,6 +4,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
+using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
@@ -243,26 +244,33 @@ internal sealed class XStageSender : XSender, IStageSender
     /// <inheritdoc/>
     public void AsyncBlock(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null)
     {
-        _ = Task.Run(async () =>
+        // Use GlobalTaskPool instead of Task.Run for better performance and control
+        _dispatcher.TaskPool.Post(new AsyncWorkItem(this, preCallback, postCallback));
+    }
+
+    /// <summary>
+    /// Internal work item to execute AsyncBlock on GlobalTaskPool.
+    /// </summary>
+    private sealed class AsyncWorkItem(XStageSender sender, AsyncPreCallback pre, AsyncPostCallback? post) : ITaskPoolWorkItem
+    {
+        public Base.BaseStage? Stage => null; // Run on any free worker
+
+        public async Task ExecuteAsync()
         {
             try
             {
-                // Execute preCallback on ThreadPool (can block)
-                var result = await preCallback.Invoke();
-
-                if (postCallback != null)
+                var result = await pre.Invoke();
+                if (post != null)
                 {
-                    // Post result back to Stage event loop
-                    var asyncPacket = new AsyncBlockPacket(StageId, postCallback, result);
-                    _dispatcher.OnPost(new AsyncMessage(asyncPacket));
+                    // Dispatch post-callback back to the Stage event loop
+                    sender._dispatcher.OnPost(new AsyncMessage(new AsyncBlockPacket(sender.StageId, post, result)));
                 }
             }
             catch (Exception ex)
             {
-                // Log error but don't crash the ThreadPool thread
-                Console.Error.WriteLine($"AsyncBlock error in Stage {StageId}: {ex.Message}");
+                Console.Error.WriteLine($"[AsyncBlock] Error in PreBlock: {ex.Message}");
             }
-        });
+        }
     }
 
     #endregion

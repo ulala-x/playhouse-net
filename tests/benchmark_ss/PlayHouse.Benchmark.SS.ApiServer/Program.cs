@@ -61,6 +61,11 @@ var maxPoolSizeOption = new Option<int>(
     description: "Maximum worker tasks",
     getDefaultValue: () => 1000);
 
+var diagLevelOption = new Option<int>(
+    name: "--diagnostic-level",
+    description: "S2S Diagnostic Level (-1: Normal, 0: Raw Echo, 1: Header Echo)",
+    getDefaultValue: () => -1);
+
 var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark API Server")
 {
     zmqPortOption,
@@ -69,7 +74,8 @@ var rootCommand = new RootCommand("PlayHouse Server-to-Server Benchmark API Serv
     peersOption,
     logDirOption,
     minPoolSizeOption,
-    maxPoolSizeOption
+    maxPoolSizeOption,
+    diagLevelOption
 };
 
 var zmqPort = 0;
@@ -79,8 +85,9 @@ var peers = "play-1=tcp://127.0.0.1:16100";
 var logDir = "logs";
 var minPoolSize = 100;
 var maxPoolSize = 1000;
+var diagLevel = -1;
 
-rootCommand.SetHandler((zmq, http, sid, peersStr, logDirectory, minPool, maxPool) =>
+rootCommand.SetHandler((zmq, http, sid, peersStr, logDirectory, minPool, maxPool, dl) =>
 {
     zmqPort = zmq;
     httpPort = http;
@@ -89,7 +96,8 @@ rootCommand.SetHandler((zmq, http, sid, peersStr, logDirectory, minPool, maxPool
     logDir = logDirectory;
     minPoolSize = minPool;
     maxPoolSize = maxPool;
-}, zmqPortOption, httpPortOption, serverIdOption, peersOption, logDirOption, minPoolSizeOption, maxPoolSizeOption);
+    diagLevel = dl;
+}, zmqPortOption, httpPortOption, serverIdOption, peersOption, logDirOption, minPoolSizeOption, maxPoolSizeOption, diagLevelOption);
 
 await rootCommand.InvokeAsync(args);
 
@@ -211,7 +219,8 @@ try
 
     // ApiServer 시작
     await apiServer.StartAsync();
-    Log.Information("API Server started (ZMQ: {ZmqPort})", zmqPort);
+    apiServer.DiagnosticLevel = diagLevel;
+    Log.Information("API Server started (ZMQ: {ZmqPort}) with DiagnosticLevel: {DiagLevel}", zmqPort, diagLevel);
     Log.Information("SystemController will manage connections to peers: {Peers}", peers);
 
     // HTTP API 서버 시작

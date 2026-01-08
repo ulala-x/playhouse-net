@@ -35,7 +35,6 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         public Proto.RouteHeader Create() => new Proto.RouteHeader();
         public bool Return(Proto.RouteHeader obj)
         {
-            // Reset all fields to their default values
             obj.MsgSeq = 0;
             obj.ServiceId = 0;
             obj.MsgId = string.Empty;
@@ -50,7 +49,6 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         }
     }
 
-    // L1 Cache: ThreadLocal fixed buffer for small headers (128B is plenty for RouteHeader)
     [ThreadStatic]
     private static byte[]? _threadLocalHeaderBuffer;
 
@@ -97,14 +95,10 @@ internal sealed class ZmqPlaySocket : IPlaySocket
         {
             try
             {
-                // Set PayloadSize in header
                 packet.Header.PayloadSize = (uint)packet.Payload.Length;
-
-                // Frame 0: Target ServerId (Cached byte[])
                 var serverIdBytes = _serverIdCache.GetOrAdd(serverId, id => Encoding.UTF8.GetBytes(id));
                 _socket.Send(serverIdBytes, SendFlags.SendMore);
 
-                // Frame 1: RouteHeader (Use ThreadLocal buffer if small enough)
                 int headerSize = packet.Header.CalculateSize();
                 byte[]? headerBuffer = null;
                 bool isPooled = false;
@@ -132,7 +126,6 @@ internal sealed class ZmqPlaySocket : IPlaySocket
                     }
                 }
 
-                // Frame 2: Payload (Use byte[] Send API for optimal performance)
                 _socket.Send(packet.Payload.DataSpan);
             }
             catch (Exception ex)
@@ -146,16 +139,13 @@ internal sealed class ZmqPlaySocket : IPlaySocket
     {
         ThrowIfDisposed();
 
-        // Frame 0: Sender ServerId
         int serverIdLen = _socket.Recv(_recvServerIdBuffer);
         if (serverIdLen <= 0) return null;
         var senderServerId = GetOrCacheServerId(_recvServerIdBuffer, serverIdLen);
 
-        // Frame 1: RouteHeader
         int headerLen = _socket.Recv(_recvHeaderBuffer);
         if (headerLen <= 0) return null;
         
-        // Use pooled header
         var header = _headerPool.Get();
         try
         {
@@ -167,13 +157,42 @@ internal sealed class ZmqPlaySocket : IPlaySocket
             throw;
         }
 
-        // Frame 2: Payload - Use high-performance MessagePool
         var payloadSize = (int)header.PayloadSize;
         var payloadBuffer = ManagedMessagePool.Rent(payloadSize);
         _socket.Recv(payloadBuffer.AsSpan(0, payloadSize));
 
-        // RoutePacket creation (now uses pooled header and buffer)
         return RoutePacket.FromMessagePool(header, payloadBuffer, payloadSize, senderServerId, h => _headerPool.Return(h));
+    }
+
+    public void ReceiveDirect(int level)
+    {
+        ThrowIfDisposed();
+
+        int serverIdLen = _socket.Recv(_recvServerIdBuffer);
+        if (serverIdLen <= 0) return;
+
+        if (level == 0)
+        {
+            while (_socket.HasMore) _socket.Recv(_recvHeaderBuffer);
+            _socket.Send(_recvServerIdBuffer.AsSpan(0, serverIdLen), SendFlags.SendMore);
+            _socket.Send(_recvHeaderBuffer.AsSpan(0, 1024));
+            return;
+        }
+
+        int headerLen = _socket.Recv(_recvHeaderBuffer);
+        if (headerLen <= 0) return;
+
+        if (level >= 1)
+        {
+            var header = _headerPool.Get();
+            header.MergeFrom(_recvHeaderBuffer.AsSpan(0, headerLen));
+            _headerPool.Return(header);
+        }
+
+        int payloadLen = _socket.Recv(_recvHeaderBuffer);
+        _socket.Send(_recvServerIdBuffer.AsSpan(0, serverIdLen), SendFlags.SendMore);
+        _socket.Send(_recvHeaderBuffer.AsSpan(0, headerLen), SendFlags.SendMore);
+        _socket.Send(_recvHeaderBuffer.AsSpan(0, payloadLen));
     }
 
     private string GetOrCacheServerId(byte[] buffer, int length)

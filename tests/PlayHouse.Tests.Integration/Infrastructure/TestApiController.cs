@@ -33,6 +33,7 @@ public class TestApiController : IApiController
     public void Handles(IHandlerRegister register)
     {
         register.Add(typeof(ApiEchoRequest).Name!, HandleApiEcho);
+        register.Add(typeof(ApiDirectEchoRequest).Name!, HandleApiDirectEcho);
         register.Add(typeof(TriggerCreateStageRequest).Name!, HandleCreateStage);
         register.Add(typeof(TriggerGetOrCreateStageRequest).Name!, HandleGetOrCreateStage);
         register.Add(typeof(TriggerSendToApiServerRequest).Name!, HandleSendToApiServer);
@@ -50,6 +51,23 @@ public class TestApiController : IApiController
         var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var reply = new ApiEchoReply { Content = $"Echo: {request.Content}" };
         sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
+    }
+
+    private Task HandleApiDirectEcho(IPacket packet, IApiSender sender)
+    {
+        ReceivedMsgIds.Add(packet.MsgId);
+        Interlocked.Increment(ref _onDispatchCallCount);
+
+        var request = ApiDirectEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+        var reply = new ApiDirectEchoReply { Message = $"Direct: {request.Message}" };
+
+        // [핵심] StageId 정보가 제대로 왔는지 확인하고 SendToStage 호출
+        if (sender.StageId != 0)
+        {
+            sender.SendToStage(sender.SessionNid, sender.StageId, CPacket.Of(reply));
+        }
+
         return Task.CompletedTask;
     }
 

@@ -87,10 +87,6 @@ public class BenchmarkRunner(
 
     private async Task RunConnectionAsync(int connectionId)
     {
-        // 각 Task마다 ImmediateSynchronizationContext 설정하여 폴링 지연 제거
-        SynchronizationContext.SetSynchronizationContext(
-            new ImmediateSynchronizationContext());
-
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 
@@ -152,6 +148,9 @@ public class BenchmarkRunner(
 
         while (DateTime.UtcNow < endTime)
         {
+            // Process incoming messages
+            connector.MainThreadAction();
+
             await semaphore.WaitAsync();
 
             var task = Task.Run(async () =>
@@ -203,9 +202,12 @@ public class BenchmarkRunner(
         var i = 0;
         while (DateTime.UtcNow < endTime)
         {
+            connector.MainThreadAction();
+
             // In-flight 제한: 최대치에 도달하면 대기
             while (inFlight >= maxInFlight)
             {
+                connector.MainThreadAction(); // 대기 중에도 메시지 처리
                 await Task.Yield(); // 콜백 실행 기회 제공
             }
 
@@ -233,13 +235,23 @@ public class BenchmarkRunner(
             i++;
         }
 
-        // 모든 응답 수신 대기 (남은 in-flight 요청)
-        while (inFlight > 0)
-        {
-            await Task.Yield();
-        }
+                    // 모든 응답 수신 대기 (남은 in-flight 요청)
 
-        if (receivedCount < sentCount)
+                    while (inFlight > 0)
+
+                    {
+
+                        connector.MainThreadAction();
+
+                        await Task.Yield();
+
+                    }
+
+        
+
+                    if (receivedCount < sentCount)
+
+        
         {
             Log.Warning("[Connection {ConnectionId}] Incomplete responses (received: {Received}/{Total})",
                 connectionId, receivedCount, sentCount);
@@ -282,9 +294,12 @@ public class BenchmarkRunner(
         {
             while (DateTime.UtcNow < endTime)
             {
+                connector.MainThreadAction();
+
                 // In-flight 제한: 최대치에 도달하면 대기
                 while (inFlight >= maxInFlight)
                 {
+                    connector.MainThreadAction();
                     await Task.Yield(); // 콜백 실행 기회 제공
                 }
 
@@ -311,6 +326,7 @@ public class BenchmarkRunner(
             // 모든 응답 수신 대기 (남은 in-flight 요청)
             while (inFlight > 0)
             {
+                connector.MainThreadAction();
                 await Task.Yield();
             }
 

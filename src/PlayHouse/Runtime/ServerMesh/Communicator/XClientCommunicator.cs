@@ -1,99 +1,113 @@
 #nullable enable
 
 using System.Collections.Concurrent;
-using PlayHouse.Abstractions;
+using System.Threading.Channels;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.ServerMesh.PlaySocket;
 
 namespace PlayHouse.Runtime.ServerMesh.Communicator;
 
 /// <summary>
-/// Client-side communicator for sending messages to servers.
-/// Thread-safe queue-based implementation managed by MessageLoop.
+/// Optimized client communicator using System.Threading.Channels to avoid delegate allocations.
+/// Maintains ZMQ thread-safety by ensuring all socket operations happen on a single dedicated thread.
 /// </summary>
 internal sealed class XClientCommunicator : IClientCommunicator
 {
     private readonly IPlaySocket _socket;
-    private readonly BlockingCollection<Action> _queue = new();
+    private readonly Channel<SendRequest> _sendChannel;
     private readonly ConcurrentDictionary<string, byte> _connected = new();
-
-    /// <inheritdoc/>
-    public string ServerId => _socket.ServerId;
+    private readonly CancellationTokenSource _cts = new();
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="XClientCommunicator"/> class.
+    /// Internal struct to hold send data without heap allocation.
     /// </summary>
-    /// <param name="socket">The underlying socket.</param>
+    private readonly struct SendRequest
+    {
+        public readonly string TargetServerId;
+        public readonly RoutePacket Packet;
+
+        public SendRequest(string targetServerId, RoutePacket packet)
+        {
+            TargetServerId = targetServerId;
+            Packet = packet;
+        }
+    }
+
+    public string ServerId => _socket.ServerId;
+
     public XClientCommunicator(IPlaySocket socket)
     {
         _socket = socket;
+        // SingleReader optimization: Only the Communicate() loop reads from this channel.
+        _sendChannel = Channel.CreateUnbounded<SendRequest>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false
+        });
     }
 
-    /// <inheritdoc/>
     public void Send(string targetServerId, RoutePacket packet)
     {
-        _queue.Add(() =>
+        // Zero-allocation queueing: Just writing a struct to the channel.
+        if (!_sendChannel.Writer.TryWrite(new SendRequest(targetServerId, packet)))
         {
-            // Send using new IPlaySocket.Send(serverId, packet) signature
-            // Packet will be disposed inside IPlaySocket.Send
-            _socket.Send(targetServerId, packet);
-        });
+            packet.Dispose();
+        }
     }
 
-    /// <inheritdoc/>
     public void Connect(string targetServerId, string address)
     {
-        if (!_connected.TryAdd(address, 0))
-        {
-            return;
-        }
-
-        _queue.Add(() =>
-        {
-            try
-            {
-                _socket.Connect(address);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"[XClientCommunicator] Connect failed to {address}: {ex.Message}");
-                _connected.TryRemove(address, out _);
-                throw;
-            }
-        });
+        if (!_connected.TryAdd(address, 0)) return;
+        // Connect is usually called at startup, so direct call is safe if thread not yet started
+        // or we can use a specialized command in the channel if dynamic connect is needed.
+        _socket.Connect(address);
     }
 
-    /// <inheritdoc/>
     public void Disconnect(string targetServerId, string address)
     {
-        if (!_connected.ContainsKey(address))
-        {
-            return;
-        }
-
-        _queue.Add(() =>
-        {
-            _socket.Disconnect(address);
-            _connected.TryRemove(address, out _);
-        });
+        if (!_connected.TryRemove(address, out _)) return;
+        _socket.Disconnect(address);
     }
 
     /// <summary>
-    /// Processes queued actions. Called by MessageLoop thread.
+    /// Processes queued messages. Called by dedicated MessageLoop thread.
     /// </summary>
     public void Communicate()
     {
-        foreach (var action in _queue.GetConsumingEnumerable())
+        var reader = _sendChannel.Reader;
+        try
         {
-            action.Invoke();
+            while (!_cts.Token.IsCancellationRequested)
+            {
+                // Wait for data without spinning
+                if (reader.TryRead(out var request))
+                {
+                    _socket.Send(request.TargetServerId, request.Packet);
+
+                    // Batching: Process all available messages before yielding
+                    while (reader.TryRead(out request))
+                    {
+                        _socket.Send(request.TargetServerId, request.Packet);
+                    }
+                }
+                else
+                {
+                    // Block asynchronously until data arrives
+                    if (!reader.WaitToReadAsync(_cts.Token).AsTask().GetAwaiter().GetResult())
+                        break;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[XClientCommunicator] Send loop error: {ex.Message}");
         }
     }
 
-    /// <summary>
-    /// Stops accepting new actions and signals completion.
-    /// </summary>
     public void Stop()
     {
-        _queue.CompleteAdding();
+        _cts.Cancel();
+        _sendChannel.Writer.TryComplete();
     }
 }

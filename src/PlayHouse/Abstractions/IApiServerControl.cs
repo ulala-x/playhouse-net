@@ -12,6 +12,12 @@ namespace PlayHouse.Abstractions;
 public interface IApiServerControl
 {
     /// <summary>
+    /// Gets or sets the diagnostic level.
+    /// -1: Normal, 0: Raw Echo, 1: Header Parse Echo
+    /// </summary>
+    int DiagnosticLevel { get; set; }
+
+    /// <summary>
     /// ApiServer를 중지합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰.</param>

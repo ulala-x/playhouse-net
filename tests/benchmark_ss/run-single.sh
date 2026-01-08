@@ -5,7 +5,7 @@
 # 목적: 특정 통신 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
 #       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
 #
-# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size]
+# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size] [diag-level]
 #
 # 파라미터:
 #   comm-mode      - 통신 모드 (필수): request-async, request-callback, send
@@ -15,6 +15,7 @@
 #   max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)
 #   min-pool-size  - 최소 워커 수 (선택, 기본: 100)
 #   max-pool-size  - 최대 워커 수 (선택, 기본: 1000)
+#   diag-level     - 진단 레벨 (선택, 기본: -1, 0: Raw Echo, 1: Header Echo)
 #
 # 예시:
 #   ./run-single.sh request-async 1024
@@ -55,6 +56,7 @@ DURATION=${4:-10}
 MAX_INFLIGHT=${5:-200}
 MIN_POOL_SIZE=${6:-100}
 MAX_POOL_SIZE=${7:-1000}
+DIAG_LEVEL=${8:--1}
 TCP_PORT=16110
 ZMQ_PORT=16100
 HTTP_PORT=5080
@@ -115,6 +117,7 @@ echo "  Starting ApiServer (ZMQ: $API_ZMQ_PORT, HTTP: $API_HTTP_PORT)..."
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.ApiServer/PlayHouse.Benchmark.SS.ApiServer.csproj" \
     -c Release -- --zmq-port $API_ZMQ_PORT --http-port $API_HTTP_PORT \
     --min-pool-size $MIN_POOL_SIZE --max-pool-size $MAX_POOL_SIZE \
+    --diagnostic-level $DIAG_LEVEL \
     --peers "play-1=tcp://127.0.0.1:$ZMQ_PORT" > /tmp/ss-apiserver.log 2>&1 &
 API_PID=$!
 

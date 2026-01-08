@@ -59,6 +59,13 @@ internal interface IPlaySocket : IDisposable
     /// </summary>
     /// <returns>RoutePacket if received, null on error.</returns>
     RoutePacket? Receive();
+
+    /// <summary>
+    /// Receives raw frames and echoes them back immediately for diagnostic purposes.
+    /// This bypasses RoutePacket creation and parsing.
+    /// </summary>
+    /// <param name="level">Diagnostic level (0: Raw, 1: Header Only).</param>
+    void ReceiveDirect(int level);
 }
 
 /// <summary>
@@ -69,12 +76,12 @@ public sealed class PlaySocketConfig
     /// <summary>
     /// Gets or sets the send high water mark.
     /// </summary>
-    public int SendHighWatermark { get; set; } = 1000;
+    public int SendHighWatermark { get; set; } = 100000;
 
     /// <summary>
     /// Gets or sets the receive high water mark.
     /// </summary>
-    public int ReceiveHighWatermark { get; set; } = 1000;
+    public int ReceiveHighWatermark { get; set; } = 100000;
 
     /// <summary>
     /// Gets or sets whether to enable TCP keepalive.
