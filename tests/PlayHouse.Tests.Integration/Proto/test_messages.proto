@@ -210,12 +210,37 @@ message ApiEchoReply {
     string content = 1;
 }
 
+// API 서버에서 직접 응답하는 에코 (SendToStage용)
+message ApiDirectEchoRequest {
+    string message = 1;
+}
+message ApiDirectEchoReply {
+    string message = 2;
+}
+
 // SendToApi 트리거 (Stage → API)
 message TriggerSendToApiRequest {
     string message = 1;
 }
 message TriggerSendToApiReply {
     bool success = 1;
+}
+
+// AsyncBlock 내에서 SendToApi 트리거
+message TriggerAsyncBlockSendToApiRequest {
+    string message = 1;
+}
+message TriggerAsyncBlockSendToApiAccepted {
+    bool success = 1;
+}
+
+// AsyncBlock 내에서 RequestToApi 트리거
+message TriggerAsyncBlockRequestToApiRequest {
+    string query = 1;
+}
+message TriggerAsyncBlockRequestToApiReply {
+    string api_response = 1;
+    bool post_block_called = 2;
 }
 
 // RequestToApi 트리거 (Stage → API)

@@ -54,9 +54,6 @@ public class ConnectionOnlyTest(
 
     private async Task TestConnectionAsync(int connectionId)
     {
-        SynchronizationContext.SetSynchronizationContext(
-            new ImmediateSynchronizationContext());
-
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
 

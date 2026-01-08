@@ -29,7 +29,7 @@ public abstract class XSender : ISender
     /// <summary>
     /// Gets the current RouteHeader for reply routing.
     /// </summary>
-    public RouteHeader? CurrentHeader { get; private set; }
+    internal RouteHeader? CurrentHeader { get; private set; }
 
     /// <inheritdoc/>
     public ushort ServiceId { get; }
@@ -120,7 +120,11 @@ public abstract class XSender : ISender
     /// <inheritdoc/>
     public void SendToApi(string apiServerId, IPacket packet)
     {
-        var header = CreateHeader(packet.MsgId, 0, stageId: 0, accountId: 0, sid: 0);
+        var stageId = GetSenderStageId();
+        var accountId = CurrentHeader?.AccountId ?? 0;
+        var sid = CurrentHeader?.Sid ?? 0;
+
+        var header = CreateHeader(packet.MsgId, 0, stageId, accountId, sid);
         SendInternal(apiServerId, header, packet.Payload);
     }
 
@@ -128,7 +132,11 @@ public abstract class XSender : ISender
     public void RequestToApi(string apiServerId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId: 0, accountId: 0, sid: 0);
+        var stageId = GetSenderStageId();
+        var accountId = CurrentHeader?.AccountId ?? 0;
+        var sid = CurrentHeader?.Sid ?? 0;
+
+        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid);
 
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetPostToStageCallback());
         RegisterReply(replyObject);
@@ -140,7 +148,11 @@ public abstract class XSender : ISender
     public async Task<IPacket> RequestToApi(string apiServerId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId: 0, accountId: 0, sid: 0);
+        var stageId = GetSenderStageId();
+        var accountId = CurrentHeader?.AccountId ?? 0;
+        var sid = CurrentHeader?.Sid ?? 0;
+
+        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid);
 
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
         RegisterReply(replyObject);
@@ -313,19 +325,19 @@ public abstract class XSender : ISender
         var tcs = new TaskCompletionSource<IPacket>();
         _requestCache.Register(replyObject.MsgSeq, tcs, TimeSpan.FromMilliseconds(_requestTimeoutMs));
 
+        Console.WriteLine($"[XSender] Registered Reply: MsgSeq={replyObject.MsgSeq}");
+
         // Bridge ReplyObject to RequestCache
         tcs.Task.ContinueWith(t =>
         {
             if (t.IsCompletedSuccessfully)
             {
+                Console.WriteLine($"[XSender] Reply Received: MsgSeq={replyObject.MsgSeq}, Success");
                 replyObject.Complete(t.Result);
             }
-            else if (t.IsFaulted)
+            else
             {
-                replyObject.CompleteWithError((ushort)ErrorCode.RequestTimeout);
-            }
-            else if (t.IsCanceled)
-            {
+                Console.WriteLine($"[XSender] Reply Error: MsgSeq={replyObject.MsgSeq}, Exception={t.Exception?.Message}");
                 replyObject.CompleteWithError((ushort)ErrorCode.RequestTimeout);
             }
         }, TaskContinuationOptions.ExecuteSynchronously);

@@ -78,6 +78,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     #region IPlayDispatcher Implementation
 
     /// <inheritdoc/>
+    public GlobalTaskPool TaskPool => _taskPool;
+
+    /// <inheritdoc/>
     public void OnPost(PlayMessage message)
     {
         switch (message)

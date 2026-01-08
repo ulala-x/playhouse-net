@@ -16,6 +16,11 @@ namespace PlayHouse.Abstractions.Api;
 public interface IApiSender : ISender
 {
     /// <summary>
+    /// Gets the originating Stage ID for the current request.
+    /// </summary>
+    long StageId { get; }
+
+    /// <summary>
     /// Gets or sets the account ID for the current request.
     /// </summary>
     string AccountId { get; set; }

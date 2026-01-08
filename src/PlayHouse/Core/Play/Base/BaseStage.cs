@@ -4,9 +4,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
-using PlayHouse.Core.Play.EventLoop;
 using PlayHouse.Core.Shared;
-using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Runtime.ClientTransport;
@@ -94,7 +92,10 @@ internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
                     if (task.IsCompleted) task.GetAwaiter().GetResult();
                     else await task;
                 }
-                catch (Exception ex) { _logger?.LogError(ex, "Error executing message in Stage {StageId}", StageId); }
+                catch (Exception ex) 
+                { 
+                    _logger?.LogError(ex, "Error executing message in Stage {StageId}", StageId); 
+                }
                 finally
                 {
                     message.Dispose();

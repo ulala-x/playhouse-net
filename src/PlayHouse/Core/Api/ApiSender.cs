@@ -25,6 +25,7 @@ internal class ApiSender : XSender, IApiSender
     private string _accountId = string.Empty;
     private string _sessionNid = string.Empty;
     private long _sid;
+    private long _stageId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ApiSender"/> class.
@@ -55,6 +56,9 @@ internal class ApiSender : XSender, IApiSender
     /// <inheritdoc/>
     public long Sid => _sid;
 
+    /// <inheritdoc/>
+    public long StageId => _stageId;
+
     /// <summary>
     /// Sets the session context from the incoming packet header.
     /// </summary>
@@ -64,6 +68,7 @@ internal class ApiSender : XSender, IApiSender
         SetCurrentHeader(header);
         _sessionNid = header.From;
         _sid = header.Sid;
+        _stageId = header.StageId;
         _accountId = header.AccountId.ToString();
     }
 
@@ -75,6 +80,7 @@ internal class ApiSender : XSender, IApiSender
         ClearCurrentHeader();
         _sessionNid = string.Empty;
         _sid = 0;
+        _stageId = 0;
         _accountId = string.Empty;
     }
 

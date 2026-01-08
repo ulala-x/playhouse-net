@@ -18,6 +18,12 @@ internal sealed class XServerCommunicator : IServerCommunicator
     private ICommunicateListener? _listener;
     private volatile bool _running = true;
 
+    /// <summary>
+    /// Gets or sets the diagnostic level.
+    /// -1: Normal, 0: Raw Echo, 1: Header Parse Echo
+    /// </summary>
+    public int DiagnosticLevel { get; set; } = -1;
+
     /// <inheritdoc/>
     public string ServerId => _socket.ServerId;
 
@@ -51,6 +57,12 @@ internal sealed class XServerCommunicator : IServerCommunicator
         {
             try
             {
+                if (DiagnosticLevel >= 0)
+                {
+                    _socket.ReceiveDirect(DiagnosticLevel);
+                    continue;
+                }
+
                 // Receive with 10ms timeout - no additional sleep needed as timeout provides waiting
                 var packet = _socket.Receive();
                 if (packet != null)

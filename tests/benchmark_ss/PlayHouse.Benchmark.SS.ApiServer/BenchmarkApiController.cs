@@ -7,80 +7,46 @@ using PlayHouse.Core.Shared;
 
 namespace PlayHouse.Benchmark.SS.ApiServer;
 
-/// <summary>
-/// Server-to-Server Echo 벤치마크용 API Controller.
-/// </summary>
 public class BenchmarkApiController : IApiController
 {
-    private IApiSender? _apiSender;
-
     public void Handles(IHandlerRegister register)
     {
         register.Add(nameof(CreateStageRequest), HandleCreateStage);
-        register.Add(nameof(SSEchoRequest), HandleSSEchoRequest);
+        register.Add(nameof(SSEchoRequest), HandleSsEchoRequest);
+        register.Add(nameof(SSEchoSend), HandleSsEchoSend);
     }
 
-    /// <summary>
-    /// Stage 생성 요청 처리.
-    /// HTTP 클라이언트에서 온 CreateStageRequest를 받아서 PlayServer에 Stage를 생성합니다.
-    /// </summary>
     private async Task HandleCreateStage(IPacket packet, IApiSender sender)
     {
-        _apiSender = sender;
-
         var request = CreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
-
         try
         {
-            var createPacket = CPacket.Empty("CreateStage");
-            var result = await sender.CreateStage(
-                request.PlayNid,
-                request.StageType,
-                request.StageId,
-                createPacket);
-
-            var reply = new CreateStageReply
-            {
-                Success = result.Result,
-                ErrorCode = result.Result ? 0 : -1,
-                StageId = request.StageId,
-                PlayNid = request.PlayNid
-            };
-
-            sender.Reply(CPacket.Of(reply));
+            var result = await sender.CreateStage(request.PlayNid, request.StageType, request.StageId, CPacket.Empty("CreateStage"));
+            sender.Reply(CPacket.Of(new CreateStageReply { Success = result.Result, StageId = request.StageId, PlayNid = request.PlayNid }));
         }
         catch (Exception ex)
         {
-            var reply = new CreateStageReply
-            {
-                Success = false,
-                ErrorCode = -1,
-                StageId = request.StageId,
-                PlayNid = request.PlayNid,
-                ErrorMessage = ex.Message
-            };
-
-            sender.Reply(CPacket.Of(reply));
+            sender.Reply(CPacket.Of(new CreateStageReply { Success = false, ErrorMessage = ex.Message }));
         }
     }
 
-    /// <summary>
-    /// Echo 요청 처리.
-    /// SSEchoRequest를 받아서 동일한 Payload를 담은 SSEchoReply를 반환합니다.
-    /// </summary>
-    private Task HandleSSEchoRequest(IPacket packet, IApiSender sender)
+    private Task HandleSsEchoRequest(IPacket packet, IApiSender sender)
     {
-        _apiSender = sender;
-
         var request = SSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+        // Standard Request -> Reply
+        sender.Reply(CPacket.Of(new SSEchoReply { Payload = request.Payload }));
+        return Task.CompletedTask;
+    }
 
-        // 그대로 Echo 응답
-        var reply = new SSEchoReply
+    private Task HandleSsEchoSend(IPacket packet, IApiSender sender)
+    {
+        var request = SSEchoSend.Parser.ParseFrom(packet.Payload.DataSpan);
+        
+        // Send-mode -> SendToStage (Using new public properties)
+        if (sender.StageId != 0)
         {
-            Payload = request.Payload
-        };
-
-        sender.Reply(CPacket.Of(reply));
+            sender.SendToStage(sender.SessionNid, sender.StageId, CPacket.Of(new SSEchoReply { Payload = request.Payload }));
+        }
         return Task.CompletedTask;
     }
 }

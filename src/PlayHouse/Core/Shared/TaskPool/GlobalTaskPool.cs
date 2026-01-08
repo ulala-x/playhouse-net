@@ -58,6 +58,7 @@ internal sealed class GlobalTaskPool : IDisposable
         }
 
         Task.Run(() => WorkerLoopAsync(id, _cts.Token));
+        
     }
 
     /// <summary>

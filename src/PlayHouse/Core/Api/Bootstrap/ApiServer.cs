@@ -43,6 +43,13 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     /// </summary>
     public bool IsRunning => _isRunning;
 
+    /// <inheritdoc/>
+    public int DiagnosticLevel
+    {
+        get => _communicator?.DiagnosticLevel ?? -1;
+        set { if (_communicator != null) _communicator.DiagnosticLevel = value; }
+    }
+
     /// <summary>
     /// API Sender 인터페이스.
     /// DI에 등록하여 Play Server에 요청을 보낼 때 사용합니다.

@@ -206,12 +206,24 @@ public class TestStageImpl : IStage
                 HandleTriggerSendToApi(actor, packet);
                 break;
 
+            case "TriggerApiDirectEcho":
+                HandleTriggerApiDirectEcho(actor, packet);
+                break;
+
             case "TriggerRequestToApiRequest":
                 await HandleTriggerRequestToApi(actor, packet);
                 break;
 
             case "TriggerRequestToApiCallbackRequest":
                 HandleTriggerRequestToApiCallback(actor, packet);
+                break;
+
+            case "TriggerAsyncBlockSendToApiRequest":
+                HandleTriggerAsyncBlockSendToApi(actor, packet);
+                break;
+
+            case "TriggerAsyncBlockRequestToApiRequest":
+                HandleTriggerAsyncBlockRequestToApi(actor, packet);
                 break;
 
             case "BenchmarkRequest":
@@ -247,6 +259,12 @@ public class TestStageImpl : IStage
     public Task OnDispatch(IPacket packet)
     {
         ReceivedMsgIds.Add(packet.MsgId);
+
+        if (packet.MsgId.Contains("ApiDirectEchoReply"))
+        {
+            var reply = ApiDirectEchoReply.Parser.ParseFrom(packet.Payload.DataSpan);
+            AllReceivedMsgIds.Add("ApiDirectEchoReply_Success");
+        }
 
         // Stage간 메시지 처리
         // MsgId는 전체 네임스페이스를 포함할 수 있으므로 EndsWith로 확인
@@ -534,6 +552,15 @@ public class TestStageImpl : IStage
         actor.ActorSender.Reply(CPacket.Empty("TriggerRequestToStageCallbackAccepted"));
     }
 
+    private void HandleTriggerApiDirectEcho(IActor actor, IPacket packet)
+    {
+        const string apiNid = "api-1";
+        var request = new ApiDirectEchoRequest { Message = "Verify StageId" };
+        StageSender.SendToApi(apiNid, CPacket.Of(request));
+        
+        actor.ActorSender.Reply(CPacket.Empty("TriggerApiDirectEchoAccepted"));
+    }
+
     private void HandleTriggerSendToApi(IActor actor, IPacket packet)
     {
         var request = TriggerSendToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
@@ -627,6 +654,71 @@ public class TestStageImpl : IStage
     /// <summary>
     /// 벤치마크 API 요청 트리거 - Stage → API 통신 성능 측정용
     /// </summary>
+    private void HandleTriggerAsyncBlockRequestToApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerAsyncBlockRequestToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        StageSender.AsyncBlock(
+            async () =>
+            {
+                // [핵심] PreBlock (백그라운드 스레드)에서 RequestToApi 호출 및 대기
+                const string apiNid = "api-1";
+                var apiMsg = new ApiEchoRequest { Content = request.Query };
+                
+                using var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg)).ConfigureAwait(false);
+                var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
+                
+                return apiReply.Content; // 결과를 PostBlock으로 전달
+            },
+            (result) =>
+            {
+                // [핵심] PostBlock (스테이지 스레드) 호출 확인
+                var apiContent = (string)result!;
+                Console.WriteLine($"[Stage {StageSender.StageId}] PostBlock Started: Result={apiContent}");
+                
+                var reply = new TriggerAsyncBlockRequestToApiReply
+                {
+                    ApiResponse = apiContent,
+                    PostBlockCalled = true
+                };
+
+                // AsyncBlock의 post 콜백에서는 Reply 대신 SendToClient 사용
+                Console.WriteLine($"[Stage {StageSender.StageId}] Sending Push Response to Account {actor.ActorSender.AccountId}");
+                actor.ActorSender.SendToClient(CPacket.Of(reply));
+                return Task.CompletedTask;
+            });
+
+        // 즉시 수락 응답 전송
+        actor.ActorSender.Reply(CPacket.Empty("TriggerAsyncBlockRequestToApiAccepted"));
+    }
+
+    private void HandleTriggerAsyncBlockSendToApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerAsyncBlockSendToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        StageSender.AsyncBlock(
+            async () =>
+            {
+                // API Server ServerId는 "api-1"
+                const string apiNid = "api-1";
+                var apiMsg = new ApiEchoRequest { Content = request.Message };
+                
+                // [핵심] AsyncBlock의 PreBlock(백그라운드 스레드)에서 SendToApi 호출
+                StageSender.SendToApi(apiNid, CPacket.Of(apiMsg));
+                
+                await Task.CompletedTask;
+                return true;
+            },
+            (result) =>
+            {
+                // PostBlock (스테이지 스레드) - 아무것도 하지 않음
+                return Task.CompletedTask;
+            });
+
+        // 즉시 수락 응답
+        actor.ActorSender.Reply(CPacket.Empty("TriggerAsyncBlockSendToApiAccepted"));
+    }
+
     private async Task HandleTriggerBenchmarkApi(IActor actor, IPacket packet)
     {
         var request = TriggerBenchmarkApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
