@@ -16,6 +16,11 @@ namespace PlayHouse.Abstractions.Api;
 public interface IApiSender : ISender
 {
     /// <summary>
+    /// Gets whether the current message is a Request (expects a reply).
+    /// </summary>
+    bool IsRequest { get; }
+
+    /// <summary>
     /// Gets the originating Stage ID for the current request.
     /// </summary>
     long StageId { get; }

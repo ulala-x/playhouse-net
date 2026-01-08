@@ -4,10 +4,7 @@ package playhouse.benchmark.ss;
 
 option csharp_namespace = "PlayHouse.Benchmark.SS.Shared.Proto";
 
-// ============================================
-// Server-to-Server Benchmark Messages
-// ============================================
-
+// Stage 생성 관련
 message CreateStageRequest {
     string play_nid = 1;
     string stage_type = 2;
@@ -22,61 +19,30 @@ message CreateStageReply {
     string error_message = 5;
 }
 
-enum SSCallType {
-    STAGE_TO_API = 0;
-    STAGE_TO_STAGE = 1;
-}
-
 enum SSCommMode {
     REQUEST_ASYNC = 0;
     REQUEST_CALLBACK = 1;
     SEND = 2;
 }
 
-// 벤치마크 시작 요청 (클라이언트 -> Stage)
-message StartBenchmarkRequest {
-    int32 duration_seconds = 1;
-    int32 max_inflight = 2;
-    int32 message_size = 3;
-    SSCommMode comm_mode = 4;
-    string target_nid = 5;
-    int64 target_stage_id = 6;
+// 클라이언트 -> Stage 트리거
+message TriggerSSEchoRequest {
+    int32 batch_size = 1;      // 한번 트리거에 수행할 S2S 요청 수 (Inflght 역할)
+    SSCommMode comm_mode = 3;  // 통신 모드
+    bytes payload = 4;         // 전송할 페이로드 데이터
 }
 
-// 벤치마크 결과 리포트 (Stage -> 클라이언트)
-message BenchmarkResult {
-    int64 total_sent = 1;
-    int64 total_received = 2;
-    double tps = 3;
-    double p99_latency_ms = 4;
-    double mean_latency_ms = 5;
-    int32 duration_actual = 6;
+// Stage -> 클라이언트 응답
+message TriggerSSEchoReply {
+    int32 count = 1;           // 처리된 S2S 메시지 수
+    int64 elapsed_ticks = 2;   // 서버 측 처리 시간
 }
 
-// Case 1 & 2: Request-Reply용 메시지
+// S2S Echo 메시지
 message SSEchoRequest {
     bytes payload = 1;
 }
 
 message SSEchoReply {
     bytes payload = 1;
-}
-
-// Case 3: Send-Only(Pipeline)용 메시지
-message SSEchoSend {
-    bytes payload = 1;
-}
-
-message TriggerSSEchoRequest {
-    int32 sequence = 1;
-    bytes payload = 2;
-    SSCommMode comm_mode = 3;
-    SSCallType call_type = 4;
-    string target_nid = 5;
-    int64 target_stage_id = 6;
-}
-
-message TriggerSSEchoReply {
-    int32 sequence = 1;
-    bytes payload = 2;
 }
