@@ -15,94 +15,81 @@ public class SSEchoBenchmarkRunner(
     int connections,
     int messageSize,
     SSCommMode commMode,
-    long targetStageId,
-    string targetNid,
     int durationSeconds = 10,
-    int maxInFlight = 200)
+    int maxInFlight = 100)
 {
+    private readonly ByteString _payload = CreatePayload(messageSize);
+
+    private static ByteString CreatePayload(int size)
+    {
+        var data = new byte[size];
+        new Random(42).NextBytes(data);
+        return ByteString.CopyFrom(data);
+    }
+
     public async Task RunAsync()
     {
-        Log.Information("================================================================================");
-        Log.Information("S2S Benchmark Runner (Trigger & Push Mode)");
-        Log.Information("================================================================================");
+        Log.Information(">>> S2S Pure Benchmark (Restored): {Mode} Mode, {CCU} Connections, BatchSize={Batch} <<<", commMode, connections, maxInFlight);
 
-        var results = new List<BenchmarkResult>();
-        var tasks = new Task[connections];
-        
+        var tasks = new Task<long>[connections];
+        var startTime = Stopwatch.GetTimestamp();
+
         for (int i = 0; i < connections; i++)
         {
             var id = i;
-            tasks[i] = Task.Run(async () => {
-                var result = await RunSingleTrigger(id);
-                if (result != null) lock (results) results.Add(result);
-            });
-            // Stagger to prevent burst
-            await Task.Delay(10);
+            tasks[i] = Task.Run(() => RunSingleClient(id, durationSeconds));
         }
 
-        await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(tasks);
+        var endTime = Stopwatch.GetTimestamp();
+        var totalElapsedSec = (double)(endTime - startTime) / Stopwatch.Frequency;
 
-        if (results.Count > 0)
-        {
-            var totalSent = results.Sum(r => r.TotalSent);
-            var totalRecv = results.Sum(r => r.TotalReceived);
-            var avgTps = results.Sum(r => r.Tps);
-            var avgP99 = results.Average(r => r.P99LatencyMs);
-            
-            Log.Information("================================================================================");
-            Log.Information("S2S AGGREGATE RESULT");
-            Log.Information("================================================================================");
-            Log.Information("Total Throughput: {TPS:N0} msg/s", avgTps);
-            Log.Information("Avg P99 Latency:  {P99:F2}ms", avgP99);
-            Log.Information("Total Messages:   {Count:N0}", totalRecv);
-            Log.Information("================================================================================");
-        }
+        long totalS2SMessages = results.Sum();
+        double systemTps = totalS2SMessages / (totalElapsedSec > 0 ? totalElapsedSec : 1);
+
+        Log.Information("================================================================================");
+        Log.Information("S2S AGGREGATE RESULT (RESTORED)");
+        Log.Information("================================================================================");
+        Log.Information("Total S2S Messages: {Count:N0}", totalS2SMessages);
+        Log.Information("System S2S TPS:     {TPS:N0} msg/s", systemTps);
+        Log.Information("Total Time:         {Time:F2}s", totalElapsedSec);
+        Log.Information("================================================================================");
     }
 
-    private async Task<BenchmarkResult?> RunSingleTrigger(int connectionId)
+    private async Task<long> RunSingleClient(int id, int duration)
     {
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
+        
+        var stageId = 1000 + id;
+        if (!await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchmarkStage")) return 0;
+        await connector.AuthenticateAsync(ClientPacket.Empty("Authenticate"));
 
-        var tcsResult = new TaskCompletionSource<BenchmarkResult?>();
-        connector.OnReceive += (sid, type, packet) => {
-            if (packet.MsgId == "BenchmarkResult") {
-                tcsResult.TrySetResult(BenchmarkResult.Parser.ParseFrom(packet.Payload.DataSpan));
-            }
-            packet.Dispose();
-        };
+        var timer = new Timer(_ => connector.MainThreadAction(), null, 0, 10);
+        long totalS2S = 0;
+        var endTime = DateTime.UtcNow.AddSeconds(duration);
 
-        var stageId = 1000 + connectionId;
-        if (!await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchmarkStage")) return null;
-
-        try
-        {
-            await connector.AuthenticateAsync(ClientPacket.Empty("Authenticate"));
-
-            var request = new StartBenchmarkRequest {
-                DurationSeconds = durationSeconds, MaxInflight = maxInFlight,
-                MessageSize = messageSize, CommMode = commMode,
-                TargetNid = targetNid, TargetStageId = targetStageId
-            };
-
-            // [핵심] 메시지 수신을 위한 폴링 타이머를 요청 전에 먼저 시작
-            using var timer = new Timer(_ => connector.MainThreadAction(), null, 0, 20);
-
-            // 1. Send Trigger and get immediate response
-            using var response = await connector.RequestAsync(new ClientPacket(request));
-            if (!response.MsgId.Contains("StartBenchmarkAccepted")) 
+        try {
+            while (DateTime.UtcNow < endTime)
             {
-                Log.Error("Stage {Id} rejected trigger. Expected Accepted, got: {MsgId}", stageId, response.MsgId);
-                return null;
-            }
+                var request = new TriggerSSEchoRequest {
+                    BatchSize = maxInFlight,
+                    CommMode = commMode,
+                    Payload = _payload
+                };
 
-            // 2. Wait for Push results (Duration + 15s buffer)
-            var result = await tcsResult.Task.WaitAsync(TimeSpan.FromSeconds(durationSeconds + 15));
-            if (result == null) Log.Warning("Stage {Id} returned null result", stageId);
-            return result;
+                using var response = await connector.RequestAsync(new ClientPacket(request));
+                if (response.MsgId.Contains("Reply"))
+                {
+                    var reply = TriggerSSEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
+                    totalS2S += reply.Count;
+                }
+            }
+        } finally {
+            timer.Dispose();
+            connector.Disconnect();
         }
-        catch (Exception ex) { Log.Error("Stage {Id} Error: {Msg}", stageId, ex.Message); }
-        finally { connector.Disconnect(); }
-        return null;
+
+        return totalS2S;
     }
 }

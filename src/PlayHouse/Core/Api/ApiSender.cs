@@ -59,6 +59,9 @@ internal class ApiSender : XSender, IApiSender
     /// <inheritdoc/>
     public long StageId => _stageId;
 
+    /// <inheritdoc/>
+    public bool IsRequest => CurrentHeader?.MsgSeq > 0;
+
     /// <summary>
     /// Sets the session context from the incoming packet header.
     /// </summary>
