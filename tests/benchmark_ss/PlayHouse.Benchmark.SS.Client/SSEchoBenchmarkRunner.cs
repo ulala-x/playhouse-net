@@ -66,10 +66,10 @@ public class SSEchoBenchmarkRunner(
             Log.Information("Server Avg CPU:            {CPU:F2}%", serverMetrics.CpuUsagePercent);
             Log.Information("Server Memory Alloc:       {Mem:F2} MB", serverMetrics.MemoryAllocatedMb);
             Log.Information("Server GC (0/1/2):         {G0}/{G1}/{G2}", serverMetrics.GcGen0Count, serverMetrics.GcGen1Count, serverMetrics.GcGen2Count);
-            if (commMode != SSCommMode.Send)
-            {
-                Log.Information("Server P99 Latency:        {P99:F2}ms", serverMetrics.LatencyP99Ms);
-            }
+            Log.Information("Server Latency (Mean):     {Mean:F2}ms", serverMetrics.LatencyMeanMs);
+            Log.Information("Server Latency (P50):      {P50:F2}ms", serverMetrics.LatencyP50Ms);
+            Log.Information("Server Latency (P95):      {P95:F2}ms", serverMetrics.LatencyP95Ms);
+            Log.Information("Server Latency (P99):      {P99:F2}ms", serverMetrics.LatencyP99Ms);
         }
         
         Log.Information("Total S2S Messages:        {Count:N0}", totalS2SMessages);

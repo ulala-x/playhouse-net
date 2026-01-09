@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Google.Protobuf;
 using PlayHouse.Abstractions;
@@ -10,6 +11,7 @@ namespace PlayHouse.Benchmark.SS.PlayServer;
 public class BenchmarkStage(IStageSender stageSender) : IStage
 {
     public IStageSender StageSender { get; } = stageSender;
+    private readonly ConcurrentQueue<long> _latencyQueue = new();
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet) => 
         Task.FromResult<(bool, IPacket)>((true, CPacket.Empty("CreateStageReply")));
@@ -28,14 +30,27 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
         }
     }
 
-    public Task OnDispatch(IPacket packet) => Task.CompletedTask;
+    public Task OnDispatch(IPacket packet)
+    {
+        // Send 모드 응답 처리 (SendToStage로 온 메시지)
+        if (packet.MsgId == "SSEchoReply")
+        {
+            if (_latencyQueue.TryDequeue(out var start))
+            {
+                ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, packet.Payload.Length);
+            }
+        }
+        return Task.CompletedTask;
+    }
 
     private async Task HandleTrigger(IActor actor, IPacket packet)
     {
         var req = TriggerSSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var sw = Stopwatch.StartNew();
         
-        // [핵심] 사전 직렬화로 할당 제거
+        // 큐 초기화 (이전 테스트 잔재 제거)
+        _latencyQueue.Clear();
+
         var echoReq = new SSEchoRequest { Payload = req.Payload };
         var serializedData = echoReq.ToByteArray();
 
@@ -54,7 +69,6 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         sw.Stop();
 
-        // 배치 완료 후 응답
         actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply 
         { 
             Count = req.BatchSize,
@@ -100,9 +114,9 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     {
         for (int i = 0; i < count; i++)
         {
-            // Send모드는 레이턴시 측정이 어려우므로 전송량만 기록
+            // 전송 시각 기록
+            _latencyQueue.Enqueue(Stopwatch.GetTimestamp());
             StageSender.SendToApi("api-1", CPacket.Of("SSEchoRequest", data));
-            if (i % 10 == 0) ServerMetricsCollector.Instance.RecordMessage(0, data.Length);
         }
     }
 }
