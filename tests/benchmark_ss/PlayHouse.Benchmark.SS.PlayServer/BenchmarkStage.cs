@@ -66,8 +66,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     {
         for (int i = 0; i < count; i++)
         {
+            var start = Stopwatch.GetTimestamp();
             try {
                 using var reply = await StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data));
+                ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, data.Length);
             } catch { }
         }
     }
@@ -80,8 +82,10 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
 
         for (int i = 0; i < count; i++)
         {
+            var start = Stopwatch.GetTimestamp();
             StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data), (err, reply) => 
             {
+                if (err == 0) ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, data.Length);
                 reply?.Dispose();
                 if (Interlocked.Decrement(ref remaining) == 0)
                 {
@@ -96,7 +100,9 @@ public class BenchmarkStage(IStageSender stageSender) : IStage
     {
         for (int i = 0; i < count; i++)
         {
+            // Send모드는 레이턴시 측정이 어려우므로 전송량만 기록
             StageSender.SendToApi("api-1", CPacket.Of("SSEchoRequest", data));
+            if (i % 10 == 0) ServerMetricsCollector.Instance.RecordMessage(0, data.Length);
         }
     }
 }

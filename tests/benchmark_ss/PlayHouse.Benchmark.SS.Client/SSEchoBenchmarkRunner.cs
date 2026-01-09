@@ -29,7 +29,12 @@ public class SSEchoBenchmarkRunner(
 
     public async Task RunAsync()
     {
-        Log.Information(">>> S2S Pure Benchmark (Restored): {Mode} Mode, {CCU} Connections, BatchSize={Batch} <<<", commMode, connections, maxInFlight);
+        Log.Information(">>> S2S Pure Benchmark: {Mode} Mode, {CCU} Connections, BatchSize={Batch} <<<", commMode, connections, maxInFlight);
+
+        var metricsClient = new ServerMetricsClient(serverHost, 5080); // Default PlayServer HTTP port
+        Log.Information("Resetting server metrics...");
+        await metricsClient.ResetMetricsAsync();
+        await Task.Delay(1000);
 
         var tasks = new Task<long>[connections];
         var startTime = Stopwatch.GetTimestamp();
@@ -45,14 +50,30 @@ public class SSEchoBenchmarkRunner(
         var totalElapsedSec = (double)(endTime - startTime) / Stopwatch.Frequency;
 
         long totalS2SMessages = results.Sum();
-        double systemTps = totalS2SMessages / (totalElapsedSec > 0 ? totalElapsedSec : 1);
+        double clientObservedTps = totalS2SMessages / (totalElapsedSec > 0 ? totalElapsedSec : 1);
+
+        Log.Information("Waiting for server metrics to stabilize...");
+        await Task.Delay(2000);
+        var serverMetrics = await metricsClient.GetMetricsAsync();
 
         Log.Information("================================================================================");
-        Log.Information("S2S AGGREGATE RESULT (RESTORED)");
+        Log.Information("S2S BENCHMARK RESULT");
         Log.Information("================================================================================");
-        Log.Information("Total S2S Messages: {Count:N0}", totalS2SMessages);
-        Log.Information("System S2S TPS:     {TPS:N0} msg/s", systemTps);
-        Log.Information("Total Time:         {Time:F2}s", totalElapsedSec);
+        Log.Information("S2S Throughput:            {TPS:N0} msg/s", clientObservedTps);
+        
+        if (serverMetrics != null)
+        {
+            Log.Information("Server Avg CPU:            {CPU:F2}%", serverMetrics.CpuUsagePercent);
+            Log.Information("Server Memory Alloc:       {Mem:F2} MB", serverMetrics.MemoryAllocatedMb);
+            Log.Information("Server GC (0/1/2):         {G0}/{G1}/{G2}", serverMetrics.GcGen0Count, serverMetrics.GcGen1Count, serverMetrics.GcGen2Count);
+            if (commMode != SSCommMode.Send)
+            {
+                Log.Information("Server P99 Latency:        {P99:F2}ms", serverMetrics.LatencyP99Ms);
+            }
+        }
+        
+        Log.Information("Total S2S Messages:        {Count:N0}", totalS2SMessages);
+        Log.Information("Total Test Time:           {Time:F2}s", totalElapsedSec);
         Log.Information("================================================================================");
     }
 
