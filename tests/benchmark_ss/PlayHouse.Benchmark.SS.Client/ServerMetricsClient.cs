@@ -66,4 +66,5 @@ public record ServerMetricsResponse
     public int GcGen0Count { get; init; }
     public int GcGen1Count { get; init; }
     public int GcGen2Count { get; init; }
+    public double CpuUsagePercent { get; init; }
 }
