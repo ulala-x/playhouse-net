@@ -141,49 +141,50 @@ public class BenchmarkRunner(
         // Echo 요청: raw payload 사용 (서버에서 zero-copy Move로 반환)
         var payloadBytes = _requestPayload.ToByteArray();
         var endTime = DateTime.UtcNow.AddSeconds(durationSeconds);
-        
-        // SemaphoreSlim으로 인플라이트 제어
-        using var semaphore = new SemaphoreSlim(maxInFlight);
-        var tasks = new List<Task>();
-
-        while (DateTime.UtcNow < endTime)
+    
+        // 연결당 Worker 수 계산:
+        // - 기존: 요청마다 Task.Run() → 수만~수십만 Task 생성 (GC 압박, ThreadPool 경합)
+        // - 개선: 연결당 고정된 Worker가 루프에서 요청 처리 → Task 개수 최소화
+        // - 10000 연결 × 200 Worker = 2백만 Task (X) → 10000 연결 × 4 Worker = 4만 Task (O)
+        const int WorkersPerConnection = 1;
+        var workerCount = Math.Min(WorkersPerConnection, maxInFlight);
+        var workers = new Task[workerCount];
+        for (int i = 0; i < workerCount; i++)
         {
-            // Process incoming messages
-            connector.MainThreadAction();
-
-            await semaphore.WaitAsync();
-
-            var task = Task.Run(async () =>
+            var workerId = i;
+            workers[i] = Task.Run(async () =>
             {
-                var sw = Stopwatch.StartNew();
-                try
+                int requestCount = 0;
+                while (DateTime.UtcNow < endTime)
                 {
-                    using var packet = new ClientPacket("EchoRequest", payloadBytes);
-                    metricsCollector.RecordSent();
-                    using var response = await connector.RequestAsync(packet);
-                    sw.Stop();
-                    metricsCollector.RecordReceived(sw.ElapsedTicks);
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "[Connection {ConnectionId}] Request failed", connectionId);
-                }
-                finally
-                {
-                    semaphore.Release();
+                    var sw = Stopwatch.StartNew();
+                    try
+                    {
+                        using var packet = new ClientPacket("EchoRequest", payloadBytes);
+                        metricsCollector.RecordSent();
+                        using var response = await connector.RequestAsync(packet);
+                        sw.Stop();
+                        metricsCollector.RecordReceived(sw.ElapsedTicks);
+                    }
+                    catch (Exception ex)
+                    {
+                        // 예외 발생 시 로깅 후 계속 진행
+                        Log.Error(ex, "[Connection {ConnectionId}] Worker {WorkerId} request failed",
+                            connectionId, workerId);
+                    }
+
+                    // 주기적으로 MainThreadAction 호출 (첫 번째 Worker만, 100회당 1회)
+                    // RequestAsync는 네트워크 스레드에서 처리되므로 필수는 아니지만
+                    // Heartbeat 등 연결 관리를 위해 주기적으로 호출
+                    if (workerId == 0 && ++requestCount % 100 == 0)
+                    {
+                        connector.MainThreadAction();
+                    }
                 }
             });
-            
-            tasks.Add(task);
-            
-            // 너무 많은 Task 객체가 쌓이지 않도록 주기적으로 정리
-            if (tasks.Count > maxInFlight * 2)
-            {
-                tasks.RemoveAll(t => t.IsCompleted);
-            }
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(workers);
     }
 
     private async Task RunRequestCallbackMode(ClientConnector connector, int connectionId)
