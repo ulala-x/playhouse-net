@@ -31,7 +31,7 @@ namespace PlayHouse.Core.Play;
 /// - Stage creation and destruction
 /// - Message routing to Stages
 /// - Timer management
-/// - AsyncBlock coordination
+/// - AsyncCompute/AsyncIO coordination
 /// </remarks>
 internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 {
@@ -40,7 +40,8 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly TimerManager _timerManager;
-    private readonly GlobalTaskPool _taskPool;
+    private readonly ComputeTaskPool _computePool;
+    private readonly IoTaskPool _ioPool;
     private readonly ushort _serviceId;
     private readonly string _nid;
     private readonly ILogger? _logger;
@@ -56,8 +57,6 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RequestCache requestCache,
         ushort serviceId,
         string nid,
-        int minTaskPoolSize = 100,
-        int maxTaskPoolSize = 1000,
         IClientReplyHandler? clientReplyHandler = null,
         ILogger? logger = null)
     {
@@ -70,15 +69,21 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         _logger = logger;
 
         _timerManager = new TimerManager(OnTimerCallback, logger);
-        
-        // 동적 워커 Task 풀 생성
-        _taskPool = new GlobalTaskPool(minTaskPoolSize, maxTaskPoolSize, logger);
+
+        // CPU-bound 작업용 풀 (CPU 코어 수 제한)
+        _computePool = new ComputeTaskPool(logger: logger);
+
+        // I/O-bound 작업용 풀 (높은 동시성)
+        _ioPool = new IoTaskPool(logger: logger);
     }
 
     #region IPlayDispatcher Implementation
 
     /// <inheritdoc/>
-    public GlobalTaskPool TaskPool => _taskPool;
+    public ComputeTaskPool ComputePool => _computePool;
+
+    /// <inheritdoc/>
+    public IoTaskPool IoPool => _ioPool;
 
     /// <inheritdoc/>
     public void OnPost(PlayMessage message)
@@ -380,9 +385,6 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RegisterCommands(cmdHandler);
         baseStage.SetCmdHandler(cmdHandler);
 
-        // Stage ID를 기반으로 EventLoop 할당 (기존 로직 제거 및 워커 풀 할당)
-        baseStage.SetTaskPool(_taskPool);
-
         return baseStage;
     }
 
@@ -493,7 +495,8 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             ProcessDestroy(stageId);
         }
 
-        _taskPool.Dispose();
+        _computePool.Dispose();
+        _ioPool.Dispose();
     }
 }
 

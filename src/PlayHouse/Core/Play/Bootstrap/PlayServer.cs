@@ -123,15 +123,13 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         // 자기 자신에게 연결 (같은 서버 내 Stage 간 통신에 필요)
         _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
-        // PlayDispatcher 생성 (이제 내부에서 고정 워커 풀 관리)
+        // PlayDispatcher 생성 (ThreadPool 기반 + ComputePool/IoPool 사용)
         _dispatcher = new PlayDispatcher(
             _producer,
             new CommunicatorAdapter(_communicator),
             _requestCache,
             _options.ServiceId,
             _options.ServerId,
-            _options.MinTaskPoolSize,
-            _options.MaxTaskPoolSize,
             this, // client reply handler
             _logger);
 

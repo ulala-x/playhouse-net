@@ -11,9 +11,14 @@ namespace PlayHouse.Core.Play;
 internal interface IPlayDispatcher
 {
     /// <summary>
-    /// Gets the shared worker task pool for this dispatcher.
+    /// Gets the compute task pool for CPU-bound work.
     /// </summary>
-    GlobalTaskPool TaskPool { get; }
+    ComputeTaskPool ComputePool { get; }
+
+    /// <summary>
+    /// Gets the I/O task pool for I/O-bound work (DB, HTTP, etc.).
+    /// </summary>
+    IoTaskPool IoPool { get; }
 
     /// <summary>
     /// Kairos 패턴: 모든 메시지가 이 단일 진입점으로 전달됩니다.

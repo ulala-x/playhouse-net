@@ -3,14 +3,14 @@
 namespace PlayHouse.Abstractions.Play;
 
 /// <summary>
-/// Delegate for asynchronous pre-callback in AsyncBlock.
-/// Executed on a thread pool thread (outside the event loop).
+/// Delegate for asynchronous pre-callback in AsyncCompute/AsyncIO.
+/// Executed on a dedicated thread pool (outside the event loop).
 /// </summary>
 /// <returns>Result to be passed to the post-callback.</returns>
 public delegate Task<object?> AsyncPreCallback();
 
 /// <summary>
-/// Delegate for asynchronous post-callback in AsyncBlock.
+/// Delegate for asynchronous post-callback in AsyncCompute/AsyncIO.
 /// Executed on the Stage event loop (safe to access Stage state).
 /// </summary>
 /// <param name="result">Result from the pre-callback.</param>
@@ -28,7 +28,7 @@ public delegate Task TimerCallback();
 /// IStageSender extends ISender with:
 /// - Timer management (repeat, count, cancel)
 /// - Stage lifecycle management (close)
-/// - AsyncBlock for safe external I/O operations
+/// - AsyncCompute/AsyncIO for safe external operations
 /// - Client messaging with StageId context
 /// </remarks>
 public interface IStageSender : ISender
@@ -94,28 +94,45 @@ public interface IStageSender : ISender
 
     #endregion
 
-    #region AsyncBlock
+    #region Async Operations
 
     /// <summary>
-    /// Executes an asynchronous operation outside the event loop,
+    /// Executes a CPU-bound operation on a dedicated compute thread pool,
     /// then optionally processes the result back on the event loop.
     /// </summary>
     /// <param name="preCallback">
-    /// Executed on a thread pool thread. Use for external I/O
-    /// (database queries, HTTP calls, etc.).
+    /// Executed on ComputeTaskPool. Use for CPU-intensive calculations.
+    /// The pool size is limited to CPU core count.
     /// </param>
     /// <param name="postCallback">
     /// Executed on the Stage event loop after preCallback completes.
     /// Safe to access Stage state here.
     /// </param>
     /// <remarks>
-    /// AsyncBlock provides a safe pattern for performing blocking I/O
-    /// without blocking the Stage event loop:
-    /// 1. preCallback runs on ThreadPool (can block)
-    /// 2. Result is captured
-    /// 3. postCallback runs on Stage event loop (safe state access)
+    /// ComputeTaskPool is optimized for CPU-bound work:
+    /// - Limited concurrency (CPU core count)
+    /// - Prevents CPU starvation
     /// </remarks>
-    void AsyncBlock(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null);
+    void AsyncCompute(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null);
+
+    /// <summary>
+    /// Executes an I/O-bound operation on a dedicated I/O thread pool,
+    /// then optionally processes the result back on the event loop.
+    /// </summary>
+    /// <param name="preCallback">
+    /// Executed on IoTaskPool. Use for database queries, HTTP calls, file I/O, etc.
+    /// The pool allows higher concurrency for I/O wait times.
+    /// </param>
+    /// <param name="postCallback">
+    /// Executed on the Stage event loop after preCallback completes.
+    /// Safe to access Stage state here.
+    /// </param>
+    /// <remarks>
+    /// IoTaskPool is optimized for I/O-bound work:
+    /// - Higher concurrency (default 100)
+    /// - Handles I/O wait efficiently
+    /// </remarks>
+    void AsyncIO(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null);
 
     #endregion
 

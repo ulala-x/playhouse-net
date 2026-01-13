@@ -239,22 +239,27 @@ internal sealed class XStageSender : XSender, IStageSender
 
     #endregion
 
-    #region AsyncBlock
+    #region Async Operations
 
     /// <inheritdoc/>
-    public void AsyncBlock(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null)
+    public void AsyncCompute(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null)
     {
-        // Use GlobalTaskPool instead of Task.Run for better performance and control
-        _dispatcher.TaskPool.Post(new AsyncWorkItem(this, preCallback, postCallback));
+        // Use ComputeTaskPool for CPU-bound work (limited to CPU core count)
+        _dispatcher.ComputePool.Post(new AsyncWorkItem(this, preCallback, postCallback));
+    }
+
+    /// <inheritdoc/>
+    public void AsyncIO(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null)
+    {
+        // Use IoTaskPool for I/O-bound work (higher concurrency)
+        _dispatcher.IoPool.Post(new AsyncWorkItem(this, preCallback, postCallback));
     }
 
     /// <summary>
-    /// Internal work item to execute AsyncBlock on GlobalTaskPool.
+    /// Internal work item to execute async operations on task pools.
     /// </summary>
     private sealed class AsyncWorkItem(XStageSender sender, AsyncPreCallback pre, AsyncPostCallback? post) : ITaskPoolWorkItem
     {
-        public Base.BaseStage? Stage => null; // Run on any free worker
-
         public async Task ExecuteAsync()
         {
             try
@@ -268,7 +273,7 @@ internal sealed class XStageSender : XSender, IStageSender
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[AsyncBlock] Error in PreBlock: {ex.Message}");
+                Console.Error.WriteLine($"[AsyncOperation] Error in PreCallback: {ex.Message}");
             }
         }
     }

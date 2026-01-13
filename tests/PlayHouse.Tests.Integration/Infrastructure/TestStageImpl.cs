@@ -405,7 +405,7 @@ public class TestStageImpl : IStage
         long preThreadId = 0;
         string preResult = "";
 
-        StageSender.AsyncBlock(
+        StageSender.AsyncIO(
             async () =>
             {
                 Interlocked.Increment(ref _asyncPreCallbackCount);
@@ -658,7 +658,7 @@ public class TestStageImpl : IStage
     {
         var request = TriggerAsyncBlockRequestToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
-        StageSender.AsyncBlock(
+        StageSender.AsyncIO(
             async () =>
             {
                 // [핵심] PreBlock (백그라운드 스레드)에서 RequestToApi 호출 및 대기
@@ -696,7 +696,7 @@ public class TestStageImpl : IStage
     {
         var request = TriggerAsyncBlockSendToApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
-        StageSender.AsyncBlock(
+        StageSender.AsyncIO(
             async () =>
             {
                 // API Server ServerId는 "api-1"
