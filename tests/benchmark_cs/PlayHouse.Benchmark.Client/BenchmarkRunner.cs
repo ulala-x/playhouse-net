@@ -68,24 +68,77 @@ public class BenchmarkRunner(
 
         metricsCollector.Reset();
 
-        // 모든 연결을 동시에 시작
-        var tasks = new Task[connections];
+        // Phase 1: 모든 연결 + 인증 완료
+        Log.Information("[{Time:HH:mm:ss}] Phase 1: Connecting and authenticating...", DateTime.Now);
+        var connectors = new ClientConnector[connections];
+        var connectTasks = new Task[connections];
+
         for (int i = 0; i < connections; i++)
         {
             var connectionId = i;
-            tasks[i] = Task.Run(async () => await RunConnectionAsync(connectionId));
+            connectTasks[i] = Task.Run(async () => {
+                var connector = await ConnectAndAuthenticateAsync(connectionId);
+                if (connector != null)
+                {
+                    connectors[connectionId] = connector;
+                }
+            });
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(connectTasks);
 
-        // 진행 상황 줄 마무리 후 최종 결과
+        // 진행 상황 줄 마무리
         Console.WriteLine();
-        Log.Information("  Connected: {Connected:N0}/{Total:N0} (failed: {Failed:N0})",
+        Log.Information("  Phase 1 completed: {Connected:N0}/{Total:N0} connected (failed: {Failed:N0})",
             _connectedCount, connections, _failedCount);
-        Log.Information("[{Time:HH:mm:ss}] Benchmark completed.", DateTime.Now);
+
+        if (_connectedCount == 0)
+        {
+            Log.Error("No connections established. Aborting benchmark.");
+            return;
+        }
+
+        // Phase 2: 모든 연결이 준비된 후 동시에 벤치마크 시작
+        Log.Information("[{Time:HH:mm:ss}] Phase 2: Starting benchmark for all connections...", DateTime.Now);
+        var benchmarkTasks = new List<Task>(_connectedCount);
+
+        for (int i = 0; i < connections; i++)
+        {
+            if (connectors[i] != null)
+            {
+                var connector = connectors[i];
+                var connectionId = i;
+                benchmarkTasks.Add(Task.Run(async () => {
+                    try
+                    {
+                        // 모드에 따라 메시지 전송
+                        if (mode == BenchmarkMode.RequestAsync)
+                        {
+                            await RunRequestAsyncMode(connector, connectionId);
+                        }
+                        else if (mode == BenchmarkMode.RequestCallback)
+                        {
+                            await RunRequestCallbackMode(connector, connectionId);
+                        }
+                        else if (mode == BenchmarkMode.Send)
+                        {
+                            await RunSendMode(connector, connectionId);
+                        }
+                    }
+                    finally
+                    {
+                        connector.Disconnect();
+                    }
+                }));
+            }
+        }
+
+        await Task.WhenAll(benchmarkTasks);
+
+        Log.Information("[{Time:HH:mm:ss}] Phase 2 completed: Benchmark finished.", DateTime.Now);
     }
 
-    private async Task RunConnectionAsync(int connectionId)
+    private async Task<ClientConnector?> ConnectAndAuthenticateAsync(int connectionId)
     {
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig());
@@ -96,9 +149,9 @@ public class BenchmarkRunner(
         var connected = await connector.ConnectAsync(serverHost, serverPort, stageId, stageName);
         if (!connected)
         {
-            var failed = Interlocked.Increment(ref _failedCount);
+            Interlocked.Increment(ref _failedCount);
             UpdateConnectionProgress();
-            return;
+            return null;
         }
 
         // 인증
@@ -107,8 +160,9 @@ public class BenchmarkRunner(
             using (var authPacket = ClientPacket.Empty("AuthenticateRequest"))
             {
                 await connector.AuthenticateAsync(authPacket);
-                var count = Interlocked.Increment(ref _connectedCount);
+                Interlocked.Increment(ref _connectedCount);
                 UpdateConnectionProgress();
+                return connector;
             }
         }
         catch
@@ -116,24 +170,8 @@ public class BenchmarkRunner(
             Interlocked.Increment(ref _failedCount);
             UpdateConnectionProgress();
             connector.Disconnect();
-            return;
+            return null;
         }
-
-        // 모드에 따라 메시지 전송
-        if (mode == BenchmarkMode.RequestAsync)
-        {
-            await RunRequestAsyncMode(connector, connectionId);
-        }
-        else if (mode == BenchmarkMode.RequestCallback)
-        {
-            await RunRequestCallbackMode(connector, connectionId);
-        }
-        else if (mode == BenchmarkMode.Send)
-        {
-            await RunSendMode(connector, connectionId);
-        }
-
-        connector.Disconnect();
     }
 
     private async Task RunRequestAsyncMode(ClientConnector connector, int connectionId)
