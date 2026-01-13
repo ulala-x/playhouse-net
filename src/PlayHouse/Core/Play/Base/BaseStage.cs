@@ -8,7 +8,6 @@ using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Runtime.ClientTransport;
-using PlayHouse.Core.Shared.TaskPool;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
 using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
@@ -16,16 +15,15 @@ using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
 namespace PlayHouse.Core.Play.Base;
 
 /// <summary>
-/// Base class that manages Stage lifecycle and mailbox-based scheduling using GlobalTaskPool.
+/// Base class that manages Stage lifecycle and mailbox-based scheduling using ThreadPool.
 /// </summary>
-internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
+internal sealed class BaseStage : IReplyPacketRegistry
 {
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ConcurrentQueue<StageMessage> _mailbox = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
     private readonly ILogger? _logger;
     private BaseStageCmdHandler? _cmdHandler;
-    private GlobalTaskPool _taskPool = null!;
     private int _isScheduled;
 
     // Pool for ClientRouteMessage to avoid heap allocations
@@ -60,7 +58,6 @@ internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
     }
 
     internal void SetCmdHandler(BaseStageCmdHandler cmdHandler) => _cmdHandler = cmdHandler;
-    internal void SetTaskPool(GlobalTaskPool taskPool) => _taskPool = taskPool;
 
     public void RegisterReplyForDisposal(IDisposable packet) => _pendingReplyPackets.Add(packet);
 
@@ -75,10 +72,10 @@ internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
     }
 
     /// <summary>
-    /// GlobalTaskPool에 의해 실행될 핵심 로직.
+    /// ThreadPool에서 실행될 핵심 로직.
     /// 메일박스의 메시지를 순차적으로 배치 처리합니다.
     /// </summary>
-    public async Task ExecuteAsync()
+    private async Task ExecuteAsync()
     {
         _currentStage.Value = this;
         try
@@ -116,7 +113,8 @@ internal sealed class BaseStage : IReplyPacketRegistry, ITaskPoolWorkItem
     {
         if (Interlocked.CompareExchange(ref _isScheduled, 1, 0) == 0)
         {
-            _taskPool.Post(this);
+            // ThreadPool.QueueUserWorkItem을 사용하여 ExecutionContext/AsyncLocal 유지
+            ThreadPool.QueueUserWorkItem(_ => _ = ExecuteAsync());
         }
     }
 

@@ -1,15 +1,11 @@
 #nullable enable
 
-using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
-using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
-using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play;
 using Xunit;
@@ -21,15 +17,8 @@ namespace PlayHouse.Tests.Unit.Core.Play;
 /// <summary>
 /// 단위 테스트: BaseStage의 이벤트 루프 및 Actor 관리 기능 검증
 /// </summary>
-public class BaseStageTests : IDisposable
+public class BaseStageTests
 {
-    private readonly GlobalTaskPool _taskPool = new(minPoolSize: 4, maxPoolSize: 16);
-
-    public void Dispose()
-    {
-        _taskPool.Dispose();
-    }
-
     #region Fake Implementations
 
     private class FakeStage : IStage
@@ -121,9 +110,6 @@ public class BaseStageTests : IDisposable
 
         var fakeStage = new FakeStage(stageSender);
         var baseStage = new BaseStage(fakeStage, stageSender);
-
-        // TaskPool 설정
-        baseStage.SetTaskPool(_taskPool);
 
         return (baseStage, fakeStage, stageSender);
     }
