@@ -36,22 +36,57 @@ public class SSEchoBenchmarkRunner(
         await metricsClient.ResetMetricsAsync();
         await Task.Delay(1000);
 
-        var tasks = new Task<long>[connections];
-        var startTime = Stopwatch.GetTimestamp();
+        // Phase 1: 모든 연결 + 인증 완료
+        Log.Information("Phase 1: Connecting and authenticating {Count} clients...", connections);
+        var connectors = new ClientConnector[connections];
+        var connectTasks = new Task[connections];
 
         for (int i = 0; i < connections; i++)
         {
             var id = i;
-            tasks[i] = Task.Run(() => RunSingleClient(id, durationSeconds));
+            connectTasks[i] = Task.Run(async () => {
+                var connector = await ConnectAndAuthenticateAsync(id);
+                if (connector != null)
+                {
+                    connectors[id] = connector;
+                }
+            });
         }
 
-        var results = await Task.WhenAll(tasks);
+        await Task.WhenAll(connectTasks);
+
+        var connectedCount = connectors.Count(c => c != null);
+        Log.Information("Phase 1 completed: {Connected}/{Total} connected", connectedCount, connections);
+
+        if (connectedCount == 0)
+        {
+            Log.Error("No connections established. Aborting benchmark.");
+            return;
+        }
+
+        // Phase 2: 모든 연결이 준비된 후 동시에 벤치마크 시작
+        Log.Information("Phase 2: Starting benchmark for all connections...");
+        var benchmarkTasks = new List<Task<long>>(connectedCount);
+        var startTime = Stopwatch.GetTimestamp();
+
+        for (int i = 0; i < connections; i++)
+        {
+            if (connectors[i] != null)
+            {
+                var connector = connectors[i];
+                var id = i;
+                benchmarkTasks.Add(Task.Run(() => RunBenchmark(connector, id, durationSeconds)));
+            }
+        }
+
+        var results = await Task.WhenAll(benchmarkTasks);
         var endTime = Stopwatch.GetTimestamp();
         var totalElapsedSec = (double)(endTime - startTime) / Stopwatch.Frequency;
 
         long totalS2SMessages = results.Sum();
         double clientObservedTps = totalS2SMessages / (totalElapsedSec > 0 ? totalElapsedSec : 1);
 
+        Log.Information("Phase 2 completed: Benchmark finished.");
         Log.Information("Waiting for server metrics to stabilize...");
         await Task.Delay(2000);
         var serverMetrics = await metricsClient.GetMetricsAsync();
@@ -60,7 +95,7 @@ public class SSEchoBenchmarkRunner(
         Log.Information("S2S BENCHMARK RESULT");
         Log.Information("================================================================================");
         Log.Information("S2S Throughput:            {TPS:N0} msg/s", clientObservedTps);
-        
+
         if (serverMetrics != null)
         {
             Log.Information("Server Avg CPU:            {CPU:F2}%", serverMetrics.CpuUsagePercent);
@@ -71,21 +106,37 @@ public class SSEchoBenchmarkRunner(
             Log.Information("Server Latency (P95):      {P95:F2}ms", serverMetrics.LatencyP95Ms);
             Log.Information("Server Latency (P99):      {P99:F2}ms", serverMetrics.LatencyP99Ms);
         }
-        
+
         Log.Information("Total S2S Messages:        {Count:N0}", totalS2SMessages);
         Log.Information("Total Test Time:           {Time:F2}s", totalElapsedSec);
         Log.Information("================================================================================");
     }
 
-    private async Task<long> RunSingleClient(int id, int duration)
+    private async Task<ClientConnector?> ConnectAndAuthenticateAsync(int id)
     {
         var connector = new ClientConnector();
         connector.Init(new ConnectorConfig { RequestTimeoutMs = 30000 });
-        
-        var stageId = 1000 + id;
-        if (!await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchmarkStage")) return 0;
-        await connector.AuthenticateAsync(ClientPacket.Empty("Authenticate"));
 
+        var stageId = 1000 + id;
+        if (!await connector.ConnectAsync(serverHost, serverPort, stageId, "BenchmarkStage"))
+        {
+            return null;
+        }
+
+        try
+        {
+            await connector.AuthenticateAsync(ClientPacket.Empty("Authenticate"));
+            return connector;
+        }
+        catch
+        {
+            connector.Disconnect();
+            return null;
+        }
+    }
+
+    private async Task<long> RunBenchmark(ClientConnector connector, int id, int duration)
+    {
         var timer = new Timer(_ => connector.MainThreadAction(), null, 0, 10);
         long totalS2S = 0;
         var endTime = DateTime.UtcNow.AddSeconds(duration);
