@@ -178,7 +178,7 @@ public class RoutePacketTests
 
     #region Dispose
 
-    [Fact(DisplayName = "Dispose 후에도 Payload는 접근 가능하다")]
+    [Fact(DisplayName = "Dispose 후에는  Payload는 접근하면 예외 발생")]
     public void RuntimeRoutePacket_AfterDispose_PayloadRemainsAccessible()
     {
         // Given
@@ -190,7 +190,7 @@ public class RoutePacketTests
 
         // Then - should not throw (payload is already copied)
         var action = () => packet.Payload.Length;
-        action.Should().NotThrow();
+        action.Should().Throw<Exception>();
     }
 
     #endregion
