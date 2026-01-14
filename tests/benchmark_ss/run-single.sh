@@ -5,7 +5,7 @@
 # 목적: 특정 통신 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
 #       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
 #
-# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size] [diag-level]
+# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size] [diag-level] [warmup-duration]
 #
 # 파라미터:
 #   comm-mode      - 통신 모드 (필수): request-async, request-callback, send
@@ -16,10 +16,11 @@
 #   min-pool-size  - 최소 워커 수 (선택, 기본: 100)
 #   max-pool-size  - 최대 워커 수 (선택, 기본: 1000)
 #   diag-level     - 진단 레벨 (선택, 기본: -1, 0: Raw Echo, 1: Header Echo)
+#   warmup-duration- Warm-up 시간(초) (선택, 기본: 3)
 #
 # 예시:
 #   ./run-single.sh request-async 1024
-#   ./run-single.sh send 65536 100 30 500 100 500
+#   ./run-single.sh send 65536 100 30 500 100 500 -1 5
 #
 # 참고: 모든 모드/사이즈를 비교 테스트하려면 run-benchmark.sh를 사용하세요.
 
@@ -32,7 +33,7 @@ RESULT_DIR="$PROJECT_ROOT/benchmark-results"
 
 # 파라미터 검증
 if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "사용법: $0 <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size]"
+    echo "사용법: $0 <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size] [diag-level] [warmup-duration]"
     echo ""
     echo "파라미터:"
     echo "  comm-mode      - 통신 모드 (필수): request-async, request-callback, send"
@@ -42,10 +43,12 @@ if [ -z "$1" ] || [ -z "$2" ]; then
     echo "  max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)"
     echo "  min-pool-size  - 최소 워커 수 (선택, 기본: 100)"
     echo "  max-pool-size  - 최대 워커 수 (선택, 기본: 1000)"
+    echo "  diag-level     - 진단 레벨 (선택, 기본: -1)"
+    echo "  warmup-duration- Warm-up 시간(초) (선택, 기본: 3)"
     echo ""
     echo "예시:"
     echo "  $0 request-async 1024"
-    echo "  $0 send 65536 100 30 500 100 500"
+    echo "  $0 send 65536 100 30 500 100 500 -1 5"
     exit 1
 fi
 
@@ -57,6 +60,7 @@ MAX_INFLIGHT=${5:-200}
 MIN_POOL_SIZE=${6:-100}
 MAX_POOL_SIZE=${7:-1000}
 DIAG_LEVEL=${8:--1}
+WARMUP_DURATION=${9:-3}
 TCP_PORT=16110
 ZMQ_PORT=16100
 HTTP_PORT=5080
@@ -82,6 +86,7 @@ echo "  Comm-mode: $COMM_MODE"
 echo "  Payload size: $SIZE bytes (Echo: request=response)"
 echo "  Connections: $CONNECTIONS"
 echo "  Duration: ${DURATION}s"
+echo "  Warmup: ${WARMUP_DURATION}s"
 echo "  Max in-flight: $MAX_INFLIGHT"
 echo "  Pool size: $MIN_POOL_SIZE ~ $MAX_POOL_SIZE"
 echo "================================================================================"
@@ -156,7 +161,8 @@ dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchm
     --http-port $HTTP_PORT \
     --api-http-port $API_HTTP_PORT \
     --output-dir "$RESULT_DIR" \
-    --max-inflight $MAX_INFLIGHT
+    --max-inflight $MAX_INFLIGHT \
+    --warmup-duration $WARMUP_DURATION
 
 # 정리
 echo ""
