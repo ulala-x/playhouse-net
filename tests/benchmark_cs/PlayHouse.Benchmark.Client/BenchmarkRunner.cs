@@ -22,7 +22,8 @@ public class BenchmarkRunner(
     int stageIdOffset = 0,
     string stageName = "BenchStage",
     int durationSeconds = 10,  // Test duration in seconds
-    int maxInFlight = 200)     // Maximum in-flight requests
+    int maxInFlight = 200,     // Maximum in-flight requests
+    int warmupDuration = 3)    // Warmup duration in seconds
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(messageSize);
@@ -64,6 +65,7 @@ public class BenchmarkRunner(
         Log.Information("  Mode: {Mode}", mode);
         Log.Information("  Connections: {Connections:N0}", connections);
         Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
+        Log.Information("  Warmup: {WarmupDuration:N0} seconds", warmupDuration);
         Log.Information("  Message size: {MessageSize:N0} bytes", messageSize);
 
         metricsCollector.Reset();
@@ -98,8 +100,55 @@ public class BenchmarkRunner(
             return;
         }
 
-        // Phase 2: 모든 연결이 준비된 후 동시에 벤치마크 시작
-        Log.Information("[{Time:HH:mm:ss}] Phase 2: Starting benchmark for all connections...", DateTime.Now);
+        // Phase 2: Warm-up (JIT compilation, 메모리 풀 예열)
+        if (warmupDuration > 0)
+        {
+            Log.Information("[{Time:HH:mm:ss}] Phase 2: Warming up ({WarmupDuration:N0} seconds)...", DateTime.Now, warmupDuration);
+
+            // 임시 메트릭 수집기 (warm-up 결과는 버림)
+            var warmupMetrics = new ClientMetricsCollector();
+            var warmupTasks = new List<Task>(_connectedCount);
+
+            for (int i = 0; i < connections; i++)
+            {
+                if (connectors[i] != null)
+                {
+                    var connector = connectors[i];
+                    var connectionId = i;
+                    warmupTasks.Add(Task.Run(async () => {
+                        try
+                        {
+                            // 모드에 따라 warm-up 메시지 전송
+                            if (mode == BenchmarkMode.RequestAsync)
+                            {
+                                await RunWarmupRequestAsync(connector, connectionId, warmupMetrics, warmupDuration);
+                            }
+                            else if (mode == BenchmarkMode.RequestCallback)
+                            {
+                                await RunWarmupRequestCallback(connector, connectionId, warmupMetrics, warmupDuration);
+                            }
+                            else if (mode == BenchmarkMode.Send)
+                            {
+                                await RunWarmupSend(connector, connectionId, warmupMetrics, warmupDuration);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "[Connection {ConnectionId}] Warmup failed", connectionId);
+                        }
+                    }));
+                }
+            }
+
+            await Task.WhenAll(warmupTasks);
+            Log.Information("  Phase 2 completed: Warmup finished.");
+        }
+
+        // Phase 3: 모든 연결이 준비된 후 동시에 벤치마크 시작
+        Log.Information("[{Time:HH:mm:ss}] Phase 3: Starting benchmark for all connections...", DateTime.Now);
+
+        // 실제 벤치마크 전에 메트릭 리셋
+        metricsCollector.Reset();
         var benchmarkTasks = new List<Task>(_connectedCount);
 
         for (int i = 0; i < connections; i++)
@@ -135,7 +184,149 @@ public class BenchmarkRunner(
 
         await Task.WhenAll(benchmarkTasks);
 
-        Log.Information("[{Time:HH:mm:ss}] Phase 2 completed: Benchmark finished.", DateTime.Now);
+        Log.Information("[{Time:HH:mm:ss}] Phase 3 completed: Benchmark finished.", DateTime.Now);
+    }
+
+    /// <summary>
+    /// Warm-up: RequestAsync 모드 (메트릭 수집하지만 결과는 버림)
+    /// </summary>
+    private async Task RunWarmupRequestAsync(ClientConnector connector, int connectionId, ClientMetricsCollector metrics, int duration)
+    {
+        var payloadBytes = _requestPayload.ToByteArray();
+        var endTime = DateTime.UtcNow.AddSeconds(duration);
+
+        const int WorkersPerConnection = 1;
+        var workerCount = Math.Min(WorkersPerConnection, maxInFlight);
+        var workers = new Task[workerCount];
+
+        for (int i = 0; i < workerCount; i++)
+        {
+            var workerId = i;
+            workers[i] = Task.Run(async () =>
+            {
+                int requestCount = 0;
+                while (DateTime.UtcNow < endTime)
+                {
+                    try
+                    {
+                        using var packet = new ClientPacket("EchoRequest", payloadBytes);
+                        metrics.RecordSent();
+                        using var response = await connector.RequestAsync(packet);
+                        metrics.RecordReceived(0); // duration 0 (레이턴시 측정 안 함)
+                    }
+                    catch
+                    {
+                        // Warm-up 중 에러는 무시
+                    }
+
+                    if (workerId == 0 && ++requestCount % 100 == 0)
+                    {
+                        connector.MainThreadAction();
+                    }
+                }
+            });
+        }
+
+        await Task.WhenAll(workers);
+    }
+
+    /// <summary>
+    /// Warm-up: RequestCallback 모드
+    /// </summary>
+    private async Task RunWarmupRequestCallback(ClientConnector connector, int connectionId, ClientMetricsCollector metrics, int duration)
+    {
+        var endTime = DateTime.UtcNow.AddSeconds(duration);
+        var payloadBytes = _requestPayload.ToByteArray();
+        var inFlight = 0;
+
+        while (DateTime.UtcNow < endTime)
+        {
+            connector.MainThreadAction();
+
+            while (inFlight >= maxInFlight)
+            {
+                connector.MainThreadAction();
+                await Task.Yield();
+            }
+
+            var packet = new ClientPacket("EchoRequest", payloadBytes);
+            metrics.RecordSent();
+            Interlocked.Increment(ref inFlight);
+
+            connector.Request(packet, response =>
+            {
+                metrics.RecordReceived(0);
+                Interlocked.Decrement(ref inFlight);
+                packet.Dispose();
+            });
+        }
+
+        // 남은 요청 대기
+        while (inFlight > 0)
+        {
+            connector.MainThreadAction();
+            await Task.Yield();
+        }
+    }
+
+    /// <summary>
+    /// Warm-up: Send 모드
+    /// </summary>
+    private async Task RunWarmupSend(ClientConnector connector, int connectionId, ClientMetricsCollector metrics, int duration)
+    {
+        var endTime = DateTime.UtcNow.AddSeconds(duration);
+        var payload = _requestPayload.ToByteArray();
+        var inFlight = 0;
+
+        void OnReceiveHandler(long stageId, string stageType, IPacket packet)
+        {
+            if (packet.MsgId == "SendReply")
+            {
+                metrics.RecordReceived(0);
+                Interlocked.Decrement(ref inFlight);
+            }
+            packet.Dispose();
+        }
+
+        connector.OnReceive += OnReceiveHandler;
+
+        try
+        {
+            while (DateTime.UtcNow < endTime)
+            {
+                connector.MainThreadAction();
+
+                while (inFlight >= maxInFlight)
+                {
+                    connector.MainThreadAction();
+                    await Task.Yield();
+                }
+
+                using var packet = new ClientPacket("SendRequest", payload);
+                metrics.RecordSent();
+                Interlocked.Increment(ref inFlight);
+
+                try
+                {
+                    connector.Send(packet);
+                }
+                catch
+                {
+                    Interlocked.Decrement(ref inFlight);
+                }
+            }
+
+            // 남은 응답 대기
+            while (inFlight > 0)
+            {
+                connector.MainThreadAction();
+                await Task.Yield();
+            }
+        }
+        finally
+        {
+            connector.OnReceive -= OnReceiveHandler;
+        }
     }
 
     private async Task<ClientConnector?> ConnectAndAuthenticateAsync(int connectionId)
