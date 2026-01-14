@@ -64,6 +64,11 @@ var maxInFlightOption = new Option<int>(
     description: "Maximum in-flight requests (default: 200)",
     getDefaultValue: () => 200);
 
+var warmupDurationOption = new Option<int>(
+    name: "--warmup-duration",
+    description: "Warmup duration in seconds (default: 3)",
+    getDefaultValue: () => 3);
+
 var rootCommand = new RootCommand("PlayHouse Benchmark Client")
 {
     serverOption,
@@ -77,7 +82,8 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Client")
     outputDirOption,
     labelOption,
     connectOnlyOption,
-    maxInFlightOption
+    maxInFlightOption,
+    warmupDurationOption
 };
 
 rootCommand.SetHandler(async (context) =>
@@ -94,6 +100,7 @@ rootCommand.SetHandler(async (context) =>
     var label = context.ParseResult.GetValueForOption(labelOption)!;
     var connectOnly = context.ParseResult.GetValueForOption(connectOnlyOption);
     var maxInFlight = context.ParseResult.GetValueForOption(maxInFlightOption);
+    var warmupDuration = context.ParseResult.GetValueForOption(warmupDurationOption);
 
     if (connectOnly)
     {
@@ -122,7 +129,7 @@ rootCommand.SetHandler(async (context) =>
         int? messagesValue = messages;
         int? durationValue = duration;
 
-        await RunBenchmarkAsync(server, connections, messagesValue, durationValue, messageSize, responseSizes, mode, httpPort, outputDir, label, maxInFlight);
+        await RunBenchmarkAsync(server, connections, messagesValue, durationValue, messageSize, responseSizes, mode, httpPort, outputDir, label, maxInFlight, warmupDuration);
     }
 });
 
@@ -139,7 +146,8 @@ static async Task RunBenchmarkAsync(
     int httpPort,
     string outputDir,
     string label,
-    int maxInFlight)
+    int maxInFlight,
+    int warmupDuration)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -189,7 +197,7 @@ static async Task RunBenchmarkAsync(
         // "all" 모드 처리
         if (mode.ToLowerInvariant() == "all")
         {
-            await RunAllModesAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, messageSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, maxInFlight);
+            await RunAllModesAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, messageSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, maxInFlight, warmupDuration);
             return;
         }
 
@@ -275,7 +283,8 @@ static async Task RunBenchmarkAsync(
                 stageIdOffset: stageIdOffset,
                 stageName: "BenchStage",
                 durationSeconds: effectiveDuration,
-                maxInFlight: maxInFlight);
+                maxInFlight: maxInFlight,
+                warmupDuration: warmupDuration);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -436,7 +445,8 @@ static async Task RunAllModesAsync(
     string outputDir,
     string label,
     DateTime runTimestamp,
-    int maxInFlight)
+    int maxInFlight,
+    int warmupDuration)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -513,7 +523,8 @@ static async Task RunAllModesAsync(
             host, port, connections, responseSize,
             BenchmarkMode.RequestAsync, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight);
+            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight,
+            warmupDuration: warmupDuration);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -559,7 +570,8 @@ static async Task RunAllModesAsync(
             host, port, connections, responseSize,
             BenchmarkMode.RequestCallback, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight);
+            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight,
+            warmupDuration: warmupDuration);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -605,7 +617,8 @@ static async Task RunAllModesAsync(
             host, port, connections, responseSize,
             BenchmarkMode.Send, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight);
+            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight,
+            warmupDuration: warmupDuration);
         testIndex++;
 
         var startTime = DateTime.Now;
