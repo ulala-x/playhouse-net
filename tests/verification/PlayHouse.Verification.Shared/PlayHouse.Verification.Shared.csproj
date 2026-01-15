@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PlayHouse.Verification.Shared</RootNamespace>
+    <AssemblyName>PlayHouse.Verification.Shared</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Google.Protobuf and Grpc.Tools for proto compilation -->
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ASP.NET Core dependencies for HTTP API -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\PlayHouse\PlayHouse.csproj" />
+    <ProjectReference Include="..\..\..\connector\PlayHouse.Connector\PlayHouse.Connector.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Proto\*.proto" GrpcServices="None" />
+  </ItemGroup>
+
+</Project>
