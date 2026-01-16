@@ -44,7 +44,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private readonly IoTaskPool _ioPool;
     private readonly ushort _serviceId;
     private readonly string _nid;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private readonly IClientReplyHandler? _clientReplyHandler;
     private bool _disposed;
 
@@ -57,16 +57,16 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         RequestCache requestCache,
         ushort serviceId,
         string nid,
-        IClientReplyHandler? clientReplyHandler = null,
-        ILogger? logger = null)
+        IClientReplyHandler? clientReplyHandler,
+        ILogger logger)
     {
         _producer = producer;
         _communicator = communicator;
         _requestCache = requestCache;
         _serviceId = serviceId;
         _nid = nid;
-        _clientReplyHandler = clientReplyHandler;
         _logger = logger;
+        _clientReplyHandler = clientReplyHandler;
 
         _timerManager = new TimerManager(OnTimerCallback, logger);
 
@@ -119,7 +119,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
                 break;
 
             default:
-                _logger?.LogWarning("Unknown message type: {Type}", message.GetType().Name);
+                _logger.LogWarning("Unknown message type: {Type}", message.GetType().Name);
                 message.Dispose();
                 break;
         }
@@ -155,7 +155,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
         else
         {
-            _logger?.LogWarning("Stage {StageId} not found for message {MsgId}", stageId, msgId);
+            _logger.LogWarning("Stage {StageId} not found for message {MsgId}", stageId, msgId);
             SendErrorReply(packet, (ushort)ErrorCode.StageNotFound);
             packet.Dispose();
         }
@@ -169,7 +169,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
         else
         {
-            _logger?.LogWarning("Stage {StageId} not found for AsyncBlock", asyncPacket.StageId);
+            _logger.LogWarning("Stage {StageId} not found for AsyncBlock", asyncPacket.StageId);
         }
     }
 
@@ -190,7 +190,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
         else
         {
-            _logger?.LogWarning("Stage {StageId} not found for client message {MsgId}", message.StageId, message.MsgId);
+            _logger.LogWarning("Stage {StageId} not found for client message {MsgId}", message.StageId, message.MsgId);
             message.Payload?.Dispose();
         }
     }
@@ -212,7 +212,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
         else
         {
-            _logger?.LogWarning("Stage {StageId} not found for JoinActorMessage", message.StageId);
+            _logger.LogWarning("Stage {StageId} not found for JoinActorMessage", message.StageId);
             // Send error response
             message.Session.SendResponse(
                 message.AuthReplyMsgId,
@@ -232,7 +232,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
         else
         {
-            _logger?.LogWarning("Stage {StageId} not found for DisconnectMessage", message.StageId);
+            _logger.LogWarning("Stage {StageId} not found for DisconnectMessage", message.StageId);
         }
     }
 
@@ -270,7 +270,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         }
         else
         {
-            _logger?.LogWarning("Stage {StageId} not found for client message {MsgId}", stageId, msgId);
+            _logger.LogWarning("Stage {StageId} not found for client message {MsgId}", stageId, msgId);
             payload.Dispose();
         }
     }
@@ -290,7 +290,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
             if (!_producer.IsValidType(req.StageType))
             {
-                _logger?.LogError("Invalid stage type: {StageType}", req.StageType);
+                _logger.LogError("Invalid stage type: {StageType}", req.StageType);
                 SendErrorReply(packet, (ushort)ErrorCode.InvalidStageType);
                 packet.Dispose();
                 return;
@@ -307,7 +307,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             if (!created)
             {
                 // Stage already exists - this is an error for CreateStage
-                _logger?.LogWarning("Stage {StageId} already exists", stageId);
+                _logger.LogWarning("Stage {StageId} already exists", stageId);
                 SendErrorReply(packet, (ushort)ErrorCode.StageAlreadyExists);
                 packet.Dispose();
                 return;
@@ -335,7 +335,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
             if (!_producer.IsValidType(req.StageType))
             {
-                _logger?.LogError("Invalid stage type: {StageType}", req.StageType);
+                _logger.LogError("Invalid stage type: {StageType}", req.StageType);
                 SendErrorReply(packet, (ushort)ErrorCode.InvalidStageType);
                 packet.Dispose();
                 return;

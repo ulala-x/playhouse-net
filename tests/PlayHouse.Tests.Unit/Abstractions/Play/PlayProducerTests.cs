@@ -1,6 +1,7 @@
 #nullable enable
 
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
@@ -14,6 +15,19 @@ namespace PlayHouse.Tests.Unit.Abstractions.Play;
 /// </summary>
 public class PlayProducerTests
 {
+    /// <summary>
+    /// Factory registration 테스트를 위한 PlayProducer 생성.
+    /// DI를 사용하지 않는 경우에도 ServiceProvider는 필수이므로 빈 ServiceProvider를 전달.
+    /// </summary>
+    private static PlayProducer CreateProducerForManualRegistration()
+    {
+        var emptyServiceProvider = new ServiceCollection().BuildServiceProvider();
+        return new PlayProducer(
+            new Dictionary<string, Type>(),
+            new Dictionary<string, Type>(),
+            emptyServiceProvider);
+    }
+
     #region Fake Implementations
 
     private class FakeStage : IStage
@@ -62,7 +76,7 @@ public class PlayProducerTests
     public void Register_StageAndActorFactories_SuccessfullyRegistered()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
 
         // When (행동)
@@ -79,7 +93,7 @@ public class PlayProducerTests
     public void Register_DuplicateType_ThrowsException()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
         producer.Register(
             stageType,
@@ -101,7 +115,7 @@ public class PlayProducerTests
     public void IsValidType_UnregisteredType_ReturnsFalse()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string stageType = "non_existent";
 
         // When (행동)
@@ -115,7 +129,7 @@ public class PlayProducerTests
     public void GetStage_RegisteredType_CreatesInstance()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
         var stageSender = Substitute.For<IStageSender>();
 
@@ -138,7 +152,7 @@ public class PlayProducerTests
     public void GetStage_UnregisteredType_ThrowsException()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         var stageSender = Substitute.For<IStageSender>();
         const string stageType = "non_existent";
 
@@ -154,7 +168,7 @@ public class PlayProducerTests
     public void GetActor_RegisteredType_CreatesInstance()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
         var actorSender = Substitute.For<IActorSender>();
 
@@ -177,7 +191,7 @@ public class PlayProducerTests
     public void GetActor_UnregisteredType_ThrowsException()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         var actorSender = Substitute.For<IActorSender>();
         const string stageType = "non_existent";
 
@@ -193,7 +207,7 @@ public class PlayProducerTests
     public void Register_MultipleTypes_CreatesSeparateInstances()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string type1 = "game_room";
         const string type2 = "lobby";
 
@@ -224,7 +238,7 @@ public class PlayProducerTests
     public void GetStage_MultipleCalls_CreatesNewInstances()
     {
         // Given (전제조건)
-        var producer = new PlayProducer();
+        var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
 
         producer.Register(

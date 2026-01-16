@@ -52,6 +52,7 @@ public sealed class PlayServerBootstrap
     private readonly Dictionary<string, Type> _actorTypes = new();
     private Type? _systemControllerType;
     private ILogger? _logger;
+    private IServiceProvider? _serviceProvider;
 
     /// <summary>
     /// 서버 옵션을 설정합니다.
@@ -118,6 +119,17 @@ public sealed class PlayServerBootstrap
     }
 
     /// <summary>
+    /// ServiceProvider를 설정합니다.
+    /// </summary>
+    /// <param name="serviceProvider">IServiceProvider 인스턴스.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public PlayServerBootstrap UseServiceProvider(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+        return this;
+    }
+
+    /// <summary>
     /// Stage와 Actor 타입을 등록합니다.
     /// </summary>
     /// <typeparam name="TStage">IStage 구현 타입.</typeparam>
@@ -179,19 +191,27 @@ public sealed class PlayServerBootstrap
                 throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseStage<TStage, TActor>().");
         }
 
-        // ServiceProvider 생성
-        var services = new ServiceCollection();
+        // ServiceProvider 생성 또는 사용
+        var serviceProvider = _serviceProvider;
+        if (serviceProvider == null)
+        {
+            // 외부에서 제공되지 않았으면 내부에서 생성
+            var services = new ServiceCollection();
 
-        // Logger 등록
-        services.AddSingleton(_logger);
+            // Logging 설정 (Stage/Actor가 ILogger를 주입받을 수 있도록)
+            services.AddLogging(builder =>
+            {
+                // NullLogger 사용 (기본값)
+            });
 
-        var serviceProvider = services.BuildServiceProvider();
+            serviceProvider = services.BuildServiceProvider();
+        }
 
         // SystemController 인스턴스 생성
         var systemController = Activator.CreateInstance(_systemControllerType) as ISystemController
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {_systemControllerType.Name}");
 
         var producer = new PlayProducer(_stageTypes, _actorTypes, serviceProvider);
-        return new PlayServer(_options, producer, systemController, serviceProvider, _logger);
+        return new PlayServer(_options, producer, systemController, serviceProvider, _logger!);
     }
 }

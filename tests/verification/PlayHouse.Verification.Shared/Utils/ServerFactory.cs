@@ -51,6 +51,23 @@ public static class ServerFactory
             });
         });
 
+        // ServiceCollection 생성 (DI 필수)
+        var services = new ServiceCollection();
+        services.AddSingleton(loggerFactory);
+        services.AddSingleton<ILogger<PlayServer>>(
+            sp => loggerFactory.CreateLogger<PlayServer>());
+        services.AddSingleton<ILogger<TestStageImpl>>(
+            sp => loggerFactory.CreateLogger<TestStageImpl>());
+        services.AddSingleton<ILogger<TestActorImpl>>(
+            sp => loggerFactory.CreateLogger<TestActorImpl>());
+        services.AddSingleton<ILogger<TestSystemController>>(
+            sp => loggerFactory.CreateLogger<TestSystemController>());
+
+        // ISystemController 등록 (PlayServer가 필요로 함)
+        services.AddSingleton<PlayHouse.Abstractions.System.ISystemController, TestSystemController>();
+
+        var serviceProvider = services.BuildServiceProvider();
+
         var playServer = new PlayServerBootstrap()
             .Configure(options =>
             {
@@ -62,6 +79,7 @@ public static class ServerFactory
                 options.DefaultStageType = defaultStageType;
             })
             .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseServiceProvider(serviceProvider)
             .UseStage<TestStageImpl, TestActorImpl>(defaultStageType)
             .UseSystemController<TestSystemController>()
             .Build();
@@ -108,6 +126,14 @@ public static class ServerFactory
         // 사용자 서비스 등록 (DI 검증용)
         services.AddSingleton<ITestService, TestService>();
 
+        // Logger 명시적 등록 (DITestStage, DITestActor, TestSystemController용)
+        services.AddSingleton<ILogger<DITestStage>>(
+            sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger<DITestStage>());
+        services.AddSingleton<ILogger<DITestActor>>(
+            sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger<DITestActor>());
+        services.AddSingleton<ILogger<TestSystemController>>(
+            sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger<TestSystemController>());
+
         // PlayServer 등록 및 구성
         services.AddPlayServer(options =>
         {
@@ -141,6 +167,29 @@ public static class ServerFactory
         int requestTimeoutMs = 30000,
         LogLevel logLevel = LogLevel.Warning)
     {
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddConsole().SetMinimumLevel(logLevel);
+        });
+
+        // ServiceCollection 생성 (DI 필수)
+        var services = new ServiceCollection();
+        services.AddSingleton(loggerFactory);
+        services.AddSingleton<ILogger<ApiServer>>(
+            sp => loggerFactory.CreateLogger<ApiServer>());
+        services.AddSingleton<ILogger<TestApiController>>(
+            sp => loggerFactory.CreateLogger<TestApiController>());
+        services.AddSingleton<ILogger<TestSystemController>>(
+            sp => loggerFactory.CreateLogger<TestSystemController>());
+
+        // IApiController 등록 (ApiReflection이 필요로 함)
+        services.AddTransient<PlayHouse.Abstractions.Api.IApiController, TestApiController>();
+
+        // ISystemController 등록 (ApiServer가 필요로 함)
+        services.AddSingleton<PlayHouse.Abstractions.System.ISystemController, TestSystemController>();
+
+        var serviceProvider = services.BuildServiceProvider();
+
         var apiServer = new ApiServerBootstrap()
             .Configure(options =>
             {
@@ -148,6 +197,8 @@ public static class ServerFactory
                 options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
                 options.RequestTimeoutMs = requestTimeoutMs;
             })
+            .UseLogger(loggerFactory.CreateLogger<ApiServer>())
+            .UseServiceProvider(serviceProvider)
             .UseController<TestApiController>()
             .UseSystemController<TestSystemController>()
             .Build();

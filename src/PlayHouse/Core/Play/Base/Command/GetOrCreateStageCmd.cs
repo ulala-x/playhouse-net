@@ -14,9 +14,9 @@ namespace PlayHouse.Core.Play.Base.Command;
 /// </summary>
 internal sealed class GetOrCreateStageCmd : IBaseStageCmd
 {
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
-    public GetOrCreateStageCmd(ILogger? logger = null)
+    public GetOrCreateStageCmd(ILogger logger)
     {
         _logger = logger;
     }
@@ -24,7 +24,7 @@ internal sealed class GetOrCreateStageCmd : IBaseStageCmd
     public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var req = GetOrCreateStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
-        _logger?.LogDebug("GetOrCreateStageReq: StageType={StageType}", req.StageType);
+        _logger.LogDebug("GetOrCreateStageReq: StageType={StageType}", req.StageType);
 
         bool isCreated = false;
 
@@ -64,7 +64,7 @@ internal sealed class GetOrCreateStageCmd : IBaseStageCmd
         };
         baseStage.Reply(CPacket.Of(successRes));
 
-        _logger?.LogInformation("GetOrCreateStage success: StageId={StageId}, IsCreated={IsCreated}",
+        _logger.LogInformation("GetOrCreateStage success: StageId={StageId}, IsCreated={IsCreated}",
             baseStage.StageId, isCreated);
     }
 }

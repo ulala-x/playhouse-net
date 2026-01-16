@@ -22,7 +22,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ConcurrentQueue<StageMessage> _mailbox = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private BaseStageCmdHandler? _cmdHandler;
     private int _isScheduled;
 
@@ -50,7 +50,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     public long StageId => StageSender.StageId;
     public string StageType => StageSender.StageType;
 
-    public BaseStage(IStage stage, XStageSender stageSender, ILogger? logger = null)
+    public BaseStage(IStage stage, XStageSender stageSender, ILogger logger)
     {
         Stage = stage;
         StageSender = stageSender;
@@ -66,7 +66,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         foreach (var packet in _pendingReplyPackets)
         {
             try { packet.Dispose(); }
-            catch (Exception ex) { _logger?.LogError(ex, "Error disposing pending reply packet"); }
+            catch (Exception ex) { _logger.LogError(ex, "Error disposing pending reply packet"); }
         }
         _pendingReplyPackets.Clear();
     }
@@ -90,8 +90,8 @@ internal sealed class BaseStage : IReplyPacketRegistry
                     else await task;
                 }
                 catch (Exception ex) 
-                { 
-                    _logger?.LogError(ex, "Error executing message in Stage {StageId}", StageId); 
+                {
+                    _logger.LogError(ex, "Error executing message in Stage {StageId}", StageId); 
                 }
                 finally
                 {
@@ -165,7 +165,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         }
         else
         {
-            _logger?.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
+            _logger.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
             payload.Dispose();
         }
     }

@@ -19,7 +19,7 @@ internal sealed class TcpTransportSession : ITransportSession
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts;
     
     // Buffer for receiving data
@@ -51,7 +51,7 @@ internal sealed class TcpTransportSession : ITransportSession
         TransportOptions options,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
-        ILogger? logger,
+        ILogger logger,
         CancellationToken externalCt)
     {
         SessionId = sessionId;
@@ -75,7 +75,7 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         // Start the first receive operation
         StartReceive();
-        _logger?.LogDebug("TCP session {SessionId} started (Task-less with MessagePool)", SessionId);
+        _logger.LogDebug("TCP session {SessionId} started (Task-less with MessagePool)", SessionId);
     }
 
     private void StartReceive()
@@ -135,7 +135,7 @@ internal sealed class TcpTransportSession : ITransportSession
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Error processing message {MsgId} on session {SessionId}", msgId, SessionId);
+                    _logger.LogError(ex, "Error processing message {MsgId} on session {SessionId}", msgId, SessionId);
                 }
                 consumed += packetSize;
             }
@@ -252,7 +252,7 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         if (!_disposed)
         {
-            _logger?.LogError(ex, "Error in session {SessionId}", SessionId);
+            _logger.LogError(ex, "Error in session {SessionId}", SessionId);
             _ = DisconnectAsync();
         }
     }

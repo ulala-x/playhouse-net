@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Runtime.ServerMesh.Discovery;
 
@@ -16,15 +17,15 @@ namespace PlayHouse.Verification.Shared.Infrastructure;
 /// </remarks>
 public class TestSystemController : ISystemController
 {
+    private readonly ILogger<TestSystemController> _logger;
     private static readonly ConcurrentDictionary<string, ServerInfoEntry> _servers = new();
     private readonly TimeSpan _ttl;
 
     /// <summary>
     /// 새 TestSystemController 인스턴스를 생성합니다.
     /// </summary>
-    public TestSystemController()
+    public TestSystemController() : this(TimeSpan.FromSeconds(30))
     {
-        _ttl = TimeSpan.FromSeconds(30);
     }
 
     /// <summary>
@@ -33,7 +34,9 @@ public class TestSystemController : ISystemController
     /// <param name="ttl">서버 정보 TTL.</param>
     public TestSystemController(TimeSpan ttl)
     {
+        _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<TestSystemController>.Instance;
         _ttl = ttl;
+        _logger.LogDebug("TestSystemController created with TTL={Ttl}", _ttl);
     }
 
     /// <inheritdoc/>

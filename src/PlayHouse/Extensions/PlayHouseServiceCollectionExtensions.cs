@@ -1,6 +1,9 @@
 #nullable enable
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
@@ -25,6 +28,13 @@ public static class PlayHouseServiceCollectionExtensions
 
         services.AddSingleton(options);
 
+        // ILoggerFactory가 등록되지 않은 경우 NullLoggerFactory 등록
+        services.TryAddSingleton<ILoggerFactory, NullLoggerFactory>();
+
+        // ILogger<PlayServer>가 등록되지 않은 경우 자동 등록
+        services.TryAddSingleton<ILogger<PlayServer>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<PlayServer>());
+
         var builder = new PlayServerBuilder(services, options);
 
         // Build를 즉시 호출하여 서비스 등록 완료
@@ -45,6 +55,13 @@ public static class PlayHouseServiceCollectionExtensions
         options.Validate();
 
         services.AddSingleton(options);
+
+        // ILoggerFactory가 등록되지 않은 경우 NullLoggerFactory 등록
+        services.TryAddSingleton<ILoggerFactory, NullLoggerFactory>();
+
+        // ILogger<ApiServer>가 등록되지 않은 경우 자동 등록
+        services.TryAddSingleton<ILogger<ApiServer>>(sp =>
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<ApiServer>());
 
         var builder = new ApiServerBuilder(services, options);
 

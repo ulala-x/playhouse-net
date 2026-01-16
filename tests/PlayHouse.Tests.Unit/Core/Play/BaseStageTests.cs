@@ -8,6 +8,7 @@ using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play;
+using Microsoft.Extensions.Logging;
 using Xunit;
 using NSubstitute;
 using FluentAssertions;
@@ -109,7 +110,8 @@ public class BaseStageTests
         stageSender.SetStageType("test_stage");
 
         var fakeStage = new FakeStage(stageSender);
-        var baseStage = new BaseStage(fakeStage, stageSender);
+        var logger = Substitute.For<ILogger>();
+        var baseStage = new BaseStage(fakeStage, stageSender, logger);
 
         return (baseStage, fakeStage, stageSender);
     }

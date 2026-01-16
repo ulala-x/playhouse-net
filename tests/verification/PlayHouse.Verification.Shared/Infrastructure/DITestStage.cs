@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
@@ -18,16 +19,19 @@ namespace PlayHouse.Verification.Shared.Infrastructure;
 /// </remarks>
 public class DITestStage : IStage
 {
+    private readonly ILogger<DITestStage> _logger;
     public IStageSender StageSender { get; }
     private readonly ITestService _testService;
 
     /// <summary>
-    /// DI 컨테이너가 IStageSender와 ITestService를 모두 주입합니다.
+    /// DI 컨테이너가 IStageSender, ITestService, ILogger를 모두 주입합니다.
     /// </summary>
-    public DITestStage(IStageSender stageSender, ITestService testService)
+    public DITestStage(IStageSender stageSender, ITestService testService, ILogger<DITestStage>? logger = null)
     {
         StageSender = stageSender;
         _testService = testService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DITestStage>.Instance;
+        _logger.LogDebug("DITestStage created for StageId={StageId}", stageSender.StageId);
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)

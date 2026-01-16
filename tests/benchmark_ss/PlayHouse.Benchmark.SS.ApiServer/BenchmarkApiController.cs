@@ -1,5 +1,7 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Benchmark.SS.Shared.Proto;
@@ -9,6 +11,13 @@ namespace PlayHouse.Benchmark.SS.ApiServer;
 
 public class BenchmarkApiController : IApiController
 {
+    private readonly ILogger<BenchmarkApiController> _logger;
+
+    public BenchmarkApiController(ILogger<BenchmarkApiController>? logger = null)
+    {
+        _logger = logger ?? NullLogger<BenchmarkApiController>.Instance;
+    }
+
     public void Handles(IHandlerRegister register)
     {
         register.Add(nameof(CreateStageRequest), HandleCreateStage);

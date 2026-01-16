@@ -8,55 +8,41 @@ namespace PlayHouse.Abstractions.Play;
 /// Factory for creating Stage and Actor instances with dependency injection support.
 /// </summary>
 /// <remarks>
-/// Content developers register their Stage and Actor factories using this class.
-/// The framework uses these factories to create instances during Stage creation
+/// Content developers register their Stage and Actor types using this class.
+/// The framework uses these registrations to create instances during Stage creation
 /// and Actor join processes.
 ///
-/// Usage with DI:
+/// ServiceProvider is required for creating instances with dependency injection.
+/// If DI is not used, an empty ServiceProvider should be provided.
+///
+/// Usage:
 /// <code>
 /// var serviceProvider = services.BuildServiceProvider();
 /// var producer = new PlayProducer(stageTypes, actorTypes, serviceProvider);
 /// </code>
-///
-/// Manual registration (legacy):
-/// <code>
-/// var producer = new PlayProducer();
-/// producer.Register(
-///     "battle",
-///     stageSender => new BattleStage(stageSender),
-///     actorSender => new BattleActor(actorSender)
-/// );
-/// </code>
 /// </remarks>
 public class PlayProducer
 {
-    private readonly IServiceProvider? _serviceProvider;
+    private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, Type> _stageTypes = new();
     private readonly Dictionary<string, Type> _actorTypes = new();
     private readonly Dictionary<string, Func<IStageSender, IStage>> _stageFactories = new();
     private readonly Dictionary<string, Func<IActorSender, IActor>> _actorFactories = new();
 
     /// <summary>
-    /// Default constructor for manual registration.
-    /// </summary>
-    public PlayProducer()
-    {
-    }
-
-    /// <summary>
     /// Constructor for Bootstrap pattern with Stage-specific Actor types and dependency injection support.
     /// </summary>
     /// <param name="stageTypes">Dictionary of stage type names to Stage implementation types.</param>
     /// <param name="actorTypes">Dictionary of stage type names to Actor implementation types.</param>
-    /// <param name="serviceProvider">Service provider for dependency injection.</param>
+    /// <param name="serviceProvider">Service provider for dependency injection (required).</param>
     public PlayProducer(
         Dictionary<string, Type> stageTypes,
         Dictionary<string, Type> actorTypes,
         IServiceProvider serviceProvider)
     {
-        _serviceProvider = serviceProvider;
-        _stageTypes = stageTypes;
-        _actorTypes = actorTypes;
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _stageTypes = stageTypes ?? throw new ArgumentNullException(nameof(stageTypes));
+        _actorTypes = actorTypes ?? throw new ArgumentNullException(nameof(actorTypes));
     }
 
     /// <summary>
@@ -99,7 +85,7 @@ public class PlayProducer
         }
 
         // Type-based registration with DI
-        if (_serviceProvider != null && _stageTypes.TryGetValue(stageType, out var type))
+        if (_stageTypes.TryGetValue(stageType, out var type))
         {
             return (IStage)ActivatorUtilities.CreateInstance(
                 _serviceProvider,
@@ -128,7 +114,7 @@ public class PlayProducer
         }
 
         // Type-based registration with DI
-        if (_serviceProvider != null && _actorTypes.TryGetValue(stageType, out var actorType))
+        if (_actorTypes.TryGetValue(stageType, out var actorType))
         {
             return (IActor)ActivatorUtilities.CreateInstance(
                 _serviceProvider,

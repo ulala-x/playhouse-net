@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 
@@ -6,11 +8,18 @@ namespace PlayHouse.Benchmark.SS.PlayServer;
 /// <summary>
 /// 벤치마크용 Actor 구현 (Server-to-Server 벤치마크)
 /// </summary>
-public class BenchmarkActor(IActorSender actorSender) : IActor
+public class BenchmarkActor : IActor
 {
     private static long _accountIdCounter;
+    private readonly ILogger<BenchmarkActor> _logger;
 
-    public IActorSender ActorSender { get; } = actorSender;
+    public BenchmarkActor(IActorSender actorSender, ILogger<BenchmarkActor>? logger = null)
+    {
+        ActorSender = actorSender;
+        _logger = logger ?? NullLogger<BenchmarkActor>.Instance;
+    }
+
+    public IActorSender ActorSender { get; }
 
     public Task OnCreate()
     {

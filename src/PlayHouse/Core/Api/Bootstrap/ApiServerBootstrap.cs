@@ -1,6 +1,7 @@
 #nullable enable
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Api.Bootstrap;
@@ -31,6 +32,8 @@ public sealed class ApiServerBootstrap
     private readonly ApiServerOption _options = new();
     private readonly List<Type> _controllerTypes = new();
     private Type? _systemControllerType;
+    private ILogger<ApiServer>? _logger;
+    private IServiceProvider? _serviceProvider;
 
     /// <summary>
     /// 서버 옵션을 설정합니다.
@@ -66,6 +69,28 @@ public sealed class ApiServerBootstrap
     }
 
     /// <summary>
+    /// Logger를 설정합니다.
+    /// </summary>
+    /// <param name="logger">ILogger&lt;ApiServer&gt; 인스턴스.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap UseLogger(ILogger<ApiServer> logger)
+    {
+        _logger = logger;
+        return this;
+    }
+
+    /// <summary>
+    /// ServiceProvider를 설정합니다.
+    /// </summary>
+    /// <param name="serviceProvider">IServiceProvider 인스턴스.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap UseServiceProvider(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+        return this;
+    }
+
+    /// <summary>
     /// API Server 인스턴스를 생성합니다.
     /// </summary>
     /// <returns>ApiServer 인스턴스.</returns>
@@ -73,23 +98,39 @@ public sealed class ApiServerBootstrap
     {
         _options.Validate();
 
-        // ServiceProvider 생성
-        var services = new ServiceCollection();
+        // ILogger 필수 검증
+        if (_logger == null)
+            throw new InvalidOperationException(
+                "ILogger is required. Use UseLogger(logger) to register.");
 
-        // API Controllers 등록
-        foreach (var controllerType in _controllerTypes)
+        // ServiceProvider 생성 또는 사용
+        var serviceProvider = _serviceProvider;
+        if (serviceProvider == null)
         {
-            services.AddTransient(typeof(IApiController), controllerType);
+            // 외부에서 제공되지 않았으면 내부에서 생성
+            var services = new ServiceCollection();
+
+            // Logging 설정 (Controllers가 ILogger를 주입받을 수 있도록)
+            services.AddLogging(builder =>
+            {
+                // NullLogger 사용 (기본값)
+            });
+
+            // API Controllers 등록
+            foreach (var controllerType in _controllerTypes)
+            {
+                services.AddTransient(typeof(IApiController), controllerType);
+            }
+
+            // SystemController 등록
+            if (_systemControllerType != null)
+            {
+                services.AddSingleton(typeof(ISystemController), _systemControllerType);
+            }
+
+            serviceProvider = services.BuildServiceProvider();
         }
 
-        // SystemController 등록
-        if (_systemControllerType != null)
-        {
-            services.AddSingleton(typeof(ISystemController), _systemControllerType);
-        }
-
-        var serviceProvider = services.BuildServiceProvider();
-
-        return new ApiServer(_options, _controllerTypes, _systemControllerType, serviceProvider);
+        return new ApiServer(_options, _controllerTypes, _systemControllerType, serviceProvider, _logger!);
     }
 }

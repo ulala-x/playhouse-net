@@ -11,21 +11,21 @@ namespace PlayHouse.Core.Shared.TaskPool;
 internal sealed class ComputeTaskPool : IDisposable
 {
     private readonly SemaphoreSlim _semaphore;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     /// <summary>
     /// ComputeTaskPool을 초기화합니다.
     /// </summary>
+    /// <param name="logger">로거</param>
     /// <param name="maxConcurrency">최대 동시 실행 수. 기본값은 CPU 코어 수.</param>
-    /// <param name="logger">로거 (선택사항)</param>
-    public ComputeTaskPool(int? maxConcurrency = null, ILogger? logger = null)
+    public ComputeTaskPool(ILogger logger, int? maxConcurrency = null)
     {
         var concurrency = maxConcurrency ?? Environment.ProcessorCount;
         _semaphore = new SemaphoreSlim(concurrency, concurrency);
         _logger = logger;
 
-        _logger?.LogInformation("ComputeTaskPool initialized (MaxConcurrency: {MaxConcurrency})", concurrency);
+        _logger.LogInformation("ComputeTaskPool initialized (MaxConcurrency: {MaxConcurrency})", concurrency);
     }
 
     /// <summary>
@@ -45,7 +45,7 @@ internal sealed class ComputeTaskPool : IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "[ComputeTaskPool] Error executing work item");
+                _logger.LogError(ex, "[ComputeTaskPool] Error executing work item");
             }
             finally
             {

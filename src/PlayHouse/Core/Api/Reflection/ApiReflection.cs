@@ -18,7 +18,7 @@ namespace PlayHouse.Core.Api.Reflection;
 internal sealed class ApiReflection
 {
     private readonly Dictionary<string, ApiHandler> _handlers = new();
-    private readonly ILogger<ApiReflection>? _logger;
+    private readonly ILogger<ApiReflection> _logger;
 
     /// <summary>
     /// Gets the number of registered handlers.
@@ -29,8 +29,8 @@ internal sealed class ApiReflection
     /// Initializes a new instance of the <see cref="ApiReflection"/> class.
     /// </summary>
     /// <param name="serviceProvider">The service provider for resolving controllers.</param>
-    /// <param name="logger">The logger instance (optional).</param>
-    public ApiReflection(IServiceProvider serviceProvider, ILogger<ApiReflection>? logger = null)
+    /// <param name="logger">The logger instance.</param>
+    public ApiReflection(IServiceProvider serviceProvider, ILogger<ApiReflection> logger)
     {
         _logger = logger;
 
@@ -42,18 +42,18 @@ internal sealed class ApiReflection
             {
                 var register = new HandlerRegister(_handlers);
                 controller.Handles(register);
-                _logger?.LogDebug("Registered API controller: {ControllerType}",
+                _logger.LogDebug("Registered API controller: {ControllerType}",
                     controller.GetType().Name);
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to register API controller: {ControllerType}",
+                _logger.LogError(ex, "Failed to register API controller: {ControllerType}",
                     controller.GetType().Name);
                 throw;
             }
         }
 
-        _logger?.LogInformation("ApiReflection initialized with {HandlerCount} handlers",
+        _logger.LogInformation("ApiReflection initialized with {HandlerCount} handlers",
             _handlers.Count);
     }
 
@@ -69,12 +69,12 @@ internal sealed class ApiReflection
 
         if (_handlers.TryGetValue(msgId, out var handler))
         {
-            _logger?.LogDebug("Invoking handler for message: {MsgId}", msgId);
+            _logger.LogDebug("Invoking handler for message: {MsgId}", msgId);
             await handler(packet, apiSender);
         }
         else
         {
-            _logger?.LogWarning("No handler registered for message: {MsgId}", msgId);
+            _logger.LogWarning("No handler registered for message: {MsgId}", msgId);
             throw new PlayException(ErrorCode.HandlerNotFound);
         }
     }

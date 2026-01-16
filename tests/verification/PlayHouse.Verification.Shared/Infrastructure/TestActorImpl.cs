@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
@@ -19,13 +20,16 @@ namespace PlayHouse.Verification.Shared.Infrastructure;
 /// </remarks>
 public class TestActorImpl : IActor
 {
+    private readonly ILogger<TestActorImpl> _logger;
     private static long _accountIdCounter;
 
     public IActorSender ActorSender { get; }
 
-    public TestActorImpl(IActorSender actorSender)
+    public TestActorImpl(IActorSender actorSender, ILogger<TestActorImpl>? logger = null)
     {
         ActorSender = actorSender;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TestActorImpl>.Instance;
+        _logger.LogDebug("TestActorImpl created");
     }
 
     public Task OnCreate()
@@ -43,6 +47,8 @@ public class TestActorImpl : IActor
         // 인증 시 AccountId 설정 (필수)
         var accountId = Interlocked.Increment(ref _accountIdCounter);
         ActorSender.AccountId = accountId.ToString();
+
+        _logger.LogInformation("OnAuthenticate called for AccountId={AccountId}", ActorSender.AccountId);
 
         // PlayServer가 자동으로 AuthenticateReply를 전송하므로
         // 여기서는 AccountId만 설정하고 true를 반환하면 됨

@@ -24,7 +24,7 @@ public sealed class WebSocketTransportServer : ITransportServer
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
     private readonly ConcurrentDictionary<long, WebSocketTransportSession> _sessions = new();
     private readonly CancellationTokenSource _cts = new();
@@ -53,7 +53,7 @@ public sealed class WebSocketTransportServer : ITransportServer
         TransportOptions options,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
-        ILogger? logger = null)
+        ILogger logger)
     {
         _path = path;
         _options = options;
@@ -65,7 +65,7 @@ public sealed class WebSocketTransportServer : ITransportServer
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         _started = true;
-        _logger?.LogInformation("WebSocket server started on path {Path}", _path);
+        _logger.LogInformation("WebSocket server started on path {Path}", _path);
         return Task.CompletedTask;
     }
 
@@ -73,7 +73,7 @@ public sealed class WebSocketTransportServer : ITransportServer
     {
         if (_disposed) return;
 
-        _logger?.LogInformation("Stopping WebSocket server on path {Path}", _path);
+        _logger.LogInformation("Stopping WebSocket server on path {Path}", _path);
 
         _cts.Cancel();
         await DisconnectAllSessionsAsync();
@@ -103,7 +103,7 @@ public sealed class WebSocketTransportServer : ITransportServer
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
         var sessionId = Interlocked.Increment(ref _nextSessionId);
 
-        _logger?.LogDebug("WebSocket connection accepted: session {SessionId} from {RemoteIp}",
+        _logger.LogDebug("WebSocket connection accepted: session {SessionId} from {RemoteIp}",
             sessionId, context.Connection.RemoteIpAddress);
 
         var session = new WebSocketTransportSession(

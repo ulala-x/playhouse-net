@@ -2,6 +2,8 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
@@ -67,7 +69,7 @@ public class ApiReflectionTests
         var serviceProvider = CreateServiceProvider(controller: controller);
 
         // When (행동)
-        var reflection = new ApiReflection(serviceProvider);
+        var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         // Then (결과)
         reflection.HandlerCount.Should().Be(2, "TestApiController에서 2개의 핸들러가 등록되어야 함");
@@ -79,7 +81,7 @@ public class ApiReflectionTests
         // Given (전제조건)
         var controller = new TestApiController();
         var serviceProvider = CreateServiceProvider(controller: controller);
-        var reflection = new ApiReflection(serviceProvider);
+        var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         var packet = CPacket.Empty("TestMessage");
         var sender = Substitute.For<IApiSender>();
@@ -99,7 +101,7 @@ public class ApiReflectionTests
         // Given (전제조건)
         var controller = new TestApiController();
         var serviceProvider = CreateServiceProvider(controller: controller);
-        var reflection = new ApiReflection(serviceProvider);
+        var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         var packet = CPacket.Empty("UnknownMessage");
         var sender = Substitute.For<IApiSender>();
@@ -118,7 +120,7 @@ public class ApiReflectionTests
         // Given (전제조건)
         var controller = new TestApiController();
         var serviceProvider = CreateServiceProvider(controller: controller);
-        var reflection = new ApiReflection(serviceProvider);
+        var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         // When (행동)
         var result = reflection.HasHandler("TestMessage");
@@ -133,7 +135,7 @@ public class ApiReflectionTests
         // Given (전제조건)
         var controller = new TestApiController();
         var serviceProvider = CreateServiceProvider(controller: controller);
-        var reflection = new ApiReflection(serviceProvider);
+        var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         // When (행동)
         var result = reflection.HasHandler("NonExistentMessage");
@@ -148,7 +150,7 @@ public class ApiReflectionTests
         // Given (전제조건)
         var controller = new TestApiController();
         var serviceProvider = CreateServiceProvider(controller: controller);
-        var reflection = new ApiReflection(serviceProvider);
+        var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         // When (행동)
         var ids = reflection.GetRegisteredMessageIds();

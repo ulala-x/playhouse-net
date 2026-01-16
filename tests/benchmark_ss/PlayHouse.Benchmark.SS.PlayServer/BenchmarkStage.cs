@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Google.Protobuf;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Benchmark.SS.Shared.Proto;
@@ -8,10 +10,18 @@ using PlayHouse.Core.Shared;
 
 namespace PlayHouse.Benchmark.SS.PlayServer;
 
-public class BenchmarkStage(IStageSender stageSender) : IStage
+public class BenchmarkStage : IStage
 {
-    public IStageSender StageSender { get; } = stageSender;
+    private readonly ILogger<BenchmarkStage> _logger;
     private readonly ConcurrentQueue<long> _latencyQueue = new();
+
+    public BenchmarkStage(IStageSender stageSender, ILogger<BenchmarkStage>? logger = null)
+    {
+        StageSender = stageSender;
+        _logger = logger ?? NullLogger<BenchmarkStage>.Instance;
+    }
+
+    public IStageSender StageSender { get; }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet) => 
         Task.FromResult<(bool, IPacket)>((true, CPacket.Empty("CreateStageReply")));

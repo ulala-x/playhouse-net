@@ -2,6 +2,8 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
@@ -10,7 +12,6 @@ using PlayHouse.Core.Messaging;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
-using PlayHouse.Core.Shared.TaskPool;
 using Xunit;
 
 namespace PlayHouse.Tests.Unit.Core.Api;
@@ -50,7 +51,6 @@ public class ApiDispatcherTests : IDisposable
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly TestApiController _apiController;
-    private readonly GlobalTaskPool _taskPool;
     private readonly ApiDispatcher _dispatcher;
 
     public ApiDispatcherTests()
@@ -58,7 +58,6 @@ public class ApiDispatcherTests : IDisposable
         _communicator = Substitute.For<IClientCommunicator>();
         _requestCache = new RequestCache();
         _apiController = new TestApiController();
-        _taskPool = new GlobalTaskPool(2, 4);
 
         var services = new ServiceCollection();
         services.AddSingleton<IApiController>(_apiController);
@@ -70,13 +69,12 @@ public class ApiDispatcherTests : IDisposable
             _requestCache,
             _communicator,
             serviceProvider,
-            _taskPool);
+            NullLogger<ApiDispatcher>.Instance);
     }
 
     public void Dispose()
     {
         _dispatcher.Dispose();
-        _taskPool.Dispose();
     }
 
     [Fact(DisplayName = "HandlerCount - 등록된 핸들러 수를 반환한다")]
@@ -149,7 +147,7 @@ public class ApiDispatcherTests : IDisposable
             _requestCache,
             _communicator,
             serviceProvider,
-            _taskPool);
+            NullLogger<ApiDispatcher>.Instance);
 
         const int messageCount = 5;
         var packets = Enumerable.Range(0, messageCount)
@@ -179,7 +177,7 @@ public class ApiDispatcherTests : IDisposable
     {
         // Given (전제조건)
         var services = new ServiceCollection().BuildServiceProvider();
-        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, services, _taskPool);
+        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, services, NullLogger<ApiDispatcher>.Instance);
 
         // When (행동)
         var action = () =>
