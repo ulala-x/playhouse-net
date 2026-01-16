@@ -22,7 +22,7 @@ public sealed class TcpTransportServer : ITransportServer
     private readonly SslOptions? _sslOptions;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
     private readonly ConcurrentDictionary<long, TcpTransportSession> _sessions = new();
     private readonly TcpListener _listener;
@@ -55,7 +55,7 @@ public sealed class TcpTransportServer : ITransportServer
         SslOptions? sslOptions,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
-        ILogger? logger = null)
+        ILogger logger)
     {
         _endpoint = endpoint;
         _options = options;
@@ -71,7 +71,7 @@ public sealed class TcpTransportServer : ITransportServer
         _listener.Start();
 
         var protocol = _sslOptions?.Enabled == true ? "TCP+TLS" : "TCP";
-        _logger?.LogInformation("{Protocol} server started on {Endpoint}", protocol, _endpoint);
+        _logger.LogInformation("{Protocol} server started on {Endpoint}", protocol, _endpoint);
 
         _acceptTask = AcceptLoopAsync(_cts.Token);
 
@@ -82,7 +82,7 @@ public sealed class TcpTransportServer : ITransportServer
     {
         if (_disposed) return;
 
-        _logger?.LogInformation("Stopping TCP server on {Endpoint}", _endpoint);
+        _logger.LogInformation("Stopping TCP server on {Endpoint}", _endpoint);
 
         _listener.Stop();
         _cts.Cancel();
@@ -150,7 +150,7 @@ public sealed class TcpTransportServer : ITransportServer
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in accept loop");
+            _logger.LogError(ex, "Error in accept loop");
         }
     }
 
@@ -173,7 +173,7 @@ public sealed class TcpTransportServer : ITransportServer
 
                 stream = sslStream;
 
-                _logger?.LogDebug("SSL handshake completed for session {SessionId}", sessionId);
+                _logger.LogDebug("SSL handshake completed for session {SessionId}", sessionId);
             }
 
             var session = new TcpTransportSession(
@@ -188,7 +188,7 @@ public sealed class TcpTransportServer : ITransportServer
 
             if (_sessions.TryAdd(sessionId, session))
             {
-                _logger?.LogDebug("TCP session {SessionId} accepted", sessionId);
+                _logger.LogDebug("TCP session {SessionId} accepted", sessionId);
                 // Start I/O tasks AFTER registering to avoid race condition
                 // where messages are processed before session is findable
                 session.Start();
@@ -200,13 +200,13 @@ public sealed class TcpTransportServer : ITransportServer
         }
         catch (AuthenticationException ex)
         {
-            _logger?.LogWarning(ex, "SSL authentication failed for session {SessionId}", sessionId);
+            _logger.LogWarning(ex, "SSL authentication failed for session {SessionId}", sessionId);
             stream.Dispose();
             socket.Dispose();
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error handling client {SessionId}", sessionId);
+            _logger.LogError(ex, "Error handling client {SessionId}", sessionId);
             stream.Dispose();
             socket.Dispose();
         }

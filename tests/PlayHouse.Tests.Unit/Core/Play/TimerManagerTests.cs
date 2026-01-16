@@ -1,6 +1,8 @@
 #nullable enable
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play;
 using PlayHouse.Runtime.Proto;
@@ -21,13 +23,14 @@ public class TimerManagerTests : IDisposable
 
     public TimerManagerTests()
     {
+        var logger = Substitute.For<ILogger>();
         _timerManager = new TimerManager((stageId, timerId, callback) =>
         {
             lock (_dispatchedTimers)
             {
                 _dispatchedTimers.Add((stageId, timerId, callback));
             }
-        });
+        }, logger);
     }
 
     public void Dispose()
@@ -213,7 +216,8 @@ public class TimerManagerTests : IDisposable
     public void Dispose_ClearsAllTimers()
     {
         // Given (전제조건)
-        var manager = new TimerManager((_, _, _) => { });
+        var logger = Substitute.For<ILogger>();
+        var manager = new TimerManager((_, _, _) => { }, logger);
         var packet1 = CreateTimerPacket(1, 100, TimerMsg.Types.Type.Repeat, 1000, 1000, 0);
         var packet2 = CreateTimerPacket(1, 101, TimerMsg.Types.Type.Repeat, 1000, 1000, 0);
 
@@ -231,7 +235,8 @@ public class TimerManagerTests : IDisposable
     public void ProcessTimer_AfterDispose_IsIgnored()
     {
         // Given (전제조건)
-        var manager = new TimerManager((_, _, _) => { });
+        var logger = Substitute.For<ILogger>();
+        var manager = new TimerManager((_, _, _) => { }, logger);
         manager.Dispose();
 
         var packet = CreateTimerPacket(1, 100, TimerMsg.Types.Type.Repeat, 1000, 1000, 0);

@@ -21,7 +21,7 @@ internal sealed class TimerManager : IDisposable
 {
     private readonly ConcurrentDictionary<long, TimerEntry> _timers = new();
     private readonly Action<long, long, TimerCallbackDelegate> _dispatchCallback;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     /// <summary>
@@ -31,8 +31,8 @@ internal sealed class TimerManager : IDisposable
     /// Callback to dispatch timer events to Stage event loops.
     /// Parameters: stageId, timerId, callback
     /// </param>
-    /// <param name="logger">Optional logger.</param>
-    public TimerManager(Action<long, long, TimerCallbackDelegate> dispatchCallback, ILogger? logger = null)
+    /// <param name="logger">Logger instance.</param>
+    public TimerManager(Action<long, long, TimerCallbackDelegate> dispatchCallback, ILogger logger)
     {
         _dispatchCallback = dispatchCallback;
         _logger = logger;
@@ -81,7 +81,7 @@ internal sealed class TimerManager : IDisposable
         if (!_timers.TryAdd(timerPacket.TimerId, entry))
         {
             timer.Dispose();
-            _logger?.LogWarning("Timer {TimerId} already exists", timerPacket.TimerId);
+            _logger.LogWarning("Timer {TimerId} already exists", timerPacket.TimerId);
         }
     }
 
@@ -106,7 +106,7 @@ internal sealed class TimerManager : IDisposable
         if (!_timers.TryAdd(timerPacket.TimerId, entry))
         {
             timer.Dispose();
-            _logger?.LogWarning("Timer {TimerId} already exists", timerPacket.TimerId);
+            _logger.LogWarning("Timer {TimerId} already exists", timerPacket.TimerId);
         }
     }
 

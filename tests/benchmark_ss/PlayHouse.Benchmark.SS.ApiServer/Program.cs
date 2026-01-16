@@ -144,10 +144,23 @@ try
 
     // ApiServer 구성
     var services = new ServiceCollection();
+
+    // Serilog LoggerFactory 생성
+    var loggerFactory = LoggerFactory.Create(builder =>
+    {
+        builder.AddSerilog(Log.Logger);
+    });
+
+    services.AddSingleton<ILoggerFactory>(loggerFactory);
+    services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
     services.AddLogging(builder =>
     {
         builder.AddSerilog(Log.Logger);
     });
+
+    // Infrastructure 클래스를 위한 Logger 등록
+    services.AddSingleton<ILogger<BenchmarkApiController>>(
+        sp => loggerFactory.CreateLogger<BenchmarkApiController>());
 
     services.AddApiServer(options =>
     {

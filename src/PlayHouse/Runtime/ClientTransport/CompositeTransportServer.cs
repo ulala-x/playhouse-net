@@ -16,7 +16,7 @@ namespace PlayHouse.Runtime.ClientTransport;
 public sealed class CompositeTransportServer : ITransportServer
 {
     private readonly List<ITransportServer> _servers = new();
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     public int SessionCount => _servers.Sum(s => s.SessionCount);
@@ -25,7 +25,7 @@ public sealed class CompositeTransportServer : ITransportServer
     /// Creates a new composite transport server.
     /// </summary>
     /// <param name="logger">Logger instance.</param>
-    public CompositeTransportServer(ILogger? logger = null)
+    public CompositeTransportServer(ILogger logger)
     {
         _logger = logger;
     }
@@ -55,7 +55,7 @@ public sealed class CompositeTransportServer : ITransportServer
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        _logger?.LogInformation("Starting composite transport server with {Count} servers", _servers.Count);
+        _logger.LogInformation("Starting composite transport server with {Count} servers", _servers.Count);
 
         foreach (var server in _servers)
         {
@@ -65,7 +65,7 @@ public sealed class CompositeTransportServer : ITransportServer
 
     public async Task StopAsync()
     {
-        _logger?.LogInformation("Stopping composite transport server");
+        _logger.LogInformation("Stopping composite transport server");
 
         foreach (var server in _servers)
         {

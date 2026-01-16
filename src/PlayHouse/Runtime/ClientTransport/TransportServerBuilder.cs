@@ -18,7 +18,7 @@ public sealed class TransportServerBuilder
 {
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
     private readonly List<Action<CompositeTransportServer>> _serverFactories = new();
     private TransportOptions _options = new();
@@ -32,7 +32,7 @@ public sealed class TransportServerBuilder
     public TransportServerBuilder(
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
-        ILogger? logger = null)
+        ILogger logger)
     {
         _onMessage = onMessage;
         _onDisconnect = onDisconnect;

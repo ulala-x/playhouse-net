@@ -145,10 +145,22 @@ try
 
     // PlayServer 구성
     var services = new ServiceCollection();
+
+    // Serilog LoggerFactory 생성
+    var loggerFactory = new SerilogLoggerFactory(Log.Logger);
+
+    services.AddSingleton<ILoggerFactory>(loggerFactory);
+    services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
     services.AddLogging(builder =>
     {
         builder.AddSerilog(Log.Logger);
     });
+
+    // Infrastructure 클래스를 위한 Logger 등록
+    services.AddSingleton<ILogger<BenchmarkActor>>(
+        sp => loggerFactory.CreateLogger<BenchmarkActor>());
+    services.AddSingleton<ILogger<BenchmarkStage>>(
+        sp => loggerFactory.CreateLogger<BenchmarkStage>());
 
     services.AddPlayServer(options =>
     {

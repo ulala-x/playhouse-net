@@ -11,20 +11,20 @@ namespace PlayHouse.Core.Shared.TaskPool;
 internal sealed class IoTaskPool : IDisposable
 {
     private readonly SemaphoreSlim _semaphore;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private bool _disposed;
 
     /// <summary>
     /// IoTaskPool을 초기화합니다.
     /// </summary>
+    /// <param name="logger">로거</param>
     /// <param name="maxConcurrency">최대 동시 실행 수. 기본값은 100.</param>
-    /// <param name="logger">로거 (선택사항)</param>
-    public IoTaskPool(int maxConcurrency = 100, ILogger? logger = null)
+    public IoTaskPool(ILogger logger, int maxConcurrency = 100)
     {
         _semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
         _logger = logger;
 
-        _logger?.LogInformation("IoTaskPool initialized (MaxConcurrency: {MaxConcurrency})", maxConcurrency);
+        _logger.LogInformation("IoTaskPool initialized (MaxConcurrency: {MaxConcurrency})", maxConcurrency);
     }
 
     /// <summary>
@@ -44,7 +44,7 @@ internal sealed class IoTaskPool : IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "[IoTaskPool] Error executing work item");
+                _logger.LogError(ex, "[IoTaskPool] Error executing work item");
             }
             finally
             {

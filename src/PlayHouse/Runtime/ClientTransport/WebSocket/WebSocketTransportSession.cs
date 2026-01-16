@@ -73,7 +73,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts;
     private readonly Task _receiveTask;
     private readonly Channel<SendItem> _sendChannel;
@@ -96,7 +96,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
         TransportOptions options,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
-        ILogger? logger,
+        ILogger logger,
         CancellationToken externalCt)
     {
         SessionId = sessionId;
@@ -116,7 +116,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
         _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
         _sendTask = Task.Run(() => SendLoopAsync(_cts.Token));
 
-        _logger?.LogDebug("WebSocket session {SessionId} started", sessionId);
+        _logger.LogDebug("WebSocket session {SessionId} started", sessionId);
     }
 
     public async ValueTask SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
@@ -128,7 +128,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
+            _logger.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
             await DisconnectAsync();
         }
     }
@@ -157,7 +157,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
                     }
                     catch (Exception ex)
                     {
-                        _logger?.LogError(ex, "Error sending WebSocket data on session {SessionId}", SessionId);
+                        _logger.LogError(ex, "Error sending WebSocket data on session {SessionId}", SessionId);
                         break;
                     }
                     finally { MessagePool.Return(item.Buffer); }
@@ -229,12 +229,12 @@ internal sealed class WebSocketTransportSession : ITransportSession
                 if (pooledBuffer.Length > 0)
                 {
                     try { ParseAndDispatch(pooledBuffer.GetMemory()); }
-                    catch (Exception ex) { _logger?.LogError(ex, "Error parsing WebSocket message on session {SessionId}", SessionId); }
+                    catch (Exception ex) { _logger.LogError(ex, "Error parsing WebSocket message on session {SessionId}", SessionId); }
                 }
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (!_disposed) _logger?.LogError(ex, "Error in receive loop for WebSocket session {SessionId}", SessionId); }
+        catch (Exception ex) { if (!_disposed) _logger.LogError(ex, "Error in receive loop for WebSocket session {SessionId}", SessionId); }
         finally { MessagePool.Return(buffer); await DisconnectAsync(); }
     }
 

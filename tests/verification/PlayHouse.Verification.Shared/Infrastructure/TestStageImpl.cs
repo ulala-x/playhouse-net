@@ -1,6 +1,7 @@
 #nullable enable
 
 using Google.Protobuf;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
@@ -21,11 +22,14 @@ namespace PlayHouse.Verification.Shared.Infrastructure;
 /// </remarks>
 public class TestStageImpl : IStage
 {
+    private readonly ILogger<TestStageImpl> _logger;
     public IStageSender StageSender { get; }
 
-    public TestStageImpl(IStageSender stageSender)
+    public TestStageImpl(IStageSender stageSender, ILogger<TestStageImpl>? logger = null)
     {
         StageSender = stageSender;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TestStageImpl>.Instance;
+        _logger.LogDebug("TestStageImpl created for StageId={StageId}", stageSender.StageId);
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)

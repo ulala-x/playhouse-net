@@ -8,7 +8,6 @@ using PlayHouse.Abstractions.System;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
-using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ServerMesh;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Discovery;
@@ -27,11 +26,11 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     private readonly Type? _systemControllerType;
     private readonly ServerConfig _serverConfig;
     private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<ApiServer> _logger;
 
     private PlayCommunicator? _communicator;
     private ApiDispatcher? _dispatcher;
     private RequestCache? _requestCache;
-    private GlobalTaskPool? _taskPool;
     private ServerAddressResolver? _addressResolver;
     private CancellationTokenSource? _cts;
 
@@ -60,12 +59,14 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         ApiServerOption options,
         List<Type> controllerTypes,
         Type? systemControllerType,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        ILogger<ApiServer> logger)
     {
         _options = options;
         _controllerTypes = controllerTypes;
         _systemControllerType = systemControllerType;
         _serviceProvider = serviceProvider;
+        _logger = logger;
 
         _serverConfig = new ServerConfig(
             options.ServiceId,
@@ -92,9 +93,9 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         // 자기 자신에게 연결 (자기 자신에게 메시지를 보내기 위해 필요)
         _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
-        // GlobalTaskPool 생성
-        var loggerFactory = _serviceProvider.GetService(typeof(ILoggerFactory)) as ILoggerFactory;
-        _taskPool = new GlobalTaskPool(_options.MinTaskPoolSize, _options.MaxTaskPoolSize, loggerFactory?.CreateLogger<GlobalTaskPool>());
+        // ApiDispatcher용 Logger 생성
+        var loggerFactory = LoggerFactory.Create(builder => { });
+        var dispatcherLogger = loggerFactory.CreateLogger<ApiDispatcher>();
 
         // ApiDispatcher 생성 (외부 ServiceProvider 사용)
         _dispatcher = new ApiDispatcher(
@@ -103,7 +104,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _requestCache,
             new CommunicatorAdapter(_communicator),
             _serviceProvider,
-            _taskPool);
+            dispatcherLogger);
 
         // ApiSender 생성
         ApiSender = new ApiSender(
@@ -153,7 +154,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _communicator?.Stop();
         _dispatcher?.Dispose();
         _requestCache?.CancelAll();
-        _taskPool?.Dispose();
 
         _cts?.Dispose();
         _cts = null;

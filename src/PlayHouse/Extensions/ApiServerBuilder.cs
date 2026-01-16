@@ -1,6 +1,7 @@
 #nullable enable
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
@@ -50,7 +51,8 @@ internal sealed class ApiServerBuilder : IApiServerBuilder
         // ApiServer 싱글턴 등록
         _services.AddSingleton<ApiServer>(sp =>
         {
-            return new ApiServer(_options, _controllerTypes, _systemControllerType, sp);
+            var logger = sp.GetRequiredService<ILogger<ApiServer>>();
+            return new ApiServer(_options, _controllerTypes, _systemControllerType, sp, logger);
         });
 
         // IApiServerControl로도 접근 가능하도록 등록

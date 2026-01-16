@@ -15,9 +15,9 @@ namespace PlayHouse.Core.Play.Base;
 internal sealed class BaseStageCmdHandler
 {
     private readonly Dictionary<string, IBaseStageCmd> _commands = new();
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
-    public BaseStageCmdHandler(ILogger? logger = null)
+    public BaseStageCmdHandler(ILogger logger)
     {
         _logger = logger;
     }
@@ -47,7 +47,7 @@ internal sealed class BaseStageCmdHandler
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error executing command {MsgId}", msgId);
+                _logger.LogError(ex, "Error executing command {MsgId}", msgId);
                 if (packet.MsgSeq != 0)
                 {
                     baseStage.StageSender.SetCurrentHeader(packet.Header);
@@ -57,7 +57,7 @@ internal sealed class BaseStageCmdHandler
             }
         }
 
-        _logger?.LogWarning("Command not registered: {MsgId}", msgId);
+        _logger.LogWarning("Command not registered: {MsgId}", msgId);
         return false;
     }
 

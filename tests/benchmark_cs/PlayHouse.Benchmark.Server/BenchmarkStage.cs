@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
@@ -8,9 +10,17 @@ namespace PlayHouse.Benchmark.Server;
 /// <summary>
 /// 벤치마크용 Stage 구현
 /// </summary>
-public class BenchmarkStage(IStageSender stageSender) : IStage
+public class BenchmarkStage : IStage
 {
-    public IStageSender StageSender { get; } = stageSender;
+    private readonly ILogger<BenchmarkStage> _logger;
+
+    public BenchmarkStage(IStageSender stageSender, ILogger<BenchmarkStage>? logger = null)
+    {
+        StageSender = stageSender;
+        _logger = logger ?? NullLogger<BenchmarkStage>.Instance;
+    }
+
+    public IStageSender StageSender { get; }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     {

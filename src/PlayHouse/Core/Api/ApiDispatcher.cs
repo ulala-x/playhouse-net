@@ -1,11 +1,8 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.ObjectPool;
 using PlayHouse.Abstractions;
 using PlayHouse.Core.Api.Reflection;
 using PlayHouse.Core.Messaging;
-using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
-using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.ServerMesh.Message;
 
@@ -26,8 +23,7 @@ internal sealed class ApiDispatcher : IDisposable
     private readonly RequestCache _requestCache;
     private readonly IClientCommunicator _communicator;
     private readonly ApiReflection _apiReflection;
-    private readonly GlobalTaskPool _taskPool;
-    private readonly ILogger<ApiDispatcher>? _logger;
+    private readonly ILogger<ApiDispatcher> _logger;
     private bool _disposed;
 
     /// <summary>
@@ -38,7 +34,6 @@ internal sealed class ApiDispatcher : IDisposable
     /// <param name="requestCache">The request cache for tracking pending requests.</param>
     /// <param name="communicator">The communicator for sending messages.</param>
     /// <param name="serviceProvider">The service provider for resolving controllers.</param>
-    /// <param name="taskPool">The shared worker task pool.</param>
     /// <param name="logger">The logger instance (optional).</param>
     public ApiDispatcher(
         ushort serviceId,
@@ -46,72 +41,31 @@ internal sealed class ApiDispatcher : IDisposable
         RequestCache requestCache,
         IClientCommunicator communicator,
         IServiceProvider serviceProvider,
-        GlobalTaskPool taskPool,
-        ILogger<ApiDispatcher>? logger = null)
+        ILogger<ApiDispatcher> logger)
     {
         _serviceId = serviceId;
         _nid = nid;
         _requestCache = requestCache;
         _communicator = communicator;
-        _taskPool = taskPool;
         _logger = logger;
 
-        var reflectionLogger = logger != null
-            ? LoggerFactory.Create(b => { }).CreateLogger<ApiReflection>()
-            : null;
+        // Create logger for ApiReflection from the same factory as ApiDispatcher
+        var reflectionLogger = LoggerFactory.Create(b => { }).CreateLogger<ApiReflection>();
         _apiReflection = new ApiReflection(serviceProvider, reflectionLogger);
     }
 
     /// <summary>
-    /// Posts a packet for asynchronous processing using the shared task pool.
+    /// Posts a packet for asynchronous processing using ThreadPool.
     /// </summary>
     /// <param name="packet">The packet to process.</param>
     public void Post(RoutePacket packet)
     {
-        // Use pooled work item to avoid allocations
-        var workItem = ApiWorkItem.Create(this, packet);
-        _taskPool.Post(workItem);
-    }
-
-    /// <summary>
-    /// Internal work item for API dispatching.
-    /// </summary>
-    private sealed class ApiWorkItem : ITaskPoolWorkItem, IDisposable
-    {
-        private static readonly ObjectPool<ApiWorkItem> _pool = 
-            new DefaultObjectPool<ApiWorkItem>(new DefaultPooledObjectPolicy<ApiWorkItem>());
-
-        private ApiDispatcher _dispatcher = null!;
-        private RoutePacket _packet = null!;
-
-        public BaseStage? Stage => null;
-
-        public static ApiWorkItem Create(ApiDispatcher dispatcher, RoutePacket packet)
+        // Use ThreadPool for efficient asynchronous processing
+        ThreadPool.QueueUserWorkItem(static state =>
         {
-            var item = _pool.Get();
-            item._dispatcher = dispatcher;
-            item._packet = packet;
-            return item;
-        }
-
-        public Task ExecuteAsync()
-        {
-            try
-            {
-                return _dispatcher.DispatchAsync(_packet);
-            }
-            finally
-            {
-                Dispose();
-            }
-        }
-
-        public void Dispose()
-        {
-            _dispatcher = null!;
-            _packet = null!;
-            _pool.Return(this);
-        }
+            var (dispatcher, routePacket) = ((ApiDispatcher, RoutePacket))state!;
+            _ = dispatcher.DispatchAsync(routePacket);
+        }, (this, packet));
     }
 
     [ThreadStatic]
@@ -140,7 +94,7 @@ internal sealed class ApiDispatcher : IDisposable
         }
         catch (PlayException e)
         {
-            _logger?.LogError(e, "PlayException occurred - ErrorCode: {ErrorCode}, MsgId: {MsgId}",
+            _logger.LogError(e, "PlayException occurred - ErrorCode: {ErrorCode}, MsgId: {MsgId}",
                 e.ErrorCode, header.MsgId);
 
             if (header.MsgSeq > 0)
@@ -150,7 +104,7 @@ internal sealed class ApiDispatcher : IDisposable
         }
         catch (Exception e)
         {
-            _logger?.LogError(e, "Unexpected exception - msgId: {MsgId}", header.MsgId);
+            _logger.LogError(e, "Unexpected exception - msgId: {MsgId}", header.MsgId);
 
             if (header.MsgSeq > 0)
             {

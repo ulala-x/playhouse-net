@@ -1,6 +1,8 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Runtime.ServerMesh.Discovery;
 
@@ -13,6 +15,12 @@ public class BenchmarkSystemController : ISystemController
 {
     private static readonly ConcurrentDictionary<string, ServerInfoEntry> Servers = new();
     private readonly TimeSpan _ttl = TimeSpan.FromSeconds(30);
+    private readonly ILogger<BenchmarkSystemController> _logger;
+
+    public BenchmarkSystemController(ILogger<BenchmarkSystemController>? logger = null)
+    {
+        _logger = logger ?? NullLogger<BenchmarkSystemController>.Instance;
+    }
 
     public Task<IReadOnlyList<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)
     {

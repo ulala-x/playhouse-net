@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Shared;
@@ -19,6 +20,8 @@ namespace PlayHouse.Verification.Shared.Infrastructure;
 /// </remarks>
 public class TestApiController : IApiController
 {
+    private readonly ILogger<TestApiController> _logger;
+
     /// <summary>
     /// 벤치마크용 페이로드 사전 할당 (메모리 할당 오염 방지).
     /// </summary>
@@ -29,6 +32,11 @@ public class TestApiController : IApiController
         { 131072, CreatePayload(131072) },
         { 262144, CreatePayload(262144) }
     };
+
+    public TestApiController()
+    {
+        _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<TestApiController>.Instance;
+    }
 
     private static Google.Protobuf.ByteString CreatePayload(int size)
     {
@@ -42,6 +50,7 @@ public class TestApiController : IApiController
 
     public void Handles(IHandlerRegister register)
     {
+        _logger.LogDebug("Registering API handlers");
         register.Add(typeof(ApiEchoRequest).Name!, HandleApiEcho);
         register.Add(typeof(ApiDirectEchoRequest).Name!, HandleApiDirectEcho);
         register.Add(typeof(TriggerCreateStageRequest).Name!, HandleCreateStage);
