@@ -109,8 +109,8 @@ public class StageToStageVerifier : VerifierBase
         Assert.IsTrue(reply.Success, "SendToStage should succeed");
 
         // Cleanup
-        _connectorA.Disconnect();
-        _connectorB.Disconnect();
+        _connectorA!.Disconnect();
+        _connectorB!.Disconnect();
         await Task.Delay(100);
     }
 
@@ -142,8 +142,8 @@ public class StageToStageVerifier : VerifierBase
         Assert.IsTrue(reply.Response.Contains("Query from Stage A (same server)"), "Response should contain the query");
 
         // Cleanup
-        _connectorA.Disconnect();
-        _connectorB.Disconnect();
+        _connectorA!.Disconnect();
+        _connectorB!.Disconnect();
         await Task.Delay(100);
     }
 
@@ -194,8 +194,8 @@ public class StageToStageVerifier : VerifierBase
             "Response should contain the callback query");
 
         // Cleanup
-        _connectorA.Disconnect();
-        _connectorB.Disconnect();
+        _connectorA!.Disconnect();
+        _connectorB!.Disconnect();
         await Task.Delay(100);
     }
 
@@ -229,8 +229,8 @@ public class StageToStageVerifier : VerifierBase
         Assert.IsTrue(reply.Success, "Message delivery should succeed");
 
         // Cleanup
-        _connectorA.Disconnect();
-        _connectorB.Disconnect();
+        _connectorA!.Disconnect();
+        _connectorB!.Disconnect();
         await Task.Delay(100);
     }
 
@@ -262,8 +262,8 @@ public class StageToStageVerifier : VerifierBase
         Assert.IsTrue(reply.Response.Contains("Response test query"), "Response should contain query");
 
         // Cleanup
-        _connectorA.Disconnect();
-        _connectorB.Disconnect();
+        _connectorA!.Disconnect();
+        _connectorB!.Disconnect();
         await Task.Delay(100);
     }
 
