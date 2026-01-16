@@ -21,6 +21,7 @@ namespace PlayHouse.Core.Api.Bootstrap;
 /// </summary>
 public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicateListener
 {
+    
     private readonly ApiServerOption _options;
     private readonly List<Type> _controllerTypes;
     private readonly Type? _systemControllerType;

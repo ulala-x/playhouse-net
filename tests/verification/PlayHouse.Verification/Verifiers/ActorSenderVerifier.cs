@@ -143,7 +143,7 @@ public class ActorSenderVerifier : VerifierBase
 
         // Then - E2E 검증: 에러 응답 검증
         Assert.NotNull(caughtException, "Should throw ConnectorException");
-        Assert.Equals(500, caughtException.ErrorCode, "ErrorCode should be 500");
+        Assert.Equals(500, caughtException!.ErrorCode, "ErrorCode should be 500");
 
         // Cleanup
         Connector.Disconnect();
