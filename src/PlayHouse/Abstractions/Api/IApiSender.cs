@@ -8,7 +8,6 @@ namespace PlayHouse.Abstractions.Api;
 /// <remarks>
 /// IApiSender extends ISender with API-specific operations:
 /// - Stage creation and management
-/// - Client information access
 /// - Authentication context
 ///
 /// This interface is injected into API handler methods.
@@ -31,14 +30,9 @@ public interface IApiSender : ISender
     string AccountId { get; set; }
 
     /// <summary>
-    /// Gets the session server NID from the current request.
+    /// Gets the source server NID from the current request.
     /// </summary>
-    string SessionNid { get; }
-
-    /// <summary>
-    /// Gets the session ID from the current request.
-    /// </summary>
-    long Sid { get; }
+    string FromNid { get; }
 
     #region Stage Creation
 
@@ -71,26 +65,6 @@ public interface IApiSender : ISender
         long stageId,
         IPacket createPacket,
         IPacket joinPacket);
-
-
-
-    #endregion
-
-    #region Client Communication
-
-    /// <summary>
-    /// Sends a packet to the client via session server.
-    /// </summary>
-    /// <param name="packet">Packet to send to the client.</param>
-    void SendToClient(IPacket packet);
-
-    /// <summary>
-    /// Sends a packet to a specific client.
-    /// </summary>
-    /// <param name="sessionNid">Session server NID.</param>
-    /// <param name="sid">Session ID.</param>
-    /// <param name="packet">Packet to send.</param>
-    void SendToClient(string sessionNid, long sid, IPacket packet);
 
     #endregion
 }

@@ -47,7 +47,7 @@ public class BenchmarkApiController : IApiController
         }
         else if (sender.StageId != 0)
         {
-            sender.SendToStage(sender.SessionNid, sender.StageId, replyPacket);
+            sender.SendToStage(sender.FromNid, sender.StageId, replyPacket);
         }
 
         return Task.CompletedTask;

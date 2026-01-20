@@ -17,14 +17,11 @@ namespace PlayHouse.Core.Api;
 /// <remarks>
 /// ApiSender extends XSender with API-specific functionality:
 /// - Stage creation and management
-/// - Client session information access
 /// - Authentication context management
 /// </remarks>
 internal class ApiSender : XSender, IApiSender
 {
     private string _accountId = string.Empty;
-    private string _sessionNid = string.Empty;
-    private long _sid;
     private long _stageId;
 
     /// <summary>
@@ -51,13 +48,10 @@ internal class ApiSender : XSender, IApiSender
     }
 
     /// <inheritdoc/>
-    public string SessionNid => _sessionNid;
-
-    /// <inheritdoc/>
-    public long Sid => _sid;
-
-    /// <inheritdoc/>
     public long StageId => _stageId;
+
+    /// <inheritdoc/>
+    public string FromNid => CurrentHeader?.From ?? string.Empty;
 
     /// <inheritdoc/>
     public bool IsRequest => CurrentHeader?.MsgSeq > 0;
@@ -69,8 +63,6 @@ internal class ApiSender : XSender, IApiSender
     public void SetSessionContext(RouteHeader header)
     {
         SetCurrentHeader(header);
-        _sessionNid = header.From;
-        _sid = header.Sid;
         _stageId = header.StageId;
         _accountId = header.AccountId.ToString();
     }
@@ -81,8 +73,6 @@ internal class ApiSender : XSender, IApiSender
     public void ClearSessionContext()
     {
         ClearCurrentHeader();
-        _sessionNid = string.Empty;
-        _sid = 0;
         _stageId = 0;
         _accountId = string.Empty;
     }
@@ -143,38 +133,6 @@ internal class ApiSender : XSender, IApiSender
             res.Result,
             res.IsCreated,
             CPacket.Of(res.PayloadId, new MemoryPayload(res.Payload.Memory)));
-    }
-
-    #endregion
-
-    #region Client Communication
-
-    /// <inheritdoc/>
-    public void SendToClient(IPacket packet)
-    {
-        if (string.IsNullOrEmpty(_sessionNid))
-        {
-            throw new InvalidOperationException("Session context not set - cannot send to client");
-        }
-
-        SendToClient(_sessionNid, _sid, packet);
-    }
-
-    /// <inheritdoc/>
-    public void SendToClient(string sessionNid, long sid, IPacket packet)
-    {
-        // Send to session server which will forward to the client
-        var header = new RouteHeader
-        {
-            ServiceId = ServiceId,
-            MsgId = packet.MsgId,
-            From = ServerId,
-            Sid = sid
-        };
-
-        // This would be sent via the session server's client communication path
-        // For now, we use the API communication path to send to session server
-        SendToApi(sessionNid, packet);
     }
 
     #endregion
