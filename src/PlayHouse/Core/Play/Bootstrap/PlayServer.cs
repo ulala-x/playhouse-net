@@ -34,7 +34,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private readonly PlayProducer _producer;
     private readonly ISystemController _systemController;
     private readonly ServerConfig _serverConfig;
-    private readonly ILogger _logger;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<PlayServer> _logger;
     private readonly IServiceProvider _serviceProvider;
 
     private PlayCommunicator? _communicator;
@@ -87,13 +88,14 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         PlayProducer producer,
         ISystemController systemController,
         IServiceProvider serviceProvider,
-        ILogger logger)
+        ILoggerFactory loggerFactory)
     {
         _options = options;
         _producer = producer;
         _systemController = systemController;
         _serviceProvider = serviceProvider;
-        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<PlayServer>();
 
         _serverConfig = new ServerConfig(
             options.ServiceId,
@@ -131,7 +133,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             _options.ServiceId,
             _options.ServerId,
             this, // client reply handler
-            _logger);
+            _loggerFactory);
 
         // Transport 서버 빌드 및 시작
         _transportServer = BuildTransportServer();

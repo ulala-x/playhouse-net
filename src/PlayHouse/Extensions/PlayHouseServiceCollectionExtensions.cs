@@ -30,10 +30,6 @@ public static class PlayHouseServiceCollectionExtensions
         // ILoggerFactory가 등록되지 않은 경우 NullLoggerFactory 등록
         services.TryAddSingleton<ILoggerFactory, NullLoggerFactory>();
 
-        // ILogger<PlayServer>가 등록되지 않은 경우 자동 등록
-        services.TryAddSingleton<ILogger<PlayServer>>(sp =>
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger<PlayServer>());
-
         var builder = new PlayServerBuilder(services, options);
 
         return builder;

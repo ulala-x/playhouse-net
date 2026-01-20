@@ -71,14 +71,14 @@ internal sealed class PlayServerBuilder : IPlayServerBuilder
         // PlayServer 싱글턴 등록
         _services.AddSingleton<PlayServer>(sp =>
         {
-            // ILogger 필수 검증
-            var logger = sp.GetRequiredService<ILogger<PlayServer>>();
+            // ILoggerFactory 필수 검증
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
 
             // ISystemController 필수 검증
             var systemController = sp.GetRequiredService<ISystemController>();
 
             var producer = new PlayProducer(_stageTypes, _actorTypes, sp);
-            return new PlayServer(_options, producer, systemController, sp, logger);
+            return new PlayServer(_options, producer, systemController, sp, loggerFactory);
         });
 
         // IPlayServerControl로도 접근 가능하도록 등록
