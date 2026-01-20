@@ -50,7 +50,7 @@ public sealed class PlayServerBootstrap
     private readonly Dictionary<string, Type> _stageTypes = new();
     private readonly Dictionary<string, Type> _actorTypes = new();
     private Type _systemControllerType = null!;
-    private ILogger _logger = null!;
+    private ILoggerFactory _loggerFactory = null!;
     private IServiceProvider _serviceProvider = null!;
 
     /// <summary>
@@ -107,13 +107,13 @@ public sealed class PlayServerBootstrap
     }
 
     /// <summary>
-    /// Logger를 설정합니다.
+    /// LoggerFactory를 설정합니다.
     /// </summary>
-    /// <param name="logger">ILogger 인스턴스.</param>
+    /// <param name="loggerFactory">ILoggerFactory 인스턴스.</param>
     /// <returns>빌더 인스턴스.</returns>
-    public PlayServerBootstrap UseLogger(ILogger logger)
+    public PlayServerBootstrap UseLoggerFactory(ILoggerFactory loggerFactory)
     {
-        _logger = logger;
+        _loggerFactory = loggerFactory;
         return this;
     }
 
@@ -173,8 +173,8 @@ public sealed class PlayServerBootstrap
         // 필수 필드 검증 (throw expression 사용)
         var systemControllerType = _systemControllerType
             ?? throw new InvalidOperationException("SystemController is required. Use UseSystemController<T>() to register.");
-        var logger = _logger
-            ?? throw new InvalidOperationException("Logger is required. Use UseLogger() to register.");
+        var loggerFactory = _loggerFactory
+            ?? throw new InvalidOperationException("LoggerFactory is required. Use UseLoggerFactory() to register.");
         var serviceProvider = _serviceProvider
             ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
 
@@ -193,6 +193,6 @@ public sealed class PlayServerBootstrap
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
 
         var producer = new PlayProducer(_stageTypes, _actorTypes, serviceProvider);
-        return new PlayServer(_options, producer, systemController, serviceProvider, logger);
+        return new PlayServer(_options, producer, systemController, serviceProvider, loggerFactory);
     }
 }

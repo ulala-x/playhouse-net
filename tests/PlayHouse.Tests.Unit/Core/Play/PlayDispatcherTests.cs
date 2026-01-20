@@ -4,6 +4,7 @@ using FluentAssertions;
 using Google.Protobuf;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
@@ -108,7 +109,6 @@ public class PlayDispatcherTests : IDisposable
             stageSender => new FakeStage(stageSender),
             actorSender => new FakeActor(actorSender));
 
-        var logger = Substitute.For<ILogger>();
         _dispatcher = new PlayDispatcher(
             _producer,
             _communicator,
@@ -116,7 +116,7 @@ public class PlayDispatcherTests : IDisposable
             serviceId: 1,
             nid: "1:1",
             clientReplyHandler: null,
-            logger);
+            NullLoggerFactory.Instance);
     }
 
     public void Dispose()
@@ -264,7 +264,6 @@ public class PlayDispatcherTests : IDisposable
     public async Task Dispose_CleansUpAllStages()
     {
         // Given (전제조건)
-        var logger = Substitute.For<ILogger>();
         var dispatcher = new PlayDispatcher(
             _producer,
             _communicator,
@@ -272,7 +271,7 @@ public class PlayDispatcherTests : IDisposable
             serviceId: 1,
             nid: "1:1",
             clientReplyHandler: null,
-            logger);
+            NullLoggerFactory.Instance);
 
         var packet1 = CreateCreateStagePacket(100, "test_stage");
         var packet2 = CreateCreateStagePacket(101, "test_stage");

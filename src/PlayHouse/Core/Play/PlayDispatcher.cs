@@ -58,23 +58,26 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         ushort serviceId,
         string nid,
         IClientReplyHandler? clientReplyHandler,
-        ILogger logger)
+        ILoggerFactory loggerFactory)
     {
         _producer = producer;
         _communicator = communicator;
         _requestCache = requestCache;
         _serviceId = serviceId;
         _nid = nid;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<PlayDispatcher>();
         _clientReplyHandler = clientReplyHandler;
 
-        _timerManager = new TimerManager(OnTimerCallback, logger);
+        var timerLogger = loggerFactory.CreateLogger<TimerManager>();
+        _timerManager = new TimerManager(OnTimerCallback, timerLogger);
 
         // CPU-bound 작업용 풀 (CPU 코어 수 제한)
-        _computePool = new ComputeTaskPool(logger: logger);
+        var computeLogger = loggerFactory.CreateLogger<ComputeTaskPool>();
+        _computePool = new ComputeTaskPool(logger: computeLogger);
 
         // I/O-bound 작업용 풀 (높은 동시성)
-        _ioPool = new IoTaskPool(logger: logger);
+        var ioLogger = loggerFactory.CreateLogger<IoTaskPool>();
+        _ioPool = new IoTaskPool(logger: ioLogger);
     }
 
     #region IPlayDispatcher Implementation

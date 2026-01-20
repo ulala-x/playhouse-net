@@ -77,7 +77,7 @@ public static class ServerFactory
                 options.AuthenticateMessageId = authenticateMessageId;
                 options.DefaultStageType = defaultStageType;
             })
-            .UseLogger(loggerFactory.CreateLogger<PlayServer>())
+            .UseLoggerFactory(loggerFactory)
             .UseServiceProvider(serviceProvider)
             .UseStage<TestStageImpl, TestActorImpl>(defaultStageType)
             .UseSystemController<TestSystemController>()
