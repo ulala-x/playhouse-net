@@ -21,10 +21,7 @@ namespace PlayHouse.Core.Api.Bootstrap;
 /// </summary>
 public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicateListener
 {
-    
     private readonly ApiServerOption _options;
-    private readonly List<Type> _controllerTypes;
-    private readonly Type _systemControllerType;
     private readonly ServerConfig _serverConfig;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ApiServer> _logger;
@@ -33,7 +30,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     private ApiDispatcher? _dispatcher;
     private RequestCache? _requestCache;
     private ServerAddressResolver? _addressResolver;
-    private CancellationTokenSource? _cts;
 
     private bool _isRunning;
     private bool _disposed;
@@ -53,14 +49,10 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 
     internal ApiServer(
         ApiServerOption options,
-        List<Type> controllerTypes,
-        Type systemControllerType,
         IServiceProvider serviceProvider,
         ILogger<ApiServer> logger)
     {
         _options = options;
-        _controllerTypes = controllerTypes;
-        _systemControllerType = systemControllerType;
         _serviceProvider = serviceProvider;
         _logger = logger;
 
@@ -79,7 +71,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         if (_isRunning)
             throw new InvalidOperationException("Server is already running");
 
-        _cts = new CancellationTokenSource();
         _requestCache = new RequestCache();
 
         _communicator = new PlayCommunicator(_serverConfig);
@@ -140,18 +131,29 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         if (!_isRunning) return;
 
         _isRunning = false;
-        _cts?.Cancel();
 
+        // 1. 새 요청 수신 중지
+        _communicator?.Stop();
+
+        // 2. 진행 중인 요청 완료 대기 (타임아웃 적용)
+        if (_dispatcher != null)
+        {
+            try
+            {
+                await _dispatcher.DrainAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // 타임아웃 - 강제 종료
+                _logger.LogWarning("Graceful shutdown timed out, forcing stop");
+            }
+        }
+
+        // 3. 리소스 정리
         _addressResolver?.Stop();
         _addressResolver?.Dispose();
-        _communicator?.Stop();
         _dispatcher?.Dispose();
         _requestCache?.CancelAll();
-
-        _cts?.Dispose();
-        _cts = null;
-
-        await Task.CompletedTask;
     }
 
     /// <inheritdoc/>

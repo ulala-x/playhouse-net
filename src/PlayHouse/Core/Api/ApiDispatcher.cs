@@ -25,6 +25,8 @@ internal sealed class ApiDispatcher : IDisposable
     private readonly ApiReflection _apiReflection;
     private readonly ILogger<ApiDispatcher> _logger;
     private bool _disposed;
+    private int _pendingCount;
+    private readonly TaskCompletionSource _drainTcs = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ApiDispatcher"/> class.
@@ -60,11 +62,19 @@ internal sealed class ApiDispatcher : IDisposable
     /// <param name="packet">The packet to process.</param>
     public void Post(RoutePacket packet)
     {
+        Interlocked.Increment(ref _pendingCount);
         // Use ThreadPool for efficient asynchronous processing
         ThreadPool.QueueUserWorkItem(static state =>
         {
             var (dispatcher, routePacket) = ((ApiDispatcher, RoutePacket))state!;
-            _ = dispatcher.DispatchAsync(routePacket);
+            try
+            {
+                _ = dispatcher.DispatchAsync(routePacket);
+            }
+            finally
+            {
+                dispatcher.DecrementPending();
+            }
         }, (this, packet));
     }
 
@@ -75,11 +85,8 @@ internal sealed class ApiDispatcher : IDisposable
     /// Processes a packet asynchronously.
     /// </summary>
     /// <param name="packet">The packet to process.</param>
-    internal async Task DispatchAsync(RoutePacket packet)
+    private async Task DispatchAsync(RoutePacket packet)
     {
-        // Note: For S2S, we don't necessarily need to clone the packet 
-        // if we process it synchronously before it's disposed.
-        
         var header = packet.Header;
         
         // Optimization: Use ThreadStatic sender to avoid allocations
@@ -115,6 +122,28 @@ internal sealed class ApiDispatcher : IDisposable
         {
             apiSender.ClearSessionContext();
         }
+    }
+
+    /// <summary>
+    /// Decrements the pending count and signals completion when all requests are done.
+    /// </summary>
+    private void DecrementPending()
+    {
+        if (Interlocked.Decrement(ref _pendingCount) == 0)
+        {
+            _drainTcs.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// 진행 중인 모든 요청이 완료될 때까지 대기합니다.
+    /// </summary>
+    public Task DrainAsync(CancellationToken cancellationToken = default)
+    {
+        if (_pendingCount == 0)
+            return Task.CompletedTask;
+
+        return _drainTcs.Task.WaitAsync(cancellationToken);
     }
 
     #region Metrics

@@ -105,6 +105,6 @@ public sealed class ApiServerBootstrap
         var serviceProvider = _serviceProvider
             ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
 
-        return new ApiServer(_options, _controllerTypes, systemControllerType, serviceProvider, logger);
+        return new ApiServer(_options, serviceProvider, logger);
     }
 }
