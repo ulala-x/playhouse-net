@@ -12,21 +12,12 @@ namespace PlayHouse.Core.Play.Base.Command;
 /// <summary>
 /// CreateStageReq 처리 명령.
 /// </summary>
-internal sealed class CreateStageCmd : IBaseStageCmd
+internal sealed class CreateStageCmd(ILogger logger) : IBaseStageCmd
 {
-    private readonly IPlayDispatcher _dispatcher;
-    private readonly ILogger _logger;
-
-    public CreateStageCmd(IPlayDispatcher dispatcher, ILogger logger)
-    {
-        _dispatcher = dispatcher;
-        _logger = logger;
-    }
-
     public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var req = CreateStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
-        _logger.LogDebug("CreateStageReq: StageType={StageType}, PayloadId={PayloadId}",
+        logger.LogDebug("CreateStageReq: StageType={StageType}, PayloadId={PayloadId}",
             req.StageType, req.PayloadId);
 
         // Zero-copy: use ByteString.Memory directly
@@ -36,7 +27,7 @@ internal sealed class CreateStageCmd : IBaseStageCmd
 
         if (!success)
         {
-            _logger.LogWarning("Stage.OnCreate failed for StageId={StageId}", baseStage.StageId);
+            logger.LogWarning("Stage.OnCreate failed for StageId={StageId}", baseStage.StageId);
             var failRes = new CreateStageRes
             {
                 Result = false,
@@ -61,7 +52,7 @@ internal sealed class CreateStageCmd : IBaseStageCmd
         };
         baseStage.Reply(CPacket.Of(successRes));
 
-        _logger.LogInformation("Stage created: StageId={StageId}, StageType={StageType}",
+        logger.LogInformation("Stage created: StageId={StageId}, StageType={StageType}",
             baseStage.StageId, req.StageType);
     }
 }

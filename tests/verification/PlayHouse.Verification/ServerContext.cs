@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
+using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Verification;
 

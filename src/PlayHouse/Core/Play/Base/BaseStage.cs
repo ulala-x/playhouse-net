@@ -17,45 +17,27 @@ namespace PlayHouse.Core.Play.Base;
 /// <summary>
 /// Base class that manages Stage lifecycle and mailbox-based scheduling using ThreadPool.
 /// </summary>
-internal sealed class BaseStage : IReplyPacketRegistry
+internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger logger) : IReplyPacketRegistry
 {
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ConcurrentQueue<StageMessage> _mailbox = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
-    private readonly ILogger _logger;
     private BaseStageCmdHandler? _cmdHandler;
     private int _isScheduled;
 
-    // Pool for ClientRouteMessage to avoid heap allocations
-    internal static readonly Microsoft.Extensions.ObjectPool.ObjectPool<StageMessage.ClientRouteMessage> _clientRouteMessagePool = 
-        new Microsoft.Extensions.ObjectPool.DefaultObjectPool<StageMessage.ClientRouteMessage>(
-            new Microsoft.Extensions.ObjectPool.DefaultPooledObjectPolicy<StageMessage.ClientRouteMessage>());
-
-    // Pool for ContinuationMessage to avoid heap allocations
-    internal static readonly Microsoft.Extensions.ObjectPool.ObjectPool<StageMessage.ContinuationMessage> _continuationMessagePool = 
-        new Microsoft.Extensions.ObjectPool.DefaultObjectPool<StageMessage.ContinuationMessage>(
-            new Microsoft.Extensions.ObjectPool.DefaultPooledObjectPolicy<StageMessage.ContinuationMessage>());
-
     // AsyncLocal to track current Stage context
-    private static readonly AsyncLocal<BaseStage?> _currentStage = new();
+    private static readonly AsyncLocal<BaseStage?> CurrentStage = new();
 
     /// <summary>
     /// Gets the current Stage being processed.
     /// </summary>
-    internal static BaseStage? Current => _currentStage.Value;
+    internal static BaseStage? Current => CurrentStage.Value;
 
-    public IStage Stage { get; }
-    public XStageSender StageSender { get; }
+    public IStage Stage { get; } = stage;
+    public XStageSender StageSender { get; } = stageSender;
     public bool IsCreated { get; private set; }
     public long StageId => StageSender.StageId;
     public string StageType => StageSender.StageType;
-
-    public BaseStage(IStage stage, XStageSender stageSender, ILogger logger)
-    {
-        Stage = stage;
-        StageSender = stageSender;
-        _logger = logger;
-    }
 
     internal void SetCmdHandler(BaseStageCmdHandler cmdHandler) => _cmdHandler = cmdHandler;
 
@@ -66,7 +48,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         foreach (var packet in _pendingReplyPackets)
         {
             try { packet.Dispose(); }
-            catch (Exception ex) { _logger.LogError(ex, "Error disposing pending reply packet"); }
+            catch (Exception ex) { logger.LogError(ex, "Error disposing pending reply packet"); }
         }
         _pendingReplyPackets.Clear();
     }
@@ -77,7 +59,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// </summary>
     private async Task ExecuteAsync()
     {
-        _currentStage.Value = this;
+        CurrentStage.Value = this;
         try
         {
             int processed = 0;
@@ -91,7 +73,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
                 }
                 catch (Exception ex) 
                 {
-                    _logger.LogError(ex, "Error executing message in Stage {StageId}", StageId); 
+                    logger.LogError(ex, "Error executing message in Stage {StageId}", StageId); 
                 }
                 finally
                 {
@@ -103,7 +85,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         }
         finally
         {
-            _currentStage.Value = null;
+            CurrentStage.Value = null;
             Interlocked.Exchange(ref _isScheduled, 0);
             if (!_mailbox.IsEmpty) ScheduleExecution();
         }
@@ -146,7 +128,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
 
     internal void PostClientRoute(BaseActor actor, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
     {
-        var message = _clientRouteMessagePool.Get();
+        var message = StageMessage.ClientRouteMessagePool.Get();
         message.Update(actor, accountId, msgId, msgSeq, sid, payload);
         message.Stage = this;
         _mailbox.Enqueue(message);
@@ -157,7 +139,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     {
         if (_actors.TryGetValue(accountId, out var actor))
         {
-            var message = _clientRouteMessagePool.Get();
+            var message = StageMessage.ClientRouteMessagePool.Get();
             message.Update(actor, accountId, msgId, msgSeq, sid, payload);
             message.Stage = this;
             _mailbox.Enqueue(message);
@@ -165,7 +147,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         }
         else
         {
-            _logger.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
+            logger.LogWarning("Actor {AccountId} not found for client message {MsgId}", accountId, msgId);
             payload.Dispose();
         }
     }
@@ -188,7 +170,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
     /// </summary>
     internal void PostContinuation(SendOrPostCallback callback, object? state)
     {
-        var msg = _continuationMessagePool.Get();
+        var msg = StageMessage.ContinuationMessagePool.Get();
         msg.Update(callback, state);
         msg.Stage = this;
         _mailbox.Enqueue(msg);
@@ -197,13 +179,13 @@ internal sealed class BaseStage : IReplyPacketRegistry
 
     internal static IDisposable SetCurrentContext(BaseStage stage)
     {
-        _currentStage.Value = stage;
+        CurrentStage.Value = stage;
         return new ContextScope();
     }
 
     private sealed class ContextScope : IDisposable
     {
-        public void Dispose() => _currentStage.Value = null;
+        public void Dispose() => CurrentStage.Value = null;
     }
 
     #endregion
@@ -259,7 +241,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
         foreach (var baseActor in _actors.Values.ToList()) await baseActor.Actor.OnDestroy();
         _actors.Clear();
         try { await Stage.OnDestroy(); }
-        catch (Exception ex) { _logger?.LogError(ex, "Error destroying Stage {StageId}", StageId); }
+        catch (Exception ex) { logger?.LogError(ex, "Error destroying Stage {StageId}", StageId); }
     }
 
     private static IPacket CreateContentPacket(RoutePacket packet) => CPacket.Of(packet.MsgId, packet.Payload);
@@ -325,7 +307,7 @@ internal sealed class BaseStage : IReplyPacketRegistry
                 }
             }
         }
-        catch (Exception ex) { _logger?.LogError(ex, "Error in ProcessJoinActorAsync"); errorCode = (ushort)ErrorCode.InternalError; }
+        catch (Exception ex) { logger?.LogError(ex, "Error in ProcessJoinActorAsync"); errorCode = (ushort)ErrorCode.InternalError; }
         finally { message.Session.SendResponse(message.AuthReplyMsgId, message.MsgSeq, StageId, errorCode, ReadOnlySpan<byte>.Empty); }
     }
 
@@ -384,106 +366,4 @@ internal sealed class BaseStage : IReplyPacketRegistry
         ScheduleExecution();
     }
     #endregion
-}
-
-/// <summary>
-/// Stage 메시지 추상 클래스
-/// </summary>
-internal abstract class StageMessage : IDisposable
-{
-    public BaseStage? Stage { get; internal set; }
-    public virtual void Dispose() { }
-    public abstract Task ExecuteAsync();
-
-    public sealed class RouteMessage(RoutePacket packet) : StageMessage
-    {
-        public override void Dispose() => packet.Dispose();
-        public override Task ExecuteAsync() => Stage!.DispatchRoutePacketAsync(packet);
-    }
-
-    public sealed class TimerMessage(long timerId, TimerCallbackDelegate callback) : StageMessage
-    {
-        public long TimerId => timerId;
-        public override Task ExecuteAsync() => callback.Invoke();
-    }
-
-    public sealed class AsyncMessage(AsyncBlockPacket asyncPacket) : StageMessage
-    {
-        public override Task ExecuteAsync() => asyncPacket.PostCallback.Invoke(asyncPacket.Result);
-    }
-
-    public sealed class ReplyCallbackMessage(ReplyCallback callback, ushort errorCode, IPacket? packet) : StageMessage
-    {
-        public override Task ExecuteAsync() { callback(errorCode, packet); return Task.CompletedTask; }
-    }
-
-    public sealed class DestroyMessage : StageMessage
-    {
-        public override Task ExecuteAsync() => Stage!.HandleDestroyAsync();
-    }
-
-    public sealed class ClientRouteMessage : StageMessage
-    {
-        public BaseActor? Actor { get; private set; }
-        public string AccountId { get; private set; } = "";
-        public string MsgId { get; private set; } = "";
-        public ushort MsgSeq { get; private set; }
-        public long Sid { get; private set; }
-        public IPayload? Payload { get; private set; }
-
-        public ClientRouteMessage() { }
-        internal void Update(BaseActor? actor, string accountId, string msgId, ushort msgSeq, long sid, IPayload payload)
-        {
-            Actor = actor; AccountId = accountId; MsgId = msgId; MsgSeq = msgSeq; Sid = sid; Payload = payload;
-        }
-        public IPayload? TakePayload() { var p = Payload; Payload = null; return p; }
-        public override void Dispose() { Payload?.Dispose(); Payload = null; Actor = null; Stage = null; BaseStage._clientRouteMessagePool.Return(this); }
-        public override Task ExecuteAsync() => Stage!.ProcessClientRouteAsync(this);
-    }
-
-    public sealed class JoinActorMessage(BaseActor actor, ITransportSession session, ushort msgSeq, string authReplyMsgId, IPayload payload) : StageMessage
-    {
-        public BaseActor Actor => actor;
-        public ITransportSession Session => session;
-        public ushort MsgSeq => msgSeq;
-        public string AuthReplyMsgId => authReplyMsgId;
-        public override void Dispose() => payload.Dispose();
-        public override Task ExecuteAsync() => Stage!.ProcessJoinActorAsync(this);
-    }
-
-    public sealed class DisconnectMessage(string accountId) : StageMessage
-    {
-        public override Task ExecuteAsync() => Stage!.ProcessDisconnectAsync(accountId);
-    }
-
-    /// <summary>
-    /// 비동기 Continuation을 래핑하는 메시지
-    /// </summary>
-    public sealed class ContinuationMessage : StageMessage
-    {
-        private SendOrPostCallback? _callback;
-        private object? _state;
-
-        public ContinuationMessage() { }
-
-        internal void Update(SendOrPostCallback callback, object? state)
-        {
-            _callback = callback;
-            _state = state;
-        }
-
-        public override Task ExecuteAsync()
-        {
-            _callback?.Invoke(_state);
-            return Task.CompletedTask;
-        }
-
-        public override void Dispose()
-        {
-            _callback = null;
-            _state = null;
-            Stage = null;
-            BaseStage._continuationMessagePool.Return(this);
-        }
-    }
 }

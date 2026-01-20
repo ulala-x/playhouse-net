@@ -1,4 +1,3 @@
-#nullable enable
 
 using PlayHouse.Runtime.ServerMesh.Message;
 
