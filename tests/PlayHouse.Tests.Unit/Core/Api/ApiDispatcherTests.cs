@@ -22,13 +22,22 @@ namespace PlayHouse.Tests.Unit.Core.Api;
 public class ApiDispatcherTests : IDisposable
 {
     #region Test Controller
-    // ... (rest of the file) ...
 
     private class TestApiController : IApiController
     {
-        private int _callCount;
-        public int CallCount => _callCount;
-        public List<string> ReceivedMessages { get; } = new();
+        // Static to track across multiple instances (per-request instantiation)
+        private static int _callCount;
+        public static int CallCount => _callCount;
+        public static List<string> ReceivedMessages { get; } = new();
+
+        public static void Reset()
+        {
+            _callCount = 0;
+            lock (ReceivedMessages)
+            {
+                ReceivedMessages.Clear();
+            }
+        }
 
         public void Handles(IHandlerRegister register)
         {
@@ -50,17 +59,17 @@ public class ApiDispatcherTests : IDisposable
 
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
-    private readonly TestApiController _apiController;
     private readonly ApiDispatcher _dispatcher;
 
     public ApiDispatcherTests()
     {
+        TestApiController.Reset();
+
         _communicator = Substitute.For<IClientCommunicator>();
         _requestCache = new RequestCache(NullLogger<RequestCache>.Instance);
-        _apiController = new TestApiController();
 
         var services = new ServiceCollection();
-        services.AddSingleton<IApiController>(_apiController);
+        services.AddTransient<IApiController, TestApiController>();
         var serviceProvider = services.BuildServiceProvider();
 
         _dispatcher = new ApiDispatcher(
@@ -92,6 +101,7 @@ public class ApiDispatcherTests : IDisposable
     public async Task Post_RegisteredMessage_DispatchesToHandler()
     {
         // Given (전제조건)
+        TestApiController.Reset();
         var header = new RouteHeader
         {
             ServiceId = 1,
@@ -105,13 +115,14 @@ public class ApiDispatcherTests : IDisposable
         await Task.Delay(100); // 비동기 처리 대기
 
         // Then (결과)
-        _apiController.CallCount.Should().Be(1, "핸들러가 호출되어야 함");
+        TestApiController.CallCount.Should().Be(1, "핸들러가 호출되어야 함");
     }
 
     [Fact(DisplayName = "Post - 등록되지 않은 메시지는 에러 응답을 보낸다")]
     public async Task Post_UnregisteredMessage_SendsErrorReply()
     {
         // Given (전제조건)
+        TestApiController.Reset();
         var header = new RouteHeader
         {
             ServiceId = 1,
@@ -128,17 +139,18 @@ public class ApiDispatcherTests : IDisposable
         // Then (결과)
         // Note: In stateless dispatcher, error reply is sent via ApiSender.Reply()
         // which uses communicator. Since it's mocked, we verify no exception occurs
-        _apiController.CallCount.Should().Be(0, "등록되지 않은 메시지는 핸들러가 호출되지 않아야 함");
+        TestApiController.CallCount.Should().Be(0, "등록되지 않은 메시지는 핸들러가 호출되지 않아야 함");
     }
 
     [Fact(DisplayName = "Post - 여러 메시지를 병렬로 처리한다")]
     public async Task Post_MultipleMessages_ProcessedConcurrently()
     {
         // Given (전제조건)
+        TestApiController.Reset();
+
         // 새로운 컨트롤러와 디스패처 생성하여 다른 테스트와 격리
-        var controller = new TestApiController();
         var services = new ServiceCollection();
-        services.AddSingleton<IApiController>(controller);
+        services.AddTransient<IApiController, TestApiController>();
         var serviceProvider = services.BuildServiceProvider();
 
         using var dispatcher = new ApiDispatcher(
@@ -169,7 +181,8 @@ public class ApiDispatcherTests : IDisposable
         await Task.Delay(500); // 비동기 처리 대기 시간 증가
 
         // Then (결과)
-        controller.CallCount.Should().Be(messageCount, $"{messageCount}개의 메시지가 처리되어야 함");
+        // Note: +1 for registration instance
+        TestApiController.CallCount.Should().Be(messageCount, $"{messageCount}개의 메시지가 처리되어야 함");
     }
 
     [Fact(DisplayName = "Dispose - 정리 후에도 예외가 발생하지 않는다")]

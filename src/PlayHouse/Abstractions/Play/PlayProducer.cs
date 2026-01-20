@@ -68,6 +68,49 @@ public class PlayProducer
     }
 
     /// <summary>
+    /// Creates a new Stage instance for the specified stage type with its own DI scope.
+    /// </summary>
+    /// <param name="stageType">The stage type identifier.</param>
+    /// <param name="stageSender">The sender to inject into the Stage.</param>
+    /// <returns>A tuple containing the IStage instance and its IServiceScope.</returns>
+    /// <exception cref="KeyNotFoundException">
+    /// Thrown when the stageType is not registered.
+    /// </exception>
+    /// <remarks>
+    /// The returned IServiceScope must be disposed when the Stage is destroyed
+    /// to properly release Scoped dependencies.
+    /// </remarks>
+    internal (IStage stage, IServiceScope? scope) GetStageWithScope(string stageType, IStageSender stageSender)
+    {
+        // Manual registration (factory-based) - no scope needed
+        if (_stageFactories.TryGetValue(stageType, out var factory))
+        {
+            return (factory(stageSender), null);
+        }
+
+        // Type-based registration with DI - create scope
+        if (_stageTypes.TryGetValue(stageType, out var type))
+        {
+            var scope = _serviceProvider.CreateScope();
+            try
+            {
+                var stage = (IStage)ActivatorUtilities.CreateInstance(
+                    scope.ServiceProvider,
+                    type,
+                    stageSender);
+                return (stage, scope);
+            }
+            catch
+            {
+                scope.Dispose();
+                throw;
+            }
+        }
+
+        throw new KeyNotFoundException($"Stage type '{stageType}' is not registered. Did you forget to call PlayProducer.Register()?");
+    }
+
+    /// <summary>
     /// Creates a new Stage instance for the specified stage type.
     /// </summary>
     /// <param name="stageType">The stage type identifier.</param>
@@ -76,24 +119,61 @@ public class PlayProducer
     /// <exception cref="KeyNotFoundException">
     /// Thrown when the stageType is not registered.
     /// </exception>
+    /// <remarks>
+    /// Deprecated: Use GetStageWithScope for proper Scoped DI support.
+    /// This method uses the root ServiceProvider, which means Scoped dependencies
+    /// will not be properly disposed when the Stage is destroyed.
+    /// </remarks>
+    [Obsolete("Use GetStageWithScope for proper Scoped DI support.")]
     internal IStage GetStage(string stageType, IStageSender stageSender)
     {
-        // Manual registration (factory-based)
-        if (_stageFactories.TryGetValue(stageType, out var factory))
+        var (stage, scope) = GetStageWithScope(stageType, stageSender);
+        // Note: scope is intentionally not tracked here for backward compatibility
+        // This may cause Scoped dependency leaks
+        return stage;
+    }
+
+    /// <summary>
+    /// Creates a new Actor instance for the specified stage type with its own DI scope.
+    /// </summary>
+    /// <param name="stageType">The stage type identifier.</param>
+    /// <param name="actorSender">The sender to inject into the Actor.</param>
+    /// <returns>A tuple containing the IActor instance and its IServiceScope.</returns>
+    /// <exception cref="KeyNotFoundException">
+    /// Thrown when the stageType is not registered.
+    /// </exception>
+    /// <remarks>
+    /// The returned IServiceScope must be disposed when the Actor is destroyed
+    /// to properly release Scoped dependencies.
+    /// </remarks>
+    internal (IActor actor, IServiceScope? scope) GetActorWithScope(string stageType, IActorSender actorSender)
+    {
+        // Manual registration (factory-based) - no scope needed
+        if (_actorFactories.TryGetValue(stageType, out var factory))
         {
-            return factory(stageSender);
+            return (factory(actorSender), null);
         }
 
-        // Type-based registration with DI
-        if (_stageTypes.TryGetValue(stageType, out var type))
+        // Type-based registration with DI - create scope
+        if (_actorTypes.TryGetValue(stageType, out var actorType))
         {
-            return (IStage)ActivatorUtilities.CreateInstance(
-                _serviceProvider,
-                type,
-                stageSender);  // IStageSender is explicitly passed
+            var scope = _serviceProvider.CreateScope();
+            try
+            {
+                var actor = (IActor)ActivatorUtilities.CreateInstance(
+                    scope.ServiceProvider,
+                    actorType,
+                    actorSender);
+                return (actor, scope);
+            }
+            catch
+            {
+                scope.Dispose();
+                throw;
+            }
         }
 
-        throw new KeyNotFoundException($"Stage type '{stageType}' is not registered. Did you forget to call PlayProducer.Register()?");
+        throw new KeyNotFoundException($"Actor type for stage '{stageType}' is not registered. Did you forget to call PlayProducer.Register()?");
     }
 
     /// <summary>
@@ -105,24 +185,18 @@ public class PlayProducer
     /// <exception cref="KeyNotFoundException">
     /// Thrown when the stageType is not registered.
     /// </exception>
+    /// <remarks>
+    /// Deprecated: Use GetActorWithScope for proper Scoped DI support.
+    /// This method uses the root ServiceProvider, which means Scoped dependencies
+    /// will not be properly disposed when the Actor leaves the Stage.
+    /// </remarks>
+    [Obsolete("Use GetActorWithScope for proper Scoped DI support.")]
     internal IActor GetActor(string stageType, IActorSender actorSender)
     {
-        // Manual registration (factory-based)
-        if (_actorFactories.TryGetValue(stageType, out var factory))
-        {
-            return factory(actorSender);
-        }
-
-        // Type-based registration with DI
-        if (_actorTypes.TryGetValue(stageType, out var actorType))
-        {
-            return (IActor)ActivatorUtilities.CreateInstance(
-                _serviceProvider,
-                actorType,
-                actorSender);  // IActorSender is explicitly passed
-        }
-
-        throw new KeyNotFoundException($"Actor type for stage '{stageType}' is not registered. Did you forget to call PlayProducer.Register()?");
+        var (actor, scope) = GetActorWithScope(stageType, actorSender);
+        // Note: scope is intentionally not tracked here for backward compatibility
+        // This may cause Scoped dependency leaks
+        return actor;
     }
 
     /// <summary>
