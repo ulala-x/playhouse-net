@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
@@ -15,10 +16,11 @@ using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
 namespace PlayHouse.Core.Play.Base;
 
 /// <summary>
-/// Base class that manages Stage lifecycle and mailbox-based scheduling using ThreadPool.
+/// Base class that manages Stage lifecycle, DI scope, and mailbox-based scheduling using ThreadPool.
 /// </summary>
-internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger logger) : IReplyPacketRegistry
+internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger logger, IServiceScope? serviceScope = null) : IReplyPacketRegistry
 {
+    private readonly IServiceScope? _serviceScope = serviceScope;
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ConcurrentQueue<StageMessage> _mailbox = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
@@ -238,10 +240,20 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
 
     internal async Task HandleDestroyAsync()
     {
-        foreach (var baseActor in _actors.Values.ToList()) await baseActor.Actor.OnDestroy();
+        // Destroy all actors and dispose their scopes
+        foreach (var baseActor in _actors.Values.ToList())
+        {
+            await baseActor.Actor.OnDestroy();
+            baseActor.Dispose();  // Dispose Actor's DI scope
+        }
         _actors.Clear();
+
+        // Destroy Stage
         try { await Stage.OnDestroy(); }
         catch (Exception ex) { logger?.LogError(ex, "Error destroying Stage {StageId}", StageId); }
+
+        // Dispose Stage's DI scope
+        _serviceScope?.Dispose();
     }
 
     private static IPacket CreateContentPacket(RoutePacket packet) => CPacket.Of(packet.MsgId, packet.Payload);
@@ -289,6 +301,7 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
             if (_actors.TryGetValue(accountId, out var existingActor))
             {
                 await actor.Actor.OnDestroy();
+                actor.Dispose();  // Dispose new Actor's DI scope (keeping existing)
                 existingActor.ActorSender.Update(actor.ActorSender.SessionNid, actor.ActorSender.Sid, actor.ActorSender.ApiNid);
                 await Stage.OnConnectionChanged(existingActor.Actor, true);
             }
@@ -299,6 +312,7 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
                 {
                     errorCode = (ushort)ErrorCode.JoinStageFailed;
                     await actor.Actor.OnDestroy();
+                    actor.Dispose();  // Dispose Actor's DI scope on join failure
                 }
                 else
                 {
@@ -329,6 +343,7 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
         {
             _actors.Remove(accountId);
             await baseActor.Actor.OnDestroy();
+            baseActor.Dispose();  // Dispose Actor's DI scope
         }
     }
     #endregion
@@ -349,13 +364,34 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
     {
         var actorSender = new XActorSender(sessionNid, sid, apiNid, this);
         IActor actor;
-        try { actor = producer.GetActor(StageType, actorSender); }
-        catch { return (false, (ushort)ErrorCode.InvalidStageType, null); }
+        IServiceScope? actorScope;
+        try
+        {
+            (actor, actorScope) = producer.GetActorWithScope(StageType, actorSender);
+        }
+        catch
+        {
+            return (false, (ushort)ErrorCode.InvalidStageType, null);
+        }
+
         await actor.OnCreate();
-        if (!await actor.OnAuthenticate(authPacket)) { await actor.OnDestroy(); return (false, (ushort)ErrorCode.AuthenticationFailed, null); }
-        if (string.IsNullOrEmpty(actorSender.AccountId)) { await actor.OnDestroy(); return (false, (ushort)ErrorCode.InvalidAccountId, null); }
+
+        if (!await actor.OnAuthenticate(authPacket))
+        {
+            await actor.OnDestroy();
+            actorScope?.Dispose();
+            return (false, (ushort)ErrorCode.AuthenticationFailed, null);
+        }
+
+        if (string.IsNullOrEmpty(actorSender.AccountId))
+        {
+            await actor.OnDestroy();
+            actorScope?.Dispose();
+            return (false, (ushort)ErrorCode.InvalidAccountId, null);
+        }
+
         await actor.OnPostAuthenticate();
-        return (true, (ushort)ErrorCode.Success, new BaseActor(actor, actorSender));
+        return (true, (ushort)ErrorCode.Success, new BaseActor(actor, actorSender, actorScope));
     }
 
     public async Task OnPostCreate() => await Stage.OnPostCreate();

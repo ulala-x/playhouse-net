@@ -17,6 +17,9 @@ public delegate Task ApiHandler(IPacket packet, IApiSender sender);
 /// Used to register message handlers during controller initialization.
 /// Each handler is associated with a message ID and will be called when
 /// a message with that ID is received.
+///
+/// Recommended: Use method name based registration (Add with methodName parameter)
+/// for proper per-request controller instantiation with Scoped DI support.
 /// </remarks>
 public interface IHandlerRegister
 {
@@ -25,6 +28,10 @@ public interface IHandlerRegister
     /// </summary>
     /// <param name="msgId">The message ID to handle.</param>
     /// <param name="handler">The handler function.</param>
+    /// <remarks>
+    /// Note: This method captures the controller instance. For per-request instantiation,
+    /// use the methodName overload instead.
+    /// </remarks>
     void Add(string msgId, ApiHandler handler);
 
     /// <summary>
@@ -32,7 +39,35 @@ public interface IHandlerRegister
     /// </summary>
     /// <typeparam name="TPacket">The packet type (uses type name as msgId).</typeparam>
     /// <param name="handler">The handler function.</param>
+    /// <remarks>
+    /// Note: This method captures the controller instance. For per-request instantiation,
+    /// use the methodName overload instead.
+    /// </remarks>
     void Add<TPacket>(ApiHandler handler) where TPacket : class;
+
+    /// <summary>
+    /// Registers a handler by method name for per-request controller instantiation.
+    /// </summary>
+    /// <param name="msgId">The message ID to handle.</param>
+    /// <param name="methodName">The name of the handler method in the controller.</param>
+    /// <remarks>
+    /// Recommended: This method enables proper per-request controller instantiation
+    /// with Scoped dependency injection support.
+    /// Example: register.Add("LoginReq", nameof(HandleLogin));
+    /// </remarks>
+    void Add(string msgId, string methodName);
+
+    /// <summary>
+    /// Registers a handler by method name using a packet type as the message ID.
+    /// </summary>
+    /// <typeparam name="TPacket">The packet type (uses type name as msgId).</typeparam>
+    /// <param name="methodName">The name of the handler method in the controller.</param>
+    /// <remarks>
+    /// Recommended: This method enables proper per-request controller instantiation
+    /// with Scoped dependency injection support.
+    /// Example: register.Add&lt;LoginReq&gt;(nameof(HandleLogin));
+    /// </remarks>
+    void Add<TPacket>(string methodName) where TPacket : class;
 }
 
 /// <summary>

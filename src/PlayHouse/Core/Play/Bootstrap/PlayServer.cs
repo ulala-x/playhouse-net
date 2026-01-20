@@ -1,5 +1,6 @@
 using System.Buffers;
 using Google.Protobuf;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
@@ -365,12 +366,13 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     // XActorSender 생성 (transport session 포함하여 직접 클라이언트 통신 가능)
                     var actorSender = new XActorSender(_options.ServerId, session.SessionId, _options.ServerId, baseStage, session);
 
-                    // IActor 생성
+                    // IActor 생성 with DI scope
                     BaseActor actor;
+                    IServiceScope? actorScope;
                     try
                     {
-                        IActor iActor = _producer.GetActor(stageType, actorSender);
-                        actor = new BaseActor(iActor, actorSender);
+                        (IActor iActor, actorScope) = _producer.GetActorWithScope(stageType, actorSender);
+                        actor = new BaseActor(iActor, actorSender, actorScope);
                     }
                     catch (KeyNotFoundException)
                     {
@@ -389,6 +391,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     {
                         _logger.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
+                        actor.Dispose();  // Dispose Actor's DI scope
                         return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null);
                     }
 
@@ -397,6 +400,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     {
                         _logger.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
+                        actor.Dispose();  // Dispose Actor's DI scope
                         return (false, (ushort)ErrorCode.InvalidAccountId, (BaseActor?)null);
                     }
 
