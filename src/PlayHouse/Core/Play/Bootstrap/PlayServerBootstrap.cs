@@ -1,7 +1,6 @@
 #nullable enable
 
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Abstractions.System;
@@ -50,9 +49,9 @@ public sealed class PlayServerBootstrap
     private readonly PlayServerOption _options = new();
     private readonly Dictionary<string, Type> _stageTypes = new();
     private readonly Dictionary<string, Type> _actorTypes = new();
-    private Type? _systemControllerType;
-    private ILogger? _logger;
-    private IServiceProvider? _serviceProvider;
+    private Type _systemControllerType = null!;
+    private ILogger _logger = null!;
+    private IServiceProvider _serviceProvider = null!;
 
     /// <summary>
     /// 서버 옵션을 설정합니다.
@@ -171,15 +170,13 @@ public sealed class PlayServerBootstrap
     {
         _options.Validate();
 
-        // SystemController 필수 검증
-        if (_systemControllerType == null)
-            throw new InvalidOperationException(
-                "SystemController is required. Use UseSystemController<T>() to register.");
-
-        // ILogger 필수 검증
-        if (_logger == null)
-            throw new InvalidOperationException(
-                "ILogger is required. Use UseLogger(logger) to register.");
+        // 필수 필드 검증 (throw expression 사용)
+        var systemControllerType = _systemControllerType
+            ?? throw new InvalidOperationException("SystemController is required. Use UseSystemController<T>() to register.");
+        var logger = _logger
+            ?? throw new InvalidOperationException("Logger is required. Use UseLogger() to register.");
+        var serviceProvider = _serviceProvider
+            ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
 
         // DefaultStageType이 설정된 경우에만 Stage와 Actor 필수
         if (!string.IsNullOrEmpty(_options.DefaultStageType))
@@ -191,27 +188,11 @@ public sealed class PlayServerBootstrap
                 throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseStage<TStage, TActor>().");
         }
 
-        // ServiceProvider 생성 또는 사용
-        var serviceProvider = _serviceProvider;
-        if (serviceProvider == null)
-        {
-            // 외부에서 제공되지 않았으면 내부에서 생성
-            var services = new ServiceCollection();
-
-            // Logging 설정 (Stage/Actor가 ILogger를 주입받을 수 있도록)
-            services.AddLogging(builder =>
-            {
-                // NullLogger 사용 (기본값)
-            });
-
-            serviceProvider = services.BuildServiceProvider();
-        }
-
         // SystemController 인스턴스 생성
-        var systemController = Activator.CreateInstance(_systemControllerType) as ISystemController
-            ?? throw new InvalidOperationException($"Failed to create SystemController instance: {_systemControllerType.Name}");
+        var systemController = Activator.CreateInstance(systemControllerType) as ISystemController
+            ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
 
         var producer = new PlayProducer(_stageTypes, _actorTypes, serviceProvider);
-        return new PlayServer(_options, producer, systemController, serviceProvider, _logger!);
+        return new PlayServer(_options, producer, systemController, serviceProvider, logger);
     }
 }

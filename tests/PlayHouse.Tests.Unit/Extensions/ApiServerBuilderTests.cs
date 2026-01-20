@@ -34,7 +34,9 @@ public class ApiServerBuilderTests
         services.AddApiServer(options =>
         {
             options.ServiceType = ServiceType.Api;
-        });
+        })
+        .UseSystemController<TestSystemController>()
+        .UseController<TestController>();
 
         var serviceProvider = services.BuildServiceProvider();
 
@@ -56,7 +58,9 @@ public class ApiServerBuilderTests
         services.AddApiServer(options =>
         {
             options.ServiceType = ServiceType.Api;
-        });
+        })
+        .UseSystemController<TestSystemController>()
+        .UseController<TestController>();
 
         var serviceProvider = services.BuildServiceProvider();
 
@@ -78,7 +82,9 @@ public class ApiServerBuilderTests
         services.AddApiServer(options =>
         {
             options.ServiceType = ServiceType.Api;
-        }).UseController<TestController>();
+        })
+        .UseController<TestController>()
+        .UseSystemController<TestSystemController>();
 
         var serviceProvider = services.BuildServiceProvider();
 
@@ -106,7 +112,8 @@ public class ApiServerBuilderTests
             options.ServiceType = ServiceType.Api;
         })
         .UseController<TestController>()
-        .UseController<TestController>(); // 같은 타입을 여러 번 등록 가능
+        .UseController<TestController>() // 같은 타입을 여러 번 등록 가능
+        .UseSystemController<TestSystemController>();
 
         var serviceProvider = services.BuildServiceProvider();
         var apiServer = serviceProvider.GetRequiredService<ApiServer>();
@@ -126,7 +133,8 @@ public class ApiServerBuilderTests
         var builder = services.AddApiServer(options =>
         {
             options.ServiceType = ServiceType.Api;
-        });
+        })
+        .UseSystemController<TestSystemController>();
 
         // Then
         builder.Services.Should().BeSameAs(services, "Services 프로퍼티는 원본 IServiceCollection을 반환해야 함");

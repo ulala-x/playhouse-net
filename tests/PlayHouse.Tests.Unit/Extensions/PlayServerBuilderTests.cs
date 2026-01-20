@@ -42,12 +42,6 @@ public class PlayServerBuilderTests
         public Task OnPostAuthenticate() => Task.CompletedTask;
     }
 
-    private class TestSystemController : ISystemController
-    {
-        public Task<IReadOnlyList<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)
-            => Task.FromResult<IReadOnlyList<IServerInfo>>(new List<IServerInfo>());
-    }
-
     [Fact(DisplayName = "AddPlayServer - PlayServer가 싱글톤으로 등록된다")]
     public void AddPlayServer_RegistersPlayServerAsSingleton()
     {

@@ -17,7 +17,7 @@ internal sealed class PlayServerBuilder : IPlayServerBuilder
     private readonly PlayServerOption _options;
     private readonly Dictionary<string, Type> _stageTypes = new();
     private readonly Dictionary<string, Type> _actorTypes = new();
-    private Type? _systemControllerType;
+    private Type _systemControllerType = null!;
 
     public IServiceCollection Services => _services;
 
@@ -40,6 +40,10 @@ internal sealed class PlayServerBuilder : IPlayServerBuilder
     {
         _systemControllerType = typeof(T);
         _services.AddSingleton<ISystemController, T>();
+
+        // SystemController 등록 후 자동으로 Build 호출
+        Build();
+
         return this;
     }
 
@@ -47,22 +51,26 @@ internal sealed class PlayServerBuilder : IPlayServerBuilder
     {
         _systemControllerType = controller.GetType();
         _services.AddSingleton<ISystemController>(controller);
+
+        // SystemController 등록 후 자동으로 Build 호출
+        Build();
+
         return this;
     }
 
     internal void Build()
     {
+        // SystemController 필수 검증
+        var systemControllerType = _systemControllerType
+            ?? throw new InvalidOperationException(
+                "SystemController is required. Use UseSystemController<T>() to register.");
+
         // IServerInfoCenter 싱글턴 등록
         _services.AddSingleton<IServerInfoCenter, XServerInfoCenter>();
 
         // PlayServer 싱글턴 등록
         _services.AddSingleton<PlayServer>(sp =>
         {
-            // SystemController 필수 검증 (PlayServer 생성 시점에)
-            if (_systemControllerType == null)
-                throw new InvalidOperationException(
-                    "SystemController is required. Use UseSystemController<T>() to register.");
-
             // ILogger 필수 검증
             var logger = sp.GetRequiredService<ILogger<PlayServer>>();
 

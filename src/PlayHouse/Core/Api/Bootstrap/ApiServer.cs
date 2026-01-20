@@ -24,7 +24,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     
     private readonly ApiServerOption _options;
     private readonly List<Type> _controllerTypes;
-    private readonly Type? _systemControllerType;
+    private readonly Type _systemControllerType;
     private readonly ServerConfig _serverConfig;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ApiServer> _logger;
@@ -37,11 +37,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 
     private bool _isRunning;
     private bool _disposed;
-
-    /// <summary>
-    /// 서버가 실행 중인지 여부.
-    /// </summary>
-    public bool IsRunning => _isRunning;
 
     /// <inheritdoc/>
     public int DiagnosticLevel
@@ -59,7 +54,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     internal ApiServer(
         ApiServerOption options,
         List<Type> controllerTypes,
-        Type? systemControllerType,
+        Type systemControllerType,
         IServiceProvider serviceProvider,
         ILogger<ApiServer> logger)
     {
@@ -114,26 +109,23 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _options.ServiceId,
             _options.ServerId);
 
-        // ServerAddressResolver 시작 (SystemController가 등록된 경우)
-        if (_systemControllerType != null)
-        {
-            var systemController = _serviceProvider.GetRequiredService<ISystemController>();
-            var serverInfoCenter = new XServerInfoCenter();
+        // ServerAddressResolver 시작
+        var systemController = _serviceProvider.GetRequiredService<ISystemController>();
+        var serverInfoCenter = new XServerInfoCenter();
 
-            var myServerInfo = new XServerInfo(
-                _options.ServiceId,
-                _options.ServerId,
-                _options.BindEndpoint);
+        var myServerInfo = new XServerInfo(
+            _options.ServiceId,
+            _options.ServerId,
+            _options.BindEndpoint);
 
-            _addressResolver = new ServerAddressResolver(
-                myServerInfo,
-                systemController,
-                serverInfoCenter,
-                _communicator,
-                TimeSpan.FromSeconds(3));
+        _addressResolver = new ServerAddressResolver(
+            myServerInfo,
+            systemController,
+            serverInfoCenter,
+            _communicator,
+            TimeSpan.FromSeconds(3));
 
-            _addressResolver.Start();
-        }
+        _addressResolver.Start();
 
         _isRunning = true;
 

@@ -34,7 +34,9 @@ public class ApiServerHostedServiceTests
         services.AddApiServer(options =>
         {
             options.ServiceType = ServiceType.Api;
-        }).UseController<TestController>();
+        })
+        .UseSystemController<TestSystemController>()
+        .UseController<TestController>();
 
         var serviceProvider = services.BuildServiceProvider();
         var apiServer = serviceProvider.GetRequiredService<ApiServer>();
@@ -54,7 +56,9 @@ public class ApiServerHostedServiceTests
         services.AddApiServer(options =>
         {
             options.ServiceType = ServiceType.Api;
-        }).UseController<TestController>();
+        })
+        .UseSystemController<TestSystemController>()
+        .UseController<TestController>();
 
         var serviceProvider = services.BuildServiceProvider();
         var apiServer = serviceProvider.GetRequiredService<ApiServer>();
