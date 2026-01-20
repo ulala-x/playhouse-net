@@ -396,7 +396,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     /// </summary>
     private void RegisterCommands(BaseStageCmdHandler cmdHandler)
     {
-        cmdHandler.Register(nameof(CreateStageReq), new CreateStageCmd(this, _logger));
+        cmdHandler.Register(nameof(CreateStageReq), new CreateStageCmd(_logger));
         cmdHandler.Register(nameof(GetOrCreateStageReq), new GetOrCreateStageCmd(_logger));
         cmdHandler.Register(nameof(DisconnectNoticeMsg), new DisconnectNoticeCmd(_logger));
         cmdHandler.Register(nameof(ReconnectMsg), new ReconnectCmd(_logger));

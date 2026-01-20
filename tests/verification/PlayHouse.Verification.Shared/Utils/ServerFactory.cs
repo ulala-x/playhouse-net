@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
+using PlayHouse.Core.Play.Bootstrap;
 using PlayHouse.Extensions;
 using PlayHouse.Verification.Shared.Infrastructure;
 

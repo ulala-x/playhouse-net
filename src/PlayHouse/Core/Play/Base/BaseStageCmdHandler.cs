@@ -2,7 +2,6 @@
 
 using Microsoft.Extensions.Logging;
 using PlayHouse.Runtime.ServerMesh.Message;
-using PlayHouse.Runtime.Proto;
 
 namespace PlayHouse.Core.Play.Base;
 
@@ -12,15 +11,9 @@ namespace PlayHouse.Core.Play.Base;
 /// <remarks>
 /// Command Pattern을 사용하여 각 시스템 메시지를 해당 Command 클래스로 위임합니다.
 /// </remarks>
-internal sealed class BaseStageCmdHandler
+internal sealed class BaseStageCmdHandler(ILogger logger)
 {
     private readonly Dictionary<string, IBaseStageCmd> _commands = new();
-    private readonly ILogger _logger;
-
-    public BaseStageCmdHandler(ILogger logger)
-    {
-        _logger = logger;
-    }
 
     /// <summary>
     /// 명령을 등록합니다.
@@ -47,7 +40,7 @@ internal sealed class BaseStageCmdHandler
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error executing command {MsgId}", msgId);
+                logger.LogError(ex, "Error executing command {MsgId}", msgId);
                 if (packet.MsgSeq != 0)
                 {
                     baseStage.StageSender.SetCurrentHeader(packet.Header);
@@ -57,7 +50,7 @@ internal sealed class BaseStageCmdHandler
             }
         }
 
-        _logger.LogWarning("Command not registered: {MsgId}", msgId);
+        logger.LogWarning("Command not registered: {MsgId}", msgId);
         return false;
     }
 

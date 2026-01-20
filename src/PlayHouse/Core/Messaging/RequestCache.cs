@@ -11,19 +11,13 @@ namespace PlayHouse.Core.Messaging;
 /// Sharded request-reply matching cache with object pooling.
 /// Reduces contention and allocations during high-frequency S2S communication.
 /// </summary>
-public sealed class RequestCache
+public sealed class RequestCache(ILogger<RequestCache> logger)
 {
-    private readonly ILogger<RequestCache> _logger;
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pending = new();
 
     // Pool for PendingRequest objects to avoid heap allocations per request
     private static readonly ObjectPool<PendingRequest> RequestPool =
         new DefaultObjectPool<PendingRequest>(new DefaultPooledObjectPolicy<PendingRequest>());
-
-    public RequestCache(ILogger<RequestCache> logger)
-    {
-        _logger = logger;
-    }
 
     public void Register(ushort msgSeq, TaskCompletionSource<IPacket> tcs, TimeSpan timeout)
     {
@@ -38,7 +32,7 @@ public sealed class RequestCache
         }
         else
         {
-            _logger.LogWarning("Failed to register request {MsgSeq} - already exists", msgSeq);
+            logger.LogWarning("Failed to register request {MsgSeq} - already exists", msgSeq);
             cts.Dispose();
             RequestPool.Return(request);
             tcs.TrySetException(new InvalidOperationException($"Request {msgSeq} already registered"));

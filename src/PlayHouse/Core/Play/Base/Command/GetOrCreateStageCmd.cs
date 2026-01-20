@@ -12,19 +12,12 @@ namespace PlayHouse.Core.Play.Base.Command;
 /// <summary>
 /// GetOrCreateStageReq 처리 명령 (기존 Stage 반환 또는 생성).
 /// </summary>
-internal sealed class GetOrCreateStageCmd : IBaseStageCmd
+internal sealed class GetOrCreateStageCmd(ILogger logger) : IBaseStageCmd
 {
-    private readonly ILogger _logger;
-
-    public GetOrCreateStageCmd(ILogger logger)
-    {
-        _logger = logger;
-    }
-
     public async Task Execute(BaseStage baseStage, RoutePacket packet)
     {
         var req = GetOrCreateStageReq.Parser.ParseFrom(packet.Payload.DataSpan);
-        _logger.LogDebug("GetOrCreateStageReq: StageType={StageType}", req.StageType);
+        logger.LogDebug("GetOrCreateStageReq: StageType={StageType}", req.StageType);
 
         bool isCreated = false;
 
@@ -64,7 +57,7 @@ internal sealed class GetOrCreateStageCmd : IBaseStageCmd
         };
         baseStage.Reply(CPacket.Of(successRes));
 
-        _logger.LogInformation("GetOrCreateStage success: StageId={StageId}, IsCreated={IsCreated}",
+        logger.LogInformation("GetOrCreateStage success: StageId={StageId}, IsCreated={IsCreated}",
             baseStage.StageId, isCreated);
     }
 }

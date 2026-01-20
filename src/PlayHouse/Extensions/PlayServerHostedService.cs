@@ -3,6 +3,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Bootstrap;
+using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Extensions;
 
