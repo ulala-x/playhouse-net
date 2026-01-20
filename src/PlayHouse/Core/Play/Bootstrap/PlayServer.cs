@@ -31,7 +31,6 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private readonly ServerConfig _serverConfig;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<PlayServer> _logger;
-    private readonly IServiceProvider _serviceProvider;
 
     private PlayCommunicator? _communicator;
     private PlayDispatcher? _dispatcher;
@@ -44,51 +43,20 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private bool _disposed;
 
     /// <summary>
-    /// 서버가 실행 중인지 여부.
-    /// </summary>
-    public bool IsRunning => _isRunning;
-
-    /// <summary>
-    /// TCP 클라이언트 연결 포트 (설정값).
-    /// 실제 바인딩된 포트를 확인하려면 ActualTcpPort를 사용하세요.
-    /// null이면 TCP가 비활성화되어 있습니다.
-    /// </summary>
-    public int? TcpPort => _options.TcpPort;
-
-    /// <summary>
     /// 실제 바인딩된 TCP 포트.
     /// TcpPort가 0인 경우 (자동 할당) 서버 시작 후 실제 포트를 반환합니다.
     /// </summary>
     public int ActualTcpPort => GetActualTcpPort();
 
-    /// <summary>
-    /// 클라이언트 연결 포트 (레거시 호환).
-    /// ActualTcpPort를 사용하세요.
-    /// </summary>
-    [Obsolete("Use ActualTcpPort instead")]
-    public int ClientPort => ActualTcpPort;
-
-    /// <summary>
-    /// WebSocket 경로 (활성화된 경우).
-    /// </summary>
-    public string? WebSocketPath => _options.WebSocketPath;
-
-    /// <summary>
-    /// Transport 서버 인스턴스 (WebSocket 미들웨어 등록에 사용).
-    /// </summary>
-    public ITransportServer? TransportServer => _transportServer;
-
     internal PlayServer(
         PlayServerOption options,
         PlayProducer producer,
         ISystemController systemController,
-        IServiceProvider serviceProvider,
         ILoggerFactory loggerFactory)
     {
         _options = options;
         _producer = producer;
         _systemController = systemController;
-        _serviceProvider = serviceProvider;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<PlayServer>();
 
@@ -511,11 +479,6 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
 
-    private string GenerateAccountId()
-    {
-        // Simple account ID generation (timestamp-based)
-        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
-    }
 
     /// <summary>
     /// Transport에서 클라이언트 연결 해제 시 호출됩니다.

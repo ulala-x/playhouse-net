@@ -193,6 +193,6 @@ public sealed class PlayServerBootstrap
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
 
         var producer = new PlayProducer(_stageTypes, _actorTypes, serviceProvider);
-        return new PlayServer(_options, producer, systemController, serviceProvider, loggerFactory);
+        return new PlayServer(_options, producer, systemController, loggerFactory);
     }
 }

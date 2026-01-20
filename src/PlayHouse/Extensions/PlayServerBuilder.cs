@@ -78,7 +78,7 @@ internal sealed class PlayServerBuilder : IPlayServerBuilder
             var systemController = sp.GetRequiredService<ISystemController>();
 
             var producer = new PlayProducer(_stageTypes, _actorTypes, sp);
-            return new PlayServer(_options, producer, systemController, sp, loggerFactory);
+            return new PlayServer(_options, producer, systemController, loggerFactory);
         });
 
         // IPlayServerControl로도 접근 가능하도록 등록
