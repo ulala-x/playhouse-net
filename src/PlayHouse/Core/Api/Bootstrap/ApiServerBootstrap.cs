@@ -1,6 +1,5 @@
 #nullable enable
 
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
@@ -31,9 +30,9 @@ public sealed class ApiServerBootstrap
 {
     private readonly ApiServerOption _options = new();
     private readonly List<Type> _controllerTypes = new();
-    private Type? _systemControllerType;
-    private ILogger<ApiServer>? _logger;
-    private IServiceProvider? _serviceProvider;
+    private Type _systemControllerType = null!;
+    private ILogger<ApiServer> _logger = null!;
+    private IServiceProvider _serviceProvider = null!;
 
     /// <summary>
     /// 서버 옵션을 설정합니다.
@@ -62,7 +61,7 @@ public sealed class ApiServerBootstrap
     /// </summary>
     /// <typeparam name="TSystemController">ISystemController 구현 타입.</typeparam>
     /// <returns>빌더 인스턴스.</returns>
-    public ApiServerBootstrap UseSystemController<TSystemController>() where TSystemController : class, Abstractions.System.ISystemController
+    public ApiServerBootstrap UseSystemController<TSystemController>() where TSystemController : class, ISystemController
     {
         _systemControllerType = typeof(TSystemController);
         return this;
@@ -98,39 +97,14 @@ public sealed class ApiServerBootstrap
     {
         _options.Validate();
 
-        // ILogger 필수 검증
-        if (_logger == null)
-            throw new InvalidOperationException(
-                "ILogger is required. Use UseLogger(logger) to register.");
+        // 필수 필드 검증
+        var systemControllerType = _systemControllerType
+            ?? throw new InvalidOperationException("SystemController is required. Use UseSystemController<T>() to register.");
+        var logger = _logger
+            ?? throw new InvalidOperationException("Logger is required. Use UseLogger() to register.");
+        var serviceProvider = _serviceProvider
+            ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
 
-        // ServiceProvider 생성 또는 사용
-        var serviceProvider = _serviceProvider;
-        if (serviceProvider == null)
-        {
-            // 외부에서 제공되지 않았으면 내부에서 생성
-            var services = new ServiceCollection();
-
-            // Logging 설정 (Controllers가 ILogger를 주입받을 수 있도록)
-            services.AddLogging(builder =>
-            {
-                // NullLogger 사용 (기본값)
-            });
-
-            // API Controllers 등록
-            foreach (var controllerType in _controllerTypes)
-            {
-                services.AddTransient(typeof(IApiController), controllerType);
-            }
-
-            // SystemController 등록
-            if (_systemControllerType != null)
-            {
-                services.AddSingleton(typeof(ISystemController), _systemControllerType);
-            }
-
-            serviceProvider = services.BuildServiceProvider();
-        }
-
-        return new ApiServer(_options, _controllerTypes, _systemControllerType, serviceProvider, _logger!);
+        return new ApiServer(_options, _controllerTypes, systemControllerType, serviceProvider, logger);
     }
 }

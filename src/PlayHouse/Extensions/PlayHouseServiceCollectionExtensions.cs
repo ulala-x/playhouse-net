@@ -37,9 +37,6 @@ public static class PlayHouseServiceCollectionExtensions
 
         var builder = new PlayServerBuilder(services, options);
 
-        // Build를 즉시 호출하여 서비스 등록 완료
-        builder.Build();
-
         return builder;
     }
 
@@ -64,9 +61,6 @@ public static class PlayHouseServiceCollectionExtensions
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<ApiServer>());
 
         var builder = new ApiServerBuilder(services, options);
-
-        // Build를 즉시 호출하여 서비스 등록 완료
-        builder.Build();
 
         return builder;
     }

@@ -44,12 +44,6 @@ public class PlayServerHostedServiceTests
         public Task OnPostAuthenticate() => Task.CompletedTask;
     }
 
-    private class TestSystemController : ISystemController
-    {
-        public Task<IReadOnlyList<IServerInfo>> UpdateServerInfoAsync(IServerInfo serverInfo)
-            => Task.FromResult<IReadOnlyList<IServerInfo>>(new List<IServerInfo>());
-    }
-
     [Fact(DisplayName = "생성자 - PlayServer를 받아 HostedService를 생성한다")]
     public void Constructor_AcceptsPlayServer()
     {
