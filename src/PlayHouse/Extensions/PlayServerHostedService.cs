@@ -11,30 +11,22 @@ namespace PlayHouse.Extensions;
 /// IHostedService implementation for PlayServer.
 /// Manages PlayServer lifecycle within ASP.NET Core host.
 /// </summary>
-public sealed class PlayServerHostedService : IHostedService
+public sealed class PlayServerHostedService(
+    PlayServer playServer,
+    ILogger<PlayServerHostedService>? logger = null)
+    : IHostedService
 {
-    private readonly PlayServer _playServer;
-    private readonly ILogger<PlayServerHostedService>? _logger;
-
-    public PlayServerHostedService(
-        PlayServer playServer,
-        ILogger<PlayServerHostedService>? logger = null)
-    {
-        _playServer = playServer;
-        _logger = logger;
-    }
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger?.LogInformation("Starting PlayServer...");
-        await _playServer.StartAsync();
-        _logger?.LogInformation("PlayServer started on port {Port}", _playServer.ActualTcpPort);
+        logger?.LogInformation("Starting PlayServer...");
+        await playServer.StartAsync();
+        logger?.LogInformation("PlayServer started on port {Port}", playServer.ActualTcpPort);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger?.LogInformation("Stopping PlayServer...");
-        await _playServer.StopAsync(cancellationToken);
-        _logger?.LogInformation("PlayServer stopped");
+        logger?.LogInformation("Stopping PlayServer...");
+        await playServer.StopAsync(cancellationToken);
+        logger?.LogInformation("PlayServer stopped");
     }
 }

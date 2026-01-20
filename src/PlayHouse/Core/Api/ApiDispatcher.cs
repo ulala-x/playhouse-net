@@ -77,9 +77,6 @@ internal sealed class ApiDispatcher : IDisposable
         }, (this, packet));
     }
 
-    [ThreadStatic]
-    private static ApiSender? _threadLocalSender;
-
     /// <summary>
     /// Processes a packet asynchronously.
     /// </summary>
@@ -87,9 +84,9 @@ internal sealed class ApiDispatcher : IDisposable
     private async Task DispatchAsync(RoutePacket packet)
     {
         var header = packet.Header;
-        
-        // Optimization: Use ThreadStatic sender to avoid allocations
-        var apiSender = _threadLocalSender ??= new ApiSender(_communicator, _requestCache, _serviceId, _nid);
+
+        // 매번 새 ApiSender 생성 (ThreadStatic 사용 시 async/await에서 race condition 발생)
+        var apiSender = new ApiSender(_communicator, _requestCache, _serviceId, _nid);
         apiSender.SetSessionContext(header);
 
         try
