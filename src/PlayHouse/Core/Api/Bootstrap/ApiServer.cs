@@ -1,6 +1,3 @@
-#nullable enable
-
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
@@ -63,7 +60,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             options.RequestTimeoutMs);
 
         // 모든 필드를 생성자에서 초기화
-        _requestCache = new RequestCache();
+        _requestCache = new RequestCache(loggerFactory.CreateLogger<RequestCache>());
 
         _communicator = new PlayCommunicator(serverConfig);
         _communicator.Bind(this);

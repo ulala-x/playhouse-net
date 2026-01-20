@@ -116,7 +116,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         MessagePool.ApplyConfig(_options.MessagePool);
 
         _cts = new CancellationTokenSource();
-        _requestCache = new RequestCache();
+        _requestCache = new RequestCache(_loggerFactory.CreateLogger<RequestCache>());
 
         _communicator = new PlayCommunicator(_serverConfig);
         _communicator.Bind(this);

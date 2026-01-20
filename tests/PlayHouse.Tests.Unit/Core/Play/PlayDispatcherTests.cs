@@ -94,7 +94,7 @@ public class PlayDispatcherTests : IDisposable
     public PlayDispatcherTests()
     {
         _communicator = Substitute.For<IClientCommunicator>();
-        _requestCache = new RequestCache();
+        _requestCache = new RequestCache(NullLogger<RequestCache>.Instance);
 
         // Manual registration을 위한 빈 ServiceProvider 생성
         var emptyServiceProvider = new ServiceCollection().BuildServiceProvider();

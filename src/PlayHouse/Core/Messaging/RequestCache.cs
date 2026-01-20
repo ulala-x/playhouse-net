@@ -13,14 +13,14 @@ namespace PlayHouse.Core.Messaging;
 /// </summary>
 public sealed class RequestCache
 {
+    private readonly ILogger<RequestCache> _logger;
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pending = new();
-    private readonly ILogger<RequestCache>? _logger;
 
     // Pool for PendingRequest objects to avoid heap allocations per request
-    private static readonly ObjectPool<PendingRequest> _requestPool = 
+    private static readonly ObjectPool<PendingRequest> RequestPool =
         new DefaultObjectPool<PendingRequest>(new DefaultPooledObjectPolicy<PendingRequest>());
 
-    public RequestCache(ILogger<RequestCache>? logger = null)
+    public RequestCache(ILogger<RequestCache> logger)
     {
         _logger = logger;
     }
@@ -28,7 +28,7 @@ public sealed class RequestCache
     public void Register(ushort msgSeq, TaskCompletionSource<IPacket> tcs, TimeSpan timeout)
     {
         var cts = new CancellationTokenSource();
-        var request = _requestPool.Get();
+        var request = RequestPool.Get();
         request.Update(tcs, cts, DateTime.UtcNow);
 
         if (_pending.TryAdd(msgSeq, request))
@@ -38,9 +38,9 @@ public sealed class RequestCache
         }
         else
         {
-            _logger?.LogWarning("Failed to register request {MsgSeq} - already exists", msgSeq);
+            _logger.LogWarning("Failed to register request {MsgSeq} - already exists", msgSeq);
             cts.Dispose();
-            _requestPool.Return(request);
+            RequestPool.Return(request);
             tcs.TrySetException(new InvalidOperationException($"Request {msgSeq} already registered"));
         }
     }
@@ -51,7 +51,7 @@ public sealed class RequestCache
         {
             request.TimeoutCts.Dispose();
             request.Tcs.TrySetResult(response);
-            _requestPool.Return(request);
+            RequestPool.Return(request);
             return true;
         }
         return false;
@@ -63,7 +63,7 @@ public sealed class RequestCache
         {
             request.TimeoutCts.Dispose();
             request.Tcs.TrySetCanceled();
-            _requestPool.Return(request);
+            RequestPool.Return(request);
         }
     }
 
@@ -73,7 +73,7 @@ public sealed class RequestCache
         {
             request.TimeoutCts.Dispose();
             request.Tcs.TrySetException(new TimeoutException($"Request {msgSeq} timed out"));
-            _requestPool.Return(request);
+            RequestPool.Return(request);
         }
     }
 
@@ -85,7 +85,7 @@ public sealed class RequestCache
         {
             r.TimeoutCts.Dispose();
             r.Tcs.TrySetCanceled();
-            _requestPool.Return(r);
+            RequestPool.Return(r);
         }
     }
 
@@ -105,7 +105,7 @@ public sealed class RequestCache
         {
             request.TimeoutCts.Dispose();
             tcs = request.Tcs;
-            _requestPool.Return(request);
+            RequestPool.Return(request);
             return true;
         }
         tcs = null;

@@ -2,7 +2,7 @@
 
 using PlayHouse.Abstractions;
 
-namespace PlayHouse.Bootstrap;
+namespace PlayHouse.Core.Api.Bootstrap;
 
 /// <summary>
 /// API Server 설정 옵션.

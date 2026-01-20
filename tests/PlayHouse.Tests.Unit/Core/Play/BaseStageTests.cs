@@ -9,6 +9,7 @@ using PlayHouse.Runtime.Proto;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using NSubstitute;
 using FluentAssertions;
@@ -94,7 +95,7 @@ public class BaseStageTests
     private (BaseStage baseStage, FakeStage fakeStage, XStageSender stageSender) CreateTestStage()
     {
         var communicator = Substitute.For<IClientCommunicator>();
-        var requestCache = new RequestCache();
+        var requestCache = new RequestCache(NullLogger<RequestCache>.Instance);
         var dispatcher = Substitute.For<IPlayDispatcher>();
         var replyRegistry = Substitute.For<IReplyPacketRegistry>();
 
