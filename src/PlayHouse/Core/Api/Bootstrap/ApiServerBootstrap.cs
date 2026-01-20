@@ -94,7 +94,7 @@ public sealed class ApiServerBootstrap
             ?? throw new InvalidOperationException("LoggerFactory is required. Use UseLoggerFactory() to register.");
         var serviceProvider = _serviceProvider
             ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
-
+    
         // SystemController 인스턴스 생성
         var systemController = Activator.CreateInstance(systemControllerType) as ISystemController
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
