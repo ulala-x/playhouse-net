@@ -19,13 +19,9 @@ namespace PlayHouse.Verification.Verifiers;
 /// 환경 변수 ENABLE_DI_TESTS=1 설정 시에만 실행됩니다.
 /// DIPlayServer는 Program.cs에서 조건부로 시작됩니다.
 /// </remarks>
-public class DIIntegrationVerifier : VerifierBase
+public class DIIntegrationVerifier(ServerContext serverContext) : VerifierBase(serverContext)
 {
     public override string CategoryName => "DI Integration";
-
-    public DIIntegrationVerifier(ServerContext serverContext) : base(serverContext)
-    {
-    }
 
     public override int GetTestCount() => 5;
 

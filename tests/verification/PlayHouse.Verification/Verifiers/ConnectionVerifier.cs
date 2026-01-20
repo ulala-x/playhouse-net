@@ -7,16 +7,12 @@ namespace PlayHouse.Verification.Verifiers;
 /// <summary>
 /// TCP 연결, 인증, 연결 해제 검증
 /// </summary>
-public class ConnectionVerifier : VerifierBase
+public class ConnectionVerifier(ServerContext serverContext) : VerifierBase(serverContext)
 {
     private readonly List<bool> _connectResults = new();
     private int _disconnectCount;
 
     public override string CategoryName => "Connection";
-
-    public ConnectionVerifier(ServerContext serverContext) : base(serverContext)
-    {
-    }
 
     public override int GetTestCount() => 8;
 

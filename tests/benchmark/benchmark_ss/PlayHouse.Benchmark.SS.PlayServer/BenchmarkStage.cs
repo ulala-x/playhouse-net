@@ -107,6 +107,8 @@ public class BenchmarkStage : IStage
         for (int i = 0; i < count; i++)
         {
             var start = Stopwatch.GetTimestamp();
+            
+            
             StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data), (err, reply) => 
             {
                 if (err == 0) ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, data.Length);

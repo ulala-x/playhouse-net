@@ -11,9 +11,9 @@ var serverOption = new Option<string>(
     description: "Server address (host:port)",
     getDefaultValue: () => "127.0.0.1:16110");
 
-var connectionsOption = new Option<int>(
-    name: "--connections",
-    description: "Number of concurrent connections",
+var ccuOption = new Option<int>(
+    name: "--ccu",
+    description: "Number of concurrent ccu (CCU)",
     getDefaultValue: () => 1);
 
 var messagesOption = new Option<int?>(
@@ -59,20 +59,20 @@ var connectOnlyOption = new Option<bool>(
     description: "Test connection establishment only (no message sending)",
     getDefaultValue: () => false);
 
-var maxInFlightOption = new Option<int>(
-    name: "--max-inflight",
+var inflightOption = new Option<int>(
+    name: "--inflight",
     description: "Maximum in-flight requests (default: 200)",
     getDefaultValue: () => 200);
 
-var warmupDurationOption = new Option<int>(
-    name: "--warmup-duration",
+var warmupOption = new Option<int>(
+    name: "--warmup",
     description: "Warmup duration in seconds (default: 3)",
     getDefaultValue: () => 3);
 
 var rootCommand = new RootCommand("PlayHouse Benchmark Client")
 {
     serverOption,
-    connectionsOption,
+    ccuOption,
     messagesOption,
     messageSizeOption,
     responseSizeOption,
@@ -82,14 +82,14 @@ var rootCommand = new RootCommand("PlayHouse Benchmark Client")
     outputDirOption,
     labelOption,
     connectOnlyOption,
-    maxInFlightOption,
-    warmupDurationOption
+    inflightOption,
+    warmupOption
 };
 
 rootCommand.SetHandler(async (context) =>
 {
     var server = context.ParseResult.GetValueForOption(serverOption)!;
-    var connections = context.ParseResult.GetValueForOption(connectionsOption);
+    var ccu = context.ParseResult.GetValueForOption(ccuOption);
     var messages = context.ParseResult.GetValueForOption(messagesOption);
     var messageSize = context.ParseResult.GetValueForOption(messageSizeOption);
     var responseSizes = context.ParseResult.GetValueForOption(responseSizeOption)!;
@@ -99,12 +99,12 @@ rootCommand.SetHandler(async (context) =>
     var outputDir = context.ParseResult.GetValueForOption(outputDirOption)!;
     var label = context.ParseResult.GetValueForOption(labelOption)!;
     var connectOnly = context.ParseResult.GetValueForOption(connectOnlyOption);
-    var maxInFlight = context.ParseResult.GetValueForOption(maxInFlightOption);
-    var warmupDuration = context.ParseResult.GetValueForOption(warmupDurationOption);
+    var inflight = context.ParseResult.GetValueForOption(inflightOption);
+    var warmup = context.ParseResult.GetValueForOption(warmupOption);
 
     if (connectOnly)
     {
-        await RunConnectOnlyTestAsync(server, connections);
+        await RunConnectOnlyTestAsync(server, ccu);
     }
     else
     {
@@ -129,7 +129,7 @@ rootCommand.SetHandler(async (context) =>
         int? messagesValue = messages;
         int? durationValue = duration;
 
-        await RunBenchmarkAsync(server, connections, messagesValue, durationValue, messageSize, responseSizes, mode, httpPort, outputDir, label, maxInFlight, warmupDuration);
+        await RunBenchmarkAsync(server, ccu, messagesValue, durationValue, messageSize, responseSizes, mode, httpPort, outputDir, label, inflight, warmup);
     }
 });
 
@@ -137,7 +137,7 @@ return await rootCommand.InvokeAsync(args);
 
 static async Task RunBenchmarkAsync(
     string server,
-    int connections,
+    int ccu,
     int? messages,
     int? duration,
     int messageSize,
@@ -146,8 +146,8 @@ static async Task RunBenchmarkAsync(
     int httpPort,
     string outputDir,
     string label,
-    int maxInFlight,
-    int warmupDuration)
+    int inflight,
+    int warmup)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -197,7 +197,7 @@ static async Task RunBenchmarkAsync(
         // "all" 모드 처리
         if (mode.ToLowerInvariant() == "all")
         {
-            await RunAllModesAsync(server, connections, effectiveMessages, effectiveDuration, isTimeBased, messageSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, maxInFlight, warmupDuration);
+            await RunAllModesAsync(server, ccu, effectiveMessages, effectiveDuration, isTimeBased, messageSize, responseSizesStr, httpPort, outputDir, label, runTimestamp, inflight, warmup);
             return;
         }
 
@@ -217,7 +217,7 @@ static async Task RunBenchmarkAsync(
         Log.Information("Server: {Host}:{Port}", host, port);
         Log.Information("HTTP API: {Host}:{HttpPort}", host, httpPort);
         Log.Information("Mode: {Mode}", benchmarkMode);
-        Log.Information("Connections: {Connections:N0}", connections);
+        Log.Information("Connections: {Connections:N0}", ccu);
         if (isTimeBased)
         {
             Log.Information("Duration: {Duration:N0} seconds per test", effectiveDuration);
@@ -272,19 +272,19 @@ static async Task RunBenchmarkAsync(
             await Task.Delay(1000);
 
             // 벤치마크 실행 (테스트마다 다른 stageId 범위 사용)
-            var stageIdOffset = i * connections;
+            var stageIdOffset = i * ccu;
             var runner = new BenchmarkRunner(
                 host,
                 port,
-                connections,
+                ccu,
                 responseSize, // Use current iteration's size
                 benchmarkMode,
                 clientMetricsCollector,
                 stageIdOffset: stageIdOffset,
                 stageName: "BenchStage",
                 durationSeconds: effectiveDuration,
-                maxInFlight: maxInFlight,
-                warmupDuration: warmupDuration);
+                inflight: inflight,
+                warmup: warmup);
 
             var startTime = DateTime.Now;
             await runner.RunAsync();
@@ -310,10 +310,10 @@ static async Task RunBenchmarkAsync(
 
         // 통합 결과 출력
         Log.Information("");
-        LogResults(connections, effectiveMessages, effectiveDuration, isTimeBased, messageSize, responseSizes, benchmarkMode, allResults);
+        LogResults(ccu, effectiveMessages, effectiveDuration, isTimeBased, messageSize, responseSizes, benchmarkMode, allResults);
 
         // 결과 파일 저장
-        await SaveResultsToFile(outputDir, runTimestamp, label, connections, effectiveMessages, effectiveDuration, isTimeBased, messageSize, benchmarkMode, allResults);
+        await SaveResultsToFile(outputDir, runTimestamp, label, ccu, effectiveMessages, effectiveDuration, isTimeBased, messageSize, benchmarkMode, allResults);
 
         // 서버 종료 요청은 스크립트가 담당 (여러 모드를 순차 실행하는 경우)
         // Log.Information("");
@@ -340,7 +340,7 @@ static async Task RunBenchmarkAsync(
 }
 
 static void LogResults(
-    int connections,
+    int ccu,
     int messages,
     int duration,
     bool isTimeBased,
@@ -355,12 +355,12 @@ static void LogResults(
     if (isTimeBased)
     {
         Log.Information("Config: {Connections:N0} CCU x {Duration:N0}s, Request: {RequestSize:N0}B, Mode: {Mode}",
-            connections, duration, messageSize, mode);
+            ccu, duration, messageSize, mode);
     }
     else
     {
         Log.Information("Config: {Connections:N0} CCU x {Messages:N0} msg, Request: {RequestSize:N0}B, Mode: {Mode}",
-            connections, messages, messageSize, mode);
+            ccu, messages, messageSize, mode);
     }
     Log.Information("");
 
@@ -435,7 +435,7 @@ static void LogResults(
 /// </summary>
 static async Task RunAllModesAsync(
     string server,
-    int connections,
+    int ccu,
     int messages,
     int duration,
     bool isTimeBased,
@@ -445,8 +445,8 @@ static async Task RunAllModesAsync(
     string outputDir,
     string label,
     DateTime runTimestamp,
-    int maxInFlight,
-    int warmupDuration)
+    int inflight,
+    int warmup)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -474,7 +474,7 @@ static async Task RunAllModesAsync(
     Log.Information("PlayHouse Benchmark Client - All Modes Comparison");
     Log.Information("================================================================================");
     Log.Information("Server: {Host}:{Port}", host, port);
-    Log.Information("Connections: {Connections:N0}", connections);
+    Log.Information("Connections: {Connections:N0}", ccu);
     if (isTimeBased)
     {
         Log.Information("Duration: {Duration:N0} seconds", duration);
@@ -482,7 +482,7 @@ static async Task RunAllModesAsync(
     else
     {
         Log.Information("Messages per connection: {Messages:N0}", messages);
-        Log.Information("Total messages: {TotalMessages:N0}", connections * messages);
+        Log.Information("Total messages: {TotalMessages:N0}", ccu * messages);
     }
     Log.Information("Message size: {MessageSize:N0} bytes", messageSize);
     Log.Information("Response sizes: {ResponseSizes}", string.Join(", ", responseSizes.Select(s => $"{s:N0}B")));
@@ -518,13 +518,13 @@ static async Task RunAllModesAsync(
         await serverMetricsClient.ResetMetricsAsync();
         await Task.Delay(500);
 
-        var stageIdOffset = testIndex * connections;
+        var stageIdOffset = testIndex * ccu;
         var runner = new BenchmarkRunner(
-            host, port, connections, responseSize,
+            host, port, ccu, responseSize,
             BenchmarkMode.RequestAsync, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight,
-            warmupDuration: warmupDuration);
+            stageName: "BenchStage", durationSeconds: duration, inflight: inflight,
+            warmup: warmup);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -565,13 +565,13 @@ static async Task RunAllModesAsync(
         await serverMetricsClient.ResetMetricsAsync();
         await Task.Delay(500);
 
-        var stageIdOffset = testIndex * connections;
+        var stageIdOffset = testIndex * ccu;
         var runner = new BenchmarkRunner(
-            host, port, connections, responseSize,
+            host, port, ccu, responseSize,
             BenchmarkMode.RequestCallback, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight,
-            warmupDuration: warmupDuration);
+            stageName: "BenchStage", durationSeconds: duration, inflight: inflight,
+            warmup: warmup);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -612,13 +612,13 @@ static async Task RunAllModesAsync(
         await serverMetricsClient.ResetMetricsAsync();
         await Task.Delay(500);
 
-        var stageIdOffset = testIndex * connections;
+        var stageIdOffset = testIndex * ccu;
         var runner = new BenchmarkRunner(
-            host, port, connections, responseSize,
+            host, port, ccu, responseSize,
             BenchmarkMode.Send, clientMetricsCollector,
             stageIdOffset: stageIdOffset,
-            stageName: "BenchStage", durationSeconds: duration, maxInFlight: maxInFlight,
-            warmupDuration: warmupDuration);
+            stageName: "BenchStage", durationSeconds: duration, inflight: inflight,
+            warmup: warmup);
         testIndex++;
 
         var startTime = DateTime.Now;
@@ -643,10 +643,10 @@ static async Task RunAllModesAsync(
 
     // 비교 결과 출력
     Log.Information("");
-    LogModeComparison(connections, messages, messageSize, responseSizes, resultsRequestAsync, resultsRequestCallback, resultsSend);
+    LogModeComparison(ccu, messages, messageSize, responseSizes, resultsRequestAsync, resultsRequestCallback, resultsSend);
 
     // 결과 파일 저장
-    await SaveComparisonResults(outputDir, runTimestamp, label, connections, messages, messageSize,
+    await SaveComparisonResults(outputDir, runTimestamp, label, ccu, messages, messageSize,
         responseSizes, resultsRequestAsync, resultsRequestCallback, resultsSend);
 
     // 서버 종료 요청
@@ -668,7 +668,7 @@ static async Task RunAllModesAsync(
 /// 세 모드 비교 결과 출력
 /// </summary>
 static void LogModeComparison(
-    int connections,
+    int ccu,
     int messages,
     int messageSize,
     int[] responseSizes,
@@ -680,7 +680,7 @@ static void LogModeComparison(
     Log.Information("Benchmark Results - All Modes Comparison");
     Log.Information("================================================================================");
     Log.Information("Config: {Connections:N0} CCU, {Duration:N0}s duration",
-        connections, messages);
+        ccu, messages);
     Log.Information("");
 
     // 테이블 헤더 출력
@@ -721,7 +721,7 @@ static async Task SaveComparisonResults(
     string outputDir,
     DateTime runTimestamp,
     string label,
-    int connections,
+    int ccu,
     int messages,
     int messageSize,
     int[] responseSizes,
@@ -742,9 +742,9 @@ static async Task SaveComparisonResults(
         Label = label,
         Config = new
         {
-            Connections = connections,
+            Connections = ccu,
             MessagesPerConnection = messages,
-            TotalMessages = connections * messages,
+            TotalMessages = ccu * messages,
             RequestSizeBytes = messageSize
         },
         ResultsRequestAsync = resultsRequestAsync.Select(r => new
@@ -783,7 +783,7 @@ static async Task SaveResultsToFile(
     string outputDir,
     DateTime runTimestamp,
     string label,
-    int connections,
+    int ccu,
     int messages,
     int duration,
     bool isTimeBased,
@@ -804,11 +804,11 @@ static async Task SaveResultsToFile(
         Label = label,
         Config = new
         {
-            Connections = connections,
+            Connections = ccu,
             MessagesPerConnection = isTimeBased ? (int?)null : messages,
             DurationSeconds = isTimeBased ? duration : (int?)null,
             IsTimeBased = isTimeBased,
-            TotalMessages = isTimeBased ? (int?)null : connections * messages,
+            TotalMessages = isTimeBased ? (int?)null : ccu * messages,
             RequestSizeBytes = messageSize,
             Mode = mode.ToString()
         },
@@ -865,7 +865,7 @@ static async Task SaveResultsToFile(
 
     foreach (var r in results)
     {
-        csvBuilder.Append($"{runTimestamp:yyyy-MM-dd HH:mm:ss},{label},{connections},{messages},{connections * messages},{messageSize},{r.ResponseSize},{mode},{r.TotalElapsedSeconds:F2},");
+        csvBuilder.Append($"{runTimestamp:yyyy-MM-dd HH:mm:ss},{label},{ccu},{messages},{ccu * messages},{messageSize},{r.ResponseSize},{mode},{r.TotalElapsedSeconds:F2},");
 
         if (r.ServerMetrics != null)
         {
@@ -896,7 +896,7 @@ static async Task SaveResultsToFile(
 /// <summary>
 /// 연결 + 인증만 테스트 (패킷 전송 없음)
 /// </summary>
-static async Task RunConnectOnlyTestAsync(string server, int connections)
+static async Task RunConnectOnlyTestAsync(string server, int ccu)
 {
     // 서버 주소 파싱
     var parts = server.Split(':');
@@ -917,7 +917,7 @@ static async Task RunConnectOnlyTestAsync(string server, int connections)
 
     try
     {
-        var test = new ConnectionOnlyTest(host, port, connections);
+        var test = new ConnectionOnlyTest(host, port, ccu);
         await test.RunAsync();
     }
     catch (Exception ex)

@@ -5,22 +5,24 @@
 # 목적: 특정 통신 모드와 페이로드 사이즈를 지정하여 빠르게 테스트합니다.
 #       개발 중 빠른 검증이나 특정 조건 테스트에 사용합니다.
 #
-# 사용법: ./run-single.sh <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size] [diag-level] [warmup-duration]
+# 사용법: ./run-single.sh --mode <mode> --size <size> [options]
 #
-# 파라미터:
-#   comm-mode      - 통신 모드 (필수): request-async, request-callback, send
-#   size           - 페이로드 크기 (필수, bytes): 64, 1024, 65536 등
-#   connections    - 동시 연결 수 (선택, 기본: 10)
-#   duration       - 테스트 시간(초) (선택, 기본: 10)
-#   max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)
-#   min-pool-size  - 최소 워커 수 (선택, 기본: 100)
-#   max-pool-size  - 최대 워커 수 (선택, 기본: 1000)
-#   diag-level     - 진단 레벨 (선택, 기본: -1, 0: Raw Echo, 1: Header Echo)
-#   warmup-duration- Warm-up 시간(초) (선택, 기본: 3)
+# 필수 파라미터:
+#   --mode           - 통신 모드: request-async, request-callback, send
+#   --size           - 페이로드 크기 (bytes): 64, 1024, 65536 등
+#
+# 선택 파라미터:
+#   --ccu            - 동시 연결 수 (기본: 10)
+#   --duration       - 테스트 시간(초) (기본: 10)
+#   --inflight       - 최대 동시 요청 수 (기본: 200)
+#   --min-pool-size  - 최소 워커 수 (기본: 100)
+#   --max-pool-size  - 최대 워커 수 (기본: 1000)
+#   --diag-level     - 진단 레벨 (기본: -1, 0: Raw Echo, 1: Header Echo)
+#   --warmup         - Warm-up 시간(초) (기본: 3)
 #
 # 예시:
-#   ./run-single.sh request-async 1024
-#   ./run-single.sh send 65536 100 30 500 100 500 -1 5
+#   ./run-single.sh --mode request-async --size 1024
+#   ./run-single.sh --mode send --size 65536 --ccu 100 --duration 30
 #
 # 참고: 모든 모드/사이즈를 비교 테스트하려면 run-benchmark.sh를 사용하세요.
 
@@ -31,36 +33,93 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESULT_DIR="$PROJECT_ROOT/benchmark-results"
 
-# 파라미터 검증
-if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "사용법: $0 <comm-mode> <size> [connections] [duration] [max-inflight] [min-pool-size] [max-pool-size] [diag-level] [warmup-duration]"
+# 기본값 설정
+MODE=""
+SIZE=""
+CCU=10
+DURATION=10
+INFLIGHT=200
+MIN_POOL_SIZE=100
+MAX_POOL_SIZE=1000
+DIAG_LEVEL=-1
+WARMUP=3
+
+# Named parameter 파싱
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
+        --size)
+            SIZE="$2"
+            shift 2
+            ;;
+        --ccu)
+            CCU="$2"
+            shift 2
+            ;;
+        --duration)
+            DURATION="$2"
+            shift 2
+            ;;
+        --inflight)
+            INFLIGHT="$2"
+            shift 2
+            ;;
+        --min-pool-size)
+            MIN_POOL_SIZE="$2"
+            shift 2
+            ;;
+        --max-pool-size)
+            MAX_POOL_SIZE="$2"
+            shift 2
+            ;;
+        --diag-level)
+            DIAG_LEVEL="$2"
+            shift 2
+            ;;
+        --warmup)
+            WARMUP="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "사용법: $0 --mode <mode> --size <size> [options]"
+            echo ""
+            echo "필수 파라미터:"
+            echo "  --mode           - 통신 모드: request-async, request-callback, send"
+            echo "  --size           - 페이로드 크기 (bytes)"
+            echo ""
+            echo "선택 파라미터:"
+            echo "  --ccu            - 동시 연결 수 (기본: 10)"
+            echo "  --duration       - 테스트 시간(초) (기본: 10)"
+            echo "  --inflight       - 최대 동시 요청 수 (기본: 200)"
+            echo "  --min-pool-size  - 최소 워커 수 (기본: 100)"
+            echo "  --max-pool-size  - 최대 워커 수 (기본: 1000)"
+            echo "  --diag-level     - 진단 레벨 (기본: -1)"
+            echo "  --warmup         - Warm-up 시간(초) (기본: 3)"
+            echo ""
+            echo "예시:"
+            echo "  $0 --mode request-async --size 1024"
+            echo "  $0 --mode send --size 65536 --ccu 100 --duration 30"
+            exit 0
+            ;;
+        *)
+            echo "Unknown parameter: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# 필수 파라미터 검증
+if [ -z "$MODE" ] || [ -z "$SIZE" ]; then
+    echo "Error: --mode and --size are required"
     echo ""
-    echo "파라미터:"
-    echo "  comm-mode      - 통신 모드 (필수): request-async, request-callback, send"
-    echo "  size           - 페이로드 크기 (필수, bytes)"
-    echo "  connections    - 동시 연결 수 (선택, 기본: 10)"
-    echo "  duration       - 테스트 시간(초) (선택, 기본: 10)"
-    echo "  max-inflight   - 최대 동시 요청 수 (선택, 기본: 200)"
-    echo "  min-pool-size  - 최소 워커 수 (선택, 기본: 100)"
-    echo "  max-pool-size  - 최대 워커 수 (선택, 기본: 1000)"
-    echo "  diag-level     - 진단 레벨 (선택, 기본: -1)"
-    echo "  warmup-duration- Warm-up 시간(초) (선택, 기본: 3)"
-    echo ""
-    echo "예시:"
-    echo "  $0 request-async 1024"
-    echo "  $0 send 65536 100 30 500 100 500 -1 5"
+    echo "사용법: $0 --mode <mode> --size <size> [options]"
+    echo "자세한 도움말: $0 --help"
     exit 1
 fi
-
-COMM_MODE=$1
-SIZE=$2
-CONNECTIONS=${3:-10}
-DURATION=${4:-10}
-MAX_INFLIGHT=${5:-200}
-MIN_POOL_SIZE=${6:-100}
-MAX_POOL_SIZE=${7:-1000}
-DIAG_LEVEL=${8:--1}
-WARMUP_DURATION=${9:-3}
 TCP_PORT=16110
 ZMQ_PORT=16100
 HTTP_PORT=5080
@@ -68,11 +127,11 @@ API_HTTP_PORT=5081
 API_ZMQ_PORT=16201
 
 # Comm-mode 검증
-case "$COMM_MODE" in
+case "$MODE" in
     request-async|request-callback|send)
         ;;
     *)
-        echo "Error: Invalid comm-mode '$COMM_MODE'"
+        echo "Error: Invalid comm-mode '$MODE'"
         echo "Valid modes: request-async, request-callback, send"
         exit 1
         ;;
@@ -82,12 +141,12 @@ echo "==========================================================================
 echo "PlayHouse S2S Benchmark - Single Test"
 echo "================================================================================"
 echo "Configuration:"
-echo "  Comm-mode: $COMM_MODE"
+echo "  Comm-mode: $MODE"
 echo "  Payload size: $SIZE bytes (Echo: request=response)"
-echo "  Connections: $CONNECTIONS"
+echo "  Connections: $CCU"
 echo "  Duration: ${DURATION}s"
-echo "  Warmup: ${WARMUP_DURATION}s"
-echo "  Max in-flight: $MAX_INFLIGHT"
+echo "  Warmup: ${WARMUP}s"
+echo "  Max in-flight: $INFLIGHT"
 echo "  Pool size: $MIN_POOL_SIZE ~ $MAX_POOL_SIZE"
 echo "================================================================================"
 echo ""
@@ -152,17 +211,17 @@ mkdir -p "$RESULT_DIR"
 
 dotnet run --project "$SCRIPT_DIR/PlayHouse.Benchmark.SS.Client/PlayHouse.Benchmark.SS.Client.csproj" -c Release -- \
     --server 127.0.0.1:$TCP_PORT \
-    --connections $CONNECTIONS \
-    --mode ss-echo \
-    --comm-mode $COMM_MODE \
+    --ccu $CCU \
+    --test-mode ss-echo \
+    --mode $MODE \
     --duration $DURATION \
     --message-size $SIZE \
     --response-size $SIZE \
     --http-port $HTTP_PORT \
     --api-http-port $API_HTTP_PORT \
     --output-dir "$RESULT_DIR" \
-    --max-inflight $MAX_INFLIGHT \
-    --warmup-duration $WARMUP_DURATION
+    --inflight $INFLIGHT \
+    --warmup $WARMUP
 
 # 정리
 echo ""
