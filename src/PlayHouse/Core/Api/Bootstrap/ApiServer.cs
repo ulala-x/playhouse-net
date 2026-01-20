@@ -23,6 +23,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 {
     private readonly ApiServerOption _options;
     private readonly ServerConfig _serverConfig;
+    private readonly ISystemController _systemController;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ApiServer> _logger;
 
@@ -49,10 +50,12 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 
     internal ApiServer(
         ApiServerOption options,
+        ISystemController systemController,
         IServiceProvider serviceProvider,
         ILogger<ApiServer> logger)
     {
         _options = options;
+        _systemController = systemController;
         _serviceProvider = serviceProvider;
         _logger = logger;
 
@@ -101,7 +104,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _options.ServerId);
 
         // ServerAddressResolver 시작
-        var systemController = _serviceProvider.GetRequiredService<ISystemController>();
         var serverInfoCenter = new XServerInfoCenter();
 
         var myServerInfo = new XServerInfo(
@@ -111,7 +113,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 
         _addressResolver = new ServerAddressResolver(
             myServerInfo,
-            systemController,
+            _systemController,
             serverInfoCenter,
             _communicator,
             TimeSpan.FromSeconds(3));

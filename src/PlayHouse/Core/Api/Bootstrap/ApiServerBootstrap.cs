@@ -1,7 +1,6 @@
 #nullable enable
 
 using Microsoft.Extensions.Logging;
-using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Api.Bootstrap;
 
@@ -29,7 +28,6 @@ namespace PlayHouse.Bootstrap;
 public sealed class ApiServerBootstrap
 {
     private readonly ApiServerOption _options = new();
-    private readonly List<Type> _controllerTypes = new();
     private Type _systemControllerType = null!;
     private ILogger<ApiServer> _logger = null!;
     private IServiceProvider _serviceProvider = null!;
@@ -42,17 +40,6 @@ public sealed class ApiServerBootstrap
     public ApiServerBootstrap Configure(Action<ApiServerOption> configure)
     {
         configure(_options);
-        return this;
-    }
-
-    /// <summary>
-    /// API Controller 타입을 등록합니다.
-    /// </summary>
-    /// <typeparam name="TController">IApiController 구현 타입.</typeparam>
-    /// <returns>빌더 인스턴스.</returns>
-    public ApiServerBootstrap UseController<TController>() where TController : class, IApiController
-    {
-        _controllerTypes.Add(typeof(TController));
         return this;
     }
 
@@ -105,6 +92,10 @@ public sealed class ApiServerBootstrap
         var serviceProvider = _serviceProvider
             ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
 
-        return new ApiServer(_options, serviceProvider, logger);
+        // SystemController 인스턴스 생성
+        var systemController = Activator.CreateInstance(systemControllerType) as ISystemController
+            ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
+
+        return new ApiServer(_options, systemController, serviceProvider, logger);
     }
 }
