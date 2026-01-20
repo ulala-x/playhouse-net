@@ -75,13 +75,13 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _options.ServiceId,
             _options.ServerId,
             _requestCache,
-            new CommunicatorAdapter(_communicator),
+            _communicator,
             serviceProvider,
             dispatcherLogger);
 
         // ApiSender 생성
         ApiSender = new ApiSender(
-            new CommunicatorAdapter(_communicator),
+            _communicator,
             _requestCache,
             _options.ServiceId,
             _options.ServerId);
@@ -182,31 +182,5 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 
         await StopAsync();
         _communicator.Dispose();
-    }
-
-    /// <summary>
-    /// Communicator를 IClientCommunicator로 래핑.
-    /// </summary>
-    private sealed class CommunicatorAdapter(PlayCommunicator communicator) : IClientCommunicator
-    {
-        public void Send(string targetNid, RoutePacket packet)
-        {
-            communicator.Send(targetNid, packet);
-        }
-
-        public void Connect(string targetNid, string address)
-        {
-            communicator.Connect(targetNid, address);
-        }
-
-        public void Disconnect(string targetNid, string endpoint)
-        {
-            communicator.Disconnect(targetNid, endpoint);
-        }
-
-        public void Stop()
-        {
-            communicator.Stop();
-        }
     }
 }

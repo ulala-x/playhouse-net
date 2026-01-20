@@ -126,7 +126,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         // PlayDispatcher 생성 (ThreadPool 기반 + ComputePool/IoPool 사용)
         _dispatcher = new PlayDispatcher(
             _producer,
-            new CommunicatorAdapter(_communicator),
+            _communicator,
             _requestCache,
             _options.ServiceId,
             _options.ServerId,
@@ -690,45 +690,5 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         }
 
         _communicator?.Dispose();
-    }
-
-    /// <summary>
-    /// Communicator를 IClientCommunicator로 래핑.
-    /// </summary>
-    private sealed class CommunicatorAdapter : IClientCommunicator
-    {
-        private readonly PlayCommunicator _communicator;
-
-        public CommunicatorAdapter(PlayCommunicator communicator)
-        {
-            _communicator = communicator;
-        }
-
-        public string ServerId => _communicator.ServerId;
-
-        public void Send(string targetNid, RoutePacket packet)
-        {
-            _communicator.Send(targetNid, packet);
-        }
-
-        public void Connect(string targetNid, string address)
-        {
-            _communicator.Connect(targetNid, address);
-        }
-
-        public void Disconnect(string targetNid, string endpoint)
-        {
-            _communicator.Disconnect(targetNid, endpoint);
-        }
-
-        public void Communicate()
-        {
-            // Thread management is handled internally by PlayCommunicator.Start()
-        }
-
-        public void Stop()
-        {
-            _communicator.Stop();
-        }
     }
 }
