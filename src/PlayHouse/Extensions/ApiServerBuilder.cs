@@ -63,8 +63,8 @@ internal sealed class ApiServerBuilder : IApiServerBuilder
         _services.AddSingleton<ApiServer>(sp =>
         {
             var systemController = sp.GetRequiredService<ISystemController>();
-            var logger = sp.GetRequiredService<ILogger<ApiServer>>();
-            return new ApiServer(_options, systemController, sp, logger);
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+            return new ApiServer(_options, systemController, sp, loggerFactory);
         });
 
         // IApiServerControl로도 접근 가능하도록 등록

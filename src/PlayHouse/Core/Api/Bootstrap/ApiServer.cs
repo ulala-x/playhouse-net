@@ -22,6 +22,7 @@ namespace PlayHouse.Core.Api.Bootstrap;
 public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicateListener
 {
     private readonly ApiServerOption _options;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ApiServer> _logger;
 
     private readonly PlayCommunicator _communicator;
@@ -49,10 +50,11 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         ApiServerOption options,
         ISystemController systemController,
         IServiceProvider serviceProvider,
-        ILogger<ApiServer> logger)
+        ILoggerFactory loggerFactory)
     {
         _options = options;
-        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<ApiServer>();
 
         var serverConfig = new ServerConfig(
             options.ServiceId,
@@ -66,10 +68,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _communicator = new PlayCommunicator(serverConfig);
         _communicator.Bind(this);
 
-        // ApiDispatcher용 Logger 생성
-        var loggerFactory = LoggerFactory.Create(builder => { });
-        var dispatcherLogger = loggerFactory.CreateLogger<ApiDispatcher>();
-
         // ApiDispatcher 생성 (외부 ServiceProvider 사용)
         _dispatcher = new ApiDispatcher(
             _options.ServiceId,
@@ -77,7 +75,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _requestCache,
             _communicator,
             serviceProvider,
-            dispatcherLogger);
+            loggerFactory);
 
         // ApiSender 생성
         ApiSender = new ApiSender(

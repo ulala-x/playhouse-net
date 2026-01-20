@@ -22,7 +22,7 @@ namespace PlayHouse.Bootstrap;
 ///     })
 ///     .UseSystemController&lt;MySystemController&gt;()
 ///     .UseServiceProvider(serviceProvider)
-///     .UseLogger(logger)
+///     .UseLoggerFactory(loggerFactory)
 ///     .Build();
 ///
 /// await apiServer.StartAsync();
@@ -32,7 +32,7 @@ public sealed class ApiServerBootstrap
 {
     private readonly ApiServerOption _options = new();
     private Type _systemControllerType = null!;
-    private ILogger<ApiServer> _logger = null!;
+    private ILoggerFactory _loggerFactory = null!;
     private IServiceProvider _serviceProvider = null!;
 
     /// <summary>
@@ -58,13 +58,13 @@ public sealed class ApiServerBootstrap
     }
 
     /// <summary>
-    /// Logger를 설정합니다.
+    /// LoggerFactory를 설정합니다.
     /// </summary>
-    /// <param name="logger">ILogger&lt;ApiServer&gt; 인스턴스.</param>
+    /// <param name="loggerFactory">ILoggerFactory 인스턴스.</param>
     /// <returns>빌더 인스턴스.</returns>
-    public ApiServerBootstrap UseLogger(ILogger<ApiServer> logger)
+    public ApiServerBootstrap UseLoggerFactory(ILoggerFactory loggerFactory)
     {
-        _logger = logger;
+        _loggerFactory = loggerFactory;
         return this;
     }
 
@@ -90,8 +90,8 @@ public sealed class ApiServerBootstrap
         // 필수 필드 검증
         var systemControllerType = _systemControllerType
             ?? throw new InvalidOperationException("SystemController is required. Use UseSystemController<T>() to register.");
-        var logger = _logger
-            ?? throw new InvalidOperationException("Logger is required. Use UseLogger() to register.");
+        var loggerFactory = _loggerFactory
+            ?? throw new InvalidOperationException("LoggerFactory is required. Use UseLoggerFactory() to register.");
         var serviceProvider = _serviceProvider
             ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
 
@@ -99,6 +99,6 @@ public sealed class ApiServerBootstrap
         var systemController = Activator.CreateInstance(systemControllerType) as ISystemController
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
 
-        return new ApiServer(_options, systemController, serviceProvider, logger);
+        return new ApiServer(_options, systemController, serviceProvider, loggerFactory);
     }
 }

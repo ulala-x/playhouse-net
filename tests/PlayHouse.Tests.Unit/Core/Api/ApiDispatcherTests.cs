@@ -69,7 +69,7 @@ public class ApiDispatcherTests : IDisposable
             _requestCache,
             _communicator,
             serviceProvider,
-            NullLogger<ApiDispatcher>.Instance);
+            NullLoggerFactory.Instance);
     }
 
     public void Dispose()
@@ -147,7 +147,7 @@ public class ApiDispatcherTests : IDisposable
             _requestCache,
             _communicator,
             serviceProvider,
-            NullLogger<ApiDispatcher>.Instance);
+            NullLoggerFactory.Instance);
 
         const int messageCount = 5;
         var packets = Enumerable.Range(0, messageCount)
@@ -177,7 +177,7 @@ public class ApiDispatcherTests : IDisposable
     {
         // Given (전제조건)
         var services = new ServiceCollection().BuildServiceProvider();
-        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, services, NullLogger<ApiDispatcher>.Instance);
+        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, services, NullLoggerFactory.Instance);
 
         // When (행동)
         var action = () =>

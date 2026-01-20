@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Bootstrap;
-using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Extensions;
@@ -55,10 +54,6 @@ public static class PlayHouseServiceCollectionExtensions
 
         // ILoggerFactory가 등록되지 않은 경우 NullLoggerFactory 등록
         services.TryAddSingleton<ILoggerFactory, NullLoggerFactory>();
-
-        // ILogger<ApiServer>가 등록되지 않은 경우 자동 등록
-        services.TryAddSingleton<ILogger<ApiServer>>(sp =>
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger<ApiServer>());
 
         var builder = new ApiServerBuilder(services, options);
 
