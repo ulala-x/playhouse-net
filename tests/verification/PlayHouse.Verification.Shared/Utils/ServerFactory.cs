@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Api;
@@ -199,7 +198,6 @@ public static class ServerFactory
             })
             .UseLogger(loggerFactory.CreateLogger<ApiServer>())
             .UseServiceProvider(serviceProvider)
-            .UseController<TestApiController>()
             .UseSystemController<TestSystemController>()
             .Build();
 

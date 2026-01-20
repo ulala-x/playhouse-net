@@ -22,15 +22,12 @@ namespace PlayHouse.Core.Api.Bootstrap;
 public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicateListener
 {
     private readonly ApiServerOption _options;
-    private readonly ServerConfig _serverConfig;
-    private readonly ISystemController _systemController;
-    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ApiServer> _logger;
 
-    private PlayCommunicator? _communicator;
-    private ApiDispatcher? _dispatcher;
-    private RequestCache? _requestCache;
-    private ServerAddressResolver? _addressResolver;
+    private readonly PlayCommunicator _communicator;
+    private readonly ApiDispatcher _dispatcher;
+    private readonly RequestCache _requestCache;
+    private readonly ServerAddressResolver _addressResolver;
 
     private bool _isRunning;
     private bool _disposed;
@@ -38,15 +35,15 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     /// <inheritdoc/>
     public int DiagnosticLevel
     {
-        get => _communicator?.DiagnosticLevel ?? -1;
-        set { if (_communicator != null) _communicator.DiagnosticLevel = value; }
+        get => _communicator.DiagnosticLevel;
+        set => _communicator.DiagnosticLevel = value;
     }
 
     /// <summary>
     /// API Sender 인터페이스.
     /// DI에 등록하여 Play Server에 요청을 보낼 때 사용합니다.
     /// </summary>
-    public IApiSender? ApiSender { get; private set; }
+    public IApiSender ApiSender { get; }
 
     internal ApiServer(
         ApiServerOption options,
@@ -55,33 +52,19 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         ILogger<ApiServer> logger)
     {
         _options = options;
-        _systemController = systemController;
-        _serviceProvider = serviceProvider;
         _logger = logger;
 
-        _serverConfig = new ServerConfig(
+        var serverConfig = new ServerConfig(
             options.ServiceId,
             options.ServerId,
             options.BindEndpoint,
             options.RequestTimeoutMs);
-    }
 
-    /// <summary>
-    /// 서버를 시작합니다.
-    /// </summary>
-    public async Task StartAsync()
-    {
-        if (_isRunning)
-            throw new InvalidOperationException("Server is already running");
-
+        // 모든 필드를 생성자에서 초기화
         _requestCache = new RequestCache();
 
-        _communicator = new PlayCommunicator(_serverConfig);
+        _communicator = new PlayCommunicator(serverConfig);
         _communicator.Bind(this);
-        _communicator.Start();
-
-        // 자기 자신에게 연결 (자기 자신에게 메시지를 보내기 위해 필요)
-        _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
         // ApiDispatcher용 Logger 생성
         var loggerFactory = LoggerFactory.Create(builder => { });
@@ -93,7 +76,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _options.ServerId,
             _requestCache,
             new CommunicatorAdapter(_communicator),
-            _serviceProvider,
+            serviceProvider,
             dispatcherLogger);
 
         // ApiSender 생성
@@ -103,9 +86,8 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _options.ServiceId,
             _options.ServerId);
 
-        // ServerAddressResolver 시작
+        // ServerAddressResolver 생성
         var serverInfoCenter = new XServerInfoCenter();
-
         var myServerInfo = new XServerInfo(
             _options.ServiceId,
             _options.ServerId,
@@ -113,11 +95,26 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
 
         _addressResolver = new ServerAddressResolver(
             myServerInfo,
-            _systemController,
+            systemController,
             serverInfoCenter,
             _communicator,
             TimeSpan.FromSeconds(3));
+    }
 
+    /// <summary>
+    /// 서버를 시작합니다.
+    /// </summary>
+    public async Task StartAsync()
+    {
+        if (_isRunning)
+            throw new InvalidOperationException("Server is already running");
+
+        _communicator.Start();
+
+        // 자기 자신에게 연결 (자기 자신에게 메시지를 보내기 위해 필요)
+        _communicator.Connect(_options.ServerId, _options.BindEndpoint);
+
+        // ServerAddressResolver 시작
         _addressResolver.Start();
 
         _isRunning = true;
@@ -135,27 +132,24 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _isRunning = false;
 
         // 1. 새 요청 수신 중지
-        _communicator?.Stop();
+        _communicator.Stop();
 
         // 2. 진행 중인 요청 완료 대기 (타임아웃 적용)
-        if (_dispatcher != null)
+        try
         {
-            try
-            {
-                await _dispatcher.DrainAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                // 타임아웃 - 강제 종료
-                _logger.LogWarning("Graceful shutdown timed out, forcing stop");
-            }
+            await _dispatcher.DrainAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // 타임아웃 - 강제 종료
+            _logger.LogWarning("Graceful shutdown timed out, forcing stop");
         }
 
         // 3. 리소스 정리
-        _addressResolver?.Stop();
-        _addressResolver?.Dispose();
-        _dispatcher?.Dispose();
-        _requestCache?.CancelAll();
+        _addressResolver.Stop();
+        _addressResolver.Dispose();
+        _dispatcher.Dispose();
+        _requestCache.CancelAll();
     }
 
     /// <inheritdoc/>
@@ -167,7 +161,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         {
             // Zero-copy: Transfer payload ownership from RoutePacket to CPacket
             var response = CPacket.Of(packet.MsgId, packet.Payload);
-            if (_requestCache?.TryComplete(packet.MsgSeq, response) == true)
+            if (_requestCache.TryComplete(packet.MsgSeq, response))
             {
                 // CPacket now owns the payload - don't dispose RoutePacket
                 // RoutePacket will be GC'd, CPacket.Dispose() will free the payload
@@ -177,7 +171,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         }
 
         // API Handler로 라우팅
-        _dispatcher?.Post(packet);
+        _dispatcher.Post(packet);
     }
 
     /// <inheritdoc/>
@@ -187,7 +181,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _disposed = true;
 
         await StopAsync();
-        _communicator?.Dispose();
+        _communicator.Dispose();
     }
 
     /// <summary>

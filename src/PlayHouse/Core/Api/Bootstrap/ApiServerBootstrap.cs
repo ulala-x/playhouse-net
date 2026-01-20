@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Core.Api.Bootstrap;
@@ -19,7 +20,9 @@ namespace PlayHouse.Bootstrap;
 ///         options.ServerId = 1;
 ///         options.BindEndpoint = "tcp://0.0.0.0:5100";
 ///     })
-///     .UseController&lt;GameApiController&gt;()
+///     .UseSystemController&lt;MySystemController&gt;()
+///     .UseServiceProvider(serviceProvider)
+///     .UseLogger(logger)
 ///     .Build();
 ///
 /// await apiServer.StartAsync();
