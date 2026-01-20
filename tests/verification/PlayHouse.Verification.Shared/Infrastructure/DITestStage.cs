@@ -26,11 +26,11 @@ public class DITestStage : IStage
     /// <summary>
     /// DI 컨테이너가 IStageSender, ITestService, ILogger를 모두 주입합니다.
     /// </summary>
-    public DITestStage(IStageSender stageSender, ITestService testService, ILogger<DITestStage>? logger = null)
+    public DITestStage(IStageSender stageSender, ITestService testService, ILogger<DITestStage> logger)
     {
         StageSender = stageSender;
         _testService = testService;
-        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DITestStage>.Instance;
+        _logger = logger;
         _logger.LogDebug("DITestStage created for StageId={StageId}", stageSender.StageId);
     }
 
@@ -73,7 +73,7 @@ public class DITestStage : IStage
                 break;
 
             case "GetDIValueRequest":
-                HandleGetDIValue(actor);
+                HandleGetDiValue(actor);
                 break;
 
             default:
@@ -102,7 +102,7 @@ public class DITestStage : IStage
         actor.ActorSender.Reply(CPacket.Of(echoReply));
     }
 
-    private void HandleGetDIValue(IActor actor)
+    private void HandleGetDiValue(IActor actor)
     {
         // DI로 주입받은 서비스의 값을 반환
         var reply = new GetDIValueReply

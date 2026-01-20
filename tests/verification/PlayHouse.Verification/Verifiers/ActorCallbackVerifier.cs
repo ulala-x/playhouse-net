@@ -6,13 +6,9 @@ namespace PlayHouse.Verification.Verifiers;
 /// <summary>
 /// IActor 콜백 검증
 /// </summary>
-public class ActorCallbackVerifier : VerifierBase
+public class ActorCallbackVerifier(ServerContext serverContext) : VerifierBase(serverContext)
 {
     public override string CategoryName => "ActorCallback";
-
-    public ActorCallbackVerifier(ServerContext serverContext) : base(serverContext)
-    {
-    }
 
     public override int GetTestCount() => 3;
 

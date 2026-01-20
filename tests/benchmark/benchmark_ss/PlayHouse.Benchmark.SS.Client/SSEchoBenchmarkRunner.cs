@@ -12,11 +12,12 @@ namespace PlayHouse.Benchmark.SS.Client;
 public class SSEchoBenchmarkRunner(
     string serverHost,
     int serverPort,
-    int connections,
+    int ccu,
     int messageSize,
     SSCommMode commMode,
     int durationSeconds = 10,
-    int maxInFlight = 100)
+    int inflight = 100,
+    int warmupSeconds = 3)
 {
     private readonly ByteString _payload = CreatePayload(messageSize);
 
@@ -29,7 +30,7 @@ public class SSEchoBenchmarkRunner(
 
     public async Task RunAsync()
     {
-        Log.Information(">>> S2S Pure Benchmark: {Mode} Mode, {CCU} Connections, BatchSize={Batch} <<<", commMode, connections, maxInFlight);
+        Log.Information(">>> S2S Pure Benchmark: {Mode} Mode, {CCU} Connections, BatchSize={Batch} <<<", commMode, ccu, inflight);
 
         var metricsClient = new ServerMetricsClient(serverHost, 5080); // Default PlayServer HTTP port
         Log.Information("Resetting server metrics...");
@@ -37,11 +38,11 @@ public class SSEchoBenchmarkRunner(
         await Task.Delay(1000);
 
         // Phase 1: 모든 연결 + 인증 완료
-        Log.Information("Phase 1: Connecting and authenticating {Count} clients...", connections);
-        var connectors = new ClientConnector[connections];
-        var connectTasks = new Task[connections];
+        Log.Information("Phase 1: Connecting and authenticating {Count} clients...", ccu);
+        var connectors = new ClientConnector[ccu];
+        var connectTasks = new Task[ccu];
 
-        for (int i = 0; i < connections; i++)
+        for (int i = 0; i < ccu; i++)
         {
             var id = i;
             connectTasks[i] = Task.Run(async () => {
@@ -56,20 +57,42 @@ public class SSEchoBenchmarkRunner(
         await Task.WhenAll(connectTasks);
 
         var connectedCount = connectors.Count(c => c != null);
-        Log.Information("Phase 1 completed: {Connected}/{Total} connected", connectedCount, connections);
+        Log.Information("Phase 1 completed: {Connected}/{Total} connected", connectedCount, ccu);
 
         if (connectedCount == 0)
         {
-            Log.Error("No connections established. Aborting benchmark.");
+            Log.Error("No ccu established. Aborting benchmark.");
             return;
         }
 
+        // Warmup Phase: JIT 컴파일, 커넥션 워밍업
+        if (warmupSeconds > 0)
+        {
+            Log.Information("Warmup Phase: Running warmup for {Duration}s...", warmupSeconds);
+            var warmupTasks = new List<Task<long>>(connectedCount);
+
+            for (int i = 0; i < ccu; i++)
+            {
+                if (connectors[i] != null)
+                {
+                    var connector = connectors[i];
+                    var id = i;
+                    warmupTasks.Add(Task.Run(() => RunBenchmark(connector, id, warmupSeconds, disconnectAfter: false)));
+                }
+            }
+
+            await Task.WhenAll(warmupTasks);
+            Log.Information("Warmup Phase completed. Resetting server metrics...");
+            await metricsClient.ResetMetricsAsync();
+            await Task.Delay(1000);
+        }
+
         // Phase 2: 모든 연결이 준비된 후 동시에 벤치마크 시작
-        Log.Information("Phase 2: Starting benchmark for all connections...");
+        Log.Information("Phase 2: Starting benchmark for all ccu...");
         var benchmarkTasks = new List<Task<long>>(connectedCount);
         var startTime = Stopwatch.GetTimestamp();
 
-        for (int i = 0; i < connections; i++)
+        for (int i = 0; i < ccu; i++)
         {
             if (connectors[i] != null)
             {
@@ -135,7 +158,7 @@ public class SSEchoBenchmarkRunner(
         }
     }
 
-    private async Task<long> RunBenchmark(ClientConnector connector, int id, int duration)
+    private async Task<long> RunBenchmark(ClientConnector connector, int id, int duration, bool disconnectAfter = true)
     {
         var timer = new Timer(_ => connector.MainThreadAction(), null, 0, 10);
         long totalS2S = 0;
@@ -145,7 +168,7 @@ public class SSEchoBenchmarkRunner(
             while (DateTime.UtcNow < endTime)
             {
                 var request = new TriggerSSEchoRequest {
-                    BatchSize = maxInFlight,
+                    BatchSize = inflight,
                     CommMode = commMode,
                     Payload = _payload
                 };
@@ -159,7 +182,10 @@ public class SSEchoBenchmarkRunner(
             }
         } finally {
             timer.Dispose();
-            connector.Disconnect();
+            if (disconnectAfter)
+            {
+                connector.Disconnect();
+            }
         }
 
         return totalS2S;

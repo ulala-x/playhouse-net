@@ -15,15 +15,15 @@ namespace PlayHouse.Benchmark.Client;
 public class BenchmarkRunner(
     string serverHost,
     int serverPort,
-    int connections,
+    int ccu,
     int messageSize,
     BenchmarkMode mode,
     ClientMetricsCollector metricsCollector,
     int stageIdOffset = 0,
     string stageName = "BenchStage",
     int durationSeconds = 10,  // Test duration in seconds
-    int maxInFlight = 200,     // Maximum in-flight requests
-    int warmupDuration = 3)    // Warmup duration in seconds
+    int inflight = 200,     // Maximum in-flight requests
+    int warmup = 3)    // Warmup duration in seconds
 {
     // 재사용 버퍼
     private readonly ByteString _requestPayload = CreatePayload(messageSize);
@@ -40,7 +40,7 @@ public class BenchmarkRunner(
             var connected = _connectedCount;
             var failed = _failedCount;
             var failedStr = failed > 0 ? $", failed: {failed}" : "";
-            Console.Write($"\r  Connecting: {connected:N0}/{connections:N0}{failedStr}    ");
+            Console.Write($"\r  Connecting: {connected:N0}/{ccu:N0}{failedStr}    ");
         }
     }
 
@@ -63,19 +63,19 @@ public class BenchmarkRunner(
     {
         Log.Information("[{Time:HH:mm:ss}] Starting benchmark...", DateTime.Now);
         Log.Information("  Mode: {Mode}", mode);
-        Log.Information("  Connections: {Connections:N0}", connections);
+        Log.Information("  Connections: {Connections:N0}", ccu);
         Log.Information("  Duration: {Duration:N0} seconds", durationSeconds);
-        Log.Information("  Warmup: {WarmupDuration:N0} seconds", warmupDuration);
+        Log.Information("  Warmup: {WarmupDuration:N0} seconds", warmup);
         Log.Information("  Message size: {MessageSize:N0} bytes", messageSize);
 
         metricsCollector.Reset();
 
         // Phase 1: 모든 연결 + 인증 완료
         Log.Information("[{Time:HH:mm:ss}] Phase 1: Connecting and authenticating...", DateTime.Now);
-        var connectors = new ClientConnector[connections];
-        var connectTasks = new Task[connections];
+        var connectors = new ClientConnector[ccu];
+        var connectTasks = new Task[ccu];
 
-        for (int i = 0; i < connections; i++)
+        for (int i = 0; i < ccu; i++)
         {
             var connectionId = i;
             connectTasks[i] = Task.Run(async () => {
@@ -92,24 +92,24 @@ public class BenchmarkRunner(
         // 진행 상황 줄 마무리
         Console.WriteLine();
         Log.Information("  Phase 1 completed: {Connected:N0}/{Total:N0} connected (failed: {Failed:N0})",
-            _connectedCount, connections, _failedCount);
+            _connectedCount, ccu, _failedCount);
 
         if (_connectedCount == 0)
         {
-            Log.Error("No connections established. Aborting benchmark.");
+            Log.Error("No ccu established. Aborting benchmark.");
             return;
         }
 
         // Phase 2: Warm-up (JIT compilation, 메모리 풀 예열)
-        if (warmupDuration > 0)
+        if (warmup > 0)
         {
-            Log.Information("[{Time:HH:mm:ss}] Phase 2: Warming up ({WarmupDuration:N0} seconds)...", DateTime.Now, warmupDuration);
+            Log.Information("[{Time:HH:mm:ss}] Phase 2: Warming up ({WarmupDuration:N0} seconds)...", DateTime.Now, warmup);
 
             // 임시 메트릭 수집기 (warm-up 결과는 버림)
             var warmupMetrics = new ClientMetricsCollector();
             var warmupTasks = new List<Task>(_connectedCount);
 
-            for (int i = 0; i < connections; i++)
+            for (int i = 0; i < ccu; i++)
             {
                 if (connectors[i] != null)
                 {
@@ -121,15 +121,15 @@ public class BenchmarkRunner(
                             // 모드에 따라 warm-up 메시지 전송
                             if (mode == BenchmarkMode.RequestAsync)
                             {
-                                await RunWarmupRequestAsync(connector, connectionId, warmupMetrics, warmupDuration);
+                                await RunWarmupRequestAsync(connector, connectionId, warmupMetrics, warmup);
                             }
                             else if (mode == BenchmarkMode.RequestCallback)
                             {
-                                await RunWarmupRequestCallback(connector, connectionId, warmupMetrics, warmupDuration);
+                                await RunWarmupRequestCallback(connector, connectionId, warmupMetrics, warmup);
                             }
                             else if (mode == BenchmarkMode.Send)
                             {
-                                await RunWarmupSend(connector, connectionId, warmupMetrics, warmupDuration);
+                                await RunWarmupSend(connector, connectionId, warmupMetrics, warmup);
                             }
                         }
                         catch (Exception ex)
@@ -145,13 +145,13 @@ public class BenchmarkRunner(
         }
 
         // Phase 3: 모든 연결이 준비된 후 동시에 벤치마크 시작
-        Log.Information("[{Time:HH:mm:ss}] Phase 3: Starting benchmark for all connections...", DateTime.Now);
+        Log.Information("[{Time:HH:mm:ss}] Phase 3: Starting benchmark for all ccu...", DateTime.Now);
 
         // 실제 벤치마크 전에 메트릭 리셋
         metricsCollector.Reset();
         var benchmarkTasks = new List<Task>(_connectedCount);
 
-        for (int i = 0; i < connections; i++)
+        for (int i = 0; i < ccu; i++)
         {
             if (connectors[i] != null)
             {
@@ -196,7 +196,7 @@ public class BenchmarkRunner(
         var endTime = DateTime.UtcNow.AddSeconds(duration);
 
         const int WorkersPerConnection = 1;
-        var workerCount = Math.Min(WorkersPerConnection, maxInFlight);
+        var workerCount = Math.Min(WorkersPerConnection, inflight);
         var workers = new Task[workerCount];
 
         for (int i = 0; i < workerCount; i++)
@@ -243,7 +243,7 @@ public class BenchmarkRunner(
         {
             connector.MainThreadAction();
 
-            while (inFlight >= maxInFlight)
+            while (inFlight >= inflight)
             {
                 connector.MainThreadAction();
                 await Task.Yield();
@@ -296,7 +296,7 @@ public class BenchmarkRunner(
             {
                 connector.MainThreadAction();
 
-                while (inFlight >= maxInFlight)
+                while (inFlight >= inflight)
                 {
                     connector.MainThreadAction();
                     await Task.Yield();
@@ -376,7 +376,7 @@ public class BenchmarkRunner(
         // - 개선: 연결당 고정된 Worker가 루프에서 요청 처리 → Task 개수 최소화
         // - 10000 연결 × 200 Worker = 2백만 Task (X) → 10000 연결 × 4 Worker = 4만 Task (O)
         const int WorkersPerConnection = 1;
-        var workerCount = Math.Min(WorkersPerConnection, maxInFlight);
+        var workerCount = Math.Min(WorkersPerConnection, inflight);
         var workers = new Task[workerCount];
         for (int i = 0; i < workerCount; i++)
         {
@@ -435,7 +435,7 @@ public class BenchmarkRunner(
             connector.MainThreadAction();
 
             // In-flight 제한: 최대치에 도달하면 대기
-            while (inFlight >= maxInFlight)
+            while (inFlight >= inflight)
             {
                 connector.MainThreadAction(); // 대기 중에도 메시지 처리
                 await Task.Yield(); // 콜백 실행 기회 제공
@@ -527,7 +527,7 @@ public class BenchmarkRunner(
                 connector.MainThreadAction();
 
                 // In-flight 제한: 최대치에 도달하면 대기
-                while (inFlight >= maxInFlight)
+                while (inFlight >= inflight)
                 {
                     connector.MainThreadAction();
                     await Task.Yield(); // 콜백 실행 기회 제공
