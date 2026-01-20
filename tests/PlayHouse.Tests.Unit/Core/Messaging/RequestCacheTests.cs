@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.Extensions.Logging.Abstractions;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Abstractions;
 using FluentAssertions;
@@ -16,7 +17,7 @@ public class RequestCacheTests
     public void Add_AddsRequest_ReturnsTaskCompletionSource()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 1;
 
         // When (행동)
@@ -31,7 +32,7 @@ public class RequestCacheTests
     public void TryRemove_ExistingRequest_ReturnsTrue()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 1;
         var tcs = cache.Add(msgSeq);
 
@@ -47,7 +48,7 @@ public class RequestCacheTests
     public void TryRemove_NonExistentRequest_ReturnsFalse()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 999;
 
         // When (행동)
@@ -62,7 +63,7 @@ public class RequestCacheTests
     public void Add_DuplicateMsgSeq_NewRequestFails()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 1;
         var tcs1 = cache.Add(msgSeq);
 
@@ -79,7 +80,7 @@ public class RequestCacheTests
     public void Clear_RemovesAllRequests()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         cache.Add(1);
         cache.Add(2);
         cache.Add(3);
@@ -97,7 +98,7 @@ public class RequestCacheTests
     public async Task Add_ConcurrentCalls_ThreadSafe()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         const int threadCount = 10;
         var tasks = new List<Task>();
         var addedSeqs = new System.Collections.Concurrent.ConcurrentBag<ushort>();
@@ -127,7 +128,7 @@ public class RequestCacheTests
     public async Task ConcurrentAddAndRemove_ThreadSafe()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         const int iterations = 100;
         var tasks = new List<Task>();
         var addedCount = 0;
@@ -187,7 +188,7 @@ public class RequestCacheTests
     public void TaskCompletionSource_SetResult_CompletesTask()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 1;
         var tcs = cache.Add(msgSeq);
 
@@ -203,7 +204,7 @@ public class RequestCacheTests
     public void TaskCompletionSource_SetCanceled_CancelsTask()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 1;
         var tcs = cache.Add(msgSeq);
 
@@ -218,7 +219,7 @@ public class RequestCacheTests
     public void TaskCompletionSource_SetException_FailsTask()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         ushort msgSeq = 1;
         var tcs = cache.Add(msgSeq);
         var exception = new TimeoutException("Request timeout");
@@ -236,7 +237,7 @@ public class RequestCacheTests
     public void LargeScale_AddAndRemove_HandlesThousandsOfRequests()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         const int count = 10_000;
 
         // When (행동)
@@ -257,7 +258,7 @@ public class RequestCacheTests
     public void Clear_ThenAdd_AllowsNewRequests()
     {
         // Given (전제조건)
-        var cache = new RequestCache();
+        var cache = new RequestCache(NullLogger<RequestCache>.Instance);
         cache.Add(1);
         cache.Add(2);
         cache.Clear();

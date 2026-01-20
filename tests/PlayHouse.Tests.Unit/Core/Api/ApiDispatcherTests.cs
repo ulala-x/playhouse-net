@@ -56,7 +56,7 @@ public class ApiDispatcherTests : IDisposable
     public ApiDispatcherTests()
     {
         _communicator = Substitute.For<IClientCommunicator>();
-        _requestCache = new RequestCache();
+        _requestCache = new RequestCache(NullLogger<RequestCache>.Instance);
         _apiController = new TestApiController();
 
         var services = new ServiceCollection();
