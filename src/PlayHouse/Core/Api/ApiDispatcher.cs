@@ -36,23 +36,22 @@ internal sealed class ApiDispatcher : IDisposable
     /// <param name="requestCache">The request cache for tracking pending requests.</param>
     /// <param name="communicator">The communicator for sending messages.</param>
     /// <param name="serviceProvider">The service provider for resolving controllers.</param>
-    /// <param name="logger">The logger instance (optional).</param>
+    /// <param name="loggerFactory">The logger factory for creating loggers.</param>
     public ApiDispatcher(
         ushort serviceId,
         string nid,
         RequestCache requestCache,
         IClientCommunicator communicator,
         IServiceProvider serviceProvider,
-        ILogger<ApiDispatcher> logger)
+        ILoggerFactory loggerFactory)
     {
         _serviceId = serviceId;
         _nid = nid;
         _requestCache = requestCache;
         _communicator = communicator;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<ApiDispatcher>();
 
-        // Create logger for ApiReflection from the same factory as ApiDispatcher
-        var reflectionLogger = LoggerFactory.Create(b => { }).CreateLogger<ApiReflection>();
+        var reflectionLogger = loggerFactory.CreateLogger<ApiReflection>();
         _apiReflection = new ApiReflection(serviceProvider, reflectionLogger);
     }
 

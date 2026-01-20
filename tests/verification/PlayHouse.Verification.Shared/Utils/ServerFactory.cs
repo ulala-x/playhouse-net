@@ -173,9 +173,7 @@ public static class ServerFactory
 
         // ServiceCollection 생성 (DI 필수)
         var services = new ServiceCollection();
-        services.AddSingleton(loggerFactory);
-        services.AddSingleton<ILogger<ApiServer>>(
-            sp => loggerFactory.CreateLogger<ApiServer>());
+        services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddSingleton<ILogger<TestApiController>>(
             sp => loggerFactory.CreateLogger<TestApiController>());
         services.AddSingleton<ILogger<TestSystemController>>(
@@ -196,7 +194,7 @@ public static class ServerFactory
                 options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
                 options.RequestTimeoutMs = requestTimeoutMs;
             })
-            .UseLogger(loggerFactory.CreateLogger<ApiServer>())
+            .UseLoggerFactory(loggerFactory)
             .UseServiceProvider(serviceProvider)
             .UseSystemController<TestSystemController>()
             .Build();
