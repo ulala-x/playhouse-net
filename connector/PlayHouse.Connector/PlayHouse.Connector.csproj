@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="PlayHouse.Tests.Integration" />
-    <InternalsVisibleTo Include="PlayHouse.Tests.Unit" />
+    <InternalsVisibleTo Include="PlayHouse.Unit" />
   </ItemGroup>
 
   <ItemGroup>

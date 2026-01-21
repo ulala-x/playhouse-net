@@ -24,7 +24,7 @@
   </PropertyGroup>
 
   <!-- Global package references for all test projects -->
-  <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.*">
       <PrivateAssets>all</PrivateAssets>
