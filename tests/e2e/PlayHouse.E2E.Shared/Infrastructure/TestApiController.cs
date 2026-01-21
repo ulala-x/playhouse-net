@@ -88,11 +88,16 @@ public class TestApiController : IApiController
         var request = TriggerCreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         const string playNid = "play-1";
+        var createPayload = new CreateStagePayload
+        {
+            StageName = request.StageType,
+            MaxPlayers = 10
+        };
         var result = await sender.CreateStage(
             playNid,
             request.StageType,
             request.StageId,
-            CPacket.Empty("CreateStagePayload"));
+            CPacket.Of(createPayload));
 
         var reply = new TriggerCreateStageReply
         {
@@ -106,12 +111,16 @@ public class TestApiController : IApiController
         var request = TriggerGetOrCreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         const string playNid = "play-1";
+        var createPayload = new CreateStagePayload
+        {
+            StageName = request.StageType,
+            MaxPlayers = 10
+        };
         var result = await sender.GetOrCreateStage(
             playNid,
             request.StageType,
             request.StageId,
-            CPacket.Empty("CreatePayload"),
-            CPacket.Empty("JoinPayload"));
+            CPacket.Of(createPayload));
 
         var reply = new TriggerGetOrCreateStageReply
         {

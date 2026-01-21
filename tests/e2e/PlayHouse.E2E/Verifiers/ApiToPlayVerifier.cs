@@ -53,6 +53,7 @@ public class ApiToPlayVerifier : VerifierBase
 
     /// <summary>
     /// CreateStage - HTTP POST /api/stages 성공
+    /// OnCreate에 packet이 제대로 전달되는지 검증
     /// </summary>
     private async Task Test_CreateStage_Success()
     {
@@ -72,10 +73,15 @@ public class ApiToPlayVerifier : VerifierBase
         // Then - E2E 검증 (HTTP 응답만)
         Assert.IsTrue(result!.Success, "CreateStage should succeed");
         Assert.Equals((ushort)stageId, result.StageId);
+
+        // OnCreate에 packet이 전달되었는지 검증 (reply에서 echo된 값 확인)
+        Assert.IsTrue(result.ReplyPayloadId != null, "OnCreate should return reply with payload info");
+        Assert.Equals("TestStage:10", result.ReplyPayloadId, "OnCreate should receive createPacket");
     }
 
     /// <summary>
     /// GetOrCreateStage - 새 Stage 생성 (IsCreated=true)
+    /// OnCreate에 packet이 제대로 전달되는지 검증
     /// </summary>
     private async Task Test_GetOrCreateStage_NewStage()
     {
@@ -96,6 +102,10 @@ public class ApiToPlayVerifier : VerifierBase
         Assert.IsTrue(result!.Success, "GetOrCreateStage should succeed");
         Assert.IsTrue(result.IsCreated, "Stage should be newly created");
         Assert.Equals((ushort)stageId, result.StageId);
+
+        // OnCreate에 packet이 전달되었는지 검증 (reply에서 echo된 값 확인)
+        Assert.IsTrue(result.ReplyPayloadId != null, "OnCreate should return reply with payload info");
+        Assert.Equals("TestStage:10", result.ReplyPayloadId, "OnCreate should receive createPacket");
     }
 
     /// <summary>

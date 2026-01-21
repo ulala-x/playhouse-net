@@ -34,7 +34,17 @@ public class TestStageImpl : IStage
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     {
-        return Task.FromResult<(bool, IPacket)>((true, CPacket.Empty("CreateStageReply")));
+        // packet을 proto 메시지로 파싱하여 E2E 검증 가능하도록 echo
+        var payload = CreateStagePayload.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var reply = new CreateStageReply
+        {
+            ReceivedStageName = payload.StageName,
+            ReceivedMaxPlayers = payload.MaxPlayers,
+            Created = true
+        };
+
+        return Task.FromResult<(bool, IPacket)>((true, CPacket.Of(reply)));
     }
 
     public Task OnPostCreate()

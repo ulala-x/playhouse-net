@@ -37,16 +37,30 @@ public class TestHttpApiController : ControllerBase
     [HttpPost("stages")]
     public async Task<IActionResult> CreateStage([FromBody] CreateStageRequest req)
     {
+        var createPayload = new Proto.CreateStagePayload
+        {
+            StageName = req.StageType,
+            MaxPlayers = 10
+        };
         var result = await _apiSender.CreateStage(
             _playServerId,
             req.StageType,
             req.StageId,
-            CPacket.Empty("CreatePayload"));
+            CPacket.Of(createPayload));
+
+        // OnCreate reply 파싱하여 반환
+        string? replyPayloadId = null;
+        if (result.CreateStageRes.Payload.Length > 0)
+        {
+            var createReply = Proto.CreateStageReply.Parser.ParseFrom(result.CreateStageRes.Payload.DataSpan);
+            replyPayloadId = $"{createReply.ReceivedStageName}:{createReply.ReceivedMaxPlayers}";
+        }
 
         return Ok(new CreateStageResponse
         {
             Success = result.Result,
-            StageId = req.StageId
+            StageId = req.StageId,
+            ReplyPayloadId = replyPayloadId
         });
     }
 
@@ -58,18 +72,31 @@ public class TestHttpApiController : ControllerBase
     [HttpPost("stages/get-or-create")]
     public async Task<IActionResult> GetOrCreateStage([FromBody] GetOrCreateStageRequest req)
     {
+        var createPayload = new Proto.CreateStagePayload
+        {
+            StageName = req.StageType,
+            MaxPlayers = 10
+        };
         var result = await _apiSender.GetOrCreateStage(
             _playServerId,
             req.StageType,
             req.StageId,
-            CPacket.Empty("CreatePayload"),
-            CPacket.Empty("JoinPayload"));
+            CPacket.Of(createPayload));
+
+        // OnCreate reply 파싱하여 반환 (새로 생성된 경우에만)
+        string? replyPayloadId = null;
+        if (result.IsCreated && result.Payload.Payload.Length > 0)
+        {
+            var createReply = Proto.CreateStageReply.Parser.ParseFrom(result.Payload.Payload.DataSpan);
+            replyPayloadId = $"{createReply.ReceivedStageName}:{createReply.ReceivedMaxPlayers}";
+        }
 
         return Ok(new GetOrCreateStageResponse
         {
             Success = result.Result,
             IsCreated = result.IsCreated,
-            StageId = req.StageId
+            StageId = req.StageId,
+            ReplyPayloadId = replyPayloadId
         });
     }
 }
@@ -104,6 +131,11 @@ public record CreateStageResponse
     /// The stage ID that was created
     /// </summary>
     public required ushort StageId { get; init; }
+
+    /// <summary>
+    /// OnCreate reply payload info (format: "StageName:MaxPlayers")
+    /// </summary>
+    public string? ReplyPayloadId { get; init; }
 }
 
 /// <summary>
@@ -141,4 +173,9 @@ public record GetOrCreateStageResponse
     /// The stage ID that was retrieved or created
     /// </summary>
     public required ushort StageId { get; init; }
+
+    /// <summary>
+    /// OnCreate reply payload info (format: "StageName:MaxPlayers", only when IsCreated=true)
+    /// </summary>
+    public string? ReplyPayloadId { get; init; }
 }

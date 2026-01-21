@@ -57,14 +57,12 @@ public interface IApiSender : ISender
     /// <param name="stageType">Type of stage to create if needed.</param>
     /// <param name="stageId">ID for the stage.</param>
     /// <param name="createPacket">Creation payload packet (used if stage doesn't exist).</param>
-    /// <param name="joinPacket">Join payload packet.</param>
     /// <returns>Result containing whether stage was created and the response.</returns>
     Task<GetOrCreateStageResult> GetOrCreateStage(
         string playNid,
         string stageType,
         long stageId,
-        IPacket createPacket,
-        IPacket joinPacket);
+        IPacket createPacket);
 
     #endregion
 }

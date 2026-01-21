@@ -105,16 +105,13 @@ internal class ApiSender : XSender, IApiSender
         string playNid,
         string stageType,
         long stageId,
-        IPacket createPacket,
-        IPacket joinPacket)
+        IPacket createPacket)
     {
         var req = new GetOrCreateStageReq
         {
             StageType = stageType,
             CreatePayloadId = createPacket.MsgId,
-            CreatePayload = ByteString.CopyFrom(createPacket.Payload.DataSpan),
-            JoinPayloadId = joinPacket.MsgId,
-            JoinPayload = ByteString.CopyFrom(joinPacket.Payload.DataSpan)
+            CreatePayload = ByteString.CopyFrom(createPacket.Payload.DataSpan)
         };
 
         var routePacket = CPacket.Of(req);

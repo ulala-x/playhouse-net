@@ -1,4 +1,5 @@
 using PlayHouse.Connector.Protocol;
+using PlayHouse.E2E.Shared.Proto;
 
 namespace PlayHouse.E2E.Verifiers;
 
@@ -42,6 +43,7 @@ public class ActorCallbackVerifier(ServerContext serverContext) : VerifierBase(s
 
     /// <summary>
     /// OnAuthenticate 콜백 후 IsAuthenticated() == true
+    /// authPacket이 OnAuthenticate에 정상 전달되는지 검증 (reply에서 echo된 값 확인)
     /// </summary>
     private async Task Test_OnAuthenticate_Success()
     {
@@ -49,13 +51,25 @@ public class ActorCallbackVerifier(ServerContext serverContext) : VerifierBase(s
         await ConnectOnlyAsync();
         Assert.IsFalse(Connector.IsAuthenticated(), "Should not be authenticated yet");
 
-        // When - 인증 요청
-        using var authPacket = Packet.Empty("AuthenticateRequest");
+        // When - proto 메시지로 인증 요청
+        var authRequest = new AuthenticateRequest
+        {
+            UserId = "test-user-123",
+            Token = "test-token-abc"
+        };
+        using var authPacket = new Packet(authRequest);
         var response = await Connector.AuthenticateAsync(authPacket);
 
         // Then - E2E 검증: 응답 검증
         Assert.NotNull(response, "Should receive authentication response");
         Assert.IsTrue(Connector.IsAuthenticated(), "Should be authenticated after OnAuthenticate");
+
+        // OnAuthenticate에 authPacket이 정상 전달되었는지 검증 (reply에서 echo된 값 확인)
+        Assert.IsTrue(response.Payload.Length > 0, "OnAuthenticate should return reply packet");
+        var authReply = AuthenticateReply.Parser.ParseFrom(response.Payload.DataSpan);
+        Assert.IsTrue(authReply.Success, "AuthenticateReply.Success should be true");
+        Assert.Equals("test-user-123", authReply.ReceivedUserId, "OnAuthenticate should receive authPacket.UserId");
+        Assert.Equals("test-token-abc", authReply.ReceivedToken, "OnAuthenticate should receive authPacket.Token");
 
         // Cleanup
         Connector.Disconnect();

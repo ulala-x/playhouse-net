@@ -87,7 +87,7 @@ public class BaseStageTests
             OnDestroyCallCount++;
             return Task.CompletedTask;
         }
-        public Task<bool> OnAuthenticate(IPacket authPacket) => Task.FromResult(true);
+        public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket) => Task.FromResult<(bool, IPacket?)>((true, null));
         public Task OnPostAuthenticate() => Task.CompletedTask;
     }
 
