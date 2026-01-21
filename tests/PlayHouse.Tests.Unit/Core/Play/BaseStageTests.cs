@@ -8,6 +8,7 @@ using PlayHouse.Runtime.ServerMesh.Communicator;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -112,7 +113,9 @@ public class BaseStageTests
 
         var fakeStage = new FakeStage(stageSender);
         var logger = Substitute.For<ILogger>();
-        var baseStage = new BaseStage(fakeStage, stageSender, logger);
+        var cmdHandler = new BaseStageCmdHandler(logger);
+        var serviceScope = Substitute.For<IServiceScope>();
+        var baseStage = new BaseStage(fakeStage, stageSender, logger, cmdHandler, serviceScope);
 
         return (baseStage, fakeStage, stageSender);
     }

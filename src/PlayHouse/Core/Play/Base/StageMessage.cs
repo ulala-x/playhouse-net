@@ -99,8 +99,6 @@ internal abstract class StageMessage : IDisposable
         private SendOrPostCallback? _callback;
         private object? _state;
 
-        public ContinuationMessage() { }
-
         internal void Update(SendOrPostCallback callback, object? state)
         {
             _callback = callback;
