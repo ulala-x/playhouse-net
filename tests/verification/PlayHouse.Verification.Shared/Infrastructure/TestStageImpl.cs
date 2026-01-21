@@ -110,7 +110,7 @@ public class TestStageImpl : IStage
                 break;
 
             case "LeaveStageRequest":
-                HandleLeaveStage(actor, packet);
+                await HandleLeaveStageAsync(actor, packet);
                 break;
 
             case "TriggerSendToStageRequest":
@@ -343,12 +343,12 @@ public class TestStageImpl : IStage
         actor.ActorSender.Reply(CPacket.Of(reply));
     }
 
-    private void HandleLeaveStage(IActor actor, IPacket packet)
+    private async Task HandleLeaveStageAsync(IActor actor, IPacket packet)
     {
         var request = LeaveStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         // 먼저 Reply를 보낸 후 LeaveStage 호출 (순서 중요)
         actor.ActorSender.Reply(CPacket.Of(new LeaveStageReply { Success = true }));
-        actor.ActorSender.LeaveStage();
+        await actor.ActorSender.LeaveStageAsync();
     }
 
     private void HandleTriggerSendToStage(IActor actor, IPacket packet)

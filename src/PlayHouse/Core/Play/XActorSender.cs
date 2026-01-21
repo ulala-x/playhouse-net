@@ -69,9 +69,9 @@ internal sealed class XActorSender : IActorSender
     #region IActorSender Implementation
 
     /// <inheritdoc/>
-    public void LeaveStage()
+    public async Task LeaveStageAsync()
     {
-        _baseStage.LeaveStage(AccountId, _sessionNid, _sid);
+        await _baseStage.LeaveStage(AccountId, _sessionNid, _sid);
     }
 
     /// <inheritdoc/>

@@ -52,12 +52,20 @@ internal sealed class WebSocketConnection : IConnection
         {
             // ws:// 또는 wss:// 자동 선택
             var scheme = useSsl ? "wss" : "ws";
-            var uri = new Uri($"{scheme}://{host}:{port}");
+            var path = _config.WebSocketPath.StartsWith("/") ? _config.WebSocketPath : "/" + _config.WebSocketPath;
+            var uri = new Uri($"{scheme}://{host}:{port}{path}");
 
             _webSocket = new ClientWebSocket();
 
             // Configure options
             _webSocket.Options.KeepAliveInterval = TimeSpan.FromMilliseconds(_config.HeartBeatIntervalMs);
+
+            // 테스트용: 자체 서명 인증서 허용
+            if (_config.SkipServerCertificateValidation)
+            {
+                _webSocket.Options.RemoteCertificateValidationCallback =
+                    (sender, certificate, chain, errors) => true;
+            }
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_config.ConnectionIdleTimeoutMs);

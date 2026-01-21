@@ -445,7 +445,10 @@ public static class ServerFactory
         // WebSocket 미들웨어 설정
         app.UseWebSockets();
 
-        // PlayServer의 WebSocket 서버와 연결
+        // PlayServer를 먼저 시작해야 _transportServer가 생성됨
+        await playServer.StartAsync();
+
+        // PlayServer의 WebSocket 서버와 연결 (StartAsync 이후에 호출해야 함)
         var wsServers = playServer.GetWebSocketServers();
         if (wsServers.Any())
         {
@@ -454,7 +457,6 @@ public static class ServerFactory
         }
 
         await app.StartAsync();
-        await playServer.StartAsync();
 
         var httpPort = ExtractHttpPort(app);
         return (playServer, app, httpPort);

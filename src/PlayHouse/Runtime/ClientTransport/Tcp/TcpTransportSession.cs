@@ -16,17 +16,18 @@ namespace PlayHouse.Runtime.ClientTransport.Tcp;
 internal sealed class TcpTransportSession : ITransportSession
 {
     private readonly Socket _socket;
+    private readonly Stream? _stream; // TLS용 Stream (null이면 Socket 직접 사용)
     private readonly TransportOptions _options;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts;
-    
+
     // Buffer for receiving data
     private readonly byte[] _receiveBuffer;
     private int _bytesInBuffer;
-    private readonly SocketAsyncEventArgs _receiveArgs;
-    
+    private readonly SocketAsyncEventArgs? _receiveArgs; // TLS에서는 사용 안 함
+
     // Locking for sending to ensure order without a permanent task
     private readonly object _sendLock = new();
     private bool _isSending;
@@ -34,6 +35,7 @@ internal sealed class TcpTransportSession : ITransportSession
 
     private DateTime _lastActivity;
     private bool _disposed;
+    private Task? _streamReceiveTask; // TLS용 수신 Task
 
     private readonly record struct SendItem(byte[] Buffer, int Size);
 
@@ -47,7 +49,7 @@ internal sealed class TcpTransportSession : ITransportSession
     internal TcpTransportSession(
         long sessionId,
         Socket socket,
-        Stream _, // Stream is not used in Task-less implementation
+        Stream? stream,
         TransportOptions options,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
@@ -56,6 +58,7 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         SessionId = sessionId;
         _socket = socket;
+        _stream = stream is NetworkStream ? null : stream; // NetworkStream이면 Socket 직접 사용, 그 외(SslStream)는 Stream 사용
         _options = options;
         _onMessage = onMessage;
         _onDisconnect = onDisconnect;
@@ -65,22 +68,71 @@ internal sealed class TcpTransportSession : ITransportSession
 
         ConfigureSocket();
 
-        // Initialize receive buffer and args using MessagePool
+        // Initialize receive buffer using MessagePool
         _receiveBuffer = MessagePool.Rent(_options.ReceiveBufferSize * 2);
-        _receiveArgs = new SocketAsyncEventArgs();
-        _receiveArgs.Completed += OnReceiveCompleted;
+
+        // Socket 모드일 때만 SocketAsyncEventArgs 사용
+        if (_stream == null)
+        {
+            _receiveArgs = new SocketAsyncEventArgs();
+            _receiveArgs.Completed += OnReceiveCompleted;
+        }
     }
 
     public void Start()
     {
-        // Start the first receive operation
-        StartReceive();
-        _logger.LogDebug("TCP session {SessionId} started (Task-less with MessagePool)", SessionId);
+        if (_stream != null)
+        {
+            // TLS 모드: Stream 기반 수신 Task 시작
+            _streamReceiveTask = Task.Run(() => StreamReceiveLoopAsync(_cts.Token));
+            _logger.LogDebug("TCP session {SessionId} started (Stream-based for TLS)", SessionId);
+        }
+        else
+        {
+            // Socket 모드: Task-less 수신 시작
+            StartReceive();
+            _logger.LogDebug("TCP session {SessionId} started (Task-less with MessagePool)", SessionId);
+        }
+    }
+
+    /// <summary>
+    /// TLS 모드용 Stream 기반 수신 루프
+    /// </summary>
+    private async Task StreamReceiveLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && !_disposed)
+            {
+                var bytesRead = await _stream!.ReadAsync(
+                    _receiveBuffer.AsMemory(_bytesInBuffer, _receiveBuffer.Length - _bytesInBuffer), ct);
+
+                if (bytesRead == 0)
+                {
+                    // Connection closed
+                    await DisconnectAsync();
+                    return;
+                }
+
+                _bytesInBuffer += bytesRead;
+                _lastActivity = DateTime.UtcNow;
+
+                // Parse and dispatch messages
+                _bytesInBuffer = ParseAndDispatchMessages(_receiveBuffer, _bytesInBuffer);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+                _logger.LogError(ex, "Error in TLS receive loop for session {SessionId}", SessionId);
+            await DisconnectAsync();
+        }
     }
 
     private void StartReceive()
     {
-        if (_disposed) return;
+        if (_disposed || _receiveArgs == null) return;
 
         try
         {
@@ -182,7 +234,15 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         try
         {
-            await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
+            if (_stream != null)
+            {
+                await _stream.WriteAsync(data, cancellationToken);
+                await _stream.FlushAsync(cancellationToken);
+            }
+            else
+            {
+                await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
+            }
         }
         catch (Exception ex)
         {
@@ -233,7 +293,15 @@ internal sealed class TcpTransportSession : ITransportSession
 
                 try
                 {
-                    await _socket.SendAsync(item.Buffer.AsMemory(0, item.Size), SocketFlags.None);
+                    if (_stream != null)
+                    {
+                        await _stream.WriteAsync(item.Buffer.AsMemory(0, item.Size));
+                        await _stream.FlushAsync();
+                    }
+                    else
+                    {
+                        await _socket.SendAsync(item.Buffer.AsMemory(0, item.Size), SocketFlags.None);
+                    }
                 }
                 finally
                 {
@@ -271,11 +339,20 @@ internal sealed class TcpTransportSession : ITransportSession
         try
         {
             _cts.Cancel();
-            _receiveArgs.Dispose();
-            
+
+            // TLS 모드에서 수신 Task 대기
+            if (_streamReceiveTask != null)
+            {
+                try { await _streamReceiveTask.WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch { }
+            }
+
+            _receiveArgs?.Dispose();
+            _stream?.Dispose();
+
             // Return receive buffer to MessagePool
             MessagePool.Return(_receiveBuffer);
-            
+
             if (_socket.Connected)
             {
                 _socket.Shutdown(SocketShutdown.Both);

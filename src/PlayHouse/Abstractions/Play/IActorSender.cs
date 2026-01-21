@@ -31,7 +31,7 @@ public interface IActorSender : ISender
     /// 2. Calls IActor.OnDestroy()
     /// 3. Does NOT close the client connection (actor can join another stage)
     /// </remarks>
-    void LeaveStage();
+    Task LeaveStageAsync();
 
     /// <summary>
     /// Sends a message directly to the connected client.

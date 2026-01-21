@@ -83,7 +83,17 @@ internal sealed class TcpConnection : IConnection
             // SSL/TLS 래핑
             if (useSsl)
             {
-                var sslStream = new SslStream(networkStream, false);
+                SslStream sslStream;
+                if (_config.SkipServerCertificateValidation)
+                {
+                    // 테스트용: 자체 서명 인증서 허용
+                    sslStream = new SslStream(networkStream, false,
+                        (sender, certificate, chain, errors) => true);
+                }
+                else
+                {
+                    sslStream = new SslStream(networkStream, false);
+                }
                 await sslStream.AuthenticateAsClientAsync(host).ConfigureAwait(false);
                 _stream = sslStream;
             }
