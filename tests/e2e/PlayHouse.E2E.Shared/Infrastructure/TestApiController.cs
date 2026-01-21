@@ -60,6 +60,7 @@ public class TestApiController : IApiController
         register.Add(typeof(InterApiMessage).Name!, HandleInterApiMessage);
         register.Add(typeof(BenchmarkApiRequest).Name!, HandleBenchmarkApi);
         register.Add(typeof(TimerApiRequest).Name!, HandleTimerApi);
+        register.Add(typeof(GetApiAccountIdRequest).Name!, HandleGetApiAccountId);
     }
 
     private Task HandleApiEcho(IPacket packet, IApiSender sender)
@@ -207,6 +208,16 @@ public class TestApiController : IApiController
         var reply = new TimerApiReply
         {
             Content = $"Timer API Response: {request.Content}"
+        };
+        sender.Reply(CPacket.Of(reply));
+        return Task.CompletedTask;
+    }
+
+    private Task HandleGetApiAccountId(IPacket packet, IApiSender sender)
+    {
+        var reply = new GetApiAccountIdReply
+        {
+            AccountId = sender.AccountId
         };
         sender.Reply(CPacket.Of(reply));
         return Task.CompletedTask;

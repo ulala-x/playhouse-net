@@ -167,6 +167,10 @@ public class TestStageImpl : IStage
                 await HandleTriggerBenchmarkApi(actor, packet);
                 break;
 
+            case "TriggerGetApiAccountIdRequest":
+                await HandleTriggerGetApiAccountId(actor);
+                break;
+
             case "TriggerAutoDisposeApiRequest":
                 await HandleTriggerAutoDisposeApi(actor, packet);
                 break;
@@ -713,5 +717,17 @@ public class TestStageImpl : IStage
 
         actor.ActorSender.Reply(CPacket.Of(new StartTimerWithRequestReply { TimerId = timerId }));
         return Task.CompletedTask;
+    }
+
+    private async Task HandleTriggerGetApiAccountId(IActor actor)
+    {
+        const string apiNid = "api-1";
+        var response = await StageSender.RequestToApi(apiNid, CPacket.Empty("GetApiAccountIdRequest"));
+
+        var apiReply = GetApiAccountIdReply.Parser.ParseFrom(response.Payload.DataSpan);
+        actor.ActorSender.Reply(CPacket.Of(new TriggerGetApiAccountIdReply
+        {
+            ApiAccountId = apiReply.AccountId
+        }));
     }
 }
