@@ -38,6 +38,7 @@ class Program
 
         // 환경 변수로 DI 모드 활성화
         var enableDI = Environment.GetEnvironmentVariable("ENABLE_DI_TESTS") == "1";
+        var enableProtocolTests = Environment.GetEnvironmentVariable("ENABLE_PROTOCOL_TESTS") == "1";
 
         // ZMQ 포트 동적 할당 (CI 환경 충돌 방지)
         var zmqPortOffset = int.Parse(Environment.GetEnvironmentVariable("ZMQ_PORT_OFFSET") ?? "0");
@@ -45,6 +46,8 @@ class Program
         var zmqApi1Port = 15300 + zmqPortOffset;
         var zmqApi2Port = 15301 + zmqPortOffset;
         var zmqDIPort = 15100 + zmqPortOffset;
+        var zmqTlsPort = 15200 + zmqPortOffset;
+        var zmqWsPort = 15400 + zmqPortOffset;
 
         // 1. PlayServer (TCP 동적, ZMQ 동적)
         var playServer = await ServerFactory.CreatePlayServerAsync(
@@ -92,7 +95,33 @@ class Program
             await WaitForApiServerConnectionAsync(apiServer1, apiServer2);
         }
 
-        // 4. 클라이언트 생성 (한 번만!)
+        // 4. 프로토콜 테스트용 서버 (조건부)
+        PlayServer? tlsPlayServer = null;
+        int tcpTlsPort = 0;
+        PlayServer? wsPlayServer = null;
+        Microsoft.AspNetCore.Builder.WebApplication? wsHttpApp = null;
+        int wsPort = 0;
+
+        if (enableProtocolTests)
+        {
+            // TCP + TLS 서버
+            tlsPlayServer = await ServerFactory.CreatePlayServerWithTlsAsync(
+                serverId: "tls-1",
+                tcpPort: 0,
+                zmqPort: zmqTlsPort
+            );
+            tcpTlsPort = tlsPlayServer.ActualTcpPort;
+            Console.WriteLine($"✓ TLS PlayServer started on ZMQ:{zmqTlsPort}, TCP+TLS:{tcpTlsPort}");
+
+            // WebSocket 서버
+            (wsPlayServer, wsHttpApp, wsPort) = await ServerFactory.CreatePlayServerWithWebSocketAsync(
+                serverId: "ws-1",
+                zmqPort: zmqWsPort
+            );
+            Console.WriteLine($"✓ WebSocket PlayServer started on ZMQ:{zmqWsPort}, HTTP:{wsPort}");
+        }
+
+        // 5. 클라이언트 생성 (한 번만!)
         var connector = new PlayHouse.Connector.Connector();
         connector.Init(new PlayHouse.Connector.ConnectorConfig
         {
@@ -114,7 +143,13 @@ class Program
             ApiServer2Id = "api-2",
             DIPlayServer = diPlayServer,
             DIServiceProvider = diServiceProvider,
-            DITcpPort = diTcpPort
+            DITcpPort = diTcpPort,
+            // 프로토콜 테스트용
+            TcpTlsPort = tcpTlsPort,
+            WebSocketPort = wsPort,
+            TlsPlayServer = tlsPlayServer,
+            WebSocketPlayServer = wsPlayServer,
+            WebSocketHttpApp = wsHttpApp
         };
     }
 
@@ -175,6 +210,10 @@ class Program
         if (ctx.PlayServer != null) await ctx.PlayServer.DisposeAsync();
         if (ctx.ApiServer1 != null) await ctx.ApiServer1.DisposeAsync();
         if (ctx.ApiServer2 != null) await ctx.ApiServer2.DisposeAsync();
+        // 프로토콜 테스트용 서버 정리
+        if (ctx.WebSocketHttpApp != null) await ctx.WebSocketHttpApp.StopAsync();
+        if (ctx.TlsPlayServer != null) await ctx.TlsPlayServer.DisposeAsync();
+        if (ctx.WebSocketPlayServer != null) await ctx.WebSocketPlayServer.DisposeAsync();
         Console.WriteLine("✓ All servers stopped");
     }
 
