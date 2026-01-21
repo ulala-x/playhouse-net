@@ -29,7 +29,7 @@ public class StageToApiVerifier : VerifierBase
         };
     }
 
-    public override int GetTestCount() => 4;  // Removed S2S_DirectRouting (server-side test, incompatible with E2E)
+    public override int GetTestCount() => 5;  // Removed S2S_DirectRouting (server-side test, incompatible with E2E)
 
     protected override async Task SetupAsync()
     {
@@ -68,6 +68,7 @@ public class StageToApiVerifier : VerifierBase
         // Skipped: S2S_DirectRouting - tests server-side routing (API→Stage SendToStage) which cannot be verified E2E
         await RunTest("AsyncBlock_RequestToApi", Test_AsyncBlock_RequestToApi);
         await RunTest("S2S_BasicRequestReply", Test_S2S_BasicRequestReply);
+        await RunTest("ApiSender_AccountId_NotEmpty", Test_ApiSender_AccountId_NotEmpty);
     }
 
     /// <summary>
@@ -216,6 +217,30 @@ public class StageToApiVerifier : VerifierBase
         Assert.Equals("TriggerRequestToApiReply", response.MsgId, "Should receive TriggerRequestToApiReply");
         var reply = TriggerRequestToApiReply.Parser.ParseFrom(response.Payload.DataSpan);
         Assert.IsTrue(reply.ApiResponse.Contains("Basic S2S Test"), "ApiResponse should contain query");
+
+        // Cleanup
+        Connector.Disconnect();
+        await Task.Delay(100);
+    }
+
+    /// <summary>
+    /// IApiSender.AccountId - API 핸들러에서 AccountId 접근 가능 검증
+    /// </summary>
+    private async Task Test_ApiSender_AccountId_NotEmpty()
+    {
+        // Given - 서버 연결 및 인증
+        var stageId = GenerateUniqueStageId(60000);
+        await ConnectAndAuthenticateAsync(stageId);
+
+        // When - API의 AccountId 조회 트리거
+        using var packet = Packet.Empty("TriggerGetApiAccountIdRequest");
+        var response = await Connector.RequestAsync(packet);
+
+        // Then - E2E 검증
+        Assert.Equals("TriggerGetApiAccountIdReply", response.MsgId, "Should receive TriggerGetApiAccountIdReply");
+        var reply = TriggerGetApiAccountIdReply.Parser.ParseFrom(response.Payload.DataSpan);
+        Assert.NotNull(reply.ApiAccountId, "ApiAccountId should not be null");
+        Assert.IsTrue(reply.ApiAccountId.Length > 0, "ApiAccountId should not be empty");
 
         // Cleanup
         Connector.Disconnect();

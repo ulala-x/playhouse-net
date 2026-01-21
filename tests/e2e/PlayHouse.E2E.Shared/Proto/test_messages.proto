@@ -233,6 +233,18 @@ message ApiEchoReply {
     string content = 1;
 }
 
+// API Server에서 IApiSender.AccountId 검증
+message GetApiAccountIdRequest {}
+message GetApiAccountIdReply {
+    string account_id = 1;
+}
+
+// Stage에서 API의 AccountId 검증 트리거
+message TriggerGetApiAccountIdRequest {}
+message TriggerGetApiAccountIdReply {
+    string api_account_id = 1;
+}
+
 // API 서버에서 직접 응답하는 에코 (SendToStage용)
 message ApiDirectEchoRequest {
     string message = 1;
