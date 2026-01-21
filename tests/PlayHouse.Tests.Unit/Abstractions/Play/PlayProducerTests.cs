@@ -1,4 +1,5 @@
 #nullable enable
+#pragma warning disable CS0618 // Type or member is obsolete - 테스트에서 의도적으로 obsolete 메서드 테스트
 
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;

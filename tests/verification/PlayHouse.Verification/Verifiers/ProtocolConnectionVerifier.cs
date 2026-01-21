@@ -215,6 +215,7 @@ public class ProtocolConnectionVerifier(ServerContext serverContext) : VerifierB
         {
             UseWebsocket = false,
             UseSsl = true,
+            SkipServerCertificateValidation = true, // 테스트용 자체 서명 인증서
             RequestTimeoutMs = 30000
         });
         return connector;

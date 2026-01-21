@@ -22,6 +22,18 @@ public sealed class ConnectorConfig
     public bool UseSsl { get; set; }
 
     /// <summary>
+    /// 서버 인증서 검증 건너뛰기 (테스트용 자체 서명 인증서 사용 시)
+    /// 주의: 프로덕션에서는 false로 설정하세요.
+    /// </summary>
+    public bool SkipServerCertificateValidation { get; set; }
+
+    /// <summary>
+    /// WebSocket 경로 (기본값: "/ws")
+    /// UseWebsocket이 true일 때만 사용됩니다.
+    /// </summary>
+    public string WebSocketPath { get; set; } = "/ws";
+
+    /// <summary>
     /// 연결 유휴 타임아웃 (밀리초, 기본값 30000)
     /// </summary>
     public int ConnectionIdleTimeoutMs { get; set; } = 30000;

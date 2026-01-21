@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Net.WebSockets;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -137,10 +138,13 @@ internal sealed class WebSocketTransportSession : ITransportSession
     {
         if (_disposed || _webSocket.State != WebSocketState.Open) return;
 
-        var size = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: false);
-        var buffer = MessagePool.Rent(size);
-        MessageCodec.WriteResponseBody(buffer.AsSpan(), msgId, msgSeq, stageId, errorCode, payload);
-        _sendChannel.Writer.TryWrite(new SendItem(buffer, size));
+        // 클라이언트는 [4바이트 길이] + [메시지 본문] 형식을 기대함 (TCP와 동일)
+        var totalSize = MessageCodec.CalculateResponseSize(msgId.Length, payload.Length, includeLengthPrefix: true);
+        var buffer = MessagePool.Rent(totalSize);
+        var span = buffer.AsSpan(0, totalSize);
+        BinaryPrimitives.WriteInt32LittleEndian(span, totalSize - 4);
+        MessageCodec.WriteResponseBody(span[4..], msgId, msgSeq, stageId, errorCode, payload);
+        _sendChannel.Writer.TryWrite(new SendItem(buffer, totalSize));
     }
 
     private async Task SendLoopAsync(CancellationToken ct)
@@ -240,19 +244,29 @@ internal sealed class WebSocketTransportSession : ITransportSession
 
     private void ParseAndDispatch(ReadOnlyMemory<byte> data)
     {
-        if (!MessageCodec.TryParseMessage(data.Span, out var msgId, out var msgSeq, out var stageId, out var payloadOffset))
+        var span = data.Span;
+
+        // 클라이언트 메시지 형식: [4바이트 길이] + [메시지 본문]
+        // TCP와 동일한 형식 사용
+        if (span.Length < 4)
+            throw new InvalidDataException("Invalid message: too short for length prefix");
+
+        var contentLength = BinaryPrimitives.ReadInt32LittleEndian(span);
+        if (contentLength <= 0 || contentLength > _options.MaxPacketSize)
+            throw new InvalidDataException($"Invalid content length: {contentLength}");
+
+        if (span.Length < 4 + contentLength)
+            throw new InvalidDataException("Invalid message: incomplete content");
+
+        var bodySpan = span.Slice(4, contentLength);
+
+        if (!MessageCodec.TryParseMessage(bodySpan, out var msgId, out var msgSeq, out var stageId, out var payloadOffset))
             throw new InvalidDataException("Invalid message format");
 
-                var payloadLength = data.Length - payloadOffset;
+        var payloadLength = contentLength - payloadOffset;
+        var rentedBuffer = MessagePool.Rent(payloadLength);
+        bodySpan.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
 
-                var rentedBuffer = MessagePool.Rent(payloadLength);
-
-                data.Span.Slice(payloadOffset, payloadLength).CopyTo(rentedBuffer);
-
-                _onMessage(this, msgId, msgSeq, stageId, MessagePoolPayload.Create(rentedBuffer, payloadLength));
-
-            }
-
-        }
-
-        
+        _onMessage(this, msgId, msgSeq, stageId, MessagePoolPayload.Create(rentedBuffer, payloadLength));
+    }
+}
