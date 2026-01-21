@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -25,6 +26,7 @@ public sealed class WebSocketTransportServer : ITransportServer
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger _logger;
+    private readonly X509Certificate2? _tlsCertificate;
 
     private readonly ConcurrentDictionary<long, WebSocketTransportSession> _sessions = new();
     private readonly CancellationTokenSource _cts = new();
@@ -41,6 +43,16 @@ public sealed class WebSocketTransportServer : ITransportServer
     public string Path => _path;
 
     /// <summary>
+    /// Gets the TLS certificate for WSS (null if TLS is not enabled).
+    /// </summary>
+    public X509Certificate2? TlsCertificate => _tlsCertificate;
+
+    /// <summary>
+    /// Gets whether TLS is enabled for this WebSocket server.
+    /// </summary>
+    public bool IsTlsEnabled => _tlsCertificate != null;
+
+    /// <summary>
     /// Creates a new WebSocket transport server.
     /// </summary>
     /// <param name="path">The URL path to handle WebSocket connections (e.g., "/ws").</param>
@@ -48,24 +60,28 @@ public sealed class WebSocketTransportServer : ITransportServer
     /// <param name="onMessage">Message received callback.</param>
     /// <param name="onDisconnect">Session disconnected callback.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="tlsCertificate">TLS certificate for WSS (null for WS).</param>
     public WebSocketTransportServer(
         string path,
         TransportOptions options,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
-        ILogger logger)
+        ILogger logger,
+        X509Certificate2? tlsCertificate = null)
     {
         _path = path;
         _options = options;
         _onMessage = onMessage;
         _onDisconnect = onDisconnect;
         _logger = logger;
+        _tlsCertificate = tlsCertificate;
     }
 
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         _started = true;
-        _logger.LogInformation("WebSocket server started on path {Path}", _path);
+        var protocol = _tlsCertificate != null ? "WebSocket+TLS" : "WebSocket";
+        _logger.LogInformation("{Protocol} server started on path {Path}", protocol, _path);
         return Task.CompletedTask;
     }
 

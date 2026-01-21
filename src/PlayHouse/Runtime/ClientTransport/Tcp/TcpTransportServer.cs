@@ -13,13 +13,13 @@ namespace PlayHouse.Runtime.ClientTransport.Tcp;
 /// TCP transport server using System.IO.Pipelines for efficient I/O.
 /// </summary>
 /// <remarks>
-/// Supports optional SSL/TLS encryption.
+/// Supports optional TLS encryption.
 /// </remarks>
 public sealed class TcpTransportServer : ITransportServer
 {
     private readonly IPEndPoint _endpoint;
     private readonly TransportOptions _options;
-    private readonly SslOptions? _sslOptions;
+    private readonly TlsOptions? _tlsOptions;
     private readonly MessageReceivedCallback _onMessage;
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger _logger;
@@ -45,21 +45,21 @@ public sealed class TcpTransportServer : ITransportServer
     /// </summary>
     /// <param name="endpoint">The endpoint to listen on.</param>
     /// <param name="options">Transport options.</param>
-    /// <param name="sslOptions">SSL options (null for no SSL).</param>
+    /// <param name="tlsOptions">TLS options (null for no TLS).</param>
     /// <param name="onMessage">Message received callback.</param>
     /// <param name="onDisconnect">Session disconnected callback.</param>
     /// <param name="logger">Logger instance.</param>
     public TcpTransportServer(
         IPEndPoint endpoint,
         TransportOptions options,
-        SslOptions? sslOptions,
+        TlsOptions? tlsOptions,
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
         ILogger logger)
     {
         _endpoint = endpoint;
         _options = options;
-        _sslOptions = sslOptions;
+        _tlsOptions = tlsOptions;
         _onMessage = onMessage;
         _onDisconnect = onDisconnect;
         _logger = logger;
@@ -70,7 +70,7 @@ public sealed class TcpTransportServer : ITransportServer
     {
         _listener.Start();
 
-        var protocol = _sslOptions?.Enabled == true ? "TCP+TLS" : "TCP";
+        var protocol = _tlsOptions?.Enabled == true ? "TCP+TLS" : "TCP";
         _logger.LogInformation("{Protocol} server started on {Endpoint}", protocol, _endpoint);
 
         _acceptTask = AcceptLoopAsync(_cts.Token);
@@ -160,20 +160,20 @@ public sealed class TcpTransportServer : ITransportServer
 
         try
         {
-            // Apply SSL/TLS if configured
-            if (_sslOptions?.Enabled == true && _sslOptions.Certificate != null)
+            // Apply TLS if configured
+            if (_tlsOptions?.Enabled == true && _tlsOptions.Certificate != null)
             {
                 var sslStream = new SslStream(stream, leaveInnerStreamOpen: false);
 
                 await sslStream.AuthenticateAsServerAsync(
-                    _sslOptions.Certificate,
-                    clientCertificateRequired: _sslOptions.RequireClientCertificate,
+                    _tlsOptions.Certificate,
+                    clientCertificateRequired: _tlsOptions.RequireClientCertificate,
                     enabledSslProtocols: SslProtocols.Tls12 | SslProtocols.Tls13,
-                    checkCertificateRevocation: _sslOptions.CheckCertificateRevocation);
+                    checkCertificateRevocation: _tlsOptions.CheckCertificateRevocation);
 
                 stream = sslStream;
 
-                _logger.LogDebug("SSL handshake completed for session {SessionId}", sessionId);
+                _logger.LogDebug("TLS handshake completed for session {SessionId}", sessionId);
             }
 
             var session = new TcpTransportSession(
@@ -200,7 +200,7 @@ public sealed class TcpTransportServer : ITransportServer
         }
         catch (AuthenticationException ex)
         {
-            _logger.LogWarning(ex, "SSL authentication failed for session {SessionId}", sessionId);
+            _logger.LogWarning(ex, "TLS authentication failed for session {SessionId}", sessionId);
             stream.Dispose();
             socket.Dispose();
         }

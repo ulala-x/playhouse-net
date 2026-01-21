@@ -83,9 +83,9 @@ public sealed class PlayServerOption
     public string? TcpBindAddress { get; set; }
 
     /// <summary>
-    /// TCP SSL/TLS 인증서 (null이면 SSL 비활성화).
+    /// TCP TLS 인증서 (null이면 TLS 비활성화).
     /// </summary>
-    public X509Certificate2? TcpSslCertificate { get; set; }
+    public X509Certificate2? TcpTlsCertificate { get; set; }
 
     /// <summary>
     /// WebSocket 경로 (null 또는 빈 문자열이면 WebSocket 비활성화).
@@ -93,9 +93,19 @@ public sealed class PlayServerOption
     public string? WebSocketPath { get; set; }
 
     /// <summary>
+    /// WebSocket TLS 인증서 (null이면 TLS 비활성화).
+    /// </summary>
+    public X509Certificate2? WebSocketTlsCertificate { get; set; }
+
+    /// <summary>
     /// WebSocket이 활성화되었는지 여부.
     /// </summary>
     public bool IsWebSocketEnabled => !string.IsNullOrEmpty(WebSocketPath);
+
+    /// <summary>
+    /// WebSocket TLS가 활성화되었는지 여부.
+    /// </summary>
+    public bool IsWebSocketTlsEnabled => WebSocketTlsCertificate != null;
 
     /// <summary>
     /// TCP가 활성화되었는지 여부.
@@ -103,9 +113,9 @@ public sealed class PlayServerOption
     public bool IsTcpEnabled => TcpPort.HasValue;
 
     /// <summary>
-    /// TCP SSL이 활성화되었는지 여부.
+    /// TCP TLS가 활성화되었는지 여부.
     /// </summary>
-    public bool IsTcpSslEnabled => TcpSslCertificate != null;
+    public bool IsTcpTlsEnabled => TcpTlsCertificate != null;
 
     #endregion
 
