@@ -12,7 +12,7 @@ namespace PlayHouse.Runtime.ClientTransport;
 /// Builder for creating transport servers with various configurations.
 /// </summary>
 /// <remarks>
-/// Supports TCP, WebSocket, and combinations with optional SSL/TLS.
+/// Supports TCP, WebSocket, and combinations with optional TLS.
 /// </remarks>
 public sealed class TransportServerBuilder
 {
@@ -74,19 +74,19 @@ public sealed class TransportServerBuilder
     }
 
     /// <summary>
-    /// Adds a TCP server with SSL/TLS.
+    /// Adds a TCP server with TLS.
     /// </summary>
     /// <param name="port">The port to listen on.</param>
     /// <param name="certificate">The server certificate.</param>
     /// <param name="bindAddress">The address to bind to (default: any).</param>
     /// <returns>This builder for chaining.</returns>
-    public TransportServerBuilder AddTcpWithSsl(int port, X509Certificate2 certificate, string? bindAddress = null)
+    public TransportServerBuilder AddTcpWithTls(int port, X509Certificate2 certificate, string? bindAddress = null)
     {
         var endpoint = new IPEndPoint(
             string.IsNullOrEmpty(bindAddress) ? IPAddress.Any : IPAddress.Parse(bindAddress),
             port);
 
-        var sslOptions = new SslOptions
+        var tlsOptions = new TlsOptions
         {
             Enabled = true,
             Certificate = certificate
@@ -94,7 +94,7 @@ public sealed class TransportServerBuilder
 
         _serverFactories.Add(composite =>
         {
-            var server = new TcpTransportServer(endpoint, _options, sslOptions, _onMessage, _onDisconnect, _logger);
+            var server = new TcpTransportServer(endpoint, _options, tlsOptions, _onMessage, _onDisconnect, _logger);
             composite.Add(server);
         });
 
@@ -106,15 +106,32 @@ public sealed class TransportServerBuilder
     /// </summary>
     /// <param name="path">The URL path to handle (e.g., "/ws").</param>
     /// <returns>This builder for chaining.</returns>
-    /// <remarks>
-    /// For HTTPS/WSS, configure HTTPS in your ASP.NET Core application.
-    /// The WebSocket server will automatically use WSS when HTTPS is enabled.
-    /// </remarks>
     public TransportServerBuilder AddWebSocket(string path = "/ws")
     {
         _serverFactories.Add(composite =>
         {
             var server = new WebSocketTransportServer(path, _options, _onMessage, _onDisconnect, _logger);
+            composite.Add(server);
+        });
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a WebSocket server with TLS.
+    /// </summary>
+    /// <param name="path">The URL path to handle (e.g., "/ws").</param>
+    /// <param name="certificate">The server certificate for TLS.</param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// WebSocket TLS (WSS) requires HTTPS configuration in ASP.NET Core.
+    /// The certificate is stored for use when configuring the HTTPS endpoint.
+    /// </remarks>
+    public TransportServerBuilder AddWebSocketWithTls(string path, X509Certificate2 certificate)
+    {
+        _serverFactories.Add(composite =>
+        {
+            var server = new WebSocketTransportServer(path, _options, _onMessage, _onDisconnect, _logger, certificate);
             composite.Add(server);
         });
 
@@ -168,9 +185,9 @@ public enum TransportType
     Tcp = 1,
 
     /// <summary>
-    /// TCP with SSL/TLS transport.
+    /// TCP with TLS transport.
     /// </summary>
-    TcpSsl = 2,
+    TcpTls = 2,
 
     /// <summary>
     /// WebSocket transport (WS).
@@ -178,13 +195,12 @@ public enum TransportType
     WebSocket = 4,
 
     /// <summary>
-    /// WebSocket with SSL/TLS transport (WSS).
-    /// Requires HTTPS configuration in ASP.NET Core.
+    /// WebSocket with TLS transport (WSS).
     /// </summary>
-    WebSocketSsl = 8,
+    WebSocketTls = 8,
 
     /// <summary>
     /// All transport types.
     /// </summary>
-    All = Tcp | TcpSsl | WebSocket | WebSocketSsl
+    All = Tcp | TcpTls | WebSocket | WebSocketTls
 }

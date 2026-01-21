@@ -35,9 +35,9 @@ namespace PlayHouse.Core.Play.Bootstrap;
 ///     })
 ///     .Build();
 ///
-/// // TCP + SSL
+/// // TCP + TLS
 /// var playServer = new PlayServerBootstrap()
-///     .ConfigureTcpWithSsl(6000, certificate)
+///     .ConfigureTcpWithTls(6000, certificate)
 ///     .Build();
 ///
 /// await playServer.StartAsync();
@@ -77,18 +77,34 @@ public sealed class PlayServerBootstrap
     }
 
     /// <summary>
-    /// TCP + SSL 서버를 설정합니다.
+    /// TCP + TLS 서버를 설정합니다.
     /// </summary>
     /// <param name="port">TCP 포트.</param>
-    /// <param name="certificate">SSL 인증서.</param>
+    /// <param name="certificate">TLS 인증서.</param>
     /// <param name="bindAddress">바인드 주소 (기본값: 모든 인터페이스).</param>
     /// <returns>빌더 인스턴스.</returns>
-    public PlayServerBootstrap ConfigureTcpWithSsl(int port, X509Certificate2 certificate, string? bindAddress = null)
+    public PlayServerBootstrap ConfigureTcpWithTls(int port, X509Certificate2 certificate, string? bindAddress = null)
     {
         _options.TcpPort = port;
         _options.TcpBindAddress = bindAddress;
-        _options.TcpSslCertificate = certificate;
+        _options.TcpTlsCertificate = certificate;
         return this;
+    }
+
+    /// <summary>
+    /// TCP + TLS 서버를 파일 경로로 설정합니다.
+    /// </summary>
+    /// <param name="port">TCP 포트.</param>
+    /// <param name="certificatePath">인증서 파일 경로 (.pfx).</param>
+    /// <param name="password">인증서 비밀번호 (없으면 null).</param>
+    /// <param name="bindAddress">바인드 주소 (기본값: 모든 인터페이스).</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public PlayServerBootstrap ConfigureTcpWithTls(int port, string certificatePath, string? password = null, string? bindAddress = null)
+    {
+        var cert = string.IsNullOrEmpty(password)
+            ? new X509Certificate2(certificatePath)
+            : new X509Certificate2(certificatePath, password);
+        return ConfigureTcpWithTls(port, cert, bindAddress);
     }
 
     /// <summary>
@@ -96,13 +112,38 @@ public sealed class PlayServerBootstrap
     /// </summary>
     /// <param name="path">WebSocket 경로 (예: "/ws").</param>
     /// <returns>빌더 인스턴스.</returns>
-    /// <remarks>
-    /// WSS를 사용하려면 ASP.NET Core에서 HTTPS를 구성하세요.
-    /// </remarks>
     public PlayServerBootstrap ConfigureWebSocket(string path = "/ws")
     {
         _options.WebSocketPath = path;
         return this;
+    }
+
+    /// <summary>
+    /// WebSocket + TLS 서버를 설정합니다.
+    /// </summary>
+    /// <param name="path">WebSocket 경로 (예: "/ws").</param>
+    /// <param name="certificate">TLS 인증서.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public PlayServerBootstrap ConfigureWebSocketWithTls(string path, X509Certificate2 certificate)
+    {
+        _options.WebSocketPath = path;
+        _options.WebSocketTlsCertificate = certificate;
+        return this;
+    }
+
+    /// <summary>
+    /// WebSocket + TLS 서버를 파일 경로로 설정합니다.
+    /// </summary>
+    /// <param name="path">WebSocket 경로 (예: "/ws").</param>
+    /// <param name="certificatePath">인증서 파일 경로 (.pfx).</param>
+    /// <param name="password">인증서 비밀번호 (없으면 null).</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public PlayServerBootstrap ConfigureWebSocketWithTls(string path, string certificatePath, string? password = null)
+    {
+        var cert = string.IsNullOrEmpty(password)
+            ? new X509Certificate2(certificatePath)
+            : new X509Certificate2(certificatePath, password);
+        return ConfigureWebSocketWithTls(path, cert);
     }
 
     /// <summary>

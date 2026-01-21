@@ -61,17 +61,17 @@ public sealed class TransportOptions
 }
 
 /// <summary>
-/// SSL/TLS configuration options.
+/// TLS configuration options.
 /// </summary>
-public sealed class SslOptions
+public sealed class TlsOptions
 {
     /// <summary>
-    /// Whether SSL/TLS is enabled. Default: false.
+    /// Whether TLS is enabled. Default: false.
     /// </summary>
     public bool Enabled { get; init; }
 
     /// <summary>
-    /// The server certificate for SSL/TLS.
+    /// The server certificate for TLS.
     /// </summary>
     public X509Certificate2? Certificate { get; init; }
 

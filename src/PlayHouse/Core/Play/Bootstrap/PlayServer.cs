@@ -150,10 +150,10 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         if (_options.IsTcpEnabled)
         {
             var tcpPort = _options.TcpPort!.Value;
-            if (_options.IsTcpSslEnabled)
+            if (_options.IsTcpTlsEnabled)
             {
-                builder.AddTcpWithSsl(tcpPort, _options.TcpSslCertificate!, _options.TcpBindAddress);
-                _logger.LogInformation("TCP+SSL enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
+                builder.AddTcpWithTls(tcpPort, _options.TcpTlsCertificate!, _options.TcpBindAddress);
+                _logger.LogInformation("TCP+TLS enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
             }
             else
             {
@@ -165,8 +165,16 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         // WebSocket 추가
         if (_options.IsWebSocketEnabled)
         {
-            builder.AddWebSocket(_options.WebSocketPath!);
-            _logger.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
+            if (_options.IsWebSocketTlsEnabled)
+            {
+                builder.AddWebSocketWithTls(_options.WebSocketPath!, _options.WebSocketTlsCertificate!);
+                _logger.LogInformation("WebSocket+TLS enabled on path {Path}", _options.WebSocketPath);
+            }
+            else
+            {
+                builder.AddWebSocket(_options.WebSocketPath!);
+                _logger.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
+            }
         }
 
         return builder.Build();
