@@ -23,7 +23,7 @@ public class ApiToPlayVerifier : VerifierBase
     {
     }
 
-    public override int GetTestCount() => 3;
+    public override int GetTestCount() => 5;
 
     protected override async Task SetupAsync()
     {
@@ -49,6 +49,8 @@ public class ApiToPlayVerifier : VerifierBase
         await RunTest("CreateStage_Success", Test_CreateStage_Success);
         await RunTest("GetOrCreateStage_NewStage", Test_GetOrCreateStage_NewStage);
         await RunTest("GetOrCreateStage_ExistingStage", Test_GetOrCreateStage_ExistingStage);
+        await RunTest("CreateStage_Callback", Test_CreateStage_Callback);
+        await RunTest("GetOrCreateStage_Callback", Test_GetOrCreateStage_Callback);
     }
 
     /// <summary>
@@ -139,5 +141,62 @@ public class ApiToPlayVerifier : VerifierBase
         Assert.IsTrue(result!.Success, "GetOrCreateStage should succeed");
         Assert.IsFalse(result.IsCreated, "Stage should already exist (IsCreated=false)");
         Assert.Equals((ushort)stageId, result.StageId);
+    }
+
+    /// <summary>
+    /// CreateStage Callback 버전 - HTTP POST /api/stages/callback 성공
+    /// callback 방식으로 OnCreate에 packet이 제대로 전달되는지 검증
+    /// </summary>
+    private async Task Test_CreateStage_Callback()
+    {
+        // Given
+        var stageId = GenerateUniqueStageId(13000);
+        var request = new CreateStageRequest
+        {
+            StageType = "TestStage",
+            StageId = (ushort)stageId
+        };
+
+        // When - HTTP POST /api/stages/callback (callback 버전)
+        var response = await _httpClient!.PostAsJsonAsync("/api/stages/callback", request);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<CreateStageResponse>();
+
+        // Then - E2E 검증 (HTTP 응답만)
+        Assert.IsTrue(result!.Success, "CreateStage callback should succeed");
+        Assert.Equals((ushort)stageId, result.StageId);
+
+        // OnCreate에 packet이 전달되었는지 검증 (reply에서 echo된 값 확인)
+        Assert.IsTrue(result.ReplyPayloadId != null, "OnCreate callback should return reply with payload info");
+        Assert.Equals("TestStage:10", result.ReplyPayloadId, "OnCreate callback should receive createPacket");
+    }
+
+    /// <summary>
+    /// GetOrCreateStage Callback 버전 - HTTP POST /api/stages/get-or-create/callback 성공
+    /// callback 방식으로 OnCreate에 packet이 제대로 전달되는지 검증
+    /// </summary>
+    private async Task Test_GetOrCreateStage_Callback()
+    {
+        // Given
+        var stageId = GenerateUniqueStageId(14000);
+        var request = new GetOrCreateStageRequest
+        {
+            StageType = "TestStage",
+            StageId = (ushort)stageId
+        };
+
+        // When - HTTP POST /api/stages/get-or-create/callback (callback 버전)
+        var response = await _httpClient!.PostAsJsonAsync("/api/stages/get-or-create/callback", request);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<GetOrCreateStageResponse>();
+
+        // Then - 새로운 Stage 생성 확인
+        Assert.IsTrue(result!.Success, "GetOrCreateStage callback should succeed");
+        Assert.IsTrue(result.IsCreated, "Stage should be newly created");
+        Assert.Equals((ushort)stageId, result.StageId);
+
+        // OnCreate에 packet이 전달되었는지 검증 (reply에서 echo된 값 확인)
+        Assert.IsTrue(result.ReplyPayloadId != null, "OnCreate callback should return reply with payload info");
+        Assert.Equals("TestStage:10", result.ReplyPayloadId, "OnCreate callback should receive createPacket");
     }
 }

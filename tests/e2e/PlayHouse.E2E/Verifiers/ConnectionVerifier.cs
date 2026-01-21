@@ -1,5 +1,6 @@
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
+using PlayHouse.E2E.Shared.Proto;
 
 namespace PlayHouse.E2E.Verifiers;
 
@@ -201,14 +202,28 @@ public class ConnectionVerifier(ServerContext serverContext) : VerifierBase(serv
         // Given - 연결만 된 상태
         await ConnectOnlyAsync();
 
-        using var authPacket = Packet.Empty("AuthenticateRequest");
-        IPacket? authResponse = null;
+        // proto 메시지로 인증 요청
+        var authRequest = new AuthenticateRequest
+        {
+            UserId = "callback-user-123",
+            Token = "callback-token-abc"
+        };
+        using var authPacket = new Packet(authRequest);
+
+        // callback 내에서 파싱한 결과 저장 (패킷은 callback 후 auto-dispose됨)
+        AuthenticateReply? authReply = null;
+        bool hasPayload = false;
         var authCompleted = new ManualResetEventSlim(false);
 
         // When - 콜백과 함께 인증
         Connector.Authenticate(authPacket, response =>
         {
-            authResponse = response;
+            // callback 내에서 payload 파싱 (response는 callback 후 auto-dispose됨)
+            hasPayload = response.Payload.Length > 0;
+            if (hasPayload)
+            {
+                authReply = AuthenticateReply.Parser.ParseFrom(response.Payload.DataSpan);
+            }
             authCompleted.Set();
         });
 
@@ -222,8 +237,14 @@ public class ConnectionVerifier(ServerContext serverContext) : VerifierBase(serv
 
         // Then
         Assert.IsTrue(authCompleted.IsSet, "Authenticate callback should be invoked");
-        Assert.NotNull(authResponse, "Should receive response packet");
         Assert.IsTrue(Connector.IsAuthenticated(), "IsAuthenticated() should be true after authentication");
+
+        // payload 검증 - callback 내에서 파싱된 결과 사용
+        Assert.IsTrue(hasPayload, "Should have reply payload");
+        Assert.NotNull(authReply, "AuthenticateReply should be parsed");
+        Assert.IsTrue(authReply!.Success, "AuthenticateReply.Success should be true");
+        Assert.Equals("callback-user-123", authReply.ReceivedUserId, "Should echo UserId");
+        Assert.Equals("callback-token-abc", authReply.ReceivedToken, "Should echo Token");
 
         // Cleanup
         Connector.Disconnect();
