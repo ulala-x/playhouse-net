@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Abstractions.System;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
 using PlayHouse.Core.Shared;
 using PlayHouse.Extensions;
@@ -62,9 +61,10 @@ public class PlayServerHostedServiceTests
 
         var serviceProvider = services.BuildServiceProvider();
         var playServer = serviceProvider.GetRequiredService<PlayServer>();
+        var logger = serviceProvider.GetRequiredService<ILogger<PlayServerHostedService>>();
 
         // When
-        var hostedService = new PlayServerHostedService(playServer);
+        var hostedService = new PlayServerHostedService(playServer, logger);
 
         // Then
         hostedService.Should().NotBeNull("HostedService가 생성되어야 함");
@@ -87,7 +87,8 @@ public class PlayServerHostedServiceTests
 
         var serviceProvider = services.BuildServiceProvider();
         var playServer = serviceProvider.GetRequiredService<PlayServer>();
-        var hostedService = new PlayServerHostedService(playServer);
+        var logger = serviceProvider.GetRequiredService<ILogger<PlayServerHostedService>>();
+        var hostedService = new PlayServerHostedService(playServer, logger);
 
         try
         {

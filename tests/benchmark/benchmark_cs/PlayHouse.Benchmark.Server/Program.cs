@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Benchmark.Server;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
 using PlayHouse.Extensions;
 using PlayHouse.Infrastructure.Memory;

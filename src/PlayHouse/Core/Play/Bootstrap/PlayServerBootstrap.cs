@@ -4,9 +4,8 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Abstractions.System;
-using PlayHouse.Core.Play.Bootstrap;
 
-namespace PlayHouse.Bootstrap;
+namespace PlayHouse.Core.Play.Bootstrap;
 
 /// <summary>
 /// Play Server 부트스트랩 빌더.

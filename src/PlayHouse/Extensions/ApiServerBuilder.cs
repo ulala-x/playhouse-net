@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 
 namespace PlayHouse.Extensions;

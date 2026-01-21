@@ -4,7 +4,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Extensions;
 using Xunit;

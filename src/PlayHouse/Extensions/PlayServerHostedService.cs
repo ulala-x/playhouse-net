@@ -2,7 +2,6 @@
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
 
 namespace PlayHouse.Extensions;
@@ -13,20 +12,20 @@ namespace PlayHouse.Extensions;
 /// </summary>
 public sealed class PlayServerHostedService(
     PlayServer playServer,
-    ILogger<PlayServerHostedService>? logger = null)
+    ILogger<PlayServerHostedService> logger)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        logger?.LogInformation("Starting PlayServer...");
+        logger.LogInformation("Starting PlayServer...");
         await playServer.StartAsync();
-        logger?.LogInformation("PlayServer started on port {Port}", playServer.ActualTcpPort);
+        logger.LogInformation("PlayServer started on port {Port}", playServer.ActualTcpPort);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logger?.LogInformation("Stopping PlayServer...");
+        logger.LogInformation("Stopping PlayServer...");
         await playServer.StopAsync(cancellationToken);
-        logger?.LogInformation("PlayServer stopped");
+        logger.LogInformation("PlayServer stopped");
     }
 }

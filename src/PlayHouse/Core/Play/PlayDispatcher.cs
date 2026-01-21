@@ -376,17 +376,16 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
         stageSender.SetStageType(stageType);
 
+        // Create and register command handler for system messages
+        var cmdHandler = new BaseStageCmdHandler(_logger);
+        RegisterCommands(cmdHandler);
+
         var (stage, stageScope) = _producer.GetStageWithScope(stageType, stageSender);
-        var baseStage = new BaseStage(stage, stageSender, _logger, stageScope);
+        var baseStage = new BaseStage(stage, stageSender, _logger, cmdHandler, stageScope);
 
         // Set BaseStage reference in XStageSender for callback queueing and reply registry
         stageSender.SetBaseStage(baseStage);
         stageSender.SetReplyPacketRegistry(baseStage);
-
-        // Create and set command handler for system messages
-        var cmdHandler = new BaseStageCmdHandler(_logger);
-        RegisterCommands(cmdHandler);
-        baseStage.SetCmdHandler(cmdHandler);
 
         return baseStage;
     }

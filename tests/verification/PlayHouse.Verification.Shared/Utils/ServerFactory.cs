@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Api;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
 using PlayHouse.Extensions;

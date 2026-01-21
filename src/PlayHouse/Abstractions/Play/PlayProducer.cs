@@ -80,12 +80,13 @@ public class PlayProducer
     /// The returned IServiceScope must be disposed when the Stage is destroyed
     /// to properly release Scoped dependencies.
     /// </remarks>
-    internal (IStage stage, IServiceScope? scope) GetStageWithScope(string stageType, IStageSender stageSender)
+    internal (IStage stage, IServiceScope scope) GetStageWithScope(string stageType, IStageSender stageSender)
     {
-        // Manual registration (factory-based) - no scope needed
+        // Manual registration (factory-based) - still create scope for consistency
         if (_stageFactories.TryGetValue(stageType, out var factory))
         {
-            return (factory(stageSender), null);
+            var scope = _serviceProvider.CreateScope();
+            return (factory(stageSender), scope);
         }
 
         // Type-based registration with DI - create scope

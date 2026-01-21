@@ -10,29 +10,22 @@ namespace PlayHouse.Core.Api.Reflection;
 /// <summary>
 /// Stores handler metadata for per-request controller instantiation.
 /// </summary>
-internal sealed class HandlerDescriptor
+internal sealed class HandlerDescriptor(Type controllerType, MethodInfo method)
 {
     /// <summary>
     /// The controller type that contains the handler method.
     /// </summary>
-    public Type ControllerType { get; }
+    public Type ControllerType { get; } = controllerType;
 
     /// <summary>
     /// The handler method info.
     /// </summary>
-    public MethodInfo Method { get; }
+    public MethodInfo Method { get; } = method;
 
     /// <summary>
     /// Compiled handler delegate for fast invocation.
     /// </summary>
-    public Func<object, IPacket, IApiSender, Task> CompiledHandler { get; }
-
-    public HandlerDescriptor(Type controllerType, MethodInfo method)
-    {
-        ControllerType = controllerType;
-        Method = method;
-        CompiledHandler = CompileHandler(controllerType, method);
-    }
+    public Func<object, IPacket, IApiSender, Task> CompiledHandler { get; } = CompileHandler(controllerType, method);
 
     /// <summary>
     /// Compiles a MethodInfo into a fast delegate using expression trees.

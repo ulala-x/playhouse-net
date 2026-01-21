@@ -8,7 +8,6 @@ using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
-using PlayHouse.Runtime.ClientTransport;
 
 // Alias to avoid conflict with System.Threading.TimerCallback
 using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
@@ -18,13 +17,18 @@ namespace PlayHouse.Core.Play.Base;
 /// <summary>
 /// Base class that manages Stage lifecycle, DI scope, and mailbox-based scheduling using ThreadPool.
 /// </summary>
-internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger logger, IServiceScope? serviceScope = null) : IReplyPacketRegistry
+internal sealed class BaseStage(
+    IStage stage,
+    XStageSender stageSender,
+    ILogger logger,
+    BaseStageCmdHandler cmdHandler,
+    IServiceScope serviceScope) : IReplyPacketRegistry
 {
-    private readonly IServiceScope? _serviceScope = serviceScope;
+    private readonly IServiceScope _serviceScope = serviceScope;
+    
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ConcurrentQueue<StageMessage> _mailbox = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
-    private BaseStageCmdHandler? _cmdHandler;
     private int _isScheduled;
 
     // AsyncLocal to track current Stage context
@@ -40,8 +44,6 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
     public bool IsCreated { get; private set; }
     public long StageId => StageSender.StageId;
     public string StageType => StageSender.StageType;
-
-    internal void SetCmdHandler(BaseStageCmdHandler cmdHandler) => _cmdHandler = cmdHandler;
 
     public void RegisterReplyForDisposal(IDisposable packet) => _pendingReplyPackets.Add(packet);
 
@@ -235,7 +237,7 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
 
     private async Task HandleSystemMessageAsync(string msgId, RoutePacket packet)
     {
-        if (_cmdHandler != null) await _cmdHandler.HandleAsync(msgId, packet, this);
+        await cmdHandler.HandleAsync(msgId, packet, this);
     }
 
     internal async Task HandleDestroyAsync()
@@ -253,7 +255,7 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
         catch (Exception ex) { logger?.LogError(ex, "Error destroying Stage {StageId}", StageId); }
 
         // Dispose Stage's DI scope
-        _serviceScope?.Dispose();
+        _serviceScope.Dispose();
     }
 
     private static IPacket CreateContentPacket(RoutePacket packet) => CPacket.Of(packet.MsgId, packet.Payload);
@@ -337,11 +339,10 @@ internal sealed class BaseStage(IStage stage, XStageSender stageSender, ILogger 
     public bool RemoveActor(string accountId) => _actors.Remove(accountId);
     public BaseActor? GetActor(string accountId) => _actors.GetValueOrDefault(accountId);
     public int ActorCount => _actors.Count;
-    public async void LeaveStage(string accountId, string sessionNid, long sid)
+    public async Task LeaveStage(string accountId, string sessionNid, long sid)
     {
-        if (_actors.TryGetValue(accountId, out var baseActor))
+        if (_actors.Remove(accountId, out var baseActor))
         {
-            _actors.Remove(accountId);
             await baseActor.Actor.OnDestroy();
             baseActor.Dispose();  // Dispose Actor's DI scope
         }

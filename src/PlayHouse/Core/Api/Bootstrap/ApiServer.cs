@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Abstractions.System;
-using PlayHouse.Bootstrap;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh;
@@ -19,7 +18,6 @@ namespace PlayHouse.Core.Api.Bootstrap;
 public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicateListener
 {
     private readonly ApiServerOption _options;
-    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ApiServer> _logger;
 
     private readonly PlayCommunicator _communicator;
@@ -50,7 +48,6 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         ILoggerFactory loggerFactory)
     {
         _options = options;
-        _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<ApiServer>();
 
         var serverConfig = new ServerConfig(

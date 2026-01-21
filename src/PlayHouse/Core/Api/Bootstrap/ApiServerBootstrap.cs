@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.System;
-using PlayHouse.Bootstrap;
 
 namespace PlayHouse.Core.Api.Bootstrap;
 
