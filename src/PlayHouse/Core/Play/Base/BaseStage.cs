@@ -324,7 +324,18 @@ internal sealed class BaseStage(
             }
         }
         catch (Exception ex) { logger?.LogError(ex, "Error in ProcessJoinActorAsync"); errorCode = (ushort)ErrorCode.InternalError; }
-        finally { message.Session.SendResponse(message.AuthReplyMsgId, message.MsgSeq, StageId, errorCode, ReadOnlySpan<byte>.Empty); }
+        finally
+        {
+            // Use auth reply packet from OnAuthenticate if available
+            if (message.AuthReplyPacket != null)
+            {
+                message.Session.SendResponse(message.AuthReplyMsgId, message.MsgSeq, StageId, errorCode, message.AuthReplyPacket.Payload.DataSpan);
+            }
+            else
+            {
+                message.Session.SendResponse(message.AuthReplyMsgId, message.MsgSeq, StageId, errorCode, ReadOnlySpan<byte>.Empty);
+            }
+        }
     }
 
     internal async Task ProcessDisconnectAsync(string accountId)
@@ -361,7 +372,7 @@ internal sealed class BaseStage(
         return (result, replyPacket);
     }
 
-    public async Task<(bool success, ushort errorCode, BaseActor? actor)> JoinActor(string sessionNid, long sid, string apiNid, IPacket authPacket, PlayProducer producer)
+    public async Task<(bool success, ushort errorCode, BaseActor? actor, IPacket? authReply)> JoinActor(string sessionNid, long sid, string apiNid, IPacket authPacket, PlayProducer producer)
     {
         var actorSender = new XActorSender(sessionNid, sid, apiNid, this);
         IActor actor;
@@ -372,27 +383,30 @@ internal sealed class BaseStage(
         }
         catch
         {
-            return (false, (ushort)ErrorCode.InvalidStageType, null);
+            return (false, (ushort)ErrorCode.InvalidStageType, null, null);
         }
 
         await actor.OnCreate();
 
-        if (!await actor.OnAuthenticate(authPacket))
+        var (authResult, authReply) = await actor.OnAuthenticate(authPacket);
+        if (!authResult)
         {
             await actor.OnDestroy();
             actorScope?.Dispose();
-            return (false, (ushort)ErrorCode.AuthenticationFailed, null);
+            authReply?.Dispose();
+            return (false, (ushort)ErrorCode.AuthenticationFailed, null, null);
         }
 
         if (string.IsNullOrEmpty(actorSender.AccountId))
         {
             await actor.OnDestroy();
             actorScope?.Dispose();
-            return (false, (ushort)ErrorCode.InvalidAccountId, null);
+            authReply?.Dispose();
+            return (false, (ushort)ErrorCode.InvalidAccountId, null, null);
         }
 
         await actor.OnPostAuthenticate();
-        return (true, (ushort)ErrorCode.Success, new BaseActor(actor, actorSender, actorScope));
+        return (true, (ushort)ErrorCode.Success, new BaseActor(actor, actorSender, actorScope), authReply);
     }
 
     public async Task OnPostCreate() => await Stage.OnPostCreate();

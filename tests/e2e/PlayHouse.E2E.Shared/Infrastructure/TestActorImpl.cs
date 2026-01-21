@@ -42,7 +42,7 @@ public class TestActorImpl : IActor
         return Task.CompletedTask;
     }
 
-    public Task<bool> OnAuthenticate(IPacket authPacket)
+    public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
     {
         // 인증 시 AccountId 설정 (필수)
         var accountId = Interlocked.Increment(ref _accountIdCounter);
@@ -50,9 +50,33 @@ public class TestActorImpl : IActor
 
         _logger.LogInformation("OnAuthenticate called for AccountId={AccountId}", ActorSender.AccountId);
 
-        // PlayServer가 자동으로 AuthenticateReply를 전송하므로
-        // 여기서는 AccountId만 설정하고 true를 반환하면 됨
-        return Task.FromResult(true);
+        // authPacket 파싱하여 E2E 검증 가능하도록 echo
+        string receivedUserId = "";
+        string receivedToken = "";
+        if (authPacket.Payload.Length > 0)
+        {
+            try
+            {
+                var request = AuthenticateRequest.Parser.ParseFrom(authPacket.Payload.DataSpan);
+                receivedUserId = request.UserId;
+                receivedToken = request.Token;
+            }
+            catch
+            {
+                // 빈 packet이거나 파싱 실패 시 무시
+            }
+        }
+
+        // Reply packet 생성 (클라이언트에 전달됨)
+        var reply = new AuthenticateReply
+        {
+            AccountId = ActorSender.AccountId,
+            Success = true,
+            ReceivedUserId = receivedUserId,
+            ReceivedToken = receivedToken
+        };
+
+        return Task.FromResult<(bool, IPacket?)>((true, CPacket.Of(reply)));
     }
 
     public Task OnPostAuthenticate()

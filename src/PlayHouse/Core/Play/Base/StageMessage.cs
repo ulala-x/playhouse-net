@@ -82,7 +82,8 @@ internal abstract class StageMessage : IDisposable
         public ITransportSession Session => session;
         public ushort MsgSeq => msgSeq;
         public string AuthReplyMsgId => authReplyMsgId;
-        public override void Dispose() => payload.Dispose();
+        public IPacket? AuthReplyPacket { get; set; }  // OnAuthenticate에서 반환된 reply
+        public override void Dispose() { payload.Dispose(); AuthReplyPacket?.Dispose(); }
         public override Task ExecuteAsync() => Stage!.ProcessJoinActorAsync(this);
     }
 

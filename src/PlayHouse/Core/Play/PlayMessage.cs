@@ -218,6 +218,11 @@ internal sealed class JoinActorMessage : PlayMessage
     public IPayload Payload { get; }
 
     /// <summary>
+    /// Gets the authentication reply packet from OnAuthenticate callback.
+    /// </summary>
+    public IPacket? AuthReplyPacket { get; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="JoinActorMessage"/> class.
     /// </summary>
     /// <param name="stageId">Target stage ID.</param>
@@ -226,13 +231,15 @@ internal sealed class JoinActorMessage : PlayMessage
     /// <param name="msgSeq">Message sequence number for auth reply.</param>
     /// <param name="authReplyMsgId">Auth reply message ID.</param>
     /// <param name="payload">Auth request payload.</param>
+    /// <param name="authReplyPacket">Authentication reply packet from OnAuthenticate.</param>
     public JoinActorMessage(
         long stageId,
         Base.BaseActor actor,
         ITransportSession session,
         ushort msgSeq,
         string authReplyMsgId,
-        IPayload payload)
+        IPayload payload,
+        IPacket? authReplyPacket = null)
         : base(stageId)
     {
         Actor = actor;
@@ -240,14 +247,16 @@ internal sealed class JoinActorMessage : PlayMessage
         MsgSeq = msgSeq;
         AuthReplyMsgId = authReplyMsgId;
         Payload = payload;
+        AuthReplyPacket = authReplyPacket;
     }
 
     /// <summary>
-    /// Disposes resources including the payload.
+    /// Disposes resources including the payload and auth reply packet.
     /// </summary>
     public override void Dispose()
     {
         Payload?.Dispose();
+        AuthReplyPacket?.Dispose();
     }
 }
 

@@ -169,7 +169,7 @@ public sealed class Connector : IConnectorCallback, IAsyncDisposable
     #region Authentication
 
     /// <summary>
-    /// 인증 요청 (콜백 방식)
+    /// 인증 요청 (콜백 방식)/
     /// </summary>
     /// <param name="request">인증 요청 패킷</param>
     /// <param name="callback">응답 콜백</param>

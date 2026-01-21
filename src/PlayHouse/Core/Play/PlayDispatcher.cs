@@ -203,13 +203,15 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             // Optimization: Bind actor and stage to session context for direct routing
             message.Session.ProcessorContext = new ActorContext(baseStage, message.Actor);
 
-            // Forward to BaseStage's message queue
-            baseStage.PostJoinActor(new Base.StageMessage.JoinActorMessage(
+            // Forward to BaseStage's message queue (with auth reply packet)
+            var stageJoinMessage = new Base.StageMessage.JoinActorMessage(
                 message.Actor,
                 message.Session,
                 message.MsgSeq,
                 message.AuthReplyMsgId,
-                message.Payload));
+                message.Payload);
+            stageJoinMessage.AuthReplyPacket = message.AuthReplyPacket;
+            baseStage.PostJoinActor(stageJoinMessage);
         }
         else
         {
@@ -222,6 +224,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
                 (ushort)ErrorCode.StageNotFound,
                 ReadOnlySpan<byte>.Empty);
             message.Payload?.Dispose();
+            message.AuthReplyPacket?.Dispose();
         }
     }
 

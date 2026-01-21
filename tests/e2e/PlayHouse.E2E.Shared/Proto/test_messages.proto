@@ -58,16 +58,19 @@ message ChatMessage {
 // 인증 관련 메시지
 // ============================================
 
-// 인증 요청
+// 인증 요청 (Connector.Authenticate → IActor.OnAuthenticate)
 message AuthenticateRequest {
     string user_id = 1;
     string token = 2;
 }
 
-// 인증 응답
+// 인증 응답 (IActor.OnAuthenticate reply → Connector)
 message AuthenticateReply {
     string account_id = 1;
     bool success = 2;
+    // E2E 검증용: OnAuthenticate에서 받은 authPacket 내용 echo
+    string received_user_id = 3;
+    string received_token = 4;
 }
 
 // ============================================
@@ -118,6 +121,23 @@ message AsyncBlockReply {
     int64 pre_thread_id = 3;
     int64 post_thread_id = 4;
     int32 sequence = 5;
+}
+
+// ============================================
+// Stage 생성 메시지 (OnCreate 검증용)
+// ============================================
+
+// Stage 생성 시 OnCreate에 전달되는 payload
+message CreateStagePayload {
+    string stage_name = 1;
+    int32 max_players = 2;
+}
+
+// OnCreate에서 반환하는 reply
+message CreateStageReply {
+    string received_stage_name = 1;  // 받은 payload echo
+    int32 received_max_players = 2;  // 받은 payload echo
+    bool created = 3;
 }
 
 // ============================================

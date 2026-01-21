@@ -20,6 +20,7 @@ internal sealed class GetOrCreateStageCmd(ILogger logger) : IBaseStageCmd
         logger.LogDebug("GetOrCreateStageReq: StageType={StageType}", req.StageType);
 
         bool isCreated = false;
+        IPacket? onCreateReply = null;
 
         // Stage가 아직 생성되지 않았으면 생성
         if (!baseStage.IsCreated)
@@ -45,15 +46,18 @@ internal sealed class GetOrCreateStageCmd(ILogger logger) : IBaseStageCmd
 
             await baseStage.OnPostCreate();
             isCreated = true;
+            onCreateReply = createReply;
         }
 
-        // 성공 응답
+        // 성공 응답: 새로 생성된 경우 OnCreate reply 반환, 기존 stage인 경우 빈 응답
         var successRes = new GetOrCreateStageRes
         {
             Result = true,
             IsCreated = isCreated,
-            PayloadId = req.JoinPayloadId,
-            Payload = req.JoinPayload
+            PayloadId = onCreateReply?.MsgId ?? "",
+            Payload = onCreateReply != null
+                ? ByteString.CopyFrom(onCreateReply.Payload.DataSpan)
+                : ByteString.Empty
         };
         baseStage.Reply(CPacket.Of(successRes));
 

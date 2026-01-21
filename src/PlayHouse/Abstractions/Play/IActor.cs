@@ -55,7 +55,11 @@ public interface IActor
     /// Called to authenticate the client.
     /// </summary>
     /// <param name="authPacket">The authentication request packet.</param>
-    /// <returns>true if authentication succeeds, false otherwise.</returns>
+    /// <returns>
+    /// Tuple of (result, reply):
+    /// - result: true if authentication succeeds, false otherwise
+    /// - reply: Optional response packet to send back to client
+    /// </returns>
     /// <remarks>
     /// CRITICAL: You MUST set ActorSender.AccountId in this method upon successful authentication.
     /// If AccountId remains empty ("") after this method returns true,
@@ -63,19 +67,20 @@ public interface IActor
     ///
     /// Example:
     /// <code>
-    /// public async Task&lt;bool&gt; OnAuthenticate(IPacket authPacket)
+    /// public async Task&lt;(bool, IPacket?)&gt; OnAuthenticate(IPacket authPacket)
     /// {
     ///     var authReq = AuthRequest.Parser.ParseFrom(authPacket.Payload.DataSpan);
     ///     if (ValidateToken(authReq.Token))
     ///     {
     ///         ActorSender.AccountId = authReq.UserId; // REQUIRED!
-    ///         return true;
+    ///         var reply = new AuthReply { Success = true };
+    ///         return (true, CPacket.Of(reply));
     ///     }
-    ///     return false;
+    ///     return (false, null);
     /// }
     /// </code>
     /// </remarks>
-    Task<bool> OnAuthenticate(IPacket authPacket);
+    Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket);
 
     /// <summary>
     /// Called after successful authentication.

@@ -68,8 +68,6 @@ message GetOrCreateStageReq {
     string stage_type = 1;
     string create_payload_id = 2;
     bytes create_payload = 3;
-    string join_payload_id = 4;
-    bytes join_payload = 5;
 }
 
 message GetOrCreateStageRes {

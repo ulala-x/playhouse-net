@@ -367,7 +367,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             }
 
             // 별도 Task에서 Actor 콜백 호출
-            var (success, errorCode, actor) = await Task.Run(async () =>
+            var (success, errorCode, actor, authReplyPacket) = await Task.Run(async () =>
             {
                 try
                 {
@@ -385,7 +385,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     catch (KeyNotFoundException)
                     {
                         _logger.LogError("Actor factory not found for stage type: {StageType}", stageType);
-                        return (false, (ushort)ErrorCode.InvalidStageType, (BaseActor?)null);
+                        return (false, (ushort)ErrorCode.InvalidStageType, (BaseActor?)null, (IPacket?)null);
                     }
 
                     // Actor 콜백 순차 호출
@@ -393,14 +393,15 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 
                     // Zero-copy: Use payload directly without ToArray() copy
                     var authPacket = CPacket.Of(_options.AuthenticateMessageId, payload);
-                    var authResult = await actor.Actor.OnAuthenticate(authPacket);
+                    var (authResult, authReply) = await actor.Actor.OnAuthenticate(authPacket);
 
                     if (!authResult)
                     {
                         _logger.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
                         actor.Dispose();  // Dispose Actor's DI scope
-                        return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null);
+                        authReply?.Dispose();
+                        return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null, (IPacket?)null);
                     }
 
                     // AccountId 검증
@@ -409,7 +410,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                         _logger.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
                         actor.Dispose();  // Dispose Actor's DI scope
-                        return (false, (ushort)ErrorCode.InvalidAccountId, (BaseActor?)null);
+                        authReply?.Dispose();
+                        return (false, (ushort)ErrorCode.InvalidAccountId, (BaseActor?)null, (IPacket?)null);
                     }
 
                     // 세션에 인증 정보 설정
@@ -418,12 +420,12 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     session.StageId = targetStageId;
                     await actor.Actor.OnPostAuthenticate();
 
-                    return (true, (ushort)ErrorCode.Success, actor);
+                    return (true, (ushort)ErrorCode.Success, actor, authReply);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error during actor authentication callbacks");
-                    return (false, (ushort)ErrorCode.InternalError, (BaseActor?)null);
+                    return (false, (ushort)ErrorCode.InternalError, (BaseActor?)null, (IPacket?)null);
                 }
             });
 
@@ -431,13 +433,14 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             {
                 await SendAuthReplyAsync(session, msgSeq, targetStageId, errorCode);
                 payload.Dispose();
+                authReplyPacket?.Dispose();
                 return;
             }
 
             // Stage Queue에 JoinActorMessage 전달 (즉시 return, Stage에서 응답 send)
             var authReplyMsgId = _options.AuthenticateMessageId.Replace("Request", "Reply");
-            _dispatcher?.OnPost(new JoinActorMessage(targetStageId, actor, session, msgSeq, authReplyMsgId, payload));
-            // payload는 JoinActorMessage에서 Dispose됨
+            _dispatcher?.OnPost(new JoinActorMessage(targetStageId, actor, session, msgSeq, authReplyMsgId, payload, authReplyPacket));
+            // payload와 authReplyPacket은 JoinActorMessage에서 Dispose됨
         }
         catch (Exception ex)
         {
