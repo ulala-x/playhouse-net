@@ -15,6 +15,12 @@ public class VerificationRunner
 
     private void RegisterVerifiers()
     {
+        // Phase 0: Protocol Connection Tests (프로토콜별 연결 테스트)
+        if (Environment.GetEnvironmentVariable("ENABLE_PROTOCOL_TESTS") == "1")
+        {
+            _verifiers.Add(new ProtocolConnectionVerifier(_serverContext));
+        }
+
         // Phase 3-1: Basic Connector Verifiers (27 tests)
         _verifiers.Add(new ConnectionVerifier(_serverContext));
         _verifiers.Add(new MessagingVerifier(_serverContext));

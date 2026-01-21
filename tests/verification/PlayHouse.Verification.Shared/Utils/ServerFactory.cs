@@ -2,6 +2,8 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -304,5 +306,157 @@ public static class ServerFactory
         socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         var port = ((IPEndPoint)socket.LocalEndPoint!).Port;
         return port;
+    }
+
+    /// <summary>
+    /// 테스트용 자체 서명 인증서를 생성합니다.
+    /// </summary>
+    public static X509Certificate2 CreateSelfSignedCertificate()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+
+        request.CertificateExtensions.Add(
+            new X509BasicConstraintsExtension(false, false, 0, false));
+        request.CertificateExtensions.Add(
+            new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, false));
+
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddIpAddress(IPAddress.Loopback);
+        sanBuilder.AddDnsName("localhost");
+        request.CertificateExtensions.Add(sanBuilder.Build());
+
+        var cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1));
+
+        return new X509Certificate2(cert.Export(X509ContentType.Pfx));
+    }
+
+    /// <summary>
+    /// TCP + TLS 지원 PlayServer를 생성합니다.
+    /// </summary>
+    public static async Task<PlayServer> CreatePlayServerWithTlsAsync(
+        string serverId = "tls-1",
+        int tcpPort = 0,
+        int zmqPort = 0,
+        X509Certificate2? certificate = null,
+        string authenticateMessageId = "AuthenticateRequest",
+        string defaultStageType = "TestStage",
+        int requestTimeoutMs = 30000,
+        LogLevel logLevel = LogLevel.Warning)
+    {
+        var cert = certificate ?? CreateSelfSignedCertificate();
+
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddConsole().SetMinimumLevel(logLevel);
+            builder.AddFilter((category, level) =>
+            {
+                if (category == "PlayHouse.Bootstrap.PlayServer" && level == LogLevel.Error)
+                    return false;
+                return true;
+            });
+        });
+
+        var services = new ServiceCollection();
+        services.AddSingleton(loggerFactory);
+        services.AddSingleton<ILogger<PlayServer>>(sp => loggerFactory.CreateLogger<PlayServer>());
+        services.AddSingleton<ILogger<TestStageImpl>>(sp => loggerFactory.CreateLogger<TestStageImpl>());
+        services.AddSingleton<ILogger<TestActorImpl>>(sp => loggerFactory.CreateLogger<TestActorImpl>());
+        services.AddSingleton<ILogger<TestSystemController>>(sp => loggerFactory.CreateLogger<TestSystemController>());
+        services.AddSingleton<PlayHouse.Abstractions.System.ISystemController, TestSystemController>();
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        var playServer = new PlayServerBootstrap()
+            .Configure(options =>
+            {
+                options.ServerId = serverId;
+                options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
+                options.TcpPort = null; // TCP 비활성화 (TLS만 사용)
+                options.RequestTimeoutMs = requestTimeoutMs;
+                options.AuthenticateMessageId = authenticateMessageId;
+                options.DefaultStageType = defaultStageType;
+            })
+            .ConfigureTcpWithTls(tcpPort, cert)
+            .UseLoggerFactory(loggerFactory)
+            .UseServiceProvider(serviceProvider)
+            .UseStage<TestStageImpl, TestActorImpl>(defaultStageType)
+            .UseSystemController<TestSystemController>()
+            .Build();
+
+        await playServer.StartAsync();
+        return playServer;
+    }
+
+    /// <summary>
+    /// WebSocket 지원 PlayServer를 생성합니다 (ASP.NET Core 호스팅 필요).
+    /// </summary>
+    public static async Task<(PlayServer Server, WebApplication HttpApp, int HttpPort)> CreatePlayServerWithWebSocketAsync(
+        string serverId = "ws-1",
+        int zmqPort = 0,
+        string wsPath = "/ws",
+        string authenticateMessageId = "AuthenticateRequest",
+        string defaultStageType = "TestStage",
+        int requestTimeoutMs = 30000,
+        LogLevel logLevel = LogLevel.Warning)
+    {
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddConsole().SetMinimumLevel(logLevel);
+        });
+
+        var services = new ServiceCollection();
+        services.AddSingleton(loggerFactory);
+        services.AddSingleton<ILogger<PlayServer>>(sp => loggerFactory.CreateLogger<PlayServer>());
+        services.AddSingleton<ILogger<TestStageImpl>>(sp => loggerFactory.CreateLogger<TestStageImpl>());
+        services.AddSingleton<ILogger<TestActorImpl>>(sp => loggerFactory.CreateLogger<TestActorImpl>());
+        services.AddSingleton<ILogger<TestSystemController>>(sp => loggerFactory.CreateLogger<TestSystemController>());
+        services.AddSingleton<PlayHouse.Abstractions.System.ISystemController, TestSystemController>();
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        var playServer = new PlayServerBootstrap()
+            .Configure(options =>
+            {
+                options.ServerId = serverId;
+                options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
+                options.TcpPort = null; // TCP 비활성화
+                options.RequestTimeoutMs = requestTimeoutMs;
+                options.AuthenticateMessageId = authenticateMessageId;
+                options.DefaultStageType = defaultStageType;
+            })
+            .ConfigureWebSocket(wsPath)
+            .UseLoggerFactory(loggerFactory)
+            .UseServiceProvider(serviceProvider)
+            .UseStage<TestStageImpl, TestActorImpl>(defaultStageType)
+            .UseSystemController<TestSystemController>()
+            .Build();
+
+        // ASP.NET Core WebApplication 생성
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole().SetMinimumLevel(logLevel);
+
+        var app = builder.Build();
+
+        // WebSocket 미들웨어 설정
+        app.UseWebSockets();
+
+        // PlayServer의 WebSocket 서버와 연결
+        var wsServers = playServer.GetWebSocketServers();
+        if (wsServers.Any())
+        {
+            var wsServer = wsServers.First();
+            app.Map(wsPath, async context => await wsServer.HandleAsync(context));
+        }
+
+        await app.StartAsync();
+        await playServer.StartAsync();
+
+        var httpPort = ExtractHttpPort(app);
+        return (playServer, app, httpPort);
     }
 }
