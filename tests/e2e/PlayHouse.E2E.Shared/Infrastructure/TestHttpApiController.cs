@@ -99,6 +99,93 @@ public class TestHttpApiController : ControllerBase
             ReplyPayloadId = replyPayloadId
         });
     }
+
+    /// <summary>
+    /// Creates a new stage using callback version.
+    /// </summary>
+    /// <param name="req">The create stage request</param>
+    /// <returns>Result of the create operation</returns>
+    [HttpPost("stages/callback")]
+    public async Task<IActionResult> CreateStageCallback([FromBody] CreateStageRequest req)
+    {
+        var tcs = new TaskCompletionSource<CreateStageResponse>();
+
+        var createPayload = new Proto.CreateStagePayload
+        {
+            StageName = req.StageType,
+            MaxPlayers = 10
+        };
+
+        _apiSender.CreateStage(
+            _playServerId,
+            req.StageType,
+            req.StageId,
+            CPacket.Of(createPayload),
+            (errorCode, result) =>
+            {
+                string? replyPayloadId = null;
+                if (result != null && result.CreateStageRes.Payload.Length > 0)
+                {
+                    var createReply = Proto.CreateStageReply.Parser.ParseFrom(
+                        result.CreateStageRes.Payload.DataSpan);
+                    replyPayloadId = $"{createReply.ReceivedStageName}:{createReply.ReceivedMaxPlayers}";
+                }
+
+                tcs.SetResult(new CreateStageResponse
+                {
+                    Success = result?.Result ?? false,
+                    StageId = req.StageId,
+                    ReplyPayloadId = replyPayloadId
+                });
+            });
+
+        var response = await tcs.Task;
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Gets or creates a stage using callback version.
+    /// </summary>
+    /// <param name="req">The get or create stage request</param>
+    /// <returns>Result of the get or create operation</returns>
+    [HttpPost("stages/get-or-create/callback")]
+    public async Task<IActionResult> GetOrCreateStageCallback([FromBody] GetOrCreateStageRequest req)
+    {
+        var tcs = new TaskCompletionSource<GetOrCreateStageResponse>();
+
+        var createPayload = new Proto.CreateStagePayload
+        {
+            StageName = req.StageType,
+            MaxPlayers = 10
+        };
+
+        _apiSender.GetOrCreateStage(
+            _playServerId,
+            req.StageType,
+            req.StageId,
+            CPacket.Of(createPayload),
+            (errorCode, result) =>
+            {
+                string? replyPayloadId = null;
+                if (result != null && result.IsCreated && result.Payload.Payload.Length > 0)
+                {
+                    var createReply = Proto.CreateStageReply.Parser.ParseFrom(
+                        result.Payload.Payload.DataSpan);
+                    replyPayloadId = $"{createReply.ReceivedStageName}:{createReply.ReceivedMaxPlayers}";
+                }
+
+                tcs.SetResult(new GetOrCreateStageResponse
+                {
+                    Success = result?.Result ?? false,
+                    IsCreated = result?.IsCreated ?? false,
+                    StageId = req.StageId,
+                    ReplyPayloadId = replyPayloadId
+                });
+            });
+
+        var response = await tcs.Task;
+        return Ok(response);
+    }
 }
 
 /// <summary>

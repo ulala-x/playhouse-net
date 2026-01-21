@@ -3,6 +3,20 @@
 namespace PlayHouse.Abstractions.Api;
 
 /// <summary>
+/// Callback for CreateStage operation.
+/// </summary>
+/// <param name="errorCode">Error code (0 = success).</param>
+/// <param name="result">The result containing stage creation response, or null on error.</param>
+public delegate void CreateStageCallback(ushort errorCode, CreateStageResult? result);
+
+/// <summary>
+/// Callback for GetOrCreateStage operation.
+/// </summary>
+/// <param name="errorCode">Error code (0 = success).</param>
+/// <param name="result">The result containing stage response, or null on error.</param>
+public delegate void GetOrCreateStageCallback(ushort errorCode, GetOrCreateStageResult? result);
+
+/// <summary>
 /// Provides functionality for API server handlers to send messages and manage stages.
 /// </summary>
 /// <remarks>
@@ -63,6 +77,36 @@ public interface IApiSender : ISender
         string stageType,
         long stageId,
         IPacket createPacket);
+
+    /// <summary>
+    /// Creates a new stage on a Play server (callback version).
+    /// </summary>
+    /// <param name="playNid">Target Play server NID.</param>
+    /// <param name="stageType">Type of stage to create.</param>
+    /// <param name="stageId">ID for the new stage.</param>
+    /// <param name="packet">Creation payload packet.</param>
+    /// <param name="callback">Callback invoked with the result.</param>
+    void CreateStage(
+        string playNid,
+        string stageType,
+        long stageId,
+        IPacket packet,
+        CreateStageCallback callback);
+
+    /// <summary>
+    /// Gets an existing stage or creates a new one if it doesn't exist (callback version).
+    /// </summary>
+    /// <param name="playNid">Target Play server NID.</param>
+    /// <param name="stageType">Type of stage to create if needed.</param>
+    /// <param name="stageId">ID for the stage.</param>
+    /// <param name="createPacket">Creation payload packet (used if stage doesn't exist).</param>
+    /// <param name="callback">Callback invoked with the result.</param>
+    void GetOrCreateStage(
+        string playNid,
+        string stageType,
+        long stageId,
+        IPacket createPacket,
+        GetOrCreateStageCallback callback);
 
     #endregion
 }

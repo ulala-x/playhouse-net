@@ -129,6 +129,71 @@ internal class ApiSender : XSender, IApiSender
             CPacket.Of(res.PayloadId, new MemoryPayload(res.Payload.Memory)));
     }
 
+    /// <inheritdoc/>
+    public void CreateStage(
+        string playNid,
+        string stageType,
+        long stageId,
+        IPacket packet,
+        CreateStageCallback callback)
+    {
+        var req = new CreateStageReq
+        {
+            StageType = stageType,
+            PayloadId = packet.MsgId,
+            Payload = ByteString.CopyFrom(packet.Payload.DataSpan)
+        };
+
+        var routePacket = CPacket.Of(req);
+        RequestToStage(playNid, stageId, routePacket, (errorCode, reply) =>
+        {
+            if (errorCode != 0 || reply == null)
+            {
+                callback(errorCode, null);
+                return;
+            }
+
+            var res = CreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
+            var result = new CreateStageResult(
+                res.Result,
+                CPacket.Of(res.PayloadId, new MemoryPayload(res.Payload.Memory)));
+            callback(0, result);
+        });
+    }
+
+    /// <inheritdoc/>
+    public void GetOrCreateStage(
+        string playNid,
+        string stageType,
+        long stageId,
+        IPacket createPacket,
+        GetOrCreateStageCallback callback)
+    {
+        var req = new GetOrCreateStageReq
+        {
+            StageType = stageType,
+            CreatePayloadId = createPacket.MsgId,
+            CreatePayload = ByteString.CopyFrom(createPacket.Payload.DataSpan)
+        };
+
+        var routePacket = CPacket.Of(req);
+        RequestToStage(playNid, stageId, routePacket, (errorCode, reply) =>
+        {
+            if (errorCode != 0 || reply == null)
+            {
+                callback(errorCode, null);
+                return;
+            }
+
+            var res = GetOrCreateStageRes.Parser.ParseFrom(reply.Payload.DataSpan);
+            var result = new GetOrCreateStageResult(
+                res.Result,
+                res.IsCreated,
+                CPacket.Of(res.PayloadId, new MemoryPayload(res.Payload.Memory)));
+            callback(0, result);
+        });
+    }
+
     #endregion
 }
 
