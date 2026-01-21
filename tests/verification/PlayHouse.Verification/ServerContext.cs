@@ -26,4 +26,13 @@ public class ServerContext
     public PlayServer? DIPlayServer { get; set; }
     public IServiceProvider? DIServiceProvider { get; set; }
     public int DITcpPort { get; set; }
+
+    // 프로토콜별 테스트용 포트
+    public int TcpTlsPort { get; set; }
+    public int WebSocketPort { get; set; }
+
+    // 프로토콜별 서버 인스턴스 (조건부)
+    public PlayServer? TlsPlayServer { get; set; }
+    public PlayServer? WebSocketPlayServer { get; set; }
+    public WebApplication? WebSocketHttpApp { get; set; }
 }
