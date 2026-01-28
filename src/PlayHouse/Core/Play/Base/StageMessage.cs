@@ -2,6 +2,7 @@
 
 using Microsoft.Extensions.ObjectPool;
 using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ServerMesh.Message;
@@ -25,6 +26,11 @@ internal abstract class StageMessage : IDisposable
     internal static readonly ObjectPool<ContinuationMessage> ContinuationMessagePool =
         new DefaultObjectPool<ContinuationMessage>(
             new DefaultPooledObjectPolicy<ContinuationMessage>());
+
+    // Pool for GameLoopTickMessage to avoid GC pressure at high tick rates (20~128/sec/Stage)
+    internal static readonly ObjectPool<GameLoopTickMessage> GameLoopTickMessagePool =
+        new DefaultObjectPool<GameLoopTickMessage>(
+            new DefaultPooledObjectPolicy<GameLoopTickMessage>());
 
     public BaseStage? Stage { get; internal set; }
     public virtual void Dispose() { }
@@ -118,6 +124,35 @@ internal abstract class StageMessage : IDisposable
             _state = null;
             Stage = null;
             ContinuationMessagePool.Return(this);
+        }
+    }
+
+    /// <summary>
+    /// Game loop tick message dispatched from GameLoopTimer to Stage event loop.
+    /// Uses ObjectPool to minimize GC pressure at high tick rates.
+    /// </summary>
+    public sealed class GameLoopTickMessage : StageMessage
+    {
+        private GameLoopCallback? _callback;
+        private TimeSpan _deltaTime;
+        private TimeSpan _totalElapsed;
+
+        internal void Update(GameLoopCallback callback, TimeSpan deltaTime, TimeSpan totalElapsed)
+        {
+            _callback = callback;
+            _deltaTime = deltaTime;
+            _totalElapsed = totalElapsed;
+        }
+
+        public override Task ExecuteAsync() => _callback!.Invoke(_deltaTime, _totalElapsed);
+
+        public override void Dispose()
+        {
+            _callback = null;
+            _deltaTime = TimeSpan.Zero;
+            _totalElapsed = TimeSpan.Zero;
+            Stage = null;
+            GameLoopTickMessagePool.Return(this);
         }
     }
 }

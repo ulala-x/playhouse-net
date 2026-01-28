@@ -233,8 +233,44 @@ internal sealed class XStageSender : XSender, IStageSender
         }
         _timerIds.Clear();
 
+        // Stop game loop if running
+        StopGameLoop();
+
         // Post stage destroy request
         _dispatcher.OnPost(new DestroyMessage(StageId));
+    }
+
+    #endregion
+
+    #region Game Loop
+
+    /// <inheritdoc/>
+    public void StartGameLoop(TimeSpan fixedTimestep, GameLoopCallback callback)
+    {
+        StartGameLoop(new GameLoopConfig { FixedTimestep = fixedTimestep }, callback);
+    }
+
+    /// <inheritdoc/>
+    public void StartGameLoop(GameLoopConfig config, GameLoopCallback callback)
+    {
+        ValidateTimestep(config.FixedTimestep);
+        _dispatcher.StartGameLoop(StageId, config, callback);
+    }
+
+    /// <inheritdoc/>
+    public void StopGameLoop()
+    {
+        _dispatcher.StopGameLoop(StageId);
+    }
+
+    /// <inheritdoc/>
+    public bool IsGameLoopRunning => _dispatcher.IsGameLoopRunning(StageId);
+
+    private static void ValidateTimestep(TimeSpan fixedTimestep)
+    {
+        if (fixedTimestep.TotalMilliseconds < 1 || fixedTimestep.TotalMilliseconds > 1000)
+            throw new ArgumentOutOfRangeException(nameof(fixedTimestep),
+                $"Fixed timestep must be between 1ms and 1000ms, got {fixedTimestep.TotalMilliseconds}ms.");
     }
 
     #endregion

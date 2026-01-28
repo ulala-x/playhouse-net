@@ -22,6 +22,13 @@ public delegate Task AsyncPostCallback(object? result);
 public delegate Task TimerCallback();
 
 /// <summary>
+/// Delegate for game loop tick callbacks.
+/// </summary>
+/// <param name="deltaTime">Fixed timestep value (always equals the configured fixedTimestep).</param>
+/// <param name="totalElapsed">Total elapsed simulation time since the game loop started.</param>
+public delegate Task GameLoopCallback(TimeSpan deltaTime, TimeSpan totalElapsed);
+
+/// <summary>
 /// Provides Stage-specific communication and management capabilities.
 /// </summary>
 /// <remarks>
@@ -145,6 +152,41 @@ public interface IStageSender : ISender
     /// <param name="sid">The session ID.</param>
     /// <param name="packet">The packet to send.</param>
     void SendToClient(string sessionServerId, long sid, IPacket packet);
+
+    #endregion
+
+    #region Game Loop
+
+    /// <summary>
+    /// Starts a high-resolution game loop with the specified fixed timestep.
+    /// Only one game loop per Stage is allowed.
+    /// </summary>
+    /// <param name="fixedTimestep">Fixed timestep interval (valid range: 1ms ~ 1000ms).</param>
+    /// <param name="callback">Callback invoked on each tick with deltaTime and totalElapsed.</param>
+    /// <exception cref="InvalidOperationException">Thrown if a game loop is already running.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if fixedTimestep is out of valid range.</exception>
+    void StartGameLoop(TimeSpan fixedTimestep, GameLoopCallback callback);
+
+    /// <summary>
+    /// Starts a high-resolution game loop with the specified configuration.
+    /// Only one game loop per Stage is allowed.
+    /// </summary>
+    /// <param name="config">Game loop configuration.</param>
+    /// <param name="callback">Callback invoked on each tick with deltaTime and totalElapsed.</param>
+    /// <exception cref="InvalidOperationException">Thrown if a game loop is already running.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if fixedTimestep is out of valid range.</exception>
+    void StartGameLoop(GameLoopConfig config, GameLoopCallback callback);
+
+    /// <summary>
+    /// Stops the running game loop.
+    /// No-op if no game loop is running.
+    /// </summary>
+    void StopGameLoop();
+
+    /// <summary>
+    /// Gets whether a game loop is currently running for this Stage.
+    /// </summary>
+    bool IsGameLoopRunning { get; }
 
     #endregion
 }

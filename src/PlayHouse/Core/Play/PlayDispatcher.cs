@@ -34,6 +34,7 @@ namespace PlayHouse.Core.Play;
 internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 {
     private readonly ConcurrentDictionary<long, BaseStage> _stages = new();
+    private readonly ConcurrentDictionary<long, GameLoopTimer> _gameLoopTimers = new();
     private readonly PlayProducer _producer;
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
@@ -179,6 +180,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         if (_stages.TryRemove(stageId, out var baseStage))
         {
             _timerManager.CancelAllForStage(stageId);
+            StopGameLoop(stageId);
             baseStage.PostDestroy();
         }
     }
@@ -421,6 +423,59 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
     #endregion
 
+    #region Game Loop Management
+
+    /// <summary>
+    /// Callback from GameLoopTimer's dedicated thread.
+    /// Dispatches a tick to the Stage's mailbox for sequential execution.
+    /// </summary>
+    private void OnGameLoopTick(long stageId, GameLoopCallback callback, TimeSpan deltaTime, TimeSpan totalElapsed)
+    {
+        if (_stages.TryGetValue(stageId, out var baseStage))
+        {
+            baseStage.PostGameLoopTick(callback, deltaTime, totalElapsed);
+        }
+        else
+        {
+            // Stage was destroyed, stop the game loop
+            StopGameLoop(stageId);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void StartGameLoop(long stageId, GameLoopConfig config, GameLoopCallback callback)
+    {
+        if (_gameLoopTimers.ContainsKey(stageId))
+            throw new InvalidOperationException($"Game loop for Stage {stageId} is already running.");
+
+        var timer = new GameLoopTimer(stageId, config, callback, OnGameLoopTick, _logger);
+
+        if (!_gameLoopTimers.TryAdd(stageId, timer))
+        {
+            timer.Dispose();
+            throw new InvalidOperationException($"Game loop for Stage {stageId} is already running.");
+        }
+
+        timer.Start();
+    }
+
+    /// <inheritdoc/>
+    public void StopGameLoop(long stageId)
+    {
+        if (_gameLoopTimers.TryRemove(stageId, out var timer))
+        {
+            timer.Dispose();
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool IsGameLoopRunning(long stageId)
+    {
+        return _gameLoopTimers.ContainsKey(stageId);
+    }
+
+    #endregion
+
     #region Error Handling
 
     private void SendErrorReply(RoutePacket packet, ushort errorCode)
@@ -483,6 +538,11 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     /// </summary>
     public int ActiveTimerCount => _timerManager.ActiveTimerCount;
 
+    /// <summary>
+    /// Gets the number of active game loops.
+    /// </summary>
+    public int ActiveGameLoopCount => _gameLoopTimers.Count;
+
     #endregion
 
     /// <inheritdoc/>
@@ -492,6 +552,12 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         _disposed = true;
 
         _timerManager.Dispose();
+
+        // Stop all game loops
+        foreach (var stageId in _gameLoopTimers.Keys.ToList())
+        {
+            StopGameLoop(stageId);
+        }
 
         foreach (var stageId in _stages.Keys.ToList())
         {

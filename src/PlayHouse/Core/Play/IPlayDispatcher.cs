@@ -1,5 +1,6 @@
 #nullable enable
 
+using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ServerMesh.Message;
 
@@ -25,4 +26,25 @@ internal interface IPlayDispatcher
     /// </summary>
     /// <param name="message">전달할 메시지 (RouteMessage, TimerMessage, AsyncMessage, DestroyMessage)</param>
     void OnPost(PlayMessage message);
+
+    /// <summary>
+    /// Starts a high-resolution game loop for the specified Stage.
+    /// </summary>
+    /// <param name="stageId">Target Stage ID.</param>
+    /// <param name="config">Game loop configuration.</param>
+    /// <param name="callback">Callback invoked on each tick.</param>
+    void StartGameLoop(long stageId, GameLoopConfig config, GameLoopCallback callback);
+
+    /// <summary>
+    /// Stops the game loop for the specified Stage.
+    /// </summary>
+    /// <param name="stageId">Target Stage ID.</param>
+    void StopGameLoop(long stageId);
+
+    /// <summary>
+    /// Gets whether a game loop is running for the specified Stage.
+    /// </summary>
+    /// <param name="stageId">Target Stage ID.</param>
+    /// <returns>True if a game loop is running.</returns>
+    bool IsGameLoopRunning(long stageId);
 }

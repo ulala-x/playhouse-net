@@ -181,6 +181,19 @@ internal sealed class BaseStage(
         ScheduleExecution();
     }
 
+    /// <summary>
+    /// Posts a game loop tick to the Stage mailbox for sequential execution.
+    /// Called from the GameLoopTimer's dedicated background thread.
+    /// </summary>
+    internal void PostGameLoopTick(GameLoopCallback callback, TimeSpan deltaTime, TimeSpan totalElapsed)
+    {
+        var msg = StageMessage.GameLoopTickMessagePool.Get();
+        msg.Update(callback, deltaTime, totalElapsed);
+        msg.Stage = this;
+        _mailbox.Enqueue(msg);
+        ScheduleExecution();
+    }
+
     internal static IDisposable SetCurrentContext(BaseStage stage)
     {
         CurrentStage.Value = stage;
