@@ -395,6 +395,37 @@ message TimerRequestResultNotify {
 }
 
 // ============================================
+// Game Loop 테스트용 메시지
+// ============================================
+
+// 게임 루프 시작 요청
+message StartGameLoopRequest {
+    double timestep_ms = 1;
+    int32 max_ticks = 2;        // 0이면 무제한, >0이면 해당 횟수 후 자동 중단
+}
+
+// 게임 루프 시작 응답
+message StartGameLoopReply {
+    bool success = 1;
+}
+
+// 게임 루프 틱 알림 (Push)
+message GameLoopTickNotify {
+    int32 tick_number = 1;
+    double delta_time_ms = 2;
+    double total_elapsed_ms = 3;
+}
+
+// 게임 루프 중지 요청
+message StopGameLoopRequest {}
+
+// 게임 루프 중지 응답
+message StopGameLoopReply {
+    bool success = 1;
+    int32 total_ticks = 2;
+}
+
+// ============================================
 // Benchmark Messages
 // ============================================
 

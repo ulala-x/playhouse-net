@@ -23,6 +23,7 @@ namespace PlayHouse.E2E.Shared.Infrastructure;
 public class TestStageImpl : IStage
 {
     private readonly ILogger<TestStageImpl> _logger;
+    private int _gameLoopTickCount;
     public IStageSender StageSender { get; }
 
     public TestStageImpl(IStageSender stageSender, ILogger<TestStageImpl>? logger = null)
@@ -181,6 +182,14 @@ public class TestStageImpl : IStage
 
             case "StartTimerWithRequestRequest":
                 await HandleStartTimerWithRequest(actor, packet);
+                break;
+
+            case "StartGameLoopRequest":
+                HandleStartGameLoop(actor, packet);
+                break;
+
+            case "StopGameLoopRequest":
+                HandleStopGameLoop(actor);
                 break;
 
             default:
@@ -728,6 +737,46 @@ public class TestStageImpl : IStage
         actor.ActorSender.Reply(CPacket.Of(new TriggerGetApiAccountIdReply
         {
             ApiAccountId = apiReply.AccountId
+        }));
+    }
+
+    private void HandleStartGameLoop(IActor actor, IPacket packet)
+    {
+        var request = StartGameLoopRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+        _gameLoopTickCount = 0;
+        var maxTicks = request.MaxTicks;
+
+        StageSender.StartGameLoop(
+            TimeSpan.FromMilliseconds(request.TimestepMs),
+            (deltaTime, totalElapsed) =>
+            {
+                _gameLoopTickCount++;
+                var notify = new GameLoopTickNotify
+                {
+                    TickNumber = _gameLoopTickCount,
+                    DeltaTimeMs = deltaTime.TotalMilliseconds,
+                    TotalElapsedMs = totalElapsed.TotalMilliseconds
+                };
+                actor.ActorSender.SendToClient(CPacket.Of(notify));
+
+                if (maxTicks > 0 && _gameLoopTickCount >= maxTicks)
+                {
+                    StageSender.StopGameLoop();
+                }
+
+                return Task.CompletedTask;
+            });
+
+        actor.ActorSender.Reply(CPacket.Of(new StartGameLoopReply { Success = true }));
+    }
+
+    private void HandleStopGameLoop(IActor actor)
+    {
+        StageSender.StopGameLoop();
+        actor.ActorSender.Reply(CPacket.Of(new StopGameLoopReply
+        {
+            Success = true,
+            TotalTicks = _gameLoopTickCount
         }));
     }
 }

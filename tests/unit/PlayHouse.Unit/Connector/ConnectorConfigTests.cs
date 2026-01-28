@@ -30,10 +30,11 @@ public class ConnectorConfigTests
     public void UseWebsocket_SetAndGet()
     {
         // Given (전제조건)
-        var config = new ConnectorConfig();
-
-        // When (행동)
-        config.UseWebsocket = true;
+        var config = new ConnectorConfig
+        {
+            // When (행동)
+            UseWebsocket = true
+        };
 
         // Then (결과)
         config.UseWebsocket.Should().BeTrue("WebSocket 사용 설정이 반영되어야 함");
@@ -43,10 +44,11 @@ public class ConnectorConfigTests
     public void ConnectionIdleTimeoutMs_CustomValue()
     {
         // Given (전제조건)
-        var config = new ConnectorConfig();
-
-        // When (행동)
-        config.ConnectionIdleTimeoutMs = 60000;
+        var config = new ConnectorConfig
+        {
+            // When (행동)
+            ConnectionIdleTimeoutMs = 60000
+        };
 
         // Then (결과)
         config.ConnectionIdleTimeoutMs.Should().Be(60000, "커스텀 타임아웃이 설정되어야 함");
@@ -56,10 +58,11 @@ public class ConnectorConfigTests
     public void HeartBeatIntervalMs_CustomValue()
     {
         // Given (전제조건)
-        var config = new ConnectorConfig();
-
-        // When (행동)
-        config.HeartBeatIntervalMs = 5000;
+        var config = new ConnectorConfig
+        {
+            // When (행동)
+            HeartBeatIntervalMs = 5000
+        };
 
         // Then (결과)
         config.HeartBeatIntervalMs.Should().Be(5000, "커스텀 하트비트 간격이 설정되어야 함");
@@ -69,10 +72,11 @@ public class ConnectorConfigTests
     public void RequestTimeoutMs_CustomValue()
     {
         // Given (전제조건)
-        var config = new ConnectorConfig();
-
-        // When (행동)
-        config.RequestTimeoutMs = 15000;
+        var config = new ConnectorConfig
+        {
+            // When (행동)
+            RequestTimeoutMs = 15000
+        };
 
         // Then (결과)
         config.RequestTimeoutMs.Should().Be(15000, "커스텀 요청 타임아웃이 설정되어야 함");

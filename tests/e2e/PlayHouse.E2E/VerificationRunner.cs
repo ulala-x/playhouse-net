@@ -40,9 +40,10 @@ public class VerificationRunner
         _verifiers.Add(new ApiToPlayVerifier(_serverContext));
         _verifiers.Add(new SelfConnectionVerifier(_serverContext));
 
-        // Phase 2: IStageSender Features (4 tests)
+        // Phase 2: IStageSender Features (4 + 4 tests)
         _verifiers.Add(new AsyncBlockVerifier(_serverContext));
         _verifiers.Add(new TimerVerifier(_serverContext));
+        _verifiers.Add(new GameLoopVerifier(_serverContext));
 
         // Phase 3-2: Connector Callback Performance (2 tests)
         _verifiers.Add(new ConnectorCallbackPerformanceVerifier(_serverContext));
