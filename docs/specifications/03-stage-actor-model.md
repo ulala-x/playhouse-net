@@ -420,9 +420,10 @@ public async ValueTask OnActorConnectionChanged(IActor actor, bool isConnected, 
 
         // 재연결 타이머 시작 (30초)
         var timerId = StageSender.AddCountTimer(
-            TimeSpan.FromSeconds(30),
+            initialDelay: TimeSpan.FromSeconds(30),
+            period: TimeSpan.Zero,
             count: 1,
-            async () => await HandleReconnectTimeout(actor));
+            callback: async () => await HandleReconnectTimeout(actor));
         _reconnectTimers[accountId] = timerId;
 
         // 다른 플레이어에게 알림
@@ -937,64 +938,232 @@ Thread 3 ─┘
 #nullable enable
 
 /// <summary>
-/// Room 서버 기본 메시지 전송 인터페이스.
+/// Provides base functionality for sending packets and replies.
 /// </summary>
 /// <remarks>
-/// Lock-free 원칙에 따라 모든 전송은 fire-and-forget 방식입니다.
-/// Blocking 응답 대기 (RequestToStage)는 지원하지 않습니다.
+/// ISender is the base interface for all sender types in the framework.
+/// It provides methods for sending messages to API servers and Play stages,
+/// as well as replying to incoming requests.
 /// </remarks>
 public interface ISender
 {
-    /// <summary>클라이언트 요청에 대한 응답</summary>
-    void Reply(ushort errorCode);
-    void Reply(IPacket packet);
+    /// <summary>Gets the server type of this sender.</summary>
+    ServerType ServerType { get; }
 
-    /// <summary>클라이언트에게 푸시 메시지 전송</summary>
-    ValueTask SendAsync(IPacket packet);
+    /// <summary>Gets the service ID of this sender.</summary>
+    ushort ServiceId { get; }
+
+    #region API Server Communication
+
+    /// <summary>Sends a one-way packet to an API server.</summary>
+    void SendToApi(string apiServerId, IPacket packet);
+
+    /// <summary>Sends a request to an API server with a callback for the reply.</summary>
+    void RequestToApi(string apiServerId, IPacket packet, ReplyCallback replyCallback);
+
+    /// <summary>Sends a request to an API server and awaits the reply.</summary>
+    Task<IPacket> RequestToApi(string apiServerId, IPacket packet);
+
+    #endregion
+
+    #region Stage Communication
+
+    /// <summary>Sends a one-way packet to a stage on a Play server.</summary>
+    void SendToStage(string playServerId, long stageId, IPacket packet);
+
+    /// <summary>Sends a request to a stage with a callback for the reply.</summary>
+    void RequestToStage(string playServerId, long stageId, IPacket packet, ReplyCallback replyCallback);
+
+    /// <summary>Sends a request to a stage and awaits the reply.</summary>
+    Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet);
+
+    #endregion
+
+    #region API Service Communication
+
+    /// <summary>
+    /// Sends a packet to an API server in the specified service using RoundRobin selection.
+    /// </summary>
+    void SendToApiService(ushort serviceId, IPacket packet);
+
+    /// <summary>
+    /// Sends a packet to an API server in the specified service using the specified selection policy.
+    /// </summary>
+    void SendToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
+
+    /// <summary>
+    /// Sends a request to an API server in the specified service with a callback (RoundRobin).
+    /// </summary>
+    void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback);
+
+    /// <summary>
+    /// Sends a request to an API server in the specified service with a callback and policy.
+    /// </summary>
+    void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy);
+
+    /// <summary>
+    /// Sends a request to an API server in the specified service and awaits the reply (RoundRobin).
+    /// </summary>
+    Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet);
+
+    /// <summary>
+    /// Sends a request to an API server in the specified service and awaits the reply with policy.
+    /// </summary>
+    Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
+
+    #endregion
+
+    #region System Communication
+
+    /// <summary>
+    /// Sends a one-way system message to a server.
+    /// </summary>
+    /// <remarks>
+    /// System messages are handled by ISystemController.Handles() registered handlers.
+    /// This method does not wait for a response.
+    /// </remarks>
+    void SendToSystem(string serverId, IPacket packet);
+
+    /// <summary>
+    /// Sends a system request with a callback for the reply.
+    /// </summary>
+    /// <remarks>
+    /// Note: The receiving server's system handler must explicitly send a reply
+    /// for the callback to be invoked.
+    /// </remarks>
+    void RequestToSystem(string serverId, IPacket packet, ReplyCallback replyCallback);
+
+    /// <summary>
+    /// Sends a system request and awaits the reply.
+    /// </summary>
+    /// <remarks>
+    /// Note: The receiving server's system handler must explicitly send a reply
+    /// for this task to complete.
+    /// </remarks>
+    Task<IPacket> RequestToSystem(string serverId, IPacket packet);
+
+    #endregion
+
+    #region Reply
+
+    /// <summary>Sends an error-only reply to the current request.</summary>
+    void Reply(ushort errorCode);
+
+    /// <summary>Sends a reply packet to the current request.</summary>
+    void Reply(IPacket reply);
+
+    #endregion
 }
 ```
+
+**주요 추가 기능:**
+- **ServerType, ServiceId 속성**: 현재 서버의 타입과 서비스 ID 조회
+- **SendToApiService/RequestToApiService**: 서비스 ID로 API 서버에 메시지 전송 (RoundRobin 또는 지정된 정책)
+- **SendToSystem/RequestToSystem**: 서버 간 시스템 메시지 전송 (ISystemController 핸들러로 처리)
+- **ServerSelectionPolicy**: 서버 선택 정책 (RoundRobin, Random 등)
 
 ### 5.2 IStageSender 전체 인터페이스
 
 ```csharp
 /// <summary>
-/// Stage 전용 메시지 전송 인터페이스.
+/// Provides Stage-specific communication and management capabilities.
 /// </summary>
 /// <remarks>
-/// Stage간 통신, 브로드캐스트, 타이머 관리 기능을 제공합니다.
+/// IStageSender extends ISender with:
+/// - Timer management (repeat, count, cancel)
+/// - Stage lifecycle management (close)
+/// - AsyncCompute/AsyncIO for safe external operations
+/// - Client messaging with StageId context
+/// - Game loop support with high-resolution timing
 /// </remarks>
 public interface IStageSender : ISender
 {
-    // Stage 정보 (서버 내 로컬 유니크)
-    int StageId { get; }
+    /// <summary>Gets the unique identifier for this Stage.</summary>
+    long StageId { get; }
+
+    /// <summary>Gets the type identifier for this Stage.</summary>
     string StageType { get; }
 
-    // 같은 서버 내 다른 Stage에 메시지 전송 (fire-and-forget, non-blocking)
-    ValueTask SendToStageAsync(int targetStageId, IPacket packet);
+    #region Timer Management
 
-    // 브로드캐스트 (Stage 내 모든 Actor에게)
-    ValueTask BroadcastAsync(IPacket packet);
-    ValueTask BroadcastAsync(IPacket packet, Func<IActor, bool> filter);
+    /// <summary>Adds a repeating timer that fires indefinitely.</summary>
+    long AddRepeatTimer(TimeSpan initialDelay, TimeSpan period, TimerCallback callback);
 
-    // 타이머 관리
-    long AddRepeatTimer(TimeSpan interval, Func<Task> callback);
-    long AddCountTimer(TimeSpan interval, int count, Func<Task> callback);
+    /// <summary>Adds a timer that fires a specified number of times.</summary>
+    long AddCountTimer(TimeSpan initialDelay, TimeSpan period, int count, TimerCallback callback);
+
+    /// <summary>Cancels an active timer.</summary>
     void CancelTimer(long timerId);
+
+    /// <summary>Checks if a timer is still active.</summary>
     bool HasTimer(long timerId);
 
-    // Stage 제어
+    #endregion
+
+    #region Stage Management
+
+    /// <summary>Closes this Stage, canceling all timers and triggering cleanup.</summary>
     void CloseStage();
 
-    // 비동기 작업 (블로킹 작업을 별도 스레드에서 실행)
-    void AsyncBlock(Func<Task<object?>> preCallback,
-        Func<object?, Task>? postCallback = null);
+    #endregion
+
+    #region Async Operations
+
+    /// <summary>
+    /// Executes a CPU-bound operation on a dedicated compute thread pool,
+    /// then optionally processes the result back on the event loop.
+    /// </summary>
+    /// <remarks>
+    /// ComputeTaskPool is optimized for CPU-bound work:
+    /// - Limited concurrency (CPU core count)
+    /// - Prevents CPU starvation
+    /// </remarks>
+    void AsyncCompute(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null);
+
+    /// <summary>
+    /// Executes an I/O-bound operation on a dedicated I/O thread pool,
+    /// then optionally processes the result back on the event loop.
+    /// </summary>
+    /// <remarks>
+    /// IoTaskPool is optimized for I/O-bound work:
+    /// - Higher concurrency (default 100)
+    /// - Handles I/O wait efficiently
+    /// </remarks>
+    void AsyncIO(AsyncPreCallback preCallback, AsyncPostCallback? postCallback = null);
+
+    #endregion
+
+    #region Client Communication
+
+    /// <summary>Sends a message to a specific client.</summary>
+    void SendToClient(string sessionServerId, long sid, IPacket packet);
+
+    #endregion
+
+    #region Game Loop
+
+    /// <summary>Starts a high-resolution game loop with the specified fixed timestep.</summary>
+    void StartGameLoop(TimeSpan fixedTimestep, GameLoopCallback callback);
+
+    /// <summary>Starts a high-resolution game loop with the specified configuration.</summary>
+    void StartGameLoop(GameLoopConfig config, GameLoopCallback callback);
+
+    /// <summary>Stops the running game loop.</summary>
+    void StopGameLoop();
+
+    /// <summary>Gets whether a game loop is currently running for this Stage.</summary>
+    bool IsGameLoopRunning { get; }
+
+    #endregion
 }
 ```
 
-**핵심 설계 원칙:**
-- ✅ Fire-and-forget 메시지 전송 → `SendToStageAsync`, `BroadcastAsync`
-- ❌ ~~RequestToStage~~ → 제거됨 (blocking 응답 대기는 lock-free 원칙 위반)
-- Stage간 응답이 필요하면 → 콜백 패킷으로 처리 (fire-and-forget + 응답 패킷)
+**주요 변경사항:**
+- **StageId 타입**: `int` → `long` (64비트 ID 지원)
+- **AsyncCompute/AsyncIO**: `AsyncBlock` 분리 → CPU-bound와 I/O-bound 작업 구분
+- **GameLoop 추가**: 고해상도 게임 루프 지원 (StartGameLoop, StopGameLoop, IsGameLoopRunning)
+- **Timer 시그니처**: `initialDelay` 파라미터 추가 (최초 실행 지연 시간)
+- **SendToClient**: 클라이언트에게 직접 메시지 전송 (sessionServerId, sid 파라미터)
 
 ### 5.3 사용 예시
 
@@ -1039,25 +1208,48 @@ public class GameStage : IStage
 #nullable enable
 
 /// <summary>
-/// Actor 전용 메시지 전송 인터페이스.
+/// Provides Actor-specific communication capabilities.
 /// </summary>
 /// <remarks>
-/// 개별 Actor가 자신의 클라이언트에게 메시지를 전송합니다.
+/// IActorSender extends ISender with:
+/// - AccountId property for user identification (must be set in OnAuthenticate)
+/// - LeaveStageAsync() to exit from current Stage
+/// - SendToClient() for direct client messaging
 /// </remarks>
 public interface IActorSender : ISender
 {
-    /// <summary>계정 식별자</summary>
-    long AccountId { get; }
+    /// <summary>
+    /// Gets or sets the account identifier for this Actor.
+    /// </summary>
+    /// <remarks>
+    /// MUST be set in IActor.OnAuthenticate() upon successful authentication.
+    /// If empty ("") after OnAuthenticate completes, connection will be terminated.
+    /// </remarks>
+    string AccountId { get; set; }
 
-    /// <summary>세션 식별자</summary>
-    long SessionId { get; }
+    /// <summary>
+    /// Removes this Actor from the current Stage.
+    /// </summary>
+    /// <remarks>
+    /// This method:
+    /// 1. Removes the Actor from BaseStage._actors
+    /// 2. Calls IActor.OnDestroy()
+    /// 3. Does NOT close the client connection (actor can join another stage)
+    /// </remarks>
+    Task LeaveStageAsync();
+
+    /// <summary>
+    /// Sends a message directly to the connected client.
+    /// </summary>
+    void SendToClient(IPacket packet);
 }
 ```
 
 **주요 변경사항:**
-- `ISender` 상속 → `Reply`, `SendAsync` 공통 사용
-- `SessionNid` + `Sid` → `SessionId`로 통합 (명명 규칙 개선)
-- `SendToClient` → `SendAsync`로 통일 (ISender에서 상속)
+- **AccountId 타입**: `long` → `string` (다양한 ID 체계 지원)
+- **LeaveStage**: `LeaveStage()` → `LeaveStageAsync()` (비동기 처리)
+- **SendToClient**: 클라이언트에게 직접 메시지 전송 (sessionServerId, sid 파라미터 불필요)
+- **ISender 상속**: Reply, SendToApi, RequestToApi 등 모든 ISender 메서드 사용 가능
 
 ### 6.2 사용 예시
 
@@ -1291,9 +1483,10 @@ public async ValueTask OnActorConnectionChanged(IActor actor, bool isConnected, 
     {
         // 재연결 타임아웃 타이머 시작
         var timerId = StageSender.AddCountTimer(
-            TimeSpan.FromSeconds(30),
+            initialDelay: TimeSpan.FromSeconds(30),
+            period: TimeSpan.Zero,
             count: 1,
-            async () => await HandleReconnectTimeout(actor));
+            callback: async () => await HandleReconnectTimeout(actor));
 
         _reconnectTimers[actor.ActorSender.AccountId] = timerId;
     }
@@ -1341,46 +1534,47 @@ public interface IStageSender : ISender
 }
 ```
 
-## 8. 비동기 블록 (AsyncBlock)
+## 8. 비동기 작업 (AsyncCompute/AsyncIO)
 
 ### 8.1 개념
 
 ```
 문제:
-Stage 내부는 단일 스레드 → 블로킹 작업(DB, HTTP) 불가
+Stage 내부는 단일 스레드 → 블로킹 작업(DB, HTTP, 파일 I/O) 불가
 
 해결:
-AsyncBlock으로 블로킹 작업을 별도 스레드 풀에서 실행
+AsyncCompute/AsyncIO로 블로킹 작업을 별도 스레드 풀에서 실행
+- AsyncCompute: CPU-bound 작업 (계산, 암호화 등)
+- AsyncIO: I/O-bound 작업 (DB, HTTP, 파일 등)
 결과는 다시 Stage 메시지 큐로 전달
 ```
 
-### 8.2 사용 예시
+### 8.2 AsyncIO 사용 예시 (DB 작업)
 
 ```csharp
 public async Task HandleSaveRequest(IActor actor, IPacket packet)
 {
-    var saveData = packet.Payload.Parse<SaveData>();
+    var saveData = packet.Parse<SaveData>();
 
-    // 비동기 블록으로 DB 작업 수행
-    StageSender.AsyncBlock(
+    // I/O-bound 작업을 AsyncIO로 처리
+    StageSender.AsyncIO(
         preCallback: async () =>
         {
-            // 별도 스레드에서 실행 (블로킹 가능)
-            await _database.SavePlayerData(actor.AccountId, saveData);
+            // IoTaskPool에서 실행 (블로킹 가능)
+            await _database.SavePlayerData(actor.ActorSender.AccountId, saveData);
             return "Save completed";
         },
         postCallback: async (result) =>
         {
-            // Stage 메시지 큐를 통해 다시 Stage로 전달
-            // 이 시점에는 Stage Context 안전
-            LOG.Info($"Save result: {result}");
+            // Stage 이벤트 루프로 복귀 (Stage Context 안전)
+            _log.Info($"Save result: {result}");
 
             // 클라이언트에 알림
-            StageSender.SendToClient(
-                actor.SessionNid,
-                actor.Sid,
-                CreatePacket("SaveComplete")
-            );
+            actor.ActorSender.SendToClient(new SimplePacket(new SaveCompleteNotify
+            {
+                Success = true,
+                Message = result?.ToString() ?? string.Empty
+            }));
         }
     );
 
@@ -1389,19 +1583,73 @@ public async Task HandleSaveRequest(IActor actor, IPacket packet)
 }
 ```
 
-### 8.3 주의사항
+### 8.3 AsyncCompute 사용 예시 (CPU-bound 작업)
+
+```csharp
+public async Task HandlePathfinding(IActor actor, IPacket packet)
+{
+    var pathRequest = packet.Parse<PathfindingRequest>();
+
+    // CPU-bound 작업을 AsyncCompute로 처리
+    StageSender.AsyncCompute(
+        preCallback: async () =>
+        {
+            // ComputeTaskPool에서 실행 (CPU 집약적 계산)
+            var path = CalculatePath(pathRequest.Start, pathRequest.End, _mapData);
+            return path;
+        },
+        postCallback: async (result) =>
+        {
+            // Stage 이벤트 루프로 복귀
+            var path = (List<Vector2>)result!;
+
+            // 경로를 클라이언트에 전송
+            actor.ActorSender.SendToClient(new SimplePacket(new PathfindingResponse
+            {
+                Path = { path.Select(p => new Position { X = p.X, Y = p.Y }) }
+            }));
+        }
+    );
+
+    StageSender.Reply(ErrorCode.Success);
+}
+
+// CPU 집약적 계산 (A* 알고리즘 등)
+private List<Vector2> CalculatePath(Vector2 start, Vector2 end, MapData mapData)
+{
+    // 복잡한 계산...
+    return path;
+}
+```
+
+### 8.4 주의사항
 
 ```
-AsyncBlock 내부 (preCallback):
-- Stage 상태 접근 금지 (다른 스레드)
-- 블로킹 작업 가능 (DB, HTTP, File I/O)
-- 반환값은 object (결과 전달)
+PreCallback (별도 스레드):
+- Stage 상태 접근 금지 (동시성 문제)
+- 블로킹 작업 가능 (DB, HTTP, File I/O, CPU 집약적 계산)
+- 반환값은 object? (결과 전달, nullable)
+- AsyncCompute: CPU-bound 작업용 (제한된 동시성)
+- AsyncIO: I/O-bound 작업용 (높은 동시성)
 
-PostCallback:
+PostCallback (Stage 이벤트 루프):
 - Stage 메시지 큐를 통해 전달
 - Stage 상태 안전하게 접근 가능
 - 단일 스레드 보장
+- ISender 메서드 안전하게 사용 가능
 ```
+
+### 8.5 AsyncCompute vs AsyncIO 선택 가이드
+
+| 작업 타입 | 사용할 메서드 | 예시 |
+|-----------|--------------|------|
+| DB 쿼리 | AsyncIO | SELECT, INSERT, UPDATE |
+| HTTP 요청 | AsyncIO | REST API 호출, 웹훅 |
+| 파일 I/O | AsyncIO | 파일 읽기/쓰기 |
+| 경로 탐색 | AsyncCompute | A* 알고리즘 |
+| 암호화/복호화 | AsyncCompute | AES, RSA |
+| 이미지 처리 | AsyncCompute | 리사이징, 필터링 |
+| 시뮬레이션 | AsyncCompute | 물리 계산, AI 연산 |
 
 ## 9. 실전 예제
 
@@ -1502,9 +1750,10 @@ public class ChatStage : IStage
     {
         // 30분 후 자동 닫기
         StageSender.AddCountTimer(
-            TimeSpan.FromMinutes(30),
+            initialDelay: TimeSpan.FromMinutes(30),
+            period: TimeSpan.Zero,
             count: 1,
-            async () => StageSender.CloseStage()
+            callback: async () => StageSender.CloseStage()
         );
     }
 
@@ -1752,9 +2001,10 @@ public class BattleStage : IStage
     {
         _state = BattleState.Countdown;
         StageSender.AddCountTimer(
-            TimeSpan.FromSeconds(1),
+            initialDelay: TimeSpan.FromSeconds(1),
+            period: TimeSpan.FromSeconds(1),
             count: 3,
-            OnCountdownTick
+            callback: OnCountdownTick
         );
     }
 
@@ -1873,9 +2123,10 @@ public class BattleStage : IStage
 
         // 10초 후 Stage 닫기
         StageSender.AddCountTimer(
-            TimeSpan.FromSeconds(10),
+            initialDelay: TimeSpan.FromSeconds(10),
+            period: TimeSpan.Zero,
             count: 1,
-            async () => StageSender.CloseStage()
+            callback: async () => StageSender.CloseStage()
         );
     }
 

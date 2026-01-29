@@ -694,9 +694,483 @@ Client → HTTP Controller → Core Engine → Response
 Client → Socket Handler → Dispatcher → Stage → Response
 ```
 
-## 7. 동시성 및 스레딩 모델
+## 7. ServerType과 ServiceId
 
-### 7.1 스레드 풀 구성
+### 7.1 개요
+
+PlayHouse-NET은 서버 간 통신을 위해 **ServerType**과 **ServiceId**라는 두 가지 식별자를 사용합니다.
+
+- **ServerType**: 서버의 역할을 구분 (Play, Api)
+- **ServiceId**: 같은 ServerType 내에서 서버 그룹을 구분 (예: 지역별, 환경별)
+
+이 구조를 통해 유연한 서버 배치와 효율적인 라우팅이 가능합니다.
+
+### 7.2 ServerType
+
+서버의 역할을 정의하는 열거형입니다.
+
+```csharp
+/// <summary>
+/// Defines the server types in the PlayHouse framework.
+/// </summary>
+/// <remarks>
+/// ServerType distinguishes between different kinds of servers.
+/// ServiceId is used to group servers within the same ServerType.
+/// </remarks>
+public enum ServerType : ushort
+{
+    /// <summary>
+    /// Play Server - handles game logic and real-time communication.
+    /// </summary>
+    Play = 1,
+
+    /// <summary>
+    /// API Server - handles stateless API requests.
+    /// </summary>
+    Api = 2,
+}
+```
+
+#### 7.2.1 Play Server (ServerType.Play)
+
+**역할**: 실시간 게임 로직 및 상태 관리
+
+**특징**:
+- Stage/Actor 모델 기반
+- Stateful 통신 (클라이언트 세션 유지)
+- 실시간 메시지 처리
+- 타이머 및 이벤트 관리
+
+**사용 사례**:
+- 게임 로비 관리
+- 게임 룸 (배틀, 매칭 등)
+- 실시간 채팅
+- 플레이어 상태 관리
+
+**메시지 API**:
+```csharp
+// Play Server의 Stage로 메시지 전송
+sender.SendToStage(playServerId, stageId, packet);
+sender.RequestToStage(playServerId, stageId, packet);
+```
+
+#### 7.2.2 API Server (ServerType.Api)
+
+**역할**: Stateless 요청 처리
+
+**특징**:
+- HTTP API 스타일의 요청-응답 패턴
+- Stateless (세션 상태 없음)
+- 빠른 응답 시간
+- 수평 확장 용이
+
+**사용 사례**:
+- 데이터베이스 조회/수정
+- 외부 서비스 연동
+- 통계 조회
+- 관리자 API
+
+**메시지 API**:
+```csharp
+// API Server로 메시지 전송
+sender.SendToApi(apiServerId, packet);
+sender.RequestToApi(apiServerId, packet);
+
+// ServiceId로 API Server 선택
+sender.SendToApiService(serviceId, packet);
+sender.RequestToApiService(serviceId, packet);
+```
+
+### 7.3 ServiceId
+
+같은 ServerType 내에서 서버 그룹을 구분하는 식별자입니다.
+
+```csharp
+/// <summary>
+/// Default service group identifiers.
+/// </summary>
+public static class ServiceIdDefaults
+{
+    /// <summary>
+    /// Default service group.
+    /// </summary>
+    public const ushort Default = 1;
+}
+```
+
+#### 7.3.1 ServiceId 사용 목적
+
+**1. 지역별 서버 구분**
+```
+ServerType.Api + ServiceId=1 → 서울 리전 API 서버
+ServerType.Api + ServiceId=2 → 도쿄 리전 API 서버
+ServerType.Api + ServiceId=3 → 싱가포르 리전 API 서버
+```
+
+**2. 환경별 서버 구분**
+```
+ServerType.Play + ServiceId=1 → 프로덕션 환경
+ServerType.Play + ServiceId=2 → 스테이징 환경
+ServerType.Play + ServiceId=3 → 개발 환경
+```
+
+**3. 기능별 서버 구분**
+```
+ServerType.Api + ServiceId=1 → 게임 데이터 API
+ServerType.Api + ServiceId=2 → 결제 API
+ServerType.Api + ServiceId=3 → 소셜 API
+```
+
+**4. 부하 분산**
+```
+ServerType.Api + ServiceId=1 → API 서버 그룹 A (일반 부하)
+ServerType.Api + ServiceId=2 → API 서버 그룹 B (고부하 처리)
+```
+
+#### 7.3.2 서버 정보 구조
+
+```csharp
+public interface IServerInfo
+{
+    ServerType ServerType { get; }   // Play or Api
+    ushort ServiceId { get; }        // 서비스 그룹 ID
+    string ServerId { get; }         // 서버 인스턴스 ID (고유)
+    string Address { get; }          // 연결 주소
+    ServerState State { get; }       // Running or Disabled
+    int Weight { get; }              // 로드밸런싱 가중치
+}
+```
+
+**예시 서버 정보**:
+```csharp
+// 서울 리전 API 서버
+var seoulApi = new XServerInfo(
+    serverType: ServerType.Api,
+    serviceId: 1,
+    serverId: "api-seoul-1",
+    address: "tcp://192.168.1.100:5000",
+    state: ServerState.Running,
+    weight: 100
+);
+
+// 도쿄 리전 API 서버
+var tokyoApi = new XServerInfo(
+    serverType: ServerType.Api,
+    serviceId: 2,
+    serverId: "api-tokyo-1",
+    address: "tcp://192.168.2.100:5000",
+    state: ServerState.Running,
+    weight: 100
+);
+
+// Play 서버
+var playServer = new XServerInfo(
+    serverType: ServerType.Play,
+    serviceId: ServiceIdDefaults.Default,
+    serverId: "play-1",
+    address: "tcp://192.168.3.100:5000",
+    state: ServerState.Running,
+    weight: 100
+);
+```
+
+### 7.4 ServerSelectionPolicy
+
+서비스 그룹 내에서 특정 서버를 선택하는 정책입니다.
+
+```csharp
+/// <summary>
+/// 서버 선택 정책.
+/// </summary>
+public enum ServerSelectionPolicy
+{
+    /// <summary>
+    /// Round-Robin 방식 (기본값).
+    /// 순차적으로 서버 선택.
+    /// </summary>
+    RoundRobin = 0,
+
+    /// <summary>
+    /// 가중치 기반 선택 (내림차순).
+    /// Weight가 가장 높은 서버가 우선 선택됨.
+    /// </summary>
+    Weighted = 1
+}
+```
+
+#### 7.4.1 RoundRobin 정책
+
+**동작 방식**: 서비스 그룹 내 서버들을 순차적으로 선택
+
+**특징**:
+- 균등 분배 (서버마다 동일한 요청 수)
+- 예측 가능한 부하 분산
+- 기본 정책
+
+**사용 예시**:
+```csharp
+// RoundRobin 방식으로 API 서버 선택 (기본값)
+sender.SendToApiService(serviceId: 1, packet);
+
+// 명시적으로 RoundRobin 지정
+sender.SendToApiService(
+    serviceId: 1,
+    packet,
+    ServerSelectionPolicy.RoundRobin
+);
+```
+
+**시나리오**:
+```
+서비스 그룹 1에 API 서버 3대가 있을 때:
+요청 1 → api-1
+요청 2 → api-2
+요청 3 → api-3
+요청 4 → api-1 (순환)
+요청 5 → api-2
+```
+
+#### 7.4.2 Weighted 정책
+
+**동작 방식**: Weight가 높은 서버를 우선 선택
+
+**특징**:
+- 서버 성능 차이 반영
+- 고성능 서버에 더 많은 트래픽 할당
+- 점진적 배포 시 유용 (카나리 배포)
+
+**사용 예시**:
+```csharp
+// 가중치 기반으로 API 서버 선택
+sender.SendToApiService(
+    serviceId: 1,
+    packet,
+    ServerSelectionPolicy.Weighted
+);
+```
+
+**시나리오**:
+```
+서비스 그룹 1에 API 서버 3대:
+- api-1 (Weight=200) → 고성능 서버
+- api-2 (Weight=100) → 일반 서버
+- api-3 (Weight=50)  → 신규/테스트 서버
+
+Weighted 정책 적용 시:
+- api-1이 가장 많은 요청 처리
+- api-3은 제한적으로만 트래픽 받음 (카나리)
+```
+
+### 7.5 API Service 통신 패턴
+
+#### 7.5.1 특정 서버로 직접 전송
+
+**ServerID를 명시**하여 특정 서버에 직접 메시지 전송:
+
+```csharp
+// 특정 API 서버로 전송
+sender.SendToApi(apiServerId: "api-seoul-1", packet);
+
+// 특정 API 서버로 요청
+var reply = await sender.RequestToApi(
+    apiServerId: "api-seoul-1",
+    packet
+);
+```
+
+**사용 사례**:
+- 특정 리전의 데이터베이스 접근
+- 관리자 명령 실행
+- 디버깅/모니터링
+
+#### 7.5.2 서비스 그룹으로 전송 (자동 선택)
+
+**ServiceId**만 지정하고 프레임워크가 서버 선택:
+
+```csharp
+// ServiceId로 전송 (RoundRobin)
+sender.SendToApiService(serviceId: 1, packet);
+
+// ServiceId로 요청 (RoundRobin)
+var reply = await sender.RequestToApiService(
+    serviceId: 1,
+    packet
+);
+
+// ServiceId로 전송 (Weighted)
+sender.SendToApiService(
+    serviceId: 1,
+    packet,
+    ServerSelectionPolicy.Weighted
+);
+
+// ServiceId로 요청 (Weighted)
+var reply = await sender.RequestToApiService(
+    serviceId: 1,
+    packet,
+    ServerSelectionPolicy.Weighted
+);
+```
+
+**사용 사례**:
+- 일반적인 API 요청 (DB 조회, 저장 등)
+- 로드밸런싱이 필요한 경우
+- 서버 추가/제거가 빈번한 경우
+
+### 7.6 실제 배치 예시
+
+#### 7.6.1 멀티 리전 배치
+
+```
+┌────────────────────────────────────────────────────────┐
+│                     Global Network                     │
+│                                                        │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  │  Seoul Region   │  │  Tokyo Region   │  │Singapore Region │
+│  │                 │  │                 │  │                 │
+│  │ Api ServiceId=1 │  │ Api ServiceId=2 │  │ Api ServiceId=3 │
+│  │ - api-seoul-1   │  │ - api-tokyo-1   │  │ - api-sg-1      │
+│  │ - api-seoul-2   │  │ - api-tokyo-2   │  │ - api-sg-2      │
+│  │                 │  │                 │  │                 │
+│  │Play ServiceId=1 │  │Play ServiceId=2 │  │Play ServiceId=3 │
+│  │ - play-seoul-1  │  │ - play-tokyo-1  │  │ - play-sg-1     │
+│  │ - play-seoul-2  │  │ - play-tokyo-2  │  │ - play-sg-2     │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+**라우팅 예시**:
+```csharp
+// 서울 리전 API 사용
+await sender.RequestToApiService(serviceId: 1, packet);
+
+// 도쿄 리전 API 사용
+await sender.RequestToApiService(serviceId: 2, packet);
+
+// 싱가포르 리전 API 사용
+await sender.RequestToApiService(serviceId: 3, packet);
+```
+
+#### 7.6.2 기능별 분리 배치
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   Service Mesh                         │
+│                                                        │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  │  Game Data API  │  │   Payment API   │  │   Social API    │
+│  │                 │  │                 │  │                 │
+│  │ Api ServiceId=1 │  │ Api ServiceId=2 │  │ Api ServiceId=3 │
+│  │ - gameapi-1     │  │ - payapi-1      │  │ - socialapi-1   │
+│  │ - gameapi-2     │  │ - payapi-2      │  │ - socialapi-2   │
+│  │ - gameapi-3     │  │                 │  │                 │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+**사용 예시**:
+```csharp
+// 게임 데이터 조회
+var gameData = await sender.RequestToApiService(
+    serviceId: 1,
+    new GetPlayerDataRequest()
+);
+
+// 결제 처리
+var paymentResult = await sender.RequestToApiService(
+    serviceId: 2,
+    new ProcessPaymentRequest()
+);
+
+// 친구 목록 조회
+var friends = await sender.RequestToApiService(
+    serviceId: 3,
+    new GetFriendsRequest()
+);
+```
+
+### 7.7 설계 원칙
+
+#### 7.7.1 명확한 역할 분리
+
+- **ServerType**: 서버의 기술적 역할 (Play vs Api)
+- **ServiceId**: 비즈니스적 그룹핑 (지역, 기능, 환경)
+- **ServerId**: 물리적 인스턴스 식별
+
+#### 7.7.2 유연한 확장성
+
+```
+단일 서비스 → 멀티 서비스 확장:
+  ServiceId=1 (모든 기능)
+    ↓
+  ServiceId=1 (게임 데이터) + ServiceId=2 (결제) + ServiceId=3 (소셜)
+
+지역 확장:
+  ServiceId=1 (글로벌)
+    ↓
+  ServiceId=1 (서울) + ServiceId=2 (도쿄) + ServiceId=3 (싱가포르)
+```
+
+#### 7.7.3 투명한 로드밸런싱
+
+**개발자 관점**:
+```csharp
+// 서버 선택 로직 불필요
+await sender.RequestToApiService(serviceId: 1, packet);
+```
+
+**프레임워크 내부**:
+- 서버 상태 모니터링 (Running/Disabled)
+- 자동 서버 선택 (RoundRobin/Weighted)
+- 실패 서버 제외
+
+### 7.8 마이그레이션 가이드
+
+#### 7.8.1 기존 코드에서 전환
+
+**Before** (특정 서버 ID 사용):
+```csharp
+// 하드코딩된 서버 ID
+sender.SendToApi("hardcoded-api-server", packet);
+```
+
+**After** (ServiceId 사용):
+```csharp
+// 서비스 그룹으로 추상화
+sender.SendToApiService(ServiceIdDefaults.Default, packet);
+```
+
+#### 7.8.2 점진적 도입
+
+**Phase 1**: 모든 서버를 Default ServiceId로 설정
+```csharp
+const ushort DEFAULT_SERVICE = ServiceIdDefaults.Default;
+sender.SendToApiService(DEFAULT_SERVICE, packet);
+```
+
+**Phase 2**: 기능별로 ServiceId 분리
+```csharp
+const ushort GAME_DATA_SERVICE = 1;
+const ushort PAYMENT_SERVICE = 2;
+const ushort SOCIAL_SERVICE = 3;
+
+sender.SendToApiService(GAME_DATA_SERVICE, packet);
+```
+
+**Phase 3**: 리전별 분리 (필요시)
+```csharp
+const ushort SEOUL_SERVICE = 1;
+const ushort TOKYO_SERVICE = 2;
+
+var serviceId = GetRegionServiceId(playerRegion);
+sender.SendToApiService(serviceId, packet);
+```
+
+## 8. 동시성 및 스레딩 모델
+
+### 8.1 스레드 풀 구성
 
 ```
 ┌─────────────────────────────────────────────────────────┐
