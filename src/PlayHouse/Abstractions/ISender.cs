@@ -1,5 +1,7 @@
 #nullable enable
 
+using PlayHouse.Runtime.ServerMesh.Discovery;
+
 namespace PlayHouse.Abstractions;
 
 /// <summary>
@@ -78,6 +80,59 @@ public interface ISender
     /// <param name="packet">Request packet.</param>
     /// <returns>The reply packet.</returns>
     Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet);
+
+    #endregion
+
+    #region Service Communication
+
+    /// <summary>
+    /// Sends a packet to a server in the specified service using RoundRobin selection.
+    /// </summary>
+    /// <param name="serviceId">Target service ID.</param>
+    /// <param name="packet">Packet to send.</param>
+    void SendToService(ushort serviceId, IPacket packet);
+
+    /// <summary>
+    /// Sends a packet to a server in the specified service using the specified selection policy.
+    /// </summary>
+    /// <param name="serviceId">Target service ID.</param>
+    /// <param name="packet">Packet to send.</param>
+    /// <param name="policy">Server selection policy.</param>
+    void SendToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
+
+    /// <summary>
+    /// Sends a request to a server in the specified service with a callback (RoundRobin).
+    /// </summary>
+    /// <param name="serviceId">Target service ID.</param>
+    /// <param name="packet">Request packet.</param>
+    /// <param name="replyCallback">Callback to handle the reply.</param>
+    void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback);
+
+    /// <summary>
+    /// Sends a request to a server in the specified service with a callback and policy.
+    /// </summary>
+    /// <param name="serviceId">Target service ID.</param>
+    /// <param name="packet">Request packet.</param>
+    /// <param name="replyCallback">Callback to handle the reply.</param>
+    /// <param name="policy">Server selection policy.</param>
+    void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy);
+
+    /// <summary>
+    /// Sends a request to a server in the specified service and awaits the reply (RoundRobin).
+    /// </summary>
+    /// <param name="serviceId">Target service ID.</param>
+    /// <param name="packet">Request packet.</param>
+    /// <returns>The reply packet.</returns>
+    Task<IPacket> RequestToService(ushort serviceId, IPacket packet);
+
+    /// <summary>
+    /// Sends a request to a server in the specified service and awaits the reply with policy.
+    /// </summary>
+    /// <param name="serviceId">Target service ID.</param>
+    /// <param name="packet">Request packet.</param>
+    /// <param name="policy">Server selection policy.</param>
+    /// <returns>The reply packet.</returns>
+    Task<IPacket> RequestToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
 
     #endregion
 

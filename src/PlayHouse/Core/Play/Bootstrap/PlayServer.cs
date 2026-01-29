@@ -89,11 +89,15 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         // 자기 자신에게 연결 (같은 서버 내 Stage 간 통신에 필요)
         _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
+        // ServerInfoCenter 생성 (PlayDispatcher에서 사용)
+        var serverInfoCenter = new XServerInfoCenter();
+
         // PlayDispatcher 생성 (ThreadPool 기반 + ComputePool/IoPool 사용)
         _dispatcher = new PlayDispatcher(
             _producer,
             _communicator,
             _requestCache,
+            serverInfoCenter,
             _options.ServiceId,
             _options.ServerId,
             this, // client reply handler
@@ -104,8 +108,6 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         await _transportServer.StartAsync(_cts.Token);
 
         // ServerAddressResolver 시작
-        var serverInfoCenter = new XServerInfoCenter();
-
         var myServerInfo = new XServerInfo(
             _options.ServiceId,
             _options.ServerId,

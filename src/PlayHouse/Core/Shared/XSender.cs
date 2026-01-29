@@ -4,6 +4,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Runtime.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
@@ -21,6 +22,7 @@ public abstract class XSender : ISender
 {
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
+    private readonly IServerInfoCenter _serverInfoCenter;
     private readonly int _requestTimeoutMs;
 
     // 전역 MsgSeq 카운터 - 모든 XSender 인스턴스가 공유하여 RequestCache 키 충돌 방지
@@ -44,18 +46,21 @@ public abstract class XSender : ISender
     /// </summary>
     /// <param name="communicator">Communicator for sending messages.</param>
     /// <param name="requestCache">Cache for tracking pending requests.</param>
+    /// <param name="serverInfoCenter">Server information center for service discovery.</param>
     /// <param name="serviceId">Service ID of this sender.</param>
     /// <param name="serverId">ServerId of this sender.</param>
     /// <param name="requestTimeoutMs">Request timeout in milliseconds.</param>
     protected XSender(
         IClientCommunicator communicator,
         RequestCache requestCache,
+        IServerInfoCenter serverInfoCenter,
         ushort serviceId,
         string serverId,
         int requestTimeoutMs = 30000)
     {
         _communicator = communicator;
         _requestCache = requestCache;
+        _serverInfoCenter = serverInfoCenter;
         ServiceId = serviceId;
         ServerId = serverId;
         _requestTimeoutMs = requestTimeoutMs;
@@ -160,6 +165,55 @@ public abstract class XSender : ISender
         SendInternal(apiServerId, header, packet.Payload);
 
         return await task;
+    }
+
+    #endregion
+
+    #region Service Communication
+
+    /// <inheritdoc/>
+    public void SendToService(ushort serviceId, IPacket packet)
+    {
+        SendToService(serviceId, packet, ServerSelectionPolicy.RoundRobin);
+    }
+
+    /// <inheritdoc/>
+    public void SendToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    {
+        var server = _serverInfoCenter.GetServerByService(serviceId, policy)
+            ?? throw new InvalidOperationException($"No available server for service {serviceId}");
+
+        SendToApi(server.ServerId, packet);
+    }
+
+    /// <inheritdoc/>
+    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback)
+    {
+        RequestToService(serviceId, packet, replyCallback, ServerSelectionPolicy.RoundRobin);
+    }
+
+    /// <inheritdoc/>
+    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
+    {
+        var server = _serverInfoCenter.GetServerByService(serviceId, policy)
+            ?? throw new InvalidOperationException($"No available server for service {serviceId}");
+
+        RequestToApi(server.ServerId, packet, replyCallback);
+    }
+
+    /// <inheritdoc/>
+    public Task<IPacket> RequestToService(ushort serviceId, IPacket packet)
+    {
+        return RequestToService(serviceId, packet, ServerSelectionPolicy.RoundRobin);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IPacket> RequestToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    {
+        var server = _serverInfoCenter.GetServerByService(serviceId, policy)
+            ?? throw new InvalidOperationException($"No available server for service {serviceId}");
+
+        return await RequestToApi(server.ServerId, packet);
     }
 
     #endregion

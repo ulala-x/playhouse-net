@@ -11,6 +11,7 @@ using PlayHouse.Core.Shared;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using NSubstitute;
@@ -108,10 +109,13 @@ public class PlayDispatcherTests : IDisposable
             stageSender => new FakeStage(stageSender),
             actorSender => new FakeActor(actorSender));
 
+        var serverInfoCenter = Substitute.For<IServerInfoCenter>();
+
         _dispatcher = new PlayDispatcher(
             _producer,
             _communicator,
             _requestCache,
+            serverInfoCenter,
             serviceId: 1,
             nid: "1:1",
             clientReplyHandler: null,
@@ -263,10 +267,12 @@ public class PlayDispatcherTests : IDisposable
     public async Task Dispose_CleansUpAllStages()
     {
         // Given (전제조건)
+        var serverInfoCenter = Substitute.For<IServerInfoCenter>();
         var dispatcher = new PlayDispatcher(
             _producer,
             _communicator,
             _requestCache,
+            serverInfoCenter,
             serviceId: 1,
             nid: "1:1",
             clientReplyHandler: null,

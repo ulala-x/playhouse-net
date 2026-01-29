@@ -4,6 +4,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Runtime.ClientTransport;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 
 namespace PlayHouse.Core.Play;
 
@@ -119,6 +120,42 @@ internal sealed class XActorSender : IActorSender
     public async Task<IPacket> RequestToApi(string apiNid, IPacket packet)
     {
         return await _baseStage.StageSender.RequestToApi(apiNid, packet);
+    }
+
+    /// <inheritdoc/>
+    public void SendToService(ushort serviceId, IPacket packet)
+    {
+        _baseStage.StageSender.SendToService(serviceId, packet);
+    }
+
+    /// <inheritdoc/>
+    public void SendToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    {
+        _baseStage.StageSender.SendToService(serviceId, packet, policy);
+    }
+
+    /// <inheritdoc/>
+    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback)
+    {
+        _baseStage.StageSender.RequestToService(serviceId, packet, replyCallback);
+    }
+
+    /// <inheritdoc/>
+    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
+    {
+        _baseStage.StageSender.RequestToService(serviceId, packet, replyCallback, policy);
+    }
+
+    /// <inheritdoc/>
+    public Task<IPacket> RequestToService(ushort serviceId, IPacket packet)
+    {
+        return _baseStage.StageSender.RequestToService(serviceId, packet);
+    }
+
+    /// <inheritdoc/>
+    public Task<IPacket> RequestToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    {
+        return _baseStage.StageSender.RequestToService(serviceId, packet, policy);
     }
 
     /// <inheritdoc/>

@@ -10,6 +10,7 @@ using PlayHouse.Core.Play.Base.Command;
 using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ClientTransport;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
@@ -38,6 +39,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private readonly PlayProducer _producer;
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
+    private readonly IServerInfoCenter _serverInfoCenter;
     private readonly TimerManager _timerManager;
     private readonly ComputeTaskPool _computePool;
     private readonly IoTaskPool _ioPool;
@@ -54,6 +56,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         PlayProducer producer,
         IClientCommunicator communicator,
         RequestCache requestCache,
+        IServerInfoCenter serverInfoCenter,
         ushort serviceId,
         string nid,
         IClientReplyHandler? clientReplyHandler,
@@ -62,6 +65,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         _producer = producer;
         _communicator = communicator;
         _requestCache = requestCache;
+        _serverInfoCenter = serverInfoCenter;
         _serviceId = serviceId;
         _nid = nid;
         _logger = loggerFactory.CreateLogger<PlayDispatcher>();
@@ -370,6 +374,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         var stageSender = new XStageSender(
             _communicator,
             _requestCache,
+            _serverInfoCenter,
             _serviceId,
             _nid,
             stageId,

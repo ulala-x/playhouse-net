@@ -103,3 +103,21 @@ public sealed class XServerInfo : IServerInfo
     /// <inheritdoc/>
     public override int GetHashCode() => ServerId.GetHashCode();
 }
+
+/// <summary>
+/// 서버 선택 정책.
+/// </summary>
+public enum ServerSelectionPolicy
+{
+    /// <summary>
+    /// Round-Robin 방식 (기본값).
+    /// 순차적으로 서버 선택.
+    /// </summary>
+    RoundRobin = 0,
+
+    /// <summary>
+    /// 가중치 기반 선택 (내림차순).
+    /// Weight가 가장 높은 서버가 우선 선택됨.
+    /// </summary>
+    Weighted = 1
+}
