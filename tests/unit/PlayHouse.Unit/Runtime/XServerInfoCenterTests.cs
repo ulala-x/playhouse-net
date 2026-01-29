@@ -1,4 +1,5 @@
 using FluentAssertions;
+using PlayHouse.Abstractions;
 using PlayHouse.Runtime.ServerMesh.Discovery;
 using Xunit;
 
@@ -18,16 +19,16 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
-            new XServerInfo(1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
-            new XServerInfo(1, "server-3", "tcp://127.0.0.1:5003", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-3", "tcp://127.0.0.1:5003", ServerState.Running, 100),
         });
 
         // When - 4번 호출
-        var first = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
-        var second = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
-        var third = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
-        var fourth = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
+        var first = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
+        var second = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
+        var third = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
+        var fourth = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
 
         // Then - 순환 확인 (4번째는 1번째와 같아야 함)
         first.Should().NotBeNull();
@@ -50,13 +51,13 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
-            new XServerInfo(1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
         });
 
         // When - 기본 메서드 사용 (policy 없이)
-        var first = center.GetServerByService(1);
-        var second = center.GetServerByService(1);
+        var first = center.GetServerByService(ServerType.Play, 1);
+        var second = center.GetServerByService(ServerType.Play, 1);
 
         // Then - RoundRobin 동작 (서로 다른 서버 선택)
         first.Should().NotBeNull();
@@ -71,25 +72,25 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "play-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
-            new XServerInfo(1, "play-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
-            new XServerInfo(2, "api-1", "tcp://127.0.0.1:5003", ServerState.Running, 100),
-            new XServerInfo(2, "api-2", "tcp://127.0.0.1:5004", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "play-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "play-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
+            new XServerInfo(ServerType.Api, 1, "api-1", "tcp://127.0.0.1:5003", ServerState.Running, 100),
+            new XServerInfo(ServerType.Api, 1, "api-2", "tcp://127.0.0.1:5004", ServerState.Running, 100),
         });
 
-        // When - 서비스 1에서 2번 호출
-        var play1 = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
-        var play2 = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
+        // When - Play 서비스에서 2번 호출
+        var play1 = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
+        var play2 = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
 
-        // 서비스 2에서 2번 호출 (서비스 1과 독립적이어야 함)
-        var api1 = center.GetServerByService(2, ServerSelectionPolicy.RoundRobin);
-        var api2 = center.GetServerByService(2, ServerSelectionPolicy.RoundRobin);
+        // Api 서비스에서 2번 호출 (Play와 독립적이어야 함)
+        var api1 = center.GetServerByService(ServerType.Api, 1, ServerSelectionPolicy.RoundRobin);
+        var api2 = center.GetServerByService(ServerType.Api, 1, ServerSelectionPolicy.RoundRobin);
 
         // Then
-        play1!.ServiceId.Should().Be(1);
-        play2!.ServiceId.Should().Be(1);
-        api1!.ServiceId.Should().Be(2);
-        api2!.ServiceId.Should().Be(2);
+        play1!.ServerType.Should().Be(ServerType.Play);
+        play2!.ServerType.Should().Be(ServerType.Play);
+        api1!.ServerType.Should().Be(ServerType.Api);
+        api2!.ServerType.Should().Be(ServerType.Api);
 
         // 각 서비스 내에서 서로 다른 서버가 선택되어야 함
         play1.ServerId.Should().NotBe(play2.ServerId);
@@ -107,13 +108,13 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "low", "tcp://127.0.0.1:5001", ServerState.Running, 10),
-            new XServerInfo(1, "high", "tcp://127.0.0.1:5002", ServerState.Running, 100),
-            new XServerInfo(1, "medium", "tcp://127.0.0.1:5003", ServerState.Running, 50),
+            new XServerInfo(ServerType.Play, 1, "low", "tcp://127.0.0.1:5001", ServerState.Running, 10),
+            new XServerInfo(ServerType.Play, 1, "high", "tcp://127.0.0.1:5002", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "medium", "tcp://127.0.0.1:5003", ServerState.Running, 50),
         });
 
         // When
-        var selected = center.GetServerByService(1, ServerSelectionPolicy.Weighted);
+        var selected = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted);
 
         // Then - 항상 가장 높은 가중치 서버 선택
         selected.Should().NotBeNull();
@@ -128,13 +129,13 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "server-a", "tcp://127.0.0.1:5001", ServerState.Running, 30),
-            new XServerInfo(1, "server-b", "tcp://127.0.0.1:5002", ServerState.Running, 80),
+            new XServerInfo(ServerType.Play, 1, "server-a", "tcp://127.0.0.1:5001", ServerState.Running, 30),
+            new XServerInfo(ServerType.Play, 1, "server-b", "tcp://127.0.0.1:5002", ServerState.Running, 80),
         });
 
         // When - 여러 번 호출
         var results = Enumerable.Range(0, 10)
-            .Select(_ => center.GetServerByService(1, ServerSelectionPolicy.Weighted))
+            .Select(_ => center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted))
             .ToList();
 
         // Then - 항상 같은 서버 (가장 높은 가중치)
@@ -152,14 +153,14 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
-            new XServerInfo(1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
         });
 
         // When - 여러 번 호출
-        var first = center.GetServerByService(1, ServerSelectionPolicy.Weighted);
-        var second = center.GetServerByService(1, ServerSelectionPolicy.Weighted);
-        var third = center.GetServerByService(1, ServerSelectionPolicy.Weighted);
+        var first = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted);
+        var second = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted);
+        var third = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted);
 
         // Then - 동일 가중치이므로 MaxBy 결과가 일관되어야 함 (구현에 따라 첫 번째 또는 마지막)
         first.Should().NotBeNull();
@@ -179,12 +180,12 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "disabled", "tcp://127.0.0.1:5001", ServerState.Disabled, 100),
-            new XServerInfo(1, "running", "tcp://127.0.0.1:5002", ServerState.Running, 10),
+            new XServerInfo(ServerType.Play, 1, "disabled", "tcp://127.0.0.1:5001", ServerState.Disabled, 100),
+            new XServerInfo(ServerType.Play, 1, "running", "tcp://127.0.0.1:5002", ServerState.Running, 10),
         });
 
         // When
-        var selected = center.GetServerByService(1, ServerSelectionPolicy.Weighted);
+        var selected = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted);
 
         // Then - Disabled 서버 제외, Running 서버 선택
         selected.Should().NotBeNull();
@@ -198,13 +199,13 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "disabled-1", "tcp://127.0.0.1:5001", ServerState.Disabled, 100),
-            new XServerInfo(1, "disabled-2", "tcp://127.0.0.1:5002", ServerState.Disabled, 50),
+            new XServerInfo(ServerType.Play, 1, "disabled-1", "tcp://127.0.0.1:5001", ServerState.Disabled, 100),
+            new XServerInfo(ServerType.Play, 1, "disabled-2", "tcp://127.0.0.1:5002", ServerState.Disabled, 50),
         });
 
         // When
-        var selectedRR = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
-        var selectedWeighted = center.GetServerByService(1, ServerSelectionPolicy.Weighted);
+        var selectedRR = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
+        var selectedWeighted = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.Weighted);
 
         // Then
         selectedRR.Should().BeNull();
@@ -222,11 +223,11 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(2, "api-server", "tcp://127.0.0.1:5001", ServerState.Running, 100),
+            new XServerInfo(ServerType.Api, 1, "api-server", "tcp://127.0.0.1:5001", ServerState.Running, 100),
         });
 
-        // When - 서비스 1 (존재하지 않음)
-        var selected = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
+        // When - Play 서버 조회 (존재하지 않음)
+        var selected = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
 
         // Then
         selected.Should().BeNull();
@@ -240,7 +241,7 @@ public class XServerInfoCenterTests
         // 서버 업데이트 없음
 
         // When
-        var selected = center.GetServerByService(1);
+        var selected = center.GetServerByService(ServerType.Play, 1);
 
         // Then
         selected.Should().BeNull();
@@ -257,9 +258,9 @@ public class XServerInfoCenterTests
         var center = new XServerInfoCenter();
         center.Update(new[]
         {
-            new XServerInfo(1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
-            new XServerInfo(1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
-            new XServerInfo(1, "server-3", "tcp://127.0.0.1:5003", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-1", "tcp://127.0.0.1:5001", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-2", "tcp://127.0.0.1:5002", ServerState.Running, 100),
+            new XServerInfo(ServerType.Play, 1, "server-3", "tcp://127.0.0.1:5003", ServerState.Running, 100),
         });
 
         var results = new System.Collections.Concurrent.ConcurrentBag<XServerInfo?>();
@@ -268,7 +269,7 @@ public class XServerInfoCenterTests
         // When - 100개의 동시 호출
         Parallel.For(0, threadCount, _ =>
         {
-            var server = center.GetServerByService(1, ServerSelectionPolicy.RoundRobin);
+            var server = center.GetServerByService(ServerType.Play, 1, ServerSelectionPolicy.RoundRobin);
             results.Add(server);
         });
 

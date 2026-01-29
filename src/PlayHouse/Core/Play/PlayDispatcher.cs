@@ -43,8 +43,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
     private readonly TimerManager _timerManager;
     private readonly ComputeTaskPool _computePool;
     private readonly IoTaskPool _ioPool;
+    private readonly ServerType _serverType;
     private readonly ushort _serviceId;
-    private readonly string _nid;
+    private readonly string _serverId;
     private readonly ILogger _logger;
     private readonly IClientReplyHandler? _clientReplyHandler;
     private bool _disposed;
@@ -57,8 +58,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,
+        ServerType serverType,
         ushort serviceId,
-        string nid,
+        string serverId,
         IClientReplyHandler? clientReplyHandler,
         ILoggerFactory loggerFactory)
     {
@@ -66,8 +68,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         _communicator = communicator;
         _requestCache = requestCache;
         _serverInfoCenter = serverInfoCenter;
+        _serverType = serverType;
         _serviceId = serviceId;
-        _nid = nid;
+        _serverId = serverId;
         _logger = loggerFactory.CreateLogger<PlayDispatcher>();
         _clientReplyHandler = clientReplyHandler;
 
@@ -375,8 +378,9 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             _communicator,
             _requestCache,
             _serverInfoCenter,
+            _serverType,
             _serviceId,
-            _nid,
+            _serverId,
             stageId,
             this,
             tempRegistry,
@@ -585,4 +589,3 @@ internal sealed class TempReplyPacketRegistry : IReplyPacketRegistry
         // No-op: BaseStage registry will be set shortly
     }
 }
-

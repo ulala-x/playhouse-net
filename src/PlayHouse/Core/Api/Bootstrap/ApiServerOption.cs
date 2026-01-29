@@ -1,6 +1,7 @@
 #nullable enable
 
 using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.Internal;
 
 namespace PlayHouse.Core.Api.Bootstrap;
 
@@ -10,14 +11,14 @@ namespace PlayHouse.Core.Api.Bootstrap;
 public sealed class ApiServerOption
 {
     /// <summary>
-    /// 서비스 타입 (기본값: ServiceType.Api).
+    /// 서버 타입 (기본값: ServerType.Api).
     /// </summary>
-    public ServiceType ServiceType { get; set; } = ServiceType.Api;
+    public ServerType ServerType { get; set; } = ServerType.Api;
 
     /// <summary>
-    /// 서비스 식별자 (ServiceType의 ushort 값).
+    /// 서비스 그룹 ID (같은 ServerType 내에서 서버 군 구분, 기본값: 1).
     /// </summary>
-    public ushort ServiceId => (ushort)ServiceType;
+    public ushort ServiceId { get; set; } = ServiceIdDefaults.Default;
 
     /// <summary>
     /// 서버 인스턴스 ID.
@@ -50,13 +51,6 @@ public sealed class ApiServerOption
     /// </summary>
     public void Validate()
     {
-        if (ServiceType == 0)
-            throw new InvalidOperationException("ServiceType must be set");
-
-        if (string.IsNullOrEmpty(ServerId))
-            throw new InvalidOperationException("ServerId is required");
-
-        if (string.IsNullOrEmpty(BindEndpoint))
-            throw new InvalidOperationException("BindEndpoint is required");
+        ServerOptionValidator.ValidateIdentity(ServerType, ServerId, BindEndpoint);
     }
 }

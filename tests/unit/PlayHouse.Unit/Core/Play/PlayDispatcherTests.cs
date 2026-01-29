@@ -116,9 +116,10 @@ public class PlayDispatcherTests : IDisposable
             _communicator,
             _requestCache,
             serverInfoCenter,
-            serviceId: 1,
-            nid: "1:1",
-            clientReplyHandler: null,
+            ServerType.Play,
+            1,
+            "play-1",
+            null,
             NullLoggerFactory.Instance);
     }
 
@@ -273,9 +274,10 @@ public class PlayDispatcherTests : IDisposable
             _communicator,
             _requestCache,
             serverInfoCenter,
-            serviceId: 1,
-            nid: "1:1",
-            clientReplyHandler: null,
+            ServerType.Play,
+            1,
+            "play-1",
+            null,
             NullLoggerFactory.Instance);
 
         var packet1 = CreateCreateStagePacket(100, "test_stage");

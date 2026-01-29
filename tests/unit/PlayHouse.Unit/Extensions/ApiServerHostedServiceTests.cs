@@ -32,7 +32,7 @@ public class ApiServerHostedServiceTests
         var services = new ServiceCollection();
         services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseSystemController<TestSystemController>()
         .UseController<TestController>();
@@ -54,7 +54,7 @@ public class ApiServerHostedServiceTests
         var services = new ServiceCollection();
         services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseSystemController<TestSystemController>()
         .UseController<TestController>();

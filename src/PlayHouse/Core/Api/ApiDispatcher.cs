@@ -19,8 +19,9 @@ namespace PlayHouse.Core.Api;
 /// </remarks>
 internal sealed class ApiDispatcher : IDisposable
 {
+    private readonly ServerType _serverType;
     private readonly ushort _serviceId;
-    private readonly string _nid;
+    private readonly string _serverId;
     private readonly RequestCache _requestCache;
     private readonly IClientCommunicator _communicator;
     private readonly IServerInfoCenter _serverInfoCenter;
@@ -33,24 +34,27 @@ internal sealed class ApiDispatcher : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="ApiDispatcher"/> class.
     /// </summary>
+    /// <param name="serverType">The server type of this API server.</param>
     /// <param name="serviceId">The service ID of this API server.</param>
-    /// <param name="nid">The NID of this API server.</param>
+    /// <param name="serverId">The ServerId of this API server.</param>
     /// <param name="requestCache">The request cache for tracking pending requests.</param>
     /// <param name="communicator">The communicator for sending messages.</param>
     /// <param name="serverInfoCenter">Server information center for service discovery.</param>
     /// <param name="serviceProvider">The service provider for resolving controllers.</param>
     /// <param name="loggerFactory">The logger factory for creating loggers.</param>
     public ApiDispatcher(
+        ServerType serverType,
         ushort serviceId,
-        string nid,
+        string serverId,
         RequestCache requestCache,
         IClientCommunicator communicator,
         IServerInfoCenter serverInfoCenter,
         IServiceProvider serviceProvider,
         ILoggerFactory loggerFactory)
     {
+        _serverType = serverType;
         _serviceId = serviceId;
-        _nid = nid;
+        _serverId = serverId;
         _requestCache = requestCache;
         _communicator = communicator;
         _serverInfoCenter = serverInfoCenter;
@@ -91,7 +95,7 @@ internal sealed class ApiDispatcher : IDisposable
         var header = packet.Header;
 
         // 매번 새 ApiSender 생성 (ThreadStatic 사용 시 async/await에서 race condition 발생)
-        var apiSender = new ApiSender(_communicator, _requestCache, _serverInfoCenter, _serviceId, _nid);
+        var apiSender = new ApiSender(_communicator, _requestCache, _serverInfoCenter, _serverType, _serviceId, _serverId);
         apiSender.SetSessionContext(header);
 
         try

@@ -106,9 +106,10 @@ public class BaseStageTests
             communicator,
             requestCache,
             serverInfoCenter,
-            serviceId: 1,
-            serverId: "1",
-            stageId: 100,
+            ServerType.Play,
+            1,
+            "play-1",
+            100,
             dispatcher,
             replyRegistry);
 

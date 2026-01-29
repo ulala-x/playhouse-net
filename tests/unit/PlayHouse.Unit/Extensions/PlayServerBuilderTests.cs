@@ -52,7 +52,7 @@ public class PlayServerBuilderTests
         // When
         services.AddPlayServer(options =>
         {
-            options.ServiceType = ServiceType.Play;
+            options.ServerType = ServerType.Play;
             options.TcpPort = 0; // 랜덤 포트
             options.AuthenticateMessageId = "Auth";
         })
@@ -78,7 +78,7 @@ public class PlayServerBuilderTests
         // When
         services.AddPlayServer(options =>
         {
-            options.ServiceType = ServiceType.Play;
+            options.ServerType = ServerType.Play;
             options.TcpPort = 0;
             options.AuthenticateMessageId = "Auth";
         })
@@ -104,7 +104,7 @@ public class PlayServerBuilderTests
         // When
         services.AddPlayServer(options =>
         {
-            options.ServiceType = ServiceType.Play;
+            options.ServerType = ServerType.Play;
             options.TcpPort = 0;
             options.AuthenticateMessageId = "Auth";
         })
@@ -130,7 +130,7 @@ public class PlayServerBuilderTests
         // When
         var builder = services.AddPlayServer(options =>
         {
-            options.ServiceType = ServiceType.Play;
+            options.ServerType = ServerType.Play;
             options.TcpPort = 0;
             options.AuthenticateMessageId = "Auth";
         })

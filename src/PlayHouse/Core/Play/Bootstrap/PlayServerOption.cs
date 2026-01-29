@@ -2,6 +2,7 @@
 
 using System.Security.Cryptography.X509Certificates;
 using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.Internal;
 using PlayHouse.Infrastructure.Memory;
 using PlayHouse.Runtime.ClientTransport;
 
@@ -13,14 +14,14 @@ namespace PlayHouse.Core.Play.Bootstrap;
 public sealed class PlayServerOption
 {
     /// <summary>
-    /// 서비스 타입 (기본값: ServiceType.Play).
+    /// 서버 타입 (기본값: ServerType.Play).
     /// </summary>
-    public ServiceType ServiceType { get; set; } = ServiceType.Play;
+    public ServerType ServerType { get; set; } = ServerType.Play;
 
     /// <summary>
-    /// 서비스 식별자 (ServiceType의 ushort 값).
+    /// 서비스 그룹 ID (같은 ServerType 내에서 서버 군 구분, 기본값: 1).
     /// </summary>
-    public ushort ServiceId => (ushort)ServiceType;
+    public ushort ServiceId { get; set; } = ServiceIdDefaults.Default;
 
     /// <summary>
     /// 서버 인스턴스 ID.
@@ -124,14 +125,7 @@ public sealed class PlayServerOption
     /// </summary>
     public void Validate()
     {
-        if (ServiceType == 0)
-            throw new InvalidOperationException("ServiceType must be set");
-
-        if (string.IsNullOrEmpty(ServerId))
-            throw new InvalidOperationException("ServerId is required");
-
-        if (string.IsNullOrEmpty(BindEndpoint))
-            throw new InvalidOperationException("BindEndpoint is required");
+        ServerOptionValidator.ValidateIdentity(ServerType, ServerId, BindEndpoint);
 
         if (!IsTcpEnabled && !IsWebSocketEnabled)
             throw new InvalidOperationException("At least one transport (TCP or WebSocket) must be enabled");

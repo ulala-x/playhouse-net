@@ -51,6 +51,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _logger = loggerFactory.CreateLogger<ApiServer>();
 
         var serverConfig = new ServerConfig(
+            options.ServerType,
             options.ServiceId,
             options.ServerId,
             options.BindEndpoint,
@@ -63,14 +64,16 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _communicator.Bind(this);
 
         // ServerInfoCenter 생성 (ApiDispatcher와 ApiSender에서 사용)
-        var serverInfoCenter = new XServerInfoCenter();
+        IServerInfoCenter serverInfoCenter = new XServerInfoCenter();
         var myServerInfo = new XServerInfo(
+            _options.ServerType,
             _options.ServiceId,
             _options.ServerId,
             _options.BindEndpoint);
 
         // ApiDispatcher 생성 (외부 ServiceProvider 사용)
         _dispatcher = new ApiDispatcher(
+            _options.ServerType,
             _options.ServiceId,
             _options.ServerId,
             _requestCache,
@@ -84,6 +87,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             _communicator,
             _requestCache,
             serverInfoCenter,
+            _options.ServerType,
             _options.ServiceId,
             _options.ServerId);
 
