@@ -157,44 +157,44 @@ public abstract class XSender : ISender
 
     #endregion
 
-    #region Service Communication
+    #region API Service Communication
 
     /// <inheritdoc/>
-    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet)
+    public void SendToApiService(ushort serviceId, IPacket packet)
     {
-        SendToService(serverType, serviceId, packet, ServerSelectionPolicy.RoundRobin);
+        SendToApiService(serviceId, packet, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <inheritdoc/>
-    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public void SendToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        var server = ResolveServiceServer(serverType, serviceId, policy);
+        var server = ResolveServiceServer(ServerType.Api, serviceId, policy);
         SendToApi(server.ServerId, packet);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback)
+    public void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback)
     {
-        RequestToService(serverType, serviceId, packet, replyCallback, ServerSelectionPolicy.RoundRobin);
+        RequestToApiService(serviceId, packet, replyCallback, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
+    public void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
     {
-        var server = ResolveServiceServer(serverType, serviceId, policy);
+        var server = ResolveServiceServer(ServerType.Api, serviceId, policy);
         RequestToApi(server.ServerId, packet, replyCallback);
     }
 
     /// <inheritdoc/>
-    public Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet)
+    public Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet)
     {
-        return RequestToService(serverType, serviceId, packet, ServerSelectionPolicy.RoundRobin);
+        return RequestToApiService(serviceId, packet, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <inheritdoc/>
-    public async Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public async Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        var server = ResolveServiceServer(serverType, serviceId, policy);
+        var server = ResolveServiceServer(ServerType.Api, serviceId, policy);
         return await RequestToApi(server.ServerId, packet);
     }
 

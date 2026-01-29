@@ -128,39 +128,39 @@ internal sealed class XActorSender : IActorSender
     }
 
     /// <inheritdoc/>
-    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet)
+    public void SendToApiService(ushort serviceId, IPacket packet)
     {
-        StageSender.SendToService(serverType, serviceId, packet);
+        StageSender.SendToApiService(serviceId, packet);
     }
 
     /// <inheritdoc/>
-    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public void SendToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        StageSender.SendToService(serverType, serviceId, packet, policy);
+        StageSender.SendToApiService(serviceId, packet, policy);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback)
+    public void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback)
     {
-        StageSender.RequestToService(serverType, serviceId, packet, replyCallback);
+        StageSender.RequestToApiService(serviceId, packet, replyCallback);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
+    public void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
     {
-        StageSender.RequestToService(serverType, serviceId, packet, replyCallback, policy);
+        StageSender.RequestToApiService(serviceId, packet, replyCallback, policy);
     }
 
     /// <inheritdoc/>
-    public Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet)
+    public Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet)
     {
-        return StageSender.RequestToService(serverType, serviceId, packet);
+        return StageSender.RequestToApiService(serviceId, packet);
     }
 
     /// <inheritdoc/>
-    public Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        return StageSender.RequestToService(serverType, serviceId, packet, policy);
+        return StageSender.RequestToApiService(serviceId, packet, policy);
     }
 
     /// <inheritdoc/>

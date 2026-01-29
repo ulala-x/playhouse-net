@@ -88,62 +88,56 @@ public interface ISender
 
     #endregion
 
-    #region Service Communication
+    #region API Service Communication
 
     /// <summary>
-    /// Sends a packet to a server in the specified service using RoundRobin selection.
+    /// Sends a packet to an API server in the specified service using RoundRobin selection.
     /// </summary>
-    /// <param name="serverType">Target server type.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="packet">Packet to send.</param>
-    void SendToService(ServerType serverType, ushort serviceId, IPacket packet);
+    void SendToApiService(ushort serviceId, IPacket packet);
 
     /// <summary>
-    /// Sends a packet to a server in the specified service using the specified selection policy.
+    /// Sends a packet to an API server in the specified service using the specified selection policy.
     /// </summary>
-    /// <param name="serverType">Target server type.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="packet">Packet to send.</param>
     /// <param name="policy">Server selection policy.</param>
-    void SendToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
+    void SendToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
 
     /// <summary>
-    /// Sends a request to a server in the specified service with a callback (RoundRobin).
+    /// Sends a request to an API server in the specified service with a callback (RoundRobin).
     /// </summary>
-    /// <param name="serverType">Target server type.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <param name="replyCallback">Callback to handle the reply.</param>
-    void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback);
+    void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback);
 
     /// <summary>
-    /// Sends a request to a server in the specified service with a callback and policy.
+    /// Sends a request to an API server in the specified service with a callback and policy.
     /// </summary>
-    /// <param name="serverType">Target server type.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <param name="replyCallback">Callback to handle the reply.</param>
     /// <param name="policy">Server selection policy.</param>
-    void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy);
+    void RequestToApiService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy);
 
     /// <summary>
-    /// Sends a request to a server in the specified service and awaits the reply (RoundRobin).
+    /// Sends a request to an API server in the specified service and awaits the reply (RoundRobin).
     /// </summary>
-    /// <param name="serverType">Target server type.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <returns>The reply packet.</returns>
-    Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet);
+    Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet);
 
     /// <summary>
-    /// Sends a request to a server in the specified service and awaits the reply with policy.
+    /// Sends a request to an API server in the specified service and awaits the reply with policy.
     /// </summary>
-    /// <param name="serverType">Target server type.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="packet">Request packet.</param>
     /// <param name="policy">Server selection policy.</param>
     /// <returns>The reply packet.</returns>
-    Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
+    Task<IPacket> RequestToApiService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy);
 
     #endregion
 

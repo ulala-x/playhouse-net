@@ -1,15 +1,15 @@
-using PlayHouse.Abstractions;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 
 namespace PlayHouse.E2E.Verifiers;
 
 /// <summary>
-/// SendToService/RequestToService의 Round-Robin 및 Weighted 정책 검증
+/// SendToApiService/RequestToApiService의 Round-Robin 및 Weighted 정책 검증
 ///
 /// 테스트 시나리오:
-/// - RequestToService: 서비스 ID로 요청을 보내고 응답 수신
-/// - SendToService: 서비스 ID로 fire-and-forget 메시지 전송
+/// - RequestToApiService: 서비스 ID로 요청을 보내고 응답 수신
+/// - SendToApiService: 서비스 ID로 fire-and-forget 메시지 전송
 /// - RoundRobin: 여러 서버에 순차적 분배 확인
 /// - Weighted: 가중치 기반 선택 확인 (기본 설정에서는 동일 가중치)
 /// </summary>
@@ -43,19 +43,19 @@ public class ServiceRoutingVerifier : VerifierBase
     }
 
     /// <summary>
-    /// RequestToService - RoundRobin 정책으로 요청
+    /// RequestToApiService - RoundRobin 정책으로 요청
     /// </summary>
     private async Task Test_RequestToService_RoundRobin()
     {
         // Given - API 서비스 ID
         const ushort apiServiceId = 1;
 
-        // When - RequestToService를 여러 번 호출 (RoundRobin 기본값)
+        // When - RequestToApiService를 여러 번 호출 (RoundRobin 기본값)
         var request1 = new ApiEchoRequest { Content = "RoundRobin Test 1" };
         var request2 = new ApiEchoRequest { Content = "RoundRobin Test 2" };
 
-        var response1 = await ApiServer1.ApiSender!.RequestToService(ServerType.Api, apiServiceId, CPacket.Of(request1));
-        var response2 = await ApiServer1.ApiSender!.RequestToService(ServerType.Api, apiServiceId, CPacket.Of(request2));
+        var response1 = await ApiServer1.ApiSender!.RequestToApiService(apiServiceId, CPacket.Of(request1));
+        var response2 = await ApiServer1.ApiSender!.RequestToApiService(apiServiceId, CPacket.Of(request2));
 
         // Then - 응답 수신 확인
         Assert.NotNull(response1, "첫 번째 응답이 수신되어야 함");
@@ -71,7 +71,7 @@ public class ServiceRoutingVerifier : VerifierBase
     }
 
     /// <summary>
-    /// RequestToService - Weighted 정책으로 요청
+    /// RequestToApiService - Weighted 정책으로 요청
     /// </summary>
     private async Task Test_RequestToService_Weighted()
     {
@@ -80,8 +80,7 @@ public class ServiceRoutingVerifier : VerifierBase
 
         // When - Weighted 정책으로 호출
         var request = new ApiEchoRequest { Content = "Weighted Test" };
-        var response = await ApiServer1.ApiSender!.RequestToService(
-            ServerType.Api,
+        var response = await ApiServer1.ApiSender!.RequestToApiService(
             apiServiceId,
             CPacket.Of(request),
             ServerSelectionPolicy.Weighted);
@@ -95,30 +94,30 @@ public class ServiceRoutingVerifier : VerifierBase
     }
 
     /// <summary>
-    /// SendToService - fire-and-forget 메시지 전송
+    /// SendToApiService - fire-and-forget 메시지 전송
     /// </summary>
     private async Task Test_SendToService_Basic()
     {
         // Given
         const ushort apiServiceId = 1;
 
-        // When - SendToService (fire-and-forget)
+        // When - SendToApiService (fire-and-forget)
         var message = new InterApiMessage
         {
             FromApiNid = ServerContext.ApiServer1Id,
-            Content = "SendToService Test"
+            Content = "SendToApiService Test"
         };
-        ApiServer1.ApiSender!.SendToService(ServerType.Api, apiServiceId, CPacket.Of(message));
+        ApiServer1.ApiSender!.SendToApiService(apiServiceId, CPacket.Of(message));
 
         // 메시지 전달 대기
         await Task.Delay(500);
 
         // Then - 예외 없이 완료 (fire-and-forget이므로 응답 검증 불가)
-        Assert.IsTrue(true, "SendToService가 예외 없이 완료되어야 함");
+        Assert.IsTrue(true, "SendToApiService가 예외 없이 완료되어야 함");
     }
 
     /// <summary>
-    /// RequestToService - Callback 버전 테스트
+    /// RequestToApiService - Callback 버전 테스트
     /// </summary>
     private async Task Test_RequestToService_Callback()
     {
@@ -128,7 +127,7 @@ public class ServiceRoutingVerifier : VerifierBase
 
         // When - Callback 버전으로 호출
         var request = new ApiEchoRequest { Content = "Callback Test" };
-        ApiServer1.ApiSender!.RequestToService(ServerType.Api, apiServiceId, CPacket.Of(request), (errorCode, reply) =>
+        ApiServer1.ApiSender!.RequestToApiService(apiServiceId, CPacket.Of(request), (errorCode, reply) =>
         {
             if (errorCode == 0 && reply != null)
             {
