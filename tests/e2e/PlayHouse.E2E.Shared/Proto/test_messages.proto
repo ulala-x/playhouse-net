@@ -482,3 +482,75 @@ message GetDIValueRequest {}
 message GetDIValueReply {
     string value = 1;
 }
+
+// ============================================
+// System Message 테스트용 메시지
+// ============================================
+
+// 시스템 에코 요청 (SendToSystem/RequestToSystem 테스트용)
+message SystemEchoRequest {
+    string content = 1;
+    string from_server_id = 2;
+}
+
+// 시스템 에코 응답
+message SystemEchoReply {
+    string content = 1;
+    string handled_by_server_id = 2;
+}
+
+// Stage → API 시스템 메시지 트리거
+message TriggerSendToSystemApiRequest {
+    string target_api_nid = 1;
+    string message = 2;
+}
+message TriggerSendToSystemApiReply {
+    bool success = 1;
+}
+
+// Stage → Play 시스템 메시지 트리거
+message TriggerSendToSystemPlayRequest {
+    string target_play_nid = 1;
+    string message = 2;
+}
+message TriggerSendToSystemPlayReply {
+    bool success = 1;
+}
+
+// Stage → System RequestToSystem 트리거
+message TriggerRequestToSystemRequest {
+    string target_server_id = 1;
+    string query = 2;
+}
+message TriggerRequestToSystemReply {
+    string response = 1;
+    string handled_by_server_id = 2;
+}
+
+// API → Play 시스템 메시지 트리거
+message TriggerApiSendToSystemPlayRequest {
+    string target_play_nid = 1;
+    string message = 2;
+}
+message TriggerApiSendToSystemPlayReply {
+    bool success = 1;
+}
+
+// API → API 시스템 메시지 트리거
+message TriggerApiSendToSystemApiRequest {
+    string target_api_nid = 1;
+    string message = 2;
+}
+message TriggerApiSendToSystemApiReply {
+    bool success = 1;
+}
+
+// API → System RequestToSystem 트리거
+message TriggerApiRequestToSystemRequest {
+    string target_server_id = 1;
+    string query = 2;
+}
+message TriggerApiRequestToSystemReply {
+    string response = 1;
+    string handled_by_server_id = 2;
+}

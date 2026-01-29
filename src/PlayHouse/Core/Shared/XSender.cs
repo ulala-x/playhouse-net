@@ -231,6 +231,37 @@ public abstract class XSender : ISender
 
     #endregion
 
+    #region System Communication
+
+    /// <inheritdoc/>
+    public void SendToSystem(string serverId, IPacket packet)
+    {
+        var header = CreateSystemHeader(packet.MsgId, msgSeq: 0);
+        SendInternal(serverId, header, packet.Payload);
+    }
+
+    /// <inheritdoc/>
+    public void RequestToSystem(string serverId, IPacket packet, ReplyCallback replyCallback)
+    {
+        var msgSeq = NextMsgSeq();
+        var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetPostToStageCallback());
+        var header = CreateSystemHeader(packet.MsgId, msgSeq);
+        SendRequest(serverId, header, packet.Payload, replyObject);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IPacket> RequestToSystem(string serverId, IPacket packet)
+    {
+        var msgSeq = NextMsgSeq();
+        var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
+        var header = CreateSystemHeader(packet.MsgId, msgSeq);
+        SendRequest(serverId, header, packet.Payload, replyObject);
+
+        return await task;
+    }
+
+    #endregion
+
     #region Reply
 
     /// <inheritdoc/>
@@ -312,6 +343,13 @@ public abstract class XSender : ISender
 
         // Stage-to-Stage communication: Sid should be 0 (not a client session)
         return CreateHeader(msgId, msgSeq, stageId, accountId, sid: 0);
+    }
+
+    private RouteHeader CreateSystemHeader(string msgId, ushort msgSeq)
+    {
+        var header = CreateApiHeader(msgId, msgSeq);
+        header.IsSystem = true;
+        return header;
     }
 
     private RouteHeader CreateReplyHeader(string msgId, ushort msgSeq, ushort errorCode, long stageId = 0, long accountId = 0)

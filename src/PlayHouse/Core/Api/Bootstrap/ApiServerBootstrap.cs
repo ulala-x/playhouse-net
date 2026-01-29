@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.System;
 
@@ -91,8 +92,8 @@ public sealed class ApiServerBootstrap
         var serviceProvider = _serviceProvider
             ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
     
-        // SystemController 인스턴스 생성
-        var systemController = Activator.CreateInstance(systemControllerType) as ISystemController
+        // SystemController 인스턴스 생성 (DI를 통해 의존성 주입)
+        var systemController = ActivatorUtilities.CreateInstance(serviceProvider, systemControllerType) as ISystemController
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
 
         return new ApiServer(_options, systemController, serviceProvider, loggerFactory);

@@ -1,7 +1,6 @@
 #nullable enable
 
 using System.Collections.Concurrent;
-using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Runtime.ServerMesh.Message;
 
@@ -15,7 +14,7 @@ namespace PlayHouse.Abstractions.System;
 /// </remarks>
 public sealed class SystemDispatcher : ISystemHandlerRegister
 {
-    private readonly ConcurrentDictionary<string, Func<IPayload, Task>> _handlers = new();
+    private readonly ConcurrentDictionary<string, SystemHandler> _handlers = new();
     private readonly ILogger? _logger;
 
     /// <summary>
@@ -38,18 +37,9 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
     }
 
     /// <inheritdoc/>
-    public void Add<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage, new()
+    public void Add(string msgId, SystemHandler handler)
     {
-        var msgId = typeof(TMessage).Name;
-
-        _handlers[msgId] = async (payload) =>
-        {
-            var message = new TMessage();
-            // Zero-copy: parse directly from DataSpan without ToArray()
-            message.MergeFrom(payload.DataSpan);
-            await handler(message);
-        };
-
+        _handlers[msgId] = handler;
         _logger?.LogDebug("System handler registered: {MsgId}", msgId);
     }
 
@@ -57,8 +47,9 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
     /// 시스템 메시지를 디스패치합니다.
     /// </summary>
     /// <param name="packet">라우트 패킷.</param>
+    /// <param name="sender">응답 및 메시지 전송용 sender.</param>
     /// <returns>처리 성공 여부.</returns>
-    public async Task<bool> DispatchAsync(RoutePacket packet)
+    public async Task<bool> DispatchAsync(RoutePacket packet, ISender sender)
     {
         var msgId = packet.MsgId;
 
@@ -66,8 +57,8 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
         {
             try
             {
-                // Zero-copy: pass IPayload directly without ToArray()
-                await handler(packet.Payload);
+                var routePacket = new SystemPacket(packet);
+                await handler(routePacket, sender);
                 return true;
             }
             catch (Exception ex)
@@ -96,4 +87,23 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
     /// 등록된 핸들러 수.
     /// </summary>
     public int HandlerCount => _handlers.Count;
+
+    /// <summary>
+    /// 시스템 메시지용 IPacket 래퍼.
+    /// </summary>
+    private sealed class SystemPacket : IPacket
+    {
+        private readonly RoutePacket _routePacket;
+
+        public SystemPacket(RoutePacket routePacket)
+        {
+            _routePacket = routePacket;
+        }
+
+        public string MsgId => _routePacket.MsgId;
+        public IPayload Payload => _routePacket.Payload;
+
+        // RoutePacket의 소유권은 호출자에게 있으므로 여기서 Dispose하지 않음
+        public void Dispose() { }
+    }
 }

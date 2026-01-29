@@ -44,6 +44,9 @@ message RouteHeader {
 
     // Payload size in bytes (for MessagePool.Rent)
     uint32 payload_size = 10;
+
+    // Is this a system message? (true = system, false = normal)
+    bool is_system = 11;
 }
 
 // ============================================

@@ -182,6 +182,18 @@ internal sealed class XActorSender : IActorSender
     }
 
     /// <inheritdoc/>
+    public void SendToSystem(string serverId, IPacket packet)
+        => StageSender.SendToSystem(serverId, packet);
+
+    /// <inheritdoc/>
+    public void RequestToSystem(string serverId, IPacket packet, ReplyCallback replyCallback)
+        => StageSender.RequestToSystem(serverId, packet, replyCallback);
+
+    /// <inheritdoc/>
+    public Task<IPacket> RequestToSystem(string serverId, IPacket packet)
+        => StageSender.RequestToSystem(serverId, packet);
+
+    /// <inheritdoc/>
     public void Reply(ushort errorCode)
     {
         // For client requests, we don't use SendToClient for error codes
