@@ -1,5 +1,6 @@
 #nullable enable
 
+using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.System;
 using PlayHouse.Runtime.ServerMesh.Communicator;
 
@@ -16,11 +17,11 @@ public sealed class ServerAddressResolver : IDisposable
 {
     private readonly IServerInfo _myServerInfo;
     private readonly ISystemController _systemController;
-    private readonly XServerInfoCenter _serverInfoCenter;
+    private readonly IServerInfoCenter _serverInfoCenter;
     private readonly ICommunicator? _communicator;
     private readonly TimeSpan _refreshInterval;
     private readonly CancellationTokenSource _cts = new();
-    private Task? _refreshTask;
+    private Task? _refreshLoopTask;
     private bool _disposed;
 
     /// <summary>
@@ -39,7 +40,7 @@ public sealed class ServerAddressResolver : IDisposable
     public ServerAddressResolver(
         IServerInfo myServerInfo,
         ISystemController systemController,
-        XServerInfoCenter serverInfoCenter,
+        IServerInfoCenter serverInfoCenter,
         ICommunicator? communicator = null,
         TimeSpan? refreshInterval = null)
     {
@@ -55,9 +56,9 @@ public sealed class ServerAddressResolver : IDisposable
     /// </summary>
     public void Start()
     {
-        if (_refreshTask != null) return;
+        if (_refreshLoopTask != null) return;
 
-        _refreshTask = RefreshLoopAsync(_cts.Token);
+        _refreshLoopTask = RefreshLoopAsync(_cts.Token);
     }
 
     /// <summary>
@@ -68,7 +69,7 @@ public sealed class ServerAddressResolver : IDisposable
         _cts.Cancel();
         try
         {
-            _refreshTask?.Wait(TimeSpan.FromSeconds(5));
+            _refreshLoopTask?.Wait(TimeSpan.FromSeconds(5));
         }
         catch (AggregateException)
         {
@@ -121,11 +122,12 @@ public sealed class ServerAddressResolver : IDisposable
     /// <summary>
     /// 서비스별로 서버를 선택합니다 (로드밸런싱).
     /// </summary>
+    /// <param name="serverType">서버 타입.</param>
     /// <param name="serviceId">서비스 ID.</param>
     /// <returns>선택된 서버 정보 또는 null.</returns>
-    public XServerInfo? SelectServer(ushort serviceId)
+    public XServerInfo? SelectServer(ServerType serverType, ushort serviceId)
     {
-        return _serverInfoCenter.GetServerByService(serviceId);
+        return _serverInfoCenter.GetServerByService(serverType, serviceId);
     }
 
     private async Task RefreshLoopAsync(CancellationToken ct)

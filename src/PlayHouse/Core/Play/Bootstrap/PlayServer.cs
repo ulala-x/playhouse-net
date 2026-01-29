@@ -62,6 +62,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         _logger = loggerFactory.CreateLogger<PlayServer>();
 
         _serverConfig = new ServerConfig(
+            options.ServerType,
             options.ServiceId,
             options.ServerId,
             options.BindEndpoint,
@@ -90,7 +91,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         _communicator.Connect(_options.ServerId, _options.BindEndpoint);
 
         // ServerInfoCenter 생성 (PlayDispatcher에서 사용)
-        var serverInfoCenter = new XServerInfoCenter();
+        IServerInfoCenter serverInfoCenter = new XServerInfoCenter();
 
         // PlayDispatcher 생성 (ThreadPool 기반 + ComputePool/IoPool 사용)
         _dispatcher = new PlayDispatcher(
@@ -98,6 +99,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             _communicator,
             _requestCache,
             serverInfoCenter,
+            _options.ServerType,
             _options.ServiceId,
             _options.ServerId,
             this, // client reply handler
@@ -109,6 +111,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
 
         // ServerAddressResolver 시작
         var myServerInfo = new XServerInfo(
+            _options.ServerType,
             _options.ServiceId,
             _options.ServerId,
             _options.BindEndpoint,

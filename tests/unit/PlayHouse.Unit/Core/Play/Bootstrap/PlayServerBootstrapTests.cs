@@ -106,7 +106,7 @@ public class PlayServerBootstrapTests : IDisposable
         return new PlayServerBootstrap()
             .Configure(opts =>
             {
-                opts.ServiceType = ServiceType.Play;
+                opts.ServerType = ServerType.Play;
                 opts.AuthenticateMessageId = "Auth";
                 opts.TcpPort = null; // 기본 비활성화
             })

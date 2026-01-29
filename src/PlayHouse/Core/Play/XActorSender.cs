@@ -20,12 +20,17 @@ internal sealed class XActorSender : IActorSender
     private readonly BaseStage _baseStage;
     private ITransportSession? _transportSession;
 
-    private string _sessionNid;
+    private string _sessionServerId;
     private long _sid;
-    private string _apiNid;
+    private string _apiServerId;
+
+    private XStageSender StageSender => _baseStage.StageSender;
 
     /// <inheritdoc/>
-    public string AccountId { get; set; } = "";
+    public string AccountId { get; set; } = string.Empty;
+
+    /// <inheritdoc/>
+    public ServerType ServerType => _baseStage.StageSender.ServerType;
 
     /// <inheritdoc/>
     public ushort ServiceId => _baseStage.StageSender.ServiceId;
@@ -45,9 +50,9 @@ internal sealed class XActorSender : IActorSender
         BaseStage baseStage,
         ITransportSession? transportSession = null)
     {
-        _sessionNid = sessionNid;
+        _sessionServerId = sessionNid;
         _sid = sid;
-        _apiNid = apiNid;
+        _apiServerId = apiNid;
         _baseStage = baseStage;
         _transportSession = transportSession;
     }
@@ -55,7 +60,7 @@ internal sealed class XActorSender : IActorSender
     /// <summary>
     /// Gets the session server NID.
     /// </summary>
-    internal string SessionNid => _sessionNid;
+    internal string SessionNid => _sessionServerId;
 
     /// <summary>
     /// Gets the session ID.
@@ -65,14 +70,14 @@ internal sealed class XActorSender : IActorSender
     /// <summary>
     /// Gets the API server NID.
     /// </summary>
-    internal string ApiNid => _apiNid;
+    internal string ApiNid => _apiServerId;
 
     #region IActorSender Implementation
 
     /// <inheritdoc/>
     public async Task LeaveStageAsync()
     {
-        await _baseStage.LeaveStage(AccountId, _sessionNid, _sid);
+        await _baseStage.LeaveStage(AccountId, _sessionServerId, _sid);
     }
 
     /// <inheritdoc/>
@@ -97,7 +102,7 @@ internal sealed class XActorSender : IActorSender
         }
 
         // For server-to-server (API → PlayServer), use the routing mechanism
-        _baseStage.StageSender.SendToClient(_sessionNid, _sid, packet);
+        StageSender.SendToClient(_sessionServerId, _sid, packet);
     }
 
     #endregion
@@ -107,73 +112,73 @@ internal sealed class XActorSender : IActorSender
     /// <inheritdoc/>
     public void SendToApi(string apiNid, IPacket packet)
     {
-        _baseStage.StageSender.SendToApi(apiNid, packet);
+        StageSender.SendToApi(apiNid, packet);
     }
 
     /// <inheritdoc/>
     public void RequestToApi(string apiNid, IPacket packet, ReplyCallback replyCallback)
     {
-        _baseStage.StageSender.RequestToApi(apiNid, packet, replyCallback);
+        StageSender.RequestToApi(apiNid, packet, replyCallback);
     }
 
     /// <inheritdoc/>
     public async Task<IPacket> RequestToApi(string apiNid, IPacket packet)
     {
-        return await _baseStage.StageSender.RequestToApi(apiNid, packet);
+        return await StageSender.RequestToApi(apiNid, packet);
     }
 
     /// <inheritdoc/>
-    public void SendToService(ushort serviceId, IPacket packet)
+    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet)
     {
-        _baseStage.StageSender.SendToService(serviceId, packet);
+        StageSender.SendToService(serverType, serviceId, packet);
     }
 
     /// <inheritdoc/>
-    public void SendToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        _baseStage.StageSender.SendToService(serviceId, packet, policy);
+        StageSender.SendToService(serverType, serviceId, packet, policy);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback)
+    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback)
     {
-        _baseStage.StageSender.RequestToService(serviceId, packet, replyCallback);
+        StageSender.RequestToService(serverType, serviceId, packet, replyCallback);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
+    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
     {
-        _baseStage.StageSender.RequestToService(serviceId, packet, replyCallback, policy);
+        StageSender.RequestToService(serverType, serviceId, packet, replyCallback, policy);
     }
 
     /// <inheritdoc/>
-    public Task<IPacket> RequestToService(ushort serviceId, IPacket packet)
+    public Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet)
     {
-        return _baseStage.StageSender.RequestToService(serviceId, packet);
+        return StageSender.RequestToService(serverType, serviceId, packet);
     }
 
     /// <inheritdoc/>
-    public Task<IPacket> RequestToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        return _baseStage.StageSender.RequestToService(serviceId, packet, policy);
+        return StageSender.RequestToService(serverType, serviceId, packet, policy);
     }
 
     /// <inheritdoc/>
     public void SendToStage(string playNid, long stageId, IPacket packet)
     {
-        _baseStage.StageSender.SendToStage(playNid, stageId, packet);
+        StageSender.SendToStage(playNid, stageId, packet);
     }
 
     /// <inheritdoc/>
     public void RequestToStage(string playNid, long stageId, IPacket packet, ReplyCallback replyCallback)
     {
-        _baseStage.StageSender.RequestToStage(playNid, stageId, packet, replyCallback);
+        StageSender.RequestToStage(playNid, stageId, packet, replyCallback);
     }
 
     /// <inheritdoc/>
     public async Task<IPacket> RequestToStage(string playNid, long stageId, IPacket packet)
     {
-        return await _baseStage.StageSender.RequestToStage(playNid, stageId, packet);
+        return await StageSender.RequestToStage(playNid, stageId, packet);
     }
 
     /// <inheritdoc/>
@@ -181,7 +186,7 @@ internal sealed class XActorSender : IActorSender
     {
         // For client requests, we don't use SendToClient for error codes
         // Just use the standard Reply mechanism
-        _baseStage.StageSender.Reply(errorCode);
+        StageSender.Reply(errorCode);
     }
 
     /// <inheritdoc/>
@@ -203,9 +208,9 @@ internal sealed class XActorSender : IActorSender
     /// <param name="transportSession">Optional new transport session.</param>
     internal void Update(string sessionNid, long sid, string apiNid, ITransportSession? transportSession = null)
     {
-        _sessionNid = sessionNid;
+        _sessionServerId = sessionNid;
         _sid = sid;
-        _apiNid = apiNid;
+        _apiServerId = apiNid;
         _transportSession = transportSession;
     }
 

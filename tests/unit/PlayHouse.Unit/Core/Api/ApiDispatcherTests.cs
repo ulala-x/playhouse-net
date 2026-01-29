@@ -76,8 +76,9 @@ public class ApiDispatcherTests : IDisposable
         var serverInfoCenter = Substitute.For<IServerInfoCenter>();
 
         _dispatcher = new ApiDispatcher(
-            serviceId: 1,
-            nid: "1:1",
+            ServerType.Api,
+            1,
+            "api-1",
             _requestCache,
             _communicator,
             serverInfoCenter,
@@ -160,8 +161,9 @@ public class ApiDispatcherTests : IDisposable
         var serverInfoCenter = Substitute.For<IServerInfoCenter>();
 
         using var dispatcher = new ApiDispatcher(
-            serviceId: 1,
-            nid: "1:1",
+            ServerType.Api,
+            1,
+            "api-1",
             _requestCache,
             _communicator,
             serverInfoCenter,
@@ -198,7 +200,7 @@ public class ApiDispatcherTests : IDisposable
         // Given (전제조건)
         var services = new ServiceCollection().BuildServiceProvider();
         var serverInfoCenter = Substitute.For<IServerInfoCenter>();
-        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, serverInfoCenter, services, NullLoggerFactory.Instance);
+        using var dispatcher = new ApiDispatcher(ServerType.Api, 1, "api-1", _requestCache, _communicator, serverInfoCenter, services, NullLoggerFactory.Instance);
 
         // When (행동)
         var action = () =>

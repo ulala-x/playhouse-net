@@ -3,6 +3,7 @@
 using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Messaging;
+using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
 using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ServerMesh.Communicator;
@@ -33,7 +34,7 @@ internal sealed class XStageSender : XSender, IStageSender
     private IReplyPacketRegistry _replyPacketRegistry;
     private readonly HashSet<long> _timerIds = new();
     private long _timerIdCounter;
-    private object? _baseStage;  // BaseStage instance (stored as object to avoid circular dependency)
+    private BaseStage? _baseStage;
 
     /// <inheritdoc/>
     public long StageId { get; }
@@ -53,6 +54,7 @@ internal sealed class XStageSender : XSender, IStageSender
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,
+        ServerType serverType,
         ushort serviceId,
         string serverId,
         long stageId,
@@ -60,7 +62,7 @@ internal sealed class XStageSender : XSender, IStageSender
         IReplyPacketRegistry replyPacketRegistry,
         IClientReplyHandler? clientReplyHandler = null,
         int requestTimeoutMs = 30000)
-        : base(communicator, requestCache, serverInfoCenter, serviceId, serverId, requestTimeoutMs)
+        : base(communicator, requestCache, serverInfoCenter, serverType, serviceId, serverId, requestTimeoutMs)
     {
         StageId = stageId;
         _dispatcher = dispatcher;
@@ -82,7 +84,7 @@ internal sealed class XStageSender : XSender, IStageSender
     /// Sets the BaseStage instance for callback queueing.
     /// </summary>
     /// <param name="baseStage">BaseStage instance.</param>
-    internal void SetBaseStage(object baseStage)
+    internal void SetBaseStage(BaseStage baseStage)
     {
         _baseStage = baseStage;
     }
@@ -111,17 +113,14 @@ internal sealed class XStageSender : XSender, IStageSender
     /// <returns>Callback delegate that posts to BaseStage or executes directly.</returns>
     protected override Action<ReplyCallback, ushort, IPacket?>? GetPostToStageCallback()
     {
-        if (_baseStage == null) return null;
-
-        // Cast _baseStage to BaseStage and return delegate
-        var baseStage = _baseStage as Base.BaseStage;
+        var baseStage = _baseStage;
         if (baseStage == null) return null;
 
         return (callback, errorCode, packet) =>
         {
             // If we're already in the same Stage's event loop, execute directly
             // This prevents deadlock when Stage code awaits callback completion
-            if (Base.BaseStage.Current == baseStage)
+            if (BaseStage.Current == baseStage)
             {
                 // Execute directly with disposal (we're already in Stage context)
                 if (packet is IDisposable disposable)
@@ -144,41 +143,19 @@ internal sealed class XStageSender : XSender, IStageSender
     /// <inheritdoc/>
     public long AddRepeatTimer(TimeSpan initialDelay, TimeSpan period, TimerCallbackDelegate callback)
     {
-        var timerId = GenerateTimerId();
-        var timerPacket = CreateTimerPacket(
-            TimerMsg.Types.Type.Repeat,
-            timerId,
-            initialDelay,
-            period,
-            0,
-            callback);
-
-        _dispatcher.OnPost(new TimerMessage(timerPacket));
-        _timerIds.Add(timerId);
-        return timerId;
+        return AddTimer(TimerMsg.Types.Type.Repeat, initialDelay, period, 0, callback);
     }
 
     /// <inheritdoc/>
     public long AddCountTimer(TimeSpan initialDelay, TimeSpan period, int count, TimerCallbackDelegate callback)
     {
-        var timerId = GenerateTimerId();
-        var timerPacket = CreateTimerPacket(
-            TimerMsg.Types.Type.Count,
-            timerId,
-            initialDelay,
-            period,
-            count,
-            callback);
-
-        _dispatcher.OnPost(new TimerMessage(timerPacket));
-        _timerIds.Add(timerId);
-        return timerId;
+        return AddTimer(TimerMsg.Types.Type.Count, initialDelay, period, count, callback);
     }
 
     /// <inheritdoc/>
     public void CancelTimer(long timerId)
     {
-        if (!_timerIds.Contains(timerId)) return;
+        if (!_timerIds.Remove(timerId)) return;
 
         var timerPacket = CreateTimerPacket(
             TimerMsg.Types.Type.Cancel,
@@ -189,7 +166,6 @@ internal sealed class XStageSender : XSender, IStageSender
             () => Task.CompletedTask);
 
         _dispatcher.OnPost(new TimerMessage(timerPacket));
-        _timerIds.Remove(timerId);
     }
 
     /// <inheritdoc/>
@@ -201,6 +177,20 @@ internal sealed class XStageSender : XSender, IStageSender
     private long GenerateTimerId()
     {
         return Interlocked.Increment(ref _timerIdCounter);
+    }
+
+    private long AddTimer(
+        TimerMsg.Types.Type type,
+        TimeSpan initialDelay,
+        TimeSpan period,
+        int count,
+        TimerCallbackDelegate callback)
+    {
+        var timerId = GenerateTimerId();
+        var timerPacket = CreateTimerPacket(type, timerId, initialDelay, period, count, callback);
+        _dispatcher.OnPost(new TimerMessage(timerPacket));
+        _timerIds.Add(timerId);
+        return timerId;
     }
 
     private TimerPacket CreateTimerPacket(

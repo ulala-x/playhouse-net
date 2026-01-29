@@ -1,7 +1,6 @@
+using PlayHouse.Abstractions;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
-using PlayHouse.Runtime.ServerMesh;
-using PlayHouse.Runtime.ServerMesh.Discovery;
 
 namespace PlayHouse.E2E.Verifiers;
 
@@ -48,15 +47,15 @@ public class ServiceRoutingVerifier : VerifierBase
     /// </summary>
     private async Task Test_RequestToService_RoundRobin()
     {
-        // Given - API 서비스 ID (ServiceIds.Api = 2)
-        const ushort apiServiceId = ServiceIds.Api;
+        // Given - API 서비스 ID
+        const ushort apiServiceId = 1;
 
         // When - RequestToService를 여러 번 호출 (RoundRobin 기본값)
         var request1 = new ApiEchoRequest { Content = "RoundRobin Test 1" };
         var request2 = new ApiEchoRequest { Content = "RoundRobin Test 2" };
 
-        var response1 = await ApiServer1.ApiSender!.RequestToService(apiServiceId, CPacket.Of(request1));
-        var response2 = await ApiServer1.ApiSender!.RequestToService(apiServiceId, CPacket.Of(request2));
+        var response1 = await ApiServer1.ApiSender!.RequestToService(ServerType.Api, apiServiceId, CPacket.Of(request1));
+        var response2 = await ApiServer1.ApiSender!.RequestToService(ServerType.Api, apiServiceId, CPacket.Of(request2));
 
         // Then - 응답 수신 확인
         Assert.NotNull(response1, "첫 번째 응답이 수신되어야 함");
@@ -77,11 +76,12 @@ public class ServiceRoutingVerifier : VerifierBase
     private async Task Test_RequestToService_Weighted()
     {
         // Given
-        const ushort apiServiceId = ServiceIds.Api;
+        const ushort apiServiceId = 1;
 
         // When - Weighted 정책으로 호출
         var request = new ApiEchoRequest { Content = "Weighted Test" };
         var response = await ApiServer1.ApiSender!.RequestToService(
+            ServerType.Api,
             apiServiceId,
             CPacket.Of(request),
             ServerSelectionPolicy.Weighted);
@@ -100,7 +100,7 @@ public class ServiceRoutingVerifier : VerifierBase
     private async Task Test_SendToService_Basic()
     {
         // Given
-        const ushort apiServiceId = ServiceIds.Api;
+        const ushort apiServiceId = 1;
 
         // When - SendToService (fire-and-forget)
         var message = new InterApiMessage
@@ -108,7 +108,7 @@ public class ServiceRoutingVerifier : VerifierBase
             FromApiNid = ServerContext.ApiServer1Id,
             Content = "SendToService Test"
         };
-        ApiServer1.ApiSender!.SendToService(apiServiceId, CPacket.Of(message));
+        ApiServer1.ApiSender!.SendToService(ServerType.Api, apiServiceId, CPacket.Of(message));
 
         // 메시지 전달 대기
         await Task.Delay(500);
@@ -123,12 +123,12 @@ public class ServiceRoutingVerifier : VerifierBase
     private async Task Test_RequestToService_Callback()
     {
         // Given
-        const ushort apiServiceId = ServiceIds.Api;
+        const ushort apiServiceId = 1;
         var tcs = new TaskCompletionSource<(ushort errorCode, string? content)>();
 
         // When - Callback 버전으로 호출
         var request = new ApiEchoRequest { Content = "Callback Test" };
-        ApiServer1.ApiSender!.RequestToService(apiServiceId, CPacket.Of(request), (errorCode, reply) =>
+        ApiServer1.ApiSender!.RequestToService(ServerType.Api, apiServiceId, CPacket.Of(request), (errorCode, reply) =>
         {
             if (errorCode == 0 && reply != null)
             {

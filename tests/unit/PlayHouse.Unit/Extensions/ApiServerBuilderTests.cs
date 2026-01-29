@@ -32,7 +32,7 @@ public class ApiServerBuilderTests
         // When
         services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseSystemController<TestSystemController>()
         .UseController<TestController>();
@@ -56,7 +56,7 @@ public class ApiServerBuilderTests
         // When
         services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseSystemController<TestSystemController>()
         .UseController<TestController>();
@@ -80,7 +80,7 @@ public class ApiServerBuilderTests
         // When
         services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseController<TestController>()
         .UseSystemController<TestSystemController>();
@@ -108,7 +108,7 @@ public class ApiServerBuilderTests
         // When
         var builder = services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseController<TestController>()
         .UseController<TestController>() // 같은 타입을 여러 번 등록 가능
@@ -131,7 +131,7 @@ public class ApiServerBuilderTests
         // When
         var builder = services.AddApiServer(options =>
         {
-            options.ServiceType = ServiceType.Api;
+            options.ServerType = ServerType.Api;
         })
         .UseSystemController<TestSystemController>();
 

@@ -20,6 +20,13 @@ public interface IServerInfoCenter
     int Count { get; }
 
     /// <summary>
+    /// 서버 목록을 갱신합니다.
+    /// </summary>
+    /// <param name="serverList">새 서버 목록.</param>
+    /// <returns>상태가 변경된 서버 목록 (추가, 제거, 상태변경).</returns>
+    IReadOnlyList<ServerChange> Update(IEnumerable<IServerInfo> serverList);
+
+    /// <summary>
     /// ServerId로 서버 정보를 조회합니다.
     /// </summary>
     /// <param name="serverId">Server ID (예: "play-1", "api-seoul-1").</param>
@@ -29,27 +36,30 @@ public interface IServerInfoCenter
     /// <summary>
     /// 서비스 타입별로 서버를 조회합니다 (Round-robin).
     /// </summary>
-    /// <param name="serviceId">서비스 ID (1 = Play, 2 = API).</param>
+    /// <param name="serverType">서버 타입 (Play, Api).</param>
+    /// <param name="serviceId">서비스 그룹 ID.</param>
     /// <returns>다음 서버 정보 또는 null (활성 서버가 없는 경우).</returns>
     /// <remarks>
     /// Running 상태의 서버 중에서 Round-robin 방식으로 선택됩니다.
     /// </remarks>
-    XServerInfo? GetServerByService(ushort serviceId);
+    XServerInfo? GetServerByService(ServerType serverType, ushort serviceId);
 
     /// <summary>
     /// 서비스 타입별로 서버를 조회합니다.
     /// </summary>
-    /// <param name="serviceId">서비스 ID (1 = Play, 2 = API).</param>
+    /// <param name="serverType">서버 타입 (Play, Api).</param>
+    /// <param name="serviceId">서비스 그룹 ID.</param>
     /// <param name="policy">서버 선택 정책.</param>
     /// <returns>선택된 서버 정보 또는 null.</returns>
-    XServerInfo? GetServerByService(ushort serviceId, ServerSelectionPolicy policy);
+    XServerInfo? GetServerByService(ServerType serverType, ushort serviceId, ServerSelectionPolicy policy);
 
     /// <summary>
     /// 서비스 타입별 모든 서버 목록을 조회합니다.
     /// </summary>
-    /// <param name="serviceId">서비스 ID (1 = Play, 2 = API).</param>
+    /// <param name="serverType">서버 타입 (Play, Api).</param>
+    /// <param name="serviceId">서비스 그룹 ID.</param>
     /// <returns>해당 서비스의 모든 서버 목록 (상태 무관).</returns>
-    IReadOnlyList<XServerInfo> GetServerListByService(ushort serviceId);
+    IReadOnlyList<XServerInfo> GetServerListByService(ServerType serverType, ushort serviceId);
 
     /// <summary>
     /// 모든 서버 목록을 조회합니다.

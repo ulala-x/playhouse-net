@@ -163,7 +163,7 @@ try
 
     services.AddApiServer(options =>
     {
-        options.ServiceType = ServiceType.Api;
+        options.ServerType = ServerType.Api;
         options.ServerId = serverId;
         options.BindEndpoint = $"tcp://127.0.0.1:{zmqPort}";
         options.MinTaskPoolSize = minPoolSize;

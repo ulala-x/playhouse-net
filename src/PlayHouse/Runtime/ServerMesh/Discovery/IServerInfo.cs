@@ -1,5 +1,7 @@
 #nullable enable
 
+using PlayHouse.Abstractions;
+
 namespace PlayHouse.Runtime.ServerMesh.Discovery;
 
 /// <summary>
@@ -24,7 +26,12 @@ public enum ServerState
 public interface IServerInfo
 {
     /// <summary>
-    /// 서비스 ID (1 = Play, 2 = API).
+    /// 서버 타입 (Play, Api).
+    /// </summary>
+    ServerType ServerType { get; }
+
+    /// <summary>
+    /// 서비스 그룹 ID (같은 ServerType 내에서 서버 군 구분).
     /// </summary>
     ushort ServiceId { get; }
 
@@ -55,6 +62,9 @@ public interface IServerInfo
 public sealed class XServerInfo : IServerInfo
 {
     /// <inheritdoc/>
+    public ServerType ServerType { get; }
+
+    /// <inheritdoc/>
     public ushort ServiceId { get; }
 
     /// <inheritdoc/>
@@ -73,12 +83,14 @@ public sealed class XServerInfo : IServerInfo
     /// 새 XServerInfo 인스턴스를 생성합니다.
     /// </summary>
     public XServerInfo(
+        ServerType serverType,
         ushort serviceId,
         string serverId,
         string address,
         ServerState state = ServerState.Running,
         int weight = 100)
     {
+        ServerType = serverType;
         ServiceId = serviceId;
         ServerId = serverId;
         Address = address;
@@ -87,15 +99,20 @@ public sealed class XServerInfo : IServerInfo
     }
 
     /// <summary>
-    /// ServerId와 ServiceId로부터 XServerInfo를 생성합니다.
+    /// XServerInfo를 생성합니다.
     /// </summary>
-    public static XServerInfo Create(ushort serviceId, string serverId, string address, ServerState state = ServerState.Running)
+    public static XServerInfo Create(
+        ServerType serverType,
+        ushort serviceId,
+        string serverId,
+        string address,
+        ServerState state = ServerState.Running)
     {
-        return new XServerInfo(serviceId, serverId, address, state);
+        return new XServerInfo(serverType, serviceId, serverId, address, state);
     }
 
     /// <inheritdoc/>
-    public override string ToString() => $"{ServiceId}:{ServerId}@{Address}[{State}]";
+    public override string ToString() => $"{ServerType}:{ServiceId}:{ServerId}@{Address}[{State}]";
 
     /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is XServerInfo other && ServerId == other.ServerId;

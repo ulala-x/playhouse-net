@@ -17,7 +17,7 @@ namespace PlayHouse.Core.Play.Bootstrap;
 /// var playServer = new PlayServerBootstrap()
 ///     .Configure(options =>
 ///     {
-///         options.ServiceType = ServiceType.Play;
+///         options.ServerType = ServerType.Play;
 ///         options.ServerId = 1;
 ///         options.BindEndpoint = "tcp://0.0.0.0:5000";
 ///         options.TcpPort = 6000;

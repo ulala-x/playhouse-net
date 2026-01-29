@@ -15,7 +15,7 @@ namespace PlayHouse.Runtime.ServerMesh.Discovery;
 public sealed class XServerInfoCenter : IServerInfoCenter
 {
     private readonly ConcurrentDictionary<string, XServerInfo> _servers = new();
-    private readonly ConcurrentDictionary<ushort, int> _roundRobinIndex = new();
+    private readonly ConcurrentDictionary<(ServerType, ushort), int> _roundRobinIndex = new();
     private readonly object _updateLock = new();
 
     /// <summary>
@@ -28,7 +28,7 @@ public sealed class XServerInfoCenter : IServerInfoCenter
     /// </summary>
     /// <param name="serverList">새 서버 목록.</param>
     /// <returns>상태가 변경된 서버 목록 (추가, 제거, 상태변경).</returns>
-    public List<ServerChange> Update(IEnumerable<IServerInfo> serverList)
+    public IReadOnlyList<ServerChange> Update(IEnumerable<IServerInfo> serverList)
     {
         var changes = new List<ServerChange>();
         var newServers = new HashSet<string>();
@@ -38,6 +38,7 @@ public sealed class XServerInfoCenter : IServerInfoCenter
             foreach (var server in serverList)
             {
                 var info = server as XServerInfo ?? new XServerInfo(
+                    server.ServerType,
                     server.ServiceId,
                     server.ServerId,
                     server.Address,
@@ -91,39 +92,40 @@ public sealed class XServerInfoCenter : IServerInfoCenter
     /// <summary>
     /// 서비스 타입별로 서버를 조회합니다 (Round-robin).
     /// </summary>
+    /// <param name="serverType">서버 타입.</param>
     /// <param name="serviceId">서비스 ID.</param>
     /// <returns>다음 서버 정보 또는 null.</returns>
-    public XServerInfo? GetServerByService(ushort serviceId)
+    public XServerInfo? GetServerByService(ServerType serverType, ushort serviceId)
     {
-        return GetServerByService(serviceId, ServerSelectionPolicy.RoundRobin);
+        return GetServerByService(serverType, serviceId, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <summary>
     /// 서비스 타입별로 서버를 조회합니다.
     /// </summary>
+    /// <param name="serverType">서버 타입.</param>
     /// <param name="serviceId">서비스 ID.</param>
     /// <param name="policy">서버 선택 정책.</param>
     /// <returns>선택된 서버 정보 또는 null.</returns>
-    public XServerInfo? GetServerByService(ushort serviceId, ServerSelectionPolicy policy)
+    public XServerInfo? GetServerByService(ServerType serverType, ushort serviceId, ServerSelectionPolicy policy)
     {
-        var servers = GetServerListByService(serviceId)
-            .Where(s => s.State == ServerState.Running)
-            .ToList();
+        var servers = GetServersByService(serverType, serviceId, onlyRunning: true);
 
         if (servers.Count == 0)
             return null;
 
         return policy switch
         {
-            ServerSelectionPolicy.RoundRobin => SelectRoundRobin(serviceId, servers),
+            ServerSelectionPolicy.RoundRobin => SelectRoundRobin(serverType, serviceId, servers),
             ServerSelectionPolicy.Weighted => SelectWeighted(servers),
-            _ => SelectRoundRobin(serviceId, servers)
+            _ => SelectRoundRobin(serverType, serviceId, servers)
         };
     }
 
-    private XServerInfo SelectRoundRobin(ushort serviceId, List<XServerInfo> servers)
+    private XServerInfo SelectRoundRobin(ServerType serverType, ushort serviceId, List<XServerInfo> servers)
     {
-        var index = _roundRobinIndex.AddOrUpdate(serviceId, 0, (_, i) => (i + 1) % servers.Count);
+        var key = (serverType, serviceId);
+        var index = _roundRobinIndex.AddOrUpdate(key, 0, (_, i) => (i + 1) % servers.Count);
         return servers[index % servers.Count];
     }
 
@@ -136,13 +138,12 @@ public sealed class XServerInfoCenter : IServerInfoCenter
     /// <summary>
     /// 서비스 타입별 모든 서버 목록을 조회합니다.
     /// </summary>
+    /// <param name="serverType">서버 타입.</param>
     /// <param name="serviceId">서비스 ID.</param>
     /// <returns>해당 서비스의 모든 서버 목록.</returns>
-    public IReadOnlyList<XServerInfo> GetServerListByService(ushort serviceId)
+    public IReadOnlyList<XServerInfo> GetServerListByService(ServerType serverType, ushort serviceId)
     {
-        return _servers.Values
-            .Where(s => s.ServiceId == serviceId)
-            .ToList();
+        return GetServersByService(serverType, serviceId, onlyRunning: false);
     }
 
     /// <summary>
@@ -163,6 +164,19 @@ public sealed class XServerInfoCenter : IServerInfoCenter
         return _servers.Values
             .Where(s => s.State == ServerState.Running)
             .ToList();
+    }
+
+    private List<XServerInfo> GetServersByService(ServerType serverType, ushort serviceId, bool onlyRunning)
+    {
+        IEnumerable<XServerInfo> servers = _servers.Values
+            .Where(s => s.ServerType == serverType && s.ServiceId == serviceId);
+
+        if (onlyRunning)
+        {
+            servers = servers.Where(s => s.State == ServerState.Running);
+        }
+
+        return servers.ToList();
     }
 
     /// <summary>

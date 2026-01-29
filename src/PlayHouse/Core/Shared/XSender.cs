@@ -34,6 +34,9 @@ public abstract class XSender : ISender
     internal RouteHeader? CurrentHeader { get; private set; }
 
     /// <inheritdoc/>
+    public ServerType ServerType { get; }
+
+    /// <inheritdoc/>
     public ushort ServiceId { get; }
 
     /// <summary>
@@ -47,6 +50,7 @@ public abstract class XSender : ISender
     /// <param name="communicator">Communicator for sending messages.</param>
     /// <param name="requestCache">Cache for tracking pending requests.</param>
     /// <param name="serverInfoCenter">Server information center for service discovery.</param>
+    /// <param name="serverType">Server type of this sender.</param>
     /// <param name="serviceId">Service ID of this sender.</param>
     /// <param name="serverId">ServerId of this sender.</param>
     /// <param name="requestTimeoutMs">Request timeout in milliseconds.</param>
@@ -54,6 +58,7 @@ public abstract class XSender : ISender
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,
+        ServerType serverType,
         ushort serviceId,
         string serverId,
         int requestTimeoutMs = 30000)
@@ -61,6 +66,7 @@ public abstract class XSender : ISender
         _communicator = communicator;
         _requestCache = requestCache;
         _serverInfoCenter = serverInfoCenter;
+        ServerType = serverType;
         ServiceId = serviceId;
         ServerId = serverId;
         _requestTimeoutMs = requestTimeoutMs;
@@ -125,11 +131,7 @@ public abstract class XSender : ISender
     /// <inheritdoc/>
     public void SendToApi(string apiServerId, IPacket packet)
     {
-        var stageId = GetSenderStageId();
-        var accountId = CurrentHeader?.AccountId ?? 0;
-        var sid = CurrentHeader?.Sid ?? 0;
-
-        var header = CreateHeader(packet.MsgId, 0, stageId, accountId, sid);
+        var header = CreateApiHeader(packet.MsgId, msgSeq: 0);
         SendInternal(apiServerId, header, packet.Payload);
     }
 
@@ -137,32 +139,18 @@ public abstract class XSender : ISender
     public void RequestToApi(string apiServerId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
-        var stageId = GetSenderStageId();
-        var accountId = CurrentHeader?.AccountId ?? 0;
-        var sid = CurrentHeader?.Sid ?? 0;
-
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid);
-
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetPostToStageCallback());
-        RegisterReply(replyObject);
-
-        SendInternal(apiServerId, header, packet.Payload);
+        var header = CreateApiHeader(packet.MsgId, msgSeq);
+        SendRequest(apiServerId, header, packet.Payload, replyObject);
     }
 
     /// <inheritdoc/>
     public async Task<IPacket> RequestToApi(string apiServerId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
-        var stageId = GetSenderStageId();
-        var accountId = CurrentHeader?.AccountId ?? 0;
-        var sid = CurrentHeader?.Sid ?? 0;
-
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid);
-
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
-        RegisterReply(replyObject);
-
-        SendInternal(apiServerId, header, packet.Payload);
+        var header = CreateApiHeader(packet.MsgId, msgSeq);
+        SendRequest(apiServerId, header, packet.Payload, replyObject);
 
         return await task;
     }
@@ -172,47 +160,41 @@ public abstract class XSender : ISender
     #region Service Communication
 
     /// <inheritdoc/>
-    public void SendToService(ushort serviceId, IPacket packet)
+    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet)
     {
-        SendToService(serviceId, packet, ServerSelectionPolicy.RoundRobin);
+        SendToService(serverType, serviceId, packet, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <inheritdoc/>
-    public void SendToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public void SendToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        var server = _serverInfoCenter.GetServerByService(serviceId, policy)
-            ?? throw new InvalidOperationException($"No available server for service {serviceId}");
-
+        var server = ResolveServiceServer(serverType, serviceId, policy);
         SendToApi(server.ServerId, packet);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback)
+    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback)
     {
-        RequestToService(serviceId, packet, replyCallback, ServerSelectionPolicy.RoundRobin);
+        RequestToService(serverType, serviceId, packet, replyCallback, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <inheritdoc/>
-    public void RequestToService(ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
+    public void RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ReplyCallback replyCallback, ServerSelectionPolicy policy)
     {
-        var server = _serverInfoCenter.GetServerByService(serviceId, policy)
-            ?? throw new InvalidOperationException($"No available server for service {serviceId}");
-
+        var server = ResolveServiceServer(serverType, serviceId, policy);
         RequestToApi(server.ServerId, packet, replyCallback);
     }
 
     /// <inheritdoc/>
-    public Task<IPacket> RequestToService(ushort serviceId, IPacket packet)
+    public Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet)
     {
-        return RequestToService(serviceId, packet, ServerSelectionPolicy.RoundRobin);
+        return RequestToService(serverType, serviceId, packet, ServerSelectionPolicy.RoundRobin);
     }
 
     /// <inheritdoc/>
-    public async Task<IPacket> RequestToService(ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
+    public async Task<IPacket> RequestToService(ServerType serverType, ushort serviceId, IPacket packet, ServerSelectionPolicy policy)
     {
-        var server = _serverInfoCenter.GetServerByService(serviceId, policy)
-            ?? throw new InvalidOperationException($"No available server for service {serviceId}");
-
+        var server = ResolveServiceServer(serverType, serviceId, policy);
         return await RequestToApi(server.ServerId, packet);
     }
 
@@ -223,14 +205,7 @@ public abstract class XSender : ISender
     /// <inheritdoc/>
     public void SendToStage(string playServerId, long stageId, IPacket packet)
     {
-        // Determine AccountId for reply routing:
-        // - If CurrentHeader exists with AccountId (Actor context), preserve it
-        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
-        var accountId = (CurrentHeader != null && CurrentHeader.AccountId != 0)
-            ? CurrentHeader.AccountId
-            : GetSenderStageId();
-        // Stage-to-Stage communication: Sid should be 0 (not a client session)
-        var header = CreateHeader(packet.MsgId, 0, stageId, accountId, sid: 0);
+        var header = CreateStageHeader(packet.MsgId, msgSeq: 0, stageId);
         SendInternal(playServerId, header, packet.Payload);
     }
 
@@ -238,39 +213,18 @@ public abstract class XSender : ISender
     public void RequestToStage(string playServerId, long stageId, IPacket packet, ReplyCallback replyCallback)
     {
         var msgSeq = NextMsgSeq();
-        // Determine AccountId for reply routing:
-        // - If CurrentHeader exists with AccountId (Actor context), preserve it
-        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
-        var accountId = (CurrentHeader != null && CurrentHeader.AccountId != 0)
-            ? CurrentHeader.AccountId
-            : GetSenderStageId();
-        // Stage-to-Stage communication: Sid should be 0 (not a client session)
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid: 0);
-
         var replyObject = ReplyObject.CreateCallback(msgSeq, replyCallback, GetPostToStageCallback());
-        RegisterReply(replyObject);
-
-        SendInternal(playServerId, header, packet.Payload);
+        var header = CreateStageHeader(packet.MsgId, msgSeq, stageId);
+        SendRequest(playServerId, header, packet.Payload, replyObject);
     }
 
     /// <inheritdoc/>
     public async Task<IPacket> RequestToStage(string playServerId, long stageId, IPacket packet)
     {
         var msgSeq = NextMsgSeq();
-        // Determine AccountId for reply routing:
-        // - If CurrentHeader exists with AccountId (Actor context), preserve it
-        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
-        var accountId = (CurrentHeader != null && CurrentHeader.AccountId != 0)
-            ? CurrentHeader.AccountId
-            : GetSenderStageId();
-
-        // Stage-to-Stage communication: Sid should be 0 (not a client session)
-        var header = CreateHeader(packet.MsgId, msgSeq, stageId, accountId, sid: 0);
-
         var (replyObject, task) = ReplyObject.CreateAsync(msgSeq);
-        RegisterReply(replyObject);
-
-        SendInternal(playServerId, header, packet.Payload);
+        var header = CreateStageHeader(packet.MsgId, msgSeq, stageId);
+        SendRequest(playServerId, header, packet.Payload, replyObject);
 
         return await task;
     }
@@ -292,17 +246,8 @@ public abstract class XSender : ISender
             return; // Not a request, no reply needed
         }
 
-        var replyHeader = new RouteHeader
-        {
-            MsgSeq = CurrentHeader.MsgSeq,
-            ServiceId = ServiceId,
-            MsgId = CurrentHeader.MsgId,
-            From = ServerId,
-            ErrorCode = errorCode,
-            IsReply = true
-        };
-
-        SendReplyInternal(CurrentHeader.From, replyHeader, EmptyPayload.Instance);
+        var replyHeader = CreateReplyHeader(CurrentHeader.MsgId, (ushort)CurrentHeader.MsgSeq, errorCode);
+        SendInternal(CurrentHeader.From, replyHeader, EmptyPayload.Instance);
     }
 
     /// <inheritdoc/>
@@ -323,19 +268,8 @@ public abstract class XSender : ISender
         var replyStageId = CurrentHeader.AccountId;
         var replyAccountId = CurrentHeader.AccountId;
 
-        var replyHeader = new RouteHeader
-        {
-            MsgSeq = CurrentHeader.MsgSeq,
-            ServiceId = ServiceId,
-            MsgId = reply.MsgId,
-            From = ServerId,
-            ErrorCode = 0,
-            IsReply = true,
-            StageId = replyStageId,
-            AccountId = replyAccountId
-        };
-
-        SendReplyInternal(CurrentHeader.From, replyHeader, reply.Payload);
+        var replyHeader = CreateReplyHeader(reply.MsgId, (ushort)CurrentHeader.MsgSeq, 0, replyStageId, replyAccountId);
+        SendInternal(CurrentHeader.From, replyHeader, reply.Payload);
     }
 
     #endregion
@@ -356,16 +290,58 @@ public abstract class XSender : ISender
         };
     }
 
-    private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
+    private RouteHeader CreateApiHeader(string msgId, ushort msgSeq)
     {
-        // Note: ProtoPayload now serializes eagerly in constructor (no lazy serialization).
-        // Packet ownership is transferred to the queue.
-        // ZmqPlaySocket.Send() will dispose the packet after sending.
-        var packet = RoutePacket.Of(header, payload);
-        _communicator.Send(targetServerId, packet);
+        var stageId = GetSenderStageId();
+        var header = CurrentHeader;
+        var accountId = header?.AccountId ?? 0;
+        var sid = header?.Sid ?? 0;
+        return CreateHeader(msgId, msgSeq, stageId, accountId, sid);
     }
 
-    private void SendReplyInternal(string targetServerId, RouteHeader header, IPayload payload)
+    private RouteHeader CreateStageHeader(string msgId, ushort msgSeq, long stageId)
+    {
+        // Determine AccountId for reply routing:
+        // - If CurrentHeader exists with AccountId (Actor context), preserve it
+        // - Otherwise, use sender's StageId (Stage-to-Stage direct communication)
+        var accountId = CurrentHeader?.AccountId ?? 0;
+        if (accountId == 0)
+        {
+            accountId = GetSenderStageId();
+        }
+
+        // Stage-to-Stage communication: Sid should be 0 (not a client session)
+        return CreateHeader(msgId, msgSeq, stageId, accountId, sid: 0);
+    }
+
+    private RouteHeader CreateReplyHeader(string msgId, ushort msgSeq, ushort errorCode, long stageId = 0, long accountId = 0)
+    {
+        return new RouteHeader
+        {
+            MsgSeq = msgSeq,
+            ServiceId = ServiceId,
+            MsgId = msgId,
+            From = ServerId,
+            ErrorCode = errorCode,
+            IsReply = true,
+            StageId = stageId,
+            AccountId = accountId
+        };
+    }
+
+    private void SendRequest(string targetServerId, RouteHeader header, IPayload payload, ReplyObject replyObject)
+    {
+        RegisterReply(replyObject);
+        SendInternal(targetServerId, header, payload);
+    }
+
+    private XServerInfo ResolveServiceServer(ServerType serverType, ushort serviceId, ServerSelectionPolicy policy)
+    {
+        return _serverInfoCenter.GetServerByService(serverType, serviceId, policy)
+            ?? throw new InvalidOperationException($"No available server for {serverType}:{serviceId}");
+    }
+
+    private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
         // Note: ProtoPayload now serializes eagerly in constructor (no lazy serialization).
         // Packet ownership is transferred to the queue.

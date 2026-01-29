@@ -140,7 +140,7 @@ try
 
     services.AddPlayServer(options =>
     {
-        options.ServiceType = ServiceType.Play;
+        options.ServerType = ServerType.Play;
         options.ServerId = "bench-1";
         options.BindEndpoint = $"tcp://0.0.0.0:{zmqPort}";
         options.TcpPort = tcpPort;

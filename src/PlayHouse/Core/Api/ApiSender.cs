@@ -28,15 +28,17 @@ internal class ApiSender : XSender, IApiSender
     /// <param name="communicator">The communicator for sending messages.</param>
     /// <param name="requestCache">The request cache for tracking pending requests.</param>
     /// <param name="serverInfoCenter">Server information center for service discovery.</param>
+    /// <param name="serverType">The server type of this API server.</param>
     /// <param name="serviceId">The service ID of this API server.</param>
-    /// <param name="nid">The NID of this API server.</param>
+    /// <param name="serverId">The ServerId of this API server.</param>
     public ApiSender(
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,
+        ServerType serverType,
         ushort serviceId,
-        string nid)
-        : base(communicator, requestCache, serverInfoCenter, serviceId, nid)
+        string serverId)
+        : base(communicator, requestCache, serverInfoCenter, serverType, serviceId, serverId)
     {
     }
 
@@ -199,4 +201,3 @@ internal class ApiSender : XSender, IApiSender
 
     #endregion
 }
-

@@ -1,5 +1,8 @@
 #nullable enable
 
+using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.Internal;
+
 namespace PlayHouse.Runtime.ServerMesh.Communicator;
 
 /// <summary>
@@ -8,9 +11,14 @@ namespace PlayHouse.Runtime.ServerMesh.Communicator;
 public sealed class CommunicatorOption
 {
     /// <summary>
-    /// 서비스 ID (1 = Play, 2 = API).
+    /// 서버 타입 (Play, Api).
     /// </summary>
-    public ushort ServiceId { get; set; }
+    public ServerType ServerType { get; set; }
+
+    /// <summary>
+    /// 서비스 그룹 ID (같은 ServerType 내에서 서버 군 구분).
+    /// </summary>
+    public ushort ServiceId { get; set; } = ServiceIdDefaults.Default;
 
     /// <summary>
     /// 서버 인스턴스 ID (고유 문자열, 예: "play-1", "api-seoul-1").
@@ -59,6 +67,7 @@ public sealed class CommunicatorOption
     public ServerConfig ToServerConfig()
     {
         return new ServerConfig(
+            ServerType,
             ServiceId,
             ServerId,
             BindEndpoint,
@@ -74,17 +83,8 @@ public sealed class CommunicatorOption
     /// <exception cref="InvalidOperationException">유효하지 않은 설정.</exception>
     public void Validate()
     {
-        if (ServiceId == 0)
-            throw new InvalidOperationException("ServiceId must be greater than 0.");
-
-        if (string.IsNullOrEmpty(ServerId))
-            throw new InvalidOperationException("ServerId must be specified.");
-
-        if (string.IsNullOrEmpty(BindEndpoint))
-            throw new InvalidOperationException("BindEndpoint must be specified.");
-
-        if (RequestTimeoutMs <= 0)
-            throw new InvalidOperationException("RequestTimeoutMs must be greater than 0.");
+        ServerOptionValidator.ValidateIdentity(ServerType, ServerId, BindEndpoint);
+        ServerOptionValidator.ValidateRequestTimeout(RequestTimeoutMs);
     }
 }
 
@@ -94,6 +94,15 @@ public sealed class CommunicatorOption
 public sealed class CommunicatorBuilder
 {
     private readonly CommunicatorOption _option = new();
+
+    /// <summary>
+    /// 서버 타입을 설정합니다.
+    /// </summary>
+    public CommunicatorBuilder WithServerType(ServerType serverType)
+    {
+        _option.ServerType = serverType;
+        return this;
+    }
 
     /// <summary>
     /// 서비스 ID를 설정합니다.
