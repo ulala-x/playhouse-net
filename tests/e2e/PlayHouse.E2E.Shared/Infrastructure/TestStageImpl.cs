@@ -192,6 +192,18 @@ public class TestStageImpl : IStage
                 HandleStopGameLoop(actor);
                 break;
 
+            case "TriggerSendToSystemApiRequest":
+                HandleTriggerSendToSystemApi(actor, packet);
+                break;
+
+            case "TriggerSendToSystemPlayRequest":
+                HandleTriggerSendToSystemPlay(actor, packet);
+                break;
+
+            case "TriggerRequestToSystemRequest":
+                await HandleTriggerRequestToSystem(actor, packet);
+                break;
+
             default:
                 // 기본 성공 응답
                 actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
@@ -777,6 +789,56 @@ public class TestStageImpl : IStage
         {
             Success = true,
             TotalTicks = _gameLoopTickCount
+        }));
+    }
+
+    private void HandleTriggerSendToSystemApi(IActor actor, IPacket packet)
+    {
+        var request = TriggerSendToSystemApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var systemMsg = new SystemEchoRequest
+        {
+            Content = request.Message,
+            FromServerId = "play-1"  // E2E test infrastructure uses fixed server IDs
+        };
+
+        StageSender.SendToSystem(request.TargetApiNid, CPacket.Of(systemMsg));
+
+        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToSystemApiReply { Success = true }));
+    }
+
+    private void HandleTriggerSendToSystemPlay(IActor actor, IPacket packet)
+    {
+        var request = TriggerSendToSystemPlayRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var systemMsg = new SystemEchoRequest
+        {
+            Content = request.Message,
+            FromServerId = "play-1"  // E2E test infrastructure uses fixed server IDs
+        };
+
+        StageSender.SendToSystem(request.TargetPlayNid, CPacket.Of(systemMsg));
+
+        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToSystemPlayReply { Success = true }));
+    }
+
+    private async Task HandleTriggerRequestToSystem(IActor actor, IPacket packet)
+    {
+        var request = TriggerRequestToSystemRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var systemMsg = new SystemEchoRequest
+        {
+            Content = request.Query,
+            FromServerId = "play-1"  // E2E test infrastructure uses fixed server IDs
+        };
+
+        var response = await StageSender.RequestToSystem(request.TargetServerId, CPacket.Of(systemMsg));
+        var systemReply = SystemEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
+
+        actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToSystemReply
+        {
+            Response = systemReply.Content,
+            HandledByServerId = systemReply.HandledByServerId
         }));
     }
 }

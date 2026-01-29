@@ -38,6 +38,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private RequestCache? _requestCache;
     private ITransportServer? _transportServer;
     private ServerAddressResolver? _addressResolver;
+    private SystemDispatcher? _systemDispatcher;
+    private XSystemSender? _systemSender;
     private CancellationTokenSource? _cts;
 
     private bool _isRunning;
@@ -125,6 +127,20 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             TimeSpan.FromSeconds(3));
 
         _addressResolver.Start();
+
+        // SystemDispatcher 생성 및 핸들러 등록
+        _systemDispatcher = new SystemDispatcher(_loggerFactory.CreateLogger<SystemDispatcher>());
+        _systemController.Handles(_systemDispatcher);
+
+        // System message handler용 Sender 생성
+        _systemSender = new XSystemSender(
+            _communicator,
+            _requestCache,
+            serverInfoCenter,
+            _options.ServerType,
+            _options.ServiceId,
+            _options.ServerId,
+            _options.RequestTimeoutMs);
 
         _isRunning = true;
         _logger.LogInformation("PlayServer started: ServerId={ServerId}, TCP={TcpEnabled}, WebSocket={WsEnabled}",
@@ -229,6 +245,17 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                 return;
             }
             // TryComplete failed - RoutePacket still owns payload, will go to dispatcher
+        }
+
+        // 시스템 메시지 라우팅
+        if (packet.Header.IsSystem && _systemDispatcher != null && _systemSender != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await _systemDispatcher.DispatchAsync(packet, _systemSender); }
+                finally { packet.Dispose(); }
+            });
+            return;
         }
 
         // Stage로 라우팅

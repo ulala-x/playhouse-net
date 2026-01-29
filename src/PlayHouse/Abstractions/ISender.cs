@@ -141,6 +141,47 @@ public interface ISender
 
     #endregion
 
+    #region System Communication
+
+    /// <summary>
+    /// Sends a one-way system message to a server.
+    /// </summary>
+    /// <remarks>
+    /// System messages are handled by ISystemController.Handles() registered handlers.
+    /// This method does not wait for a response.
+    /// </remarks>
+    /// <param name="serverId">Target server ID.</param>
+    /// <param name="packet">Packet to send.</param>
+    void SendToSystem(string serverId, IPacket packet);
+
+    /// <summary>
+    /// Sends a system request with a callback for the reply.
+    /// </summary>
+    /// <remarks>
+    /// Note: The receiving server's system handler must explicitly send a reply
+    /// for the callback to be invoked. Phase 1 system handlers do not have
+    /// automatic reply support.
+    /// </remarks>
+    /// <param name="serverId">Target server ID.</param>
+    /// <param name="packet">Request packet.</param>
+    /// <param name="replyCallback">Callback to handle the reply.</param>
+    void RequestToSystem(string serverId, IPacket packet, ReplyCallback replyCallback);
+
+    /// <summary>
+    /// Sends a system request and awaits the reply.
+    /// </summary>
+    /// <remarks>
+    /// Note: The receiving server's system handler must explicitly send a reply
+    /// for this task to complete. Phase 1 system handlers do not have
+    /// automatic reply support.
+    /// </remarks>
+    /// <param name="serverId">Target server ID.</param>
+    /// <param name="packet">Request packet.</param>
+    /// <returns>The reply packet.</returns>
+    Task<IPacket> RequestToSystem(string serverId, IPacket packet);
+
+    #endregion
+
     #region Reply
 
     /// <summary>

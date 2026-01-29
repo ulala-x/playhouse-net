@@ -61,6 +61,11 @@ public class TestApiController : IApiController
         register.Add(typeof(BenchmarkApiRequest).Name!, HandleBenchmarkApi);
         register.Add(typeof(TimerApiRequest).Name!, HandleTimerApi);
         register.Add(typeof(GetApiAccountIdRequest).Name!, HandleGetApiAccountId);
+
+        // System message trigger handlers
+        register.Add(typeof(TriggerApiSendToSystemPlayRequest).Name!, HandleApiSendToSystemPlay);
+        register.Add(typeof(TriggerApiSendToSystemApiRequest).Name!, HandleApiSendToSystemApi);
+        register.Add(typeof(TriggerApiRequestToSystemRequest).Name!, HandleApiRequestToSystem);
     }
 
     private Task HandleApiEcho(IPacket packet, IApiSender sender)
@@ -221,5 +226,57 @@ public class TestApiController : IApiController
         };
         sender.Reply(CPacket.Of(reply));
         return Task.CompletedTask;
+    }
+
+    private Task HandleApiSendToSystemPlay(IPacket packet, IApiSender sender)
+    {
+        var request = TriggerApiSendToSystemPlayRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var systemMsg = new SystemEchoRequest
+        {
+            Content = request.Message,
+            FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
+        };
+
+        sender.SendToSystem(request.TargetPlayNid, CPacket.Of(systemMsg));
+
+        sender.Reply(CPacket.Of(new TriggerApiSendToSystemPlayReply { Success = true }));
+        return Task.CompletedTask;
+    }
+
+    private Task HandleApiSendToSystemApi(IPacket packet, IApiSender sender)
+    {
+        var request = TriggerApiSendToSystemApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var systemMsg = new SystemEchoRequest
+        {
+            Content = request.Message,
+            FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
+        };
+
+        sender.SendToSystem(request.TargetApiNid, CPacket.Of(systemMsg));
+
+        sender.Reply(CPacket.Of(new TriggerApiSendToSystemApiReply { Success = true }));
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleApiRequestToSystem(IPacket packet, IApiSender sender)
+    {
+        var request = TriggerApiRequestToSystemRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+
+        var systemMsg = new SystemEchoRequest
+        {
+            Content = request.Query,
+            FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
+        };
+
+        var response = await sender.RequestToSystem(request.TargetServerId, CPacket.Of(systemMsg));
+        var systemReply = SystemEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
+
+        sender.Reply(CPacket.Of(new TriggerApiRequestToSystemReply
+        {
+            Response = systemReply.Content,
+            HandledByServerId = systemReply.HandledByServerId
+        }));
     }
 }

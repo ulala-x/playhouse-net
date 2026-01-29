@@ -24,6 +24,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     private readonly ApiDispatcher _dispatcher;
     private readonly RequestCache _requestCache;
     private readonly ServerAddressResolver _addressResolver;
+    private readonly SystemDispatcher _systemDispatcher;
 
     private bool _isRunning;
     private bool _disposed;
@@ -98,6 +99,10 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             serverInfoCenter,
             _communicator,
             TimeSpan.FromSeconds(3));
+
+        // SystemDispatcher 생성 및 핸들러 등록
+        _systemDispatcher = new SystemDispatcher(loggerFactory.CreateLogger<SystemDispatcher>());
+        systemController.Handles(_systemDispatcher);
     }
 
     /// <summary>
@@ -167,6 +172,17 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
                 return;
             }
             // TryComplete failed - RoutePacket still owns payload, will go to dispatcher
+        }
+
+        // 시스템 메시지 라우팅
+        if (packet.Header.IsSystem)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await _systemDispatcher.DispatchAsync(packet, ApiSender); }
+                finally { packet.Dispose(); }
+            });
+            return;
         }
 
         // API Handler로 라우팅

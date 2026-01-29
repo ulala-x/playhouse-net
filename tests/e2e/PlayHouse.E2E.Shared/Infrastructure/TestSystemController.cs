@@ -2,7 +2,9 @@
 
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.System;
+using PlayHouse.E2E.Shared.Proto;
 using PlayHouse.Runtime.ServerMesh.Discovery;
 
 namespace PlayHouse.E2E.Shared.Infrastructure;
@@ -21,22 +23,45 @@ public class TestSystemController : ISystemController
     private static readonly ConcurrentDictionary<string, ServerInfoEntry> _servers = new();
     private readonly TimeSpan _ttl;
 
+    // 시스템 메시지 수신 기록 (E2E 테스트 검증용)
+    private static readonly ConcurrentBag<SystemEchoRequest> _receivedSystemMessages = new();
+    private readonly string _serverId;
+
     /// <summary>
-    /// 새 TestSystemController 인스턴스를 생성합니다.
+    /// 수신된 시스템 메시지 목록을 반환합니다 (테스트용).
     /// </summary>
-    public TestSystemController() : this(TimeSpan.FromSeconds(30))
-    {
-    }
+    public static IReadOnlyList<SystemEchoRequest> ReceivedSystemMessages =>
+        _receivedSystemMessages.ToList();
+
+    /// <summary>
+    /// 수신된 시스템 메시지 기록을 초기화합니다 (테스트용).
+    /// </summary>
+    public static void ResetSystemMessages() => _receivedSystemMessages.Clear();
 
     /// <summary>
     /// 새 TestSystemController 인스턴스를 생성합니다.
     /// </summary>
-    /// <param name="ttl">서버 정보 TTL.</param>
-    public TestSystemController(TimeSpan ttl)
+    /// <param name="logger">로거 인스턴스 (DI를 통해 주입).</param>
+    public TestSystemController(ILogger<TestSystemController> logger)
     {
-        _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<TestSystemController>.Instance;
-        _ttl = ttl;
-        _logger.LogDebug("TestSystemController created with TTL={Ttl}", _ttl);
+        _logger = logger;
+        _serverId = "unknown";
+        _ttl = TimeSpan.FromSeconds(30);
+        _logger.LogDebug("TestSystemController created with ServerId={ServerId}, TTL={Ttl}", _serverId, _ttl);
+    }
+
+    /// <inheritdoc/>
+    public void Handles(ISystemHandlerRegister register)
+    {
+        
+        register.Add(SystemEchoRequest.Descriptor.Name, async (packet, sender) =>
+        {
+            var msg = SystemEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+            _receivedSystemMessages.Add(msg);
+            _logger.LogDebug("[System] Received SystemEchoRequest: Content={Content}, From={From}, HandledBy={HandledBy}",
+                msg.Content, msg.FromServerId, _serverId);
+            await Task.CompletedTask;
+        });
     }
 
     /// <inheritdoc/>

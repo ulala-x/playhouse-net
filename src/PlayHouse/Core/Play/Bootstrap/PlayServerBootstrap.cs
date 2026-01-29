@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Abstractions.System;
@@ -228,8 +229,8 @@ public sealed class PlayServerBootstrap
                 throw new InvalidOperationException("Actor type must be registered when using DefaultStageType. Use UseStage<TStage, TActor>().");
         }
 
-        // SystemController 인스턴스 생성
-        var systemController = Activator.CreateInstance(systemControllerType) as ISystemController
+        // SystemController 인스턴스 생성 (DI를 통해 의존성 주입)
+        var systemController = ActivatorUtilities.CreateInstance(serviceProvider, systemControllerType) as ISystemController
             ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
 
         var producer = new PlayProducer(_stageTypes, _actorTypes, serviceProvider);

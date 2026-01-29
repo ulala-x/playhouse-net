@@ -5,6 +5,13 @@ using PlayHouse.Runtime.ServerMesh.Discovery;
 namespace PlayHouse.Abstractions.System;
 
 /// <summary>
+/// 시스템 메시지 핸들러 델리게이트.
+/// </summary>
+/// <param name="packet">수신된 패킷.</param>
+/// <param name="sender">응답 및 메시지 전송용 sender.</param>
+public delegate Task SystemHandler(IPacket packet, ISender sender);
+
+/// <summary>
 /// 시스템 핸들러 등록 인터페이스.
 /// </summary>
 public interface ISystemHandlerRegister
@@ -12,9 +19,9 @@ public interface ISystemHandlerRegister
     /// <summary>
     /// 시스템 메시지 핸들러를 등록합니다.
     /// </summary>
-    /// <typeparam name="TMessage">Protobuf 메시지 타입.</typeparam>
+    /// <param name="msgId">메시지 ID.</param>
     /// <param name="handler">핸들러 함수.</param>
-    void Add<TMessage>(Func<TMessage, Task> handler) where TMessage : Google.Protobuf.IMessage, new();
+    void Add(string msgId, SystemHandler handler);
 }
 
 /// <summary>

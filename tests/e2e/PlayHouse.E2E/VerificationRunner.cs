@@ -40,6 +40,7 @@ public class VerificationRunner
         _verifiers.Add(new ApiToPlayVerifier(_serverContext));
         _verifiers.Add(new SelfConnectionVerifier(_serverContext));
         _verifiers.Add(new ServiceRoutingVerifier(_serverContext));
+        _verifiers.Add(new SystemMessageVerifier(_serverContext));
 
         // Phase 2: IStageSender Features (4 + 4 tests)
         _verifiers.Add(new AsyncBlockVerifier(_serverContext));

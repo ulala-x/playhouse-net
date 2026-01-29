@@ -44,6 +44,7 @@ internal sealed class ZmqPlaySocket : IPlaySocket
             obj.AccountId = 0;
             obj.Sid = 0;
             obj.IsReply = false;
+            obj.IsSystem = false;
             obj.PayloadSize = 0;
             return true;
         }
