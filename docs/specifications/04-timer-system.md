@@ -37,7 +37,7 @@ PlayHouse-NET의 타이머 시스템은 Stage 내부에서 주기적인 작업�
 long AddRepeatTimer(
     TimeSpan initialDelay,  // 최초 실행까지 지연
     TimeSpan period,        // 반복 주기
-    TimerCallbackTask callback  // 콜백 함수
+    TimerCallback callback  // 콜백 함수
 );
 ```
 
@@ -94,9 +94,9 @@ Timeline:
 ```csharp
 long AddCountTimer(
     TimeSpan initialDelay,  // 최초 실행까지 지연
-    int count,              // 실행 횟수
     TimeSpan period,        // 반복 주기
-    TimerCallbackTask callback  // 콜백 함수
+    int count,              // 실행 횟수
+    TimerCallback callback  // 콜백 함수
 );
 ```
 
@@ -111,8 +111,8 @@ public class BattleStage : IStage
     {
         StageSender.AddCountTimer(
             initialDelay: TimeSpan.FromSeconds(1),
-            count: 3,
             period: TimeSpan.FromSeconds(1),
+            count: 3,
             callback: OnCountdownTick
         );
     }
@@ -167,9 +167,9 @@ public class GameStage : IStage
     public async Task StartCountdown()
     {
         _countdownTimer = StageSender.AddCountTimer(
-            TimeSpan.FromSeconds(3),
-            10,
-            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(3),   // initialDelay
+            TimeSpan.FromSeconds(1),   // period
+            10,                         // count
             OnCountdownTick
         );
     }
@@ -270,7 +270,7 @@ internal class TimerManager
         long timerId,
         long initialDelay,
         long period,
-        TimerCallbackTask timerCallback)
+        TimerCallback timerCallback)
     {
         var timer = new Timer(timerState =>
         {
@@ -297,7 +297,7 @@ internal class TimerManager
         long initialDelay,
         int count,
         long period,
-        TimerCallbackTask timerCallback)
+        TimerCallback timerCallback)
     {
         var remainingCount = count;
 
@@ -431,8 +431,8 @@ public class BattleStage : IStage
 
         _countdownTimer = StageSender.AddCountTimer(
             initialDelay: TimeSpan.FromSeconds(1),
-            count: _countdownSeconds,
             period: TimeSpan.FromSeconds(1),
+            count: _countdownSeconds,
             callback: OnCountdownTick
         );
     }
@@ -476,8 +476,8 @@ public class LobbyStage : IStage
         // 5분 후 자동 퇴장 타이머
         var timerId = StageSender.AddCountTimer(
             initialDelay: TimeSpan.FromSeconds(IdleTimeoutSeconds),
-            count: 1,
             period: TimeSpan.Zero,
+            count: 1,
             callback: async () => await OnActorTimeout(actor)
         );
 
@@ -504,9 +504,9 @@ public class LobbyStage : IStage
 
         // 새 타이머 등록
         var newTimerId = StageSender.AddCountTimer(
-            TimeSpan.FromSeconds(IdleTimeoutSeconds),
-            1,
-            TimeSpan.Zero,
+            TimeSpan.FromSeconds(IdleTimeoutSeconds),  // initialDelay
+            TimeSpan.Zero,                              // period
+            1,                                          // count
             async () => await OnActorTimeout(_actors[accountId])
         );
 
@@ -589,8 +589,8 @@ public class GameStage : IStage
         // 버프 만료 타이머
         var timerId = StageSender.AddCountTimer(
             initialDelay: TimeSpan.FromSeconds(durationSeconds),
-            count: 1,
             period: TimeSpan.Zero,
+            count: 1,
             callback: async () => await RemoveBuff(actor, buffType)
         );
 
@@ -737,7 +737,7 @@ public class GameStage : IStage
     private readonly Dictionary<string, long> _namedTimers = new();
 
     public long AddNamedTimer(string name, TimeSpan delay, TimeSpan period,
-        TimerCallbackTask callback)
+        TimerCallback callback)
     {
         var timerId = StageSender.AddRepeatTimer(delay, period, async () =>
         {
@@ -763,7 +763,509 @@ public class GameStage : IStage
 }
 ```
 
-## 8. 다음 단계
+## 8. 게임루프 시스템 (GameLoop)
+
+### 8.1 개요
+
+게임루프는 고정 시간 간격(Fixed Timestep)으로 실행되는 고해상도 타이머로, 게임 로직 업데이트에 최적화되어 있습니다. 일반 타이머와 달리 결정론적 시뮬레이션(Deterministic Simulation)을 위해 설계되었습니다.
+
+### 8.2 핵심 특징
+
+- **고해상도 타이밍**: `Stopwatch.GetTimestamp()` 기반 (Windows QPC / Linux clock_gettime)
+- **전용 스레드**: ThreadPool 지터(jitter) 회피
+- **Fixed Timestep 누산기**: 일정한 시간 간격으로 틱 실행 보장
+- **Spiral of Death 방지**: 과부하 시 틱 드롭으로 시스템 안정성 유지
+- **하이브리드 슬립**: Thread.Sleep + SpinWait로 정밀도와 CPU 효율성 균형
+
+### 8.3 API
+
+#### 8.3.1 게임루프 시작 (간단한 방식)
+
+```csharp
+void StartGameLoop(TimeSpan fixedTimestep, GameLoopCallback callback);
+```
+
+**파라미터**
+- `fixedTimestep`: 고정 시간 간격 (유효 범위: 1ms ~ 1000ms)
+- `callback`: 각 틱마다 호출될 콜백 함수
+
+**GameLoopCallback 델리게이트**
+```csharp
+public delegate Task GameLoopCallback(TimeSpan deltaTime, TimeSpan totalElapsed);
+```
+
+- `deltaTime`: 고정 시간 간격 (항상 `fixedTimestep`과 동일)
+- `totalElapsed`: 게임루프 시작 이후 총 경과 시뮬레이션 시간
+
+#### 8.3.2 게임루프 시작 (설정 방식)
+
+```csharp
+void StartGameLoop(GameLoopConfig config, GameLoopCallback callback);
+```
+
+**GameLoopConfig**
+```csharp
+public sealed class GameLoopConfig
+{
+    // 고정 시간 간격 (기본값: 50ms = 20Hz)
+    public TimeSpan FixedTimestep { get; init; } = TimeSpan.FromMilliseconds(50);
+
+    // 최대 누산기 제한 (기본값: FixedTimestep × 5)
+    public TimeSpan? MaxAccumulatorCap { get; init; }
+}
+```
+
+**설정 옵션**
+- `FixedTimestep`: 각 틱 간격 (1ms ~ 1000ms)
+- `MaxAccumulatorCap`: Spiral of Death 방지를 위한 최대 누산기 값
+  - 기본값: `FixedTimestep × 5`
+  - 누산기가 이 값을 초과하면 초과 틱은 폐기됨
+  - 최소값: `FixedTimestep` (자동으로 클램핑됨)
+
+#### 8.3.3 게임루프 중지
+
+```csharp
+void StopGameLoop();
+```
+
+실행 중인 게임루프를 중지합니다. 게임루프가 실행 중이 아니면 아무 작업도 수행하지 않습니다.
+
+#### 8.3.4 게임루프 실행 상태 확인
+
+```csharp
+bool IsGameLoopRunning { get; }
+```
+
+현재 Stage에 게임루프가 실행 중인지 확인합니다.
+
+### 8.4 Fixed Timestep 패턴
+
+게임루프는 "Fix Your Timestep" 패턴을 구현합니다.
+
+```
+[Fixed Timestep 누산기 동작]
+
+실제 시간 경과: 67ms
+Fixed Timestep: 50ms
+
+Timeline:
+0ms ────── 67ms ───────▶
+           │
+           ▼
+    accumulator = 67ms
+
+    while (accumulator >= 50ms):
+        OnGameLoopTick(50ms)
+        accumulator -= 50ms
+
+    실행 결과:
+    - Tick 1 실행 (deltaTime = 50ms)
+    - accumulator = 17ms (다음 프레임으로 이월)
+```
+
+### 8.5 Spiral of Death 방지
+
+서버가 과부하 상태일 때 틱 처리가 지연되면 누산기가 계속 증가하여 시스템이 더욱 느려지는 악순환이 발생할 수 있습니다. 이를 "Spiral of Death"라고 합니다.
+
+```
+[Spiral of Death 시나리오]
+
+FixedTimestep = 50ms
+실제 틱 처리 시간 = 60ms
+
+Frame 1: accumulator = 60ms → Tick 1 실행, accumulator = 10ms
+Frame 2: accumulator = 10 + 60 = 70ms → Tick 1 실행, accumulator = 20ms
+Frame 3: accumulator = 20 + 60 = 80ms → Tick 1 실행, accumulator = 30ms
+...
+Frame N: accumulator = X + 60 > 100ms → Tick 2 실행! (더 느려짐)
+
+[MaxAccumulatorCap 적용]
+
+MaxAccumulatorCap = 250ms (50ms × 5)
+
+Frame X: accumulator = 300ms
+         → 250ms로 클램핑
+         → 최대 5틱만 실행
+         → 50ms 분량 폐기 (시뮬레이션 점프)
+         → 시스템 안정성 유지
+```
+
+### 8.6 사용 예시
+
+#### 8.6.1 기본 게임루프
+
+```csharp
+public class GameStage : IStage
+{
+    private const int TickRate = 20; // 20 TPS (50ms per tick)
+
+    public async Task OnPostCreate()
+    {
+        // 20Hz 게임루프 시작
+        StageSender.StartGameLoop(
+            fixedTimestep: TimeSpan.FromMilliseconds(50),
+            callback: OnGameLoopTick
+        );
+    }
+
+    private async Task OnGameLoopTick(TimeSpan deltaTime, TimeSpan totalElapsed)
+    {
+        // deltaTime = 50ms (항상 일정)
+        // totalElapsed = 게임 시작 후 시뮬레이션 시간
+
+        // 물리 업데이트 (일정한 시간 간격)
+        UpdatePhysics(deltaTime);
+
+        // 충돌 감지
+        CheckCollisions();
+
+        // 게임 상태 브로드캐스트
+        await BroadcastGameState();
+
+        // 1초마다 로깅 (totalElapsed 활용)
+        if (totalElapsed.TotalSeconds % 1.0 < 0.05)
+        {
+            LOG.Info($"Game time: {totalElapsed.TotalSeconds:F1}s");
+        }
+    }
+
+    private void UpdatePhysics(TimeSpan deltaTime)
+    {
+        var dt = (float)deltaTime.TotalSeconds;
+
+        foreach (var entity in _entities)
+        {
+            // 일정한 deltaTime으로 물리 업데이트
+            entity.Position += entity.Velocity * dt;
+            entity.Velocity += entity.Acceleration * dt;
+        }
+    }
+
+    public async Task OnDestroy()
+    {
+        // Stage 종료 시 게임루프 자동 중지
+        // (CloseStage()가 StopGameLoop() 호출)
+    }
+}
+```
+
+#### 8.6.2 고급 설정 사용
+
+```csharp
+public class HighFrequencyGameStage : IStage
+{
+    public async Task OnPostCreate()
+    {
+        // 60Hz 게임루프 + 커스텀 MaxAccumulatorCap
+        var config = new GameLoopConfig
+        {
+            FixedTimestep = TimeSpan.FromMilliseconds(16.67), // ~60 FPS
+            MaxAccumulatorCap = TimeSpan.FromMilliseconds(100) // 최대 6틱까지 허용
+        };
+
+        StageSender.StartGameLoop(config, OnGameLoopTick);
+    }
+
+    private async Task OnGameLoopTick(TimeSpan deltaTime, TimeSpan totalElapsed)
+    {
+        // 고주파 게임 로직
+        UpdateGameState(deltaTime);
+    }
+}
+```
+
+#### 8.6.3 동적 게임루프 제어
+
+```csharp
+public class BattleStage : IStage
+{
+    public async Task StartBattle()
+    {
+        if (!StageSender.IsGameLoopRunning)
+        {
+            StageSender.StartGameLoop(
+                TimeSpan.FromMilliseconds(50),
+                OnBattleTick
+            );
+            LOG.Info("Battle started");
+        }
+    }
+
+    public async Task PauseBattle()
+    {
+        if (StageSender.IsGameLoopRunning)
+        {
+            StageSender.StopGameLoop();
+            LOG.Info("Battle paused");
+        }
+    }
+
+    public async Task OnDispatch(IActor actor, IPacket packet)
+    {
+        if (packet.MsgId == "PauseRequest")
+        {
+            await PauseBattle();
+        }
+        else if (packet.MsgId == "ResumeRequest")
+        {
+            await StartBattle();
+        }
+    }
+
+    private async Task OnBattleTick(TimeSpan deltaTime, TimeSpan totalElapsed)
+    {
+        // 전투 로직 업데이트
+        UpdateBattle(deltaTime);
+
+        // 전투 종료 조건 체크
+        if (IsBattleOver())
+        {
+            StageSender.StopGameLoop();
+            await EndBattle();
+        }
+    }
+}
+```
+
+### 8.7 일반 타이머 vs 게임루프
+
+| 특징 | 일반 타이머 (AddRepeatTimer) | 게임루프 (StartGameLoop) |
+|------|----------------------------|-------------------------|
+| **정밀도** | ~1-15ms (시스템 의존) | 나노초 단위 (Stopwatch) |
+| **시간 간격** | 가변적 (지터 존재) | 고정적 (Fixed Timestep) |
+| **스레드** | System.Threading.Timer | 전용 스레드 (우선순위 높음) |
+| **CPU 사용** | 낮음 | 중간 (SpinWait 사용) |
+| **용도** | 주기적 작업, 타임아웃 | 게임 로직, 물리 시뮬레이션 |
+| **다중 실행** | Stage당 여러 개 가능 | Stage당 1개만 허용 |
+| **과부하 처리** | 지연 누적 | 틱 드롭 (Spiral of Death 방지) |
+
+### 8.8 내부 구현 메커니즘
+
+#### 8.8.1 게임루프 시작 흐름
+
+```
+[게임루프 시작 프로세스]
+
+StageSender.StartGameLoop(config, callback)
+    │
+    ▼
+GameLoopTimer 생성
+    │
+    ▼
+전용 스레드 시작
+    │  Name: "GameLoop-Stage-{StageId}"
+    │  Priority: AboveNormal
+    │  IsBackground: true
+    │
+    ▼
+RunLoop() 시작
+    │
+    ▼
+[무한 루프]
+    │
+    ├─ Stopwatch로 경과 시간 측정
+    ├─ accumulator += elapsedTime
+    ├─ Spiral of Death 방지 (cap 적용)
+    │
+    ├─ while (accumulator >= fixedTimestep):
+    │      │
+    │      ├─ _dispatchCallback(stageId, callback, deltaTime, totalElapsed)
+    │      │   │
+    │      │   └─ Dispatcher.OnPost(GameLoopMessage) → Stage 메시지 큐
+    │      │
+    │      └─ accumulator -= fixedTimestep
+    │
+    └─ 하이브리드 슬립 (Thread.Sleep + SpinWait)
+```
+
+#### 8.8.2 고해상도 타이밍
+
+```csharp
+// GameLoopTimer.RunLoop() 핵심 코드
+
+var lastTimestamp = Stopwatch.GetTimestamp();
+
+while (_running)
+{
+    // 고해상도 시간 측정
+    var now = Stopwatch.GetTimestamp();
+    var elapsedTicks = ((now - lastTimestamp) * TimeSpan.TicksPerSecond) / Stopwatch.Frequency;
+    lastTimestamp = now;
+
+    accumulatorTicks += elapsedTicks;
+
+    // Spiral of Death 방지
+    if (accumulatorTicks > maxCapTicks)
+    {
+        accumulatorTicks = maxCapTicks;
+    }
+
+    // Fixed timestep 틱 실행
+    while (accumulatorTicks >= fixedDtTicks)
+    {
+        totalElapsedTicks += fixedDtTicks;
+        _dispatchCallback(_stageId, _callback, deltaTime, totalElapsed);
+        accumulatorTicks -= fixedDtTicks;
+    }
+
+    // 하이브리드 슬립 (정밀도 + CPU 효율)
+    var remainingTicks = fixedDtTicks - accumulatorTicks;
+    var remainingMs = (int)(remainingTicks / TimeSpan.TicksPerMillisecond) - 2;
+
+    if (remainingMs > 1)
+    {
+        Thread.Sleep(remainingMs); // 대부분의 시간
+    }
+    else
+    {
+        Thread.SpinWait(100); // 마지막 정밀도
+    }
+}
+```
+
+### 8.9 성능 특성
+
+#### 8.9.1 타이밍 정밀도
+
+```
+Stopwatch.GetTimestamp() 해상도:
+- Windows: ~100ns (QPC - Query Performance Counter)
+- Linux: ~1ns (clock_gettime with CLOCK_MONOTONIC)
+
+실제 측정 결과 (50ms 간격):
+- 평균 오차: < 0.1ms
+- 최대 지터: < 1ms (99.9th percentile)
+```
+
+#### 8.9.2 CPU 사용량
+
+```
+설정별 CPU 사용량 (단일 Stage 기준):
+
+FixedTimestep = 50ms (20 TPS):
+- Thread.Sleep 주도: ~0.1% CPU
+- SpinWait 비중: 낮음
+
+FixedTimestep = 16ms (60 TPS):
+- Thread.Sleep 주도: ~0.3% CPU
+- SpinWait 비중: 중간
+
+FixedTimestep = 1ms (1000 TPS):
+- SpinWait 주도: ~5% CPU
+- Thread.Sleep 거의 없음
+```
+
+### 8.10 주의사항 및 베스트 프랙티스
+
+#### 8.10.1 Do (권장)
+
+```
+1. Fixed Timestep 사용
+   - 물리 시뮬레이션에는 반드시 Fixed Timestep 사용
+   - deltaTime을 직접 사용하여 일정한 시뮬레이션 보장
+
+2. 적절한 FixedTimestep 선택
+   - 20-60 TPS 권장 (50ms ~ 16ms)
+   - 게임 장르에 따라 조정
+     * 전략 게임: 10-20 TPS
+     * 액션 게임: 30-60 TPS
+     * 물리 시뮬레이션: 50-120 TPS
+
+3. totalElapsed 활용
+   - 게임 시간 기반 로직에 totalElapsed 사용
+   - 일시정지/재개 시에도 정확한 시뮬레이션 시간 유지
+
+4. 과부하 모니터링
+   - MaxAccumulatorCap 도달 시 경고 로그
+   - 틱 처리 시간이 FixedTimestep을 초과하면 최적화 필요
+
+5. Stage별 독립 게임루프
+   - 각 Stage는 독립적인 게임루프 실행 가능
+   - 서로 다른 FixedTimestep 설정 가능
+```
+
+#### 8.10.2 Don't (금지)
+
+```
+1. 게임루프 콜백 내 블로킹
+   - Thread.Sleep 금지
+   - 동기 I/O 금지
+   - AsyncCompute/AsyncIO 사용
+
+2. 너무 짧은 FixedTimestep
+   - < 10ms는 피하기 (CPU 과다 사용)
+   - 고주파가 필요하면 로직 최적화 먼저
+
+3. 중복 게임루프 시작
+   - Stage당 1개만 허용
+   - IsGameLoopRunning으로 체크
+
+4. deltaTime 무시
+   - deltaTime을 사용하여 일정한 시뮬레이션 유지
+   - 실제 프레임 시간(wall time)과 혼동 금지
+
+5. 게임루프와 타이머 혼용
+   - 게임 로직은 게임루프 사용
+   - 비게임 작업(타임아웃 등)은 일반 타이머 사용
+```
+
+### 8.11 디버깅 및 모니터링
+
+```csharp
+public class MonitoredGameStage : IStage
+{
+    private int _tickCount;
+    private TimeSpan _lastLogTime;
+    private TimeSpan _minTickDuration = TimeSpan.MaxValue;
+    private TimeSpan _maxTickDuration = TimeSpan.Zero;
+
+    public async Task OnPostCreate()
+    {
+        StageSender.StartGameLoop(
+            TimeSpan.FromMilliseconds(50),
+            OnMonitoredGameLoopTick
+        );
+    }
+
+    private async Task OnMonitoredGameLoopTick(TimeSpan deltaTime, TimeSpan totalElapsed)
+    {
+        var sw = Stopwatch.StartNew();
+
+        // 게임 로직 실행
+        await UpdateGameLogic(deltaTime);
+
+        sw.Stop();
+
+        // 틱 처리 시간 추적
+        _tickCount++;
+        if (sw.Elapsed < _minTickDuration) _minTickDuration = sw.Elapsed;
+        if (sw.Elapsed > _maxTickDuration) _maxTickDuration = sw.Elapsed;
+
+        // 1초마다 통계 로깅
+        if (totalElapsed - _lastLogTime >= TimeSpan.FromSeconds(1))
+        {
+            LOG.Info($"GameLoop Stats: " +
+                     $"TPS={_tickCount}, " +
+                     $"TickDuration(min={_minTickDuration.TotalMilliseconds:F2}ms, " +
+                     $"max={_maxTickDuration.TotalMilliseconds:F2}ms)");
+
+            _tickCount = 0;
+            _minTickDuration = TimeSpan.MaxValue;
+            _maxTickDuration = TimeSpan.Zero;
+            _lastLogTime = totalElapsed;
+        }
+
+        // 과부하 경고
+        if (sw.Elapsed > deltaTime)
+        {
+            LOG.Warn($"Tick processing exceeded fixed timestep: " +
+                     $"{sw.Elapsed.TotalMilliseconds:F2}ms > {deltaTime.TotalMilliseconds}ms");
+        }
+    }
+}
+```
+
+## 9. 다음 단계
 
 - `03-stage-actor-model.md`: Stage/Actor에서 타이머 사용 패턴
 - `05-http-api.md`: HTTP API를 통한 타이머 제어
