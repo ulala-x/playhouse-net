@@ -6,6 +6,7 @@ using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
 using PlayHouse.Core.Shared.TaskPool;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 
@@ -51,6 +52,7 @@ internal sealed class XStageSender : XSender, IStageSender
     public XStageSender(
         IClientCommunicator communicator,
         RequestCache requestCache,
+        IServerInfoCenter serverInfoCenter,
         ushort serviceId,
         string serverId,
         long stageId,
@@ -58,7 +60,7 @@ internal sealed class XStageSender : XSender, IStageSender
         IReplyPacketRegistry replyPacketRegistry,
         IClientReplyHandler? clientReplyHandler = null,
         int requestTimeoutMs = 30000)
-        : base(communicator, requestCache, serviceId, serverId, requestTimeoutMs)
+        : base(communicator, requestCache, serverInfoCenter, serviceId, serverId, requestTimeoutMs)
     {
         StageId = stageId;
         _dispatcher = dispatcher;

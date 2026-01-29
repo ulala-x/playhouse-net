@@ -37,6 +37,14 @@ public interface IServerInfoCenter
     XServerInfo? GetServerByService(ushort serviceId);
 
     /// <summary>
+    /// 서비스 타입별로 서버를 조회합니다.
+    /// </summary>
+    /// <param name="serviceId">서비스 ID (1 = Play, 2 = API).</param>
+    /// <param name="policy">서버 선택 정책.</param>
+    /// <returns>선택된 서버 정보 또는 null.</returns>
+    XServerInfo? GetServerByService(ushort serviceId, ServerSelectionPolicy policy);
+
+    /// <summary>
     /// 서비스 타입별 모든 서버 목록을 조회합니다.
     /// </summary>
     /// <param name="serviceId">서비스 ID (1 = Play, 2 = API).</param>

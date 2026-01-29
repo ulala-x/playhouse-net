@@ -95,6 +95,17 @@ public sealed class XServerInfoCenter : IServerInfoCenter
     /// <returns>다음 서버 정보 또는 null.</returns>
     public XServerInfo? GetServerByService(ushort serviceId)
     {
+        return GetServerByService(serviceId, ServerSelectionPolicy.RoundRobin);
+    }
+
+    /// <summary>
+    /// 서비스 타입별로 서버를 조회합니다.
+    /// </summary>
+    /// <param name="serviceId">서비스 ID.</param>
+    /// <param name="policy">서버 선택 정책.</param>
+    /// <returns>선택된 서버 정보 또는 null.</returns>
+    public XServerInfo? GetServerByService(ushort serviceId, ServerSelectionPolicy policy)
+    {
         var servers = GetServerListByService(serviceId)
             .Where(s => s.State == ServerState.Running)
             .ToList();
@@ -102,8 +113,24 @@ public sealed class XServerInfoCenter : IServerInfoCenter
         if (servers.Count == 0)
             return null;
 
+        return policy switch
+        {
+            ServerSelectionPolicy.RoundRobin => SelectRoundRobin(serviceId, servers),
+            ServerSelectionPolicy.Weighted => SelectWeighted(servers),
+            _ => SelectRoundRobin(serviceId, servers)
+        };
+    }
+
+    private XServerInfo SelectRoundRobin(ushort serviceId, List<XServerInfo> servers)
+    {
         var index = _roundRobinIndex.AddOrUpdate(serviceId, 0, (_, i) => (i + 1) % servers.Count);
         return servers[index % servers.Count];
+    }
+
+    private XServerInfo SelectWeighted(List<XServerInfo> servers)
+    {
+        // 가중치 내림차순으로 가장 높은 Weight 서버 선택
+        return servers.MaxBy(s => s.Weight) ?? servers[0];
     }
 
     /// <summary>

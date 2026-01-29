@@ -4,6 +4,7 @@ using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.Proto;
 
 namespace PlayHouse.Core.Api;
@@ -26,14 +27,16 @@ internal class ApiSender : XSender, IApiSender
     /// </summary>
     /// <param name="communicator">The communicator for sending messages.</param>
     /// <param name="requestCache">The request cache for tracking pending requests.</param>
+    /// <param name="serverInfoCenter">Server information center for service discovery.</param>
     /// <param name="serviceId">The service ID of this API server.</param>
     /// <param name="nid">The NID of this API server.</param>
     public ApiSender(
         IClientCommunicator communicator,
         RequestCache requestCache,
+        IServerInfoCenter serverInfoCenter,
         ushort serviceId,
         string nid)
-        : base(communicator, requestCache, serviceId, nid)
+        : base(communicator, requestCache, serverInfoCenter, serviceId, nid)
     {
     }
 

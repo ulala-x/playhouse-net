@@ -62,12 +62,20 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _communicator = new PlayCommunicator(serverConfig);
         _communicator.Bind(this);
 
+        // ServerInfoCenter 생성 (ApiDispatcher와 ApiSender에서 사용)
+        var serverInfoCenter = new XServerInfoCenter();
+        var myServerInfo = new XServerInfo(
+            _options.ServiceId,
+            _options.ServerId,
+            _options.BindEndpoint);
+
         // ApiDispatcher 생성 (외부 ServiceProvider 사용)
         _dispatcher = new ApiDispatcher(
             _options.ServiceId,
             _options.ServerId,
             _requestCache,
             _communicator,
+            serverInfoCenter,
             serviceProvider,
             loggerFactory);
 
@@ -75,16 +83,11 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         ApiSender = new ApiSender(
             _communicator,
             _requestCache,
+            serverInfoCenter,
             _options.ServiceId,
             _options.ServerId);
 
         // ServerAddressResolver 생성
-        var serverInfoCenter = new XServerInfoCenter();
-        var myServerInfo = new XServerInfo(
-            _options.ServiceId,
-            _options.ServerId,
-            _options.BindEndpoint);
-
         _addressResolver = new ServerAddressResolver(
             myServerInfo,
             systemController,

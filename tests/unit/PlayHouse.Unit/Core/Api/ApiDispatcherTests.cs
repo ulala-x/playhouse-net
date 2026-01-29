@@ -10,6 +10,7 @@ using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Api;
 using PlayHouse.Core.Messaging;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.ServerMesh.Message;
 using PlayHouse.Runtime.Proto;
 using Xunit;
@@ -72,11 +73,14 @@ public class ApiDispatcherTests : IDisposable
         services.AddTransient<IApiController, TestApiController>();
         var serviceProvider = services.BuildServiceProvider();
 
+        var serverInfoCenter = Substitute.For<IServerInfoCenter>();
+
         _dispatcher = new ApiDispatcher(
             serviceId: 1,
             nid: "1:1",
             _requestCache,
             _communicator,
+            serverInfoCenter,
             serviceProvider,
             NullLoggerFactory.Instance);
     }
@@ -153,11 +157,14 @@ public class ApiDispatcherTests : IDisposable
         services.AddTransient<IApiController, TestApiController>();
         var serviceProvider = services.BuildServiceProvider();
 
+        var serverInfoCenter = Substitute.For<IServerInfoCenter>();
+
         using var dispatcher = new ApiDispatcher(
             serviceId: 1,
             nid: "1:1",
             _requestCache,
             _communicator,
+            serverInfoCenter,
             serviceProvider,
             NullLoggerFactory.Instance);
 
@@ -190,7 +197,8 @@ public class ApiDispatcherTests : IDisposable
     {
         // Given (전제조건)
         var services = new ServiceCollection().BuildServiceProvider();
-        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, services, NullLoggerFactory.Instance);
+        var serverInfoCenter = Substitute.For<IServerInfoCenter>();
+        using var dispatcher = new ApiDispatcher(1, "1:1", _requestCache, _communicator, serverInfoCenter, services, NullLoggerFactory.Instance);
 
         // When (행동)
         var action = () =>

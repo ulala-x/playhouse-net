@@ -33,12 +33,13 @@ public class VerificationRunner
         _verifiers.Add(new ActorSenderVerifier(_serverContext));
         _verifiers.Add(new StageCallbackVerifier(_serverContext));
 
-        // Phase 3-3: Server Communication Verifiers (20 tests)
+        // Phase 3-3: Server Communication Verifiers (24 tests)
         _verifiers.Add(new StageToStageVerifier(_serverContext));
         _verifiers.Add(new StageToApiVerifier(_serverContext));
         _verifiers.Add(new ApiToApiVerifier(_serverContext));
         _verifiers.Add(new ApiToPlayVerifier(_serverContext));
         _verifiers.Add(new SelfConnectionVerifier(_serverContext));
+        _verifiers.Add(new ServiceRoutingVerifier(_serverContext));
 
         // Phase 2: IStageSender Features (4 + 4 tests)
         _verifiers.Add(new AsyncBlockVerifier(_serverContext));

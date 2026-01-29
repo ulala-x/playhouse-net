@@ -5,6 +5,7 @@ using PlayHouse.Core.Messaging;
 using PlayHouse.Core.Play.Base;
 using PlayHouse.Core.Shared;
 using PlayHouse.Runtime.ServerMesh.Communicator;
+using PlayHouse.Runtime.ServerMesh.Discovery;
 using PlayHouse.Runtime.Proto;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Play;
@@ -99,10 +100,12 @@ public class BaseStageTests
         var requestCache = new RequestCache(NullLogger<RequestCache>.Instance);
         var dispatcher = Substitute.For<IPlayDispatcher>();
         var replyRegistry = Substitute.For<IReplyPacketRegistry>();
+        var serverInfoCenter = Substitute.For<IServerInfoCenter>();
 
         var stageSender = new XStageSender(
             communicator,
             requestCache,
+            serverInfoCenter,
             serviceId: 1,
             serverId: "1",
             stageId: 100,
