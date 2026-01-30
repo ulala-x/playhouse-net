@@ -165,8 +165,7 @@ var playServer = new PlayServerBootstrap()
         options.BindEndpoint = "tcp://0.0.0.0:5000";    // ZMQ 서버 간 통신
         options.ClientEndpoint = "tcp://0.0.0.0:6000";  // 클라이언트 TCP
     })
-    .UseStage<GameRoomStage>("GameRoom")  // Stage 타입 등록
-    .UseActor<PlayerActor>()              // Actor 타입 등록
+    .UseStage<GameRoomStage, PlayerActor>("GameRoom")  // Stage/Actor 타입 등록
     .Build();
 
 await playServer.StartAsync();
@@ -185,7 +184,9 @@ var apiServer = new ApiServerBootstrap()
         options.ServerId = 1;
         options.BindEndpoint = "tcp://0.0.0.0:5100";
     })
-    .UseController<GameApiController>()
+    .UseSystemController<GameSystemController>()
+    .UseServiceProvider(serviceProvider)
+    .UseLoggerFactory(loggerFactory)
     .Build();
 
 // ASP.NET Core DI에 등록
@@ -355,8 +356,7 @@ public class PlayHouseE2ETests : IAsyncLifetime
                 options.BindEndpoint = "tcp://127.0.0.1:15000";
                 options.ClientEndpoint = "tcp://127.0.0.1:16000";
             })
-            .UseStage<TestGameStage>("TestGame")
-            .UseActor<TestPlayerActor>()
+            .UseStage<TestGameStage, TestPlayerActor>("TestGame")
             .Build();
 
         await _playServer.StartAsync();

@@ -2,30 +2,7 @@
 
 ## 1. PlayHouse-NET 프레임워크 소개
 
-### 1.1 기존 PlayHouse와의 차이점
-
-기존 PlayHouse는 Session, API, Play 세 개의 서버로 구성되었으나, PlayHouse-NET은 단일 서버 구조로 통합되어 복잡도를 대폭 감소시켰습니다.
-
-```
-[기존 PlayHouse - 3-Tier Architecture]
-Session Server → API Server → Play Server
-(ZMQ Full-Mesh + Redis Discovery)
-
-[PlayHouse-NET - Single Server Framework]
-단일 프로세스 내 통합 (HTTP API + Socket Server + Core Engine)
-```
-
-**구조 단순화의 이점**:
-
-| 측면 | 이점 |
-|------|------|
-| **배포** | 단일 프로세스 배포, 설정 간소화 |
-| **개발** | 서버 간 통신 로직 불필요, 디버깅 용이 |
-| **운영** | 모니터링 포인트 감소, 장애 지점 최소화 |
-| **성능** | 네트워크 홉 제거, 지연 시간 감소 |
-| **비용** | Redis 불필요, 인프라 비용 절감 |
-
-### 1.2 프레임워크 핵심 기능
+### 1.1 프레임워크 핵심 기능
 
 PlayHouse-NET 프레임워크는 다음 기능을 제공합니다:
 
@@ -36,7 +13,7 @@ PlayHouse-NET 프레임워크는 다음 기능을 제공합니다:
 - **세션 관리**: 클라이언트 연결 및 인증 상태 관리
 - **HTTP API 통합**: ASP.NET Core 기반 REST API와 소켓 서버 통합
 
-### 1.3 기술 스택
+### 1.2 기술 스택
 
 #### 런타임 및 언어
 

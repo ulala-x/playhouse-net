@@ -2,7 +2,7 @@
 
 ## 1. 개요
 
-PlayHouse-NET의 패킷 구조는 기존 PlayHouse의 구조를 기반으로 하되, **서버 간 라우팅 정보를 제거**하여 단순화되었습니다. 단일 Room 서버 구조이므로 라우팅이 불필요하며, 클라이언트-서버 통신에 최적화되었습니다.
+PlayHouse-NET의 패킷 구조는 **단일 Room 서버 구조**에 최적화되어 있습니다. 서버 간 라우팅이 불필요하므로 클라이언트-서버 통신에 필요한 최소한의 정보만 포함합니다.
 
 ### 1.1 설계 원칙
 
@@ -292,7 +292,7 @@ public sealed class BinaryPayload : IPayload
 
 ## 5. SimplePacket 구현 패턴 (권장)
 
-기존 playhouse-sample-net의 검증된 패턴입니다. **Protobuf 메시지**를 **IPacket**으로 래핑하여 타입 안전한 직렬화/역직렬화를 제공합니다.
+권장 패턴입니다. **Protobuf 메시지**를 **IPacket**으로 래핑하여 타입 안전한 직렬화/역직렬화를 제공합니다.
 
 ### 5.1 SimplePacket 구현
 

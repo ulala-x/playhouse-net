@@ -1,6 +1,7 @@
 # 메시지 송수신 (Messaging)
 
-클라이언트-서버 간 메시지 통신 패턴을 상세히 다룹니다.
+> 클라이언트-서버 간 메시지 통신 패턴을 상세히 다룹니다.
+> 전체 구조는 [개요](./overview.md)를, Stage/Actor 모델은 [Stage/Actor 개념](./stage-actor.md)을 참고하세요.
 
 ## 목차
 
@@ -8,9 +9,10 @@
 2. [Send (Fire-and-Forget)](#send-fire-and-forget)
 3. [Request/RequestAsync (요청-응답)](#requestrequestasync-요청-응답)
 4. [Push (서버 → 클라이언트)](#push-서버--클라이언트)
-5. [Proto 메시지 사용](#proto-메시지-사용)
-6. [에러 처리](#에러-처리)
-7. [고급 패턴](#고급-패턴)
+5. [서버 간 통신 (Sender)](#서버-간-통신-sender)
+6. [Proto 메시지 사용](#proto-메시지-사용)
+7. [에러 처리](#에러-처리)
+8. [고급 패턴](#고급-패턴)
 
 ## 메시지 패턴 개요
 
@@ -18,16 +20,16 @@ PlayHouse는 세 가지 메시지 패턴을 제공합니다.
 
 | 패턴 | 방향 | 응답 | 용도 |
 |------|------|------|------|
-| **Send** | Client → Server | ❌ 없음 | 상태 업데이트, 로그 전송 등 |
-| **Request** | Client → Server | ✅ 있음 | 데이터 조회, 명령 실행 등 |
-| **Push** | Server → Client | ❌ 없음 | 이벤트 알림, 브로드캐스트 등 |
+| **Send** | Client → Server | ❌ 없음 | 이동 입력, 상태 업데이트 등 |
+| **Request** | Client → Server | ✅ Reply | 데이터 조회, 명령 실행 등 |
+| **Push** | Server → Client | - | 이벤트 알림, 브로드캐스트 등 |
 
 ### 메시지 흐름
 
 ```
 [Send 패턴]
 Client ---Send---> Server
-(응답 없음)
+(응답 없음, 서버는 필요시 Push로 별도 알림 가능)
 
 [Request 패턴]
 Client ---Request---> Server
@@ -35,7 +37,7 @@ Client <---Reply----- Server
 
 [Push 패턴]
 Client <---Push------ Server
-(요청 없음)
+(클라이언트 요청 없이 서버가 보냄)
 ```
 
 ## Send (Fire-and-Forget)
@@ -330,6 +332,60 @@ while (running)
 - **이벤트 알림**: 게임 이벤트 발생 알림
 - **상태 변경**: 다른 플레이어의 상태 변경 알림
 - **브로드캐스트**: 전체 공지사항
+
+## 서버 간 통신 (Sender)
+
+PlayHouse의 강력한 기능 중 하나는 **Sender를 통한 손쉬운 서버 간 통신**입니다.
+
+### 통신 패턴 요약
+
+| 패턴 | 방향 | 메서드 |
+|------|------|--------|
+| **Play → API** | Stage에서 API Server로 | `RequestToApiService()`, `SendToApi()` |
+| **API → Play** | API Server에서 Stage로 | `SendToStage()`, `RequestToStage()` |
+| **Play → Play** | Stage 간 통신 | `SendToStage()`, `RequestToStage()` |
+
+### Stage에서 API Server로 요청
+
+```csharp
+// 랭킹 서비스로 요청-응답
+var response = await StageSender.RequestToApiService(
+    rankingServiceId,
+    CPacket.Of(new GetRankRequest { PlayerId = actor.ActorSender.AccountId })
+);
+var rank = GetRankResponse.Parser.ParseFrom(response.Payload.DataSpan);
+
+// 특정 API 서버로 단방향 전송
+StageSender.SendToApi(apiServerId, CPacket.Of(notification));
+```
+
+### API Server에서 Stage로 전송
+
+```csharp
+// 특정 Stage로 메시지 전송
+ApiSender.SendToStage(playServerId, stageId, CPacket.Of(notification));
+
+// 특정 Stage로 요청-응답
+var response = await ApiSender.RequestToStage(
+    playServerId, stageId, CPacket.Of(request)
+);
+```
+
+### Stage 간 통신
+
+```csharp
+// 다른 Play Server의 Stage로 단방향 전송
+StageSender.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
+
+// 다른 Stage로 요청-응답
+var response = await StageSender.RequestToStage(
+    targetPlayServerId, targetStageId, CPacket.Of(request)
+);
+```
+
+**이게 전부입니다** - 복잡한 네트워크 코드가 필요 없습니다!
+
+> 📖 **자세한 내용**: [서버 간 통신 가이드](../guides/server-communication.md)
 
 ## Proto 메시지 사용
 

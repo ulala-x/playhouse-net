@@ -4,30 +4,13 @@
 
 PlayHouse-NET은 **.NET 기본 소켓 라이브러리**와 **System.IO.Pipelines**를 사용하여 클라이언트와의 실시간 통신을 처리합니다.
 
-### 1.1 기존 playhouse-net 대비 변경점
-
-| 항목 | 기존 (playhouse-net) | 신규 (playhouse-net) |
-|------|----------------------|----------------------|
-| 소켓 라이브러리 | 외부 라이브러리 | **.NET 네이티브** (System.Net.Sockets) |
-| 버퍼 관리 | RingBuffer (직접 구현) | **System.IO.Pipelines** (고성능 파이프라인) |
-| WebSocket | 외부 라이브러리 | System.Net.WebSockets |
-| TLS/SSL | 외부 라이브러리 | System.Net.Security.SslStream |
-| 의존성 | 외부 의존성 필요 | 외부 의존성 없음 |
-| .NET 버전 | .NET 8.0 | **.NET 8.0 / 9.0 / 10.0** 멀티 타겟 |
-
-**변경 이유**:
-- 외부 라이브러리 의존성 제거로 유지보수 용이
-- **System.IO.Pipelines**로 Zero-Copy 고성능 버퍼 관리
-- .NET 8.0+ 네이티브 소켓 성능이 충분히 우수
-- 단일 서버 구조로 단순화
-
-### 1.2 지원 프로토콜
+### 1.1 지원 프로토콜
 
 - **TCP**: 고성능, 낮은 지연 (System.Net.Sockets.Socket)
 - **WebSocket**: 웹 브라우저 지원 (System.Net.WebSockets)
 - **HTTPS/WSS**: TLS 암호화 (System.Net.Security.SslStream)
 
-### 1.3 핵심 특징
+### 1.2 핵심 특징
 
 - **.NET 네이티브**: 외부 라이브러리 불필요 (NetCoreServer 제거)
 - **System.IO.Pipelines**: Zero-Copy 고성능 버퍼 관리
@@ -35,7 +18,7 @@ PlayHouse-NET은 **.NET 기본 소켓 라이브러리**와 **System.IO.Pipelines
 - **멀티 타겟**: .NET 8.0 / 9.0 / 10.0 지원
 - **크로스 플랫폼**: Windows, Linux, macOS
 
-### 1.4 System.IO.Pipelines 도입 이점
+### 1.3 System.IO.Pipelines 도입 이점
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
