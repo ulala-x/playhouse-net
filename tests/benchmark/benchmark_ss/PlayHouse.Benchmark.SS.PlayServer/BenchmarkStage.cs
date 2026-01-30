@@ -7,6 +7,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Benchmark.SS.Shared.Proto;
 using PlayHouse.Core.Shared;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.Benchmark.SS.PlayServer;
 
@@ -79,7 +80,7 @@ public class BenchmarkStage : IStage
 
         sw.Stop();
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerSSEchoReply 
+        actor.ActorSender.Reply(ProtoCPacketExtensions.OfProto(new TriggerSSEchoReply 
         { 
             Count = req.BatchSize,
             ElapsedTicks = sw.ElapsedTicks 
@@ -109,7 +110,7 @@ public class BenchmarkStage : IStage
             var start = Stopwatch.GetTimestamp();
             
             
-            StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data), (err, reply) => 
+            StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data), (err, reply) =>
             {
                 if (err == 0) ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, data.Length);
                 reply?.Dispose();

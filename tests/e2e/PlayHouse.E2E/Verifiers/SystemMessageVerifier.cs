@@ -3,6 +3,7 @@ using PlayHouse.Connector.Protocol;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Infrastructure;
 using PlayHouse.E2E.Shared.Proto;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Verifiers;
 
@@ -166,7 +167,7 @@ public class SystemMessageVerifier : VerifierBase
 
         var responsePacket = await ApiServer1.ApiSender!.RequestToApi(
             ServerContext.ApiServer1Id,
-            CPacket.Of(triggerRequest));
+            ProtoCPacketExtensions.OfProto(triggerRequest));
 
         // 메시지 전달 대기
         await Task.Delay(500);
@@ -201,7 +202,7 @@ public class SystemMessageVerifier : VerifierBase
 
         var responsePacket = await ApiServer1.ApiSender!.RequestToApi(
             ServerContext.ApiServer1Id,
-            CPacket.Of(triggerRequest));
+            ProtoCPacketExtensions.OfProto(triggerRequest));
 
         // 메시지 전달 대기
         await Task.Delay(500);
@@ -236,7 +237,7 @@ public class SystemMessageVerifier : VerifierBase
 
         var responsePacket = await ApiServer1.ApiSender!.RequestToApi(
             ServerContext.ApiServer1Id,
-            CPacket.Of(triggerRequest));
+            ProtoCPacketExtensions.OfProto(triggerRequest));
 
         // 메시지 전달 대기
         await Task.Delay(500);

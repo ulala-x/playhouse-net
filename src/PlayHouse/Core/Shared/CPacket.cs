@@ -36,12 +36,23 @@ public sealed class CPacket : IPacket
     }
 
     /// <summary>
-    /// Creates a packet from a Protobuf message.
+    /// Creates a packet from ReadOnlyMemory (zero-copy).
+    /// </summary>
+    /// <param name="msgId">Message identifier.</param>
+    /// <param name="data">Payload data.</param>
+    /// <returns>A new CPacket instance.</returns>
+    public static CPacket Of(string msgId, ReadOnlyMemory<byte> data)
+    {
+        return new CPacket(msgId, new MemoryPayload(data));
+    }
+
+    /// <summary>
+    /// Creates a packet from a Protobuf message (internal use only for PlayHouse internal protocols).
     /// </summary>
     /// <typeparam name="T">Protobuf message type.</typeparam>
     /// <param name="message">The message to wrap.</param>
     /// <returns>A new CPacket instance.</returns>
-    public static CPacket Of<T>(T message) where T : IMessage
+    internal static CPacket Of<T>(T message) where T : IMessage
     {
         var msgId = typeof(T).Name;
         return new CPacket(msgId, new ProtoPayload(message));
