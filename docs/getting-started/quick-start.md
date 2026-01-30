@@ -49,17 +49,17 @@ using PlayHouse.Abstractions.Play;
 
 public class MyStage : IStage
 {
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public MyStage(IStageSender stageSender)
+    public MyStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     // Stage 생성 시 호출
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     {
-        Console.WriteLine($"Stage {StageSender.StageId} created");
+        Console.WriteLine($"Stage {StageLink.StageId} created");
 
         // 성공 응답 반환
         var reply = Packet.Empty("CreateStageReply");
@@ -74,14 +74,14 @@ public class MyStage : IStage
 
     public Task OnDestroy()
     {
-        Console.WriteLine($"Stage {StageSender.StageId} destroyed");
+        Console.WriteLine($"Stage {StageLink.StageId} destroyed");
         return Task.CompletedTask;
     }
 
     // Actor가 Stage에 참가할 때 호출
     public Task<bool> OnJoinStage(IActor actor)
     {
-        Console.WriteLine($"Actor {actor.ActorSender.AccountId} joined");
+        Console.WriteLine($"Actor {actor.ActorLink.AccountId} joined");
         return Task.FromResult(true); // true: 참가 허용
     }
 
@@ -92,18 +92,18 @@ public class MyStage : IStage
 
     public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
     {
-        Console.WriteLine($"Actor {actor.ActorSender.AccountId} connection: {isConnected}");
+        Console.WriteLine($"Actor {actor.ActorLink.AccountId} connection: {isConnected}");
         return ValueTask.CompletedTask;
     }
 
     // 클라이언트로부터 메시지 수신 시 호출
     public Task OnDispatch(IActor actor, IPacket packet)
     {
-        Console.WriteLine($"Received {packet.MsgId} from {actor.ActorSender.AccountId}");
+        Console.WriteLine($"Received {packet.MsgId} from {actor.ActorLink.AccountId}");
 
         // Echo 응답
         var reply = Packet.Empty(packet.MsgId + "Reply");
-        actor.ActorSender.Reply(reply);
+        actor.ActorLink.Reply(reply);
 
         return Task.CompletedTask;
     }
@@ -126,11 +126,11 @@ using PlayHouse.Abstractions.Play;
 
 public class MyActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public MyActor(IActorSender actorSender)
+    public MyActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public Task OnCreate()
@@ -141,7 +141,7 @@ public class MyActor : IActor
 
     public Task OnDestroy()
     {
-        Console.WriteLine($"Actor {ActorSender.AccountId} destroyed");
+        Console.WriteLine($"Actor {ActorLink.AccountId} destroyed");
         return Task.CompletedTask;
     }
 
@@ -150,7 +150,7 @@ public class MyActor : IActor
     {
         // ⚠️ 중요: AccountId를 반드시 설정해야 함
         var accountId = Guid.NewGuid().ToString();
-        ActorSender.AccountId = accountId;
+        ActorLink.AccountId = accountId;
 
         Console.WriteLine($"Actor authenticated: {accountId}");
 
@@ -317,7 +317,7 @@ Authenticate → Actor.OnCreate → Actor.OnAuthenticate
     ↓
 [메시지 송수신]
     ↓
-Client Request → Stage.OnDispatch → Actor.ActorSender.Reply
+Client Request → Stage.OnDispatch → Actor.ActorLink.Reply
     ↓
 [연결 해제]
     ↓
@@ -333,14 +333,14 @@ Disconnect → Actor.OnDestroy
 
 ### "AccountId must not be empty after authentication"
 
-**원인:** `OnAuthenticate`에서 `ActorSender.AccountId`를 설정하지 않음
+**원인:** `OnAuthenticate`에서 `ActorLink.AccountId`를 설정하지 않음
 
 **해결:**
 ```csharp
 public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
 {
     // ✅ AccountId 설정 필수!
-    ActorSender.AccountId = "user-123";
+    ActorLink.AccountId = "user-123";
 
     return Task.FromResult<(bool, IPacket?)>((true, Packet.Empty("AuthReply")));
 }

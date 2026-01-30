@@ -64,13 +64,13 @@ internal sealed class ApiReflection
     /// Invokes the handler for a request with per-request controller instantiation.
     /// </summary>
     /// <param name="packet">The incoming packet.</param>
-    /// <param name="apiSender">The sender context.</param>
+    /// <param name="apiLink">The sender context.</param>
     /// <exception cref="PlayException">Thrown when no handler is registered for the message ID.</exception>
     /// <remarks>
     /// Creates a new IServiceScope and controller instance for each request,
     /// enabling proper Scoped dependency injection.
     /// </remarks>
-    public async Task CallMethodAsync(IPacket packet, IApiSender apiSender)
+    public async Task CallMethodAsync(IPacket packet, IApiLink apiLink)
     {
         var msgId = packet.MsgId;
 
@@ -88,7 +88,7 @@ internal sealed class ApiReflection
 
             try
             {
-                await descriptor.CompiledHandler(controller, packet, apiSender);
+                await descriptor.CompiledHandler(controller, packet, apiLink);
             }
             finally
             {

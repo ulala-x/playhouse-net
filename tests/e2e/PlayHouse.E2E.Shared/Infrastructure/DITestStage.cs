@@ -21,18 +21,18 @@ namespace PlayHouse.E2E.Shared.Infrastructure;
 public class DITestStage : IStage
 {
     private readonly ILogger<DITestStage> _logger;
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
     private readonly ITestService _testService;
 
     /// <summary>
     /// DI 컨테이너가 IStageSender, ITestService, ILogger를 모두 주입합니다.
     /// </summary>
-    public DITestStage(IStageSender stageSender, ITestService testService, ILogger<DITestStage> logger)
+    public DITestStage(IStageLink stageLink, ITestService testService, ILogger<DITestStage> logger)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _testService = testService;
         _logger = logger;
-        _logger.LogDebug("DITestStage created for StageId={StageId}", stageSender.StageId);
+        _logger.LogDebug("DITestStage created for StageId={StageId}", stageLink.StageId);
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -88,7 +88,7 @@ public class DITestStage : IStage
                 break;
 
             default:
-                actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
+                actor.ActorLink.Reply(CPacket.Empty(packet.MsgId + "Reply"));
                 break;
         }
 
@@ -110,7 +110,7 @@ public class DITestStage : IStage
             ProcessedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
 
-        actor.ActorSender.Reply(ProtoCPacketExtensions.OfProto(echoReply));
+        actor.ActorLink.Reply(ProtoCPacketExtensions.OfProto(echoReply));
     }
 
     private void HandleGetDiValue(IActor actor)
@@ -121,6 +121,6 @@ public class DITestStage : IStage
             Value = _testService.GetValue()
         };
 
-        actor.ActorSender.Reply(ProtoCPacketExtensions.OfProto(reply));
+        actor.ActorLink.Reply(ProtoCPacketExtensions.OfProto(reply));
     }
 }

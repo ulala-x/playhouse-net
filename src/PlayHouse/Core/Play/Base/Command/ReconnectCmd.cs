@@ -23,7 +23,7 @@ internal sealed class ReconnectCmd(ILogger logger) : IBaseStageCmd
         }
 
         // 세션 정보 업데이트
-        baseActor.ActorSender.Update(msg.SessionNid, msg.Sid, msg.ApiNid);
+        baseActor.ActorLink.Update(msg.SessionNid, msg.Sid, msg.ApiNid);
 
         // IStage.OnConnectionChanged(actor, true) 호출
         await baseStage.Stage.OnConnectionChanged(baseActor.Actor, true);

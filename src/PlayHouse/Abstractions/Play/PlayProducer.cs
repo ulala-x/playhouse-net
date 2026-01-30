@@ -26,8 +26,8 @@ public class PlayProducer
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, Type> _stageTypes = new();
     private readonly Dictionary<string, Type> _actorTypes = new();
-    private readonly Dictionary<string, Func<IStageSender, IStage>> _stageFactories = new();
-    private readonly Dictionary<string, Func<IActorSender, IActor>> _actorFactories = new();
+    private readonly Dictionary<string, Func<IStageLink, IStage>> _stageFactories = new();
+    private readonly Dictionary<string, Func<IActorLink, IActor>> _actorFactories = new();
 
     /// <summary>
     /// Constructor for Bootstrap pattern with Stage-specific Actor types and dependency injection support.
@@ -56,8 +56,8 @@ public class PlayProducer
     /// </exception>
     public void Register(
         string stageType,
-        Func<IStageSender, IStage> stageFactory,
-        Func<IActorSender, IActor> actorFactory)
+        Func<IStageLink, IStage> stageFactory,
+        Func<IActorLink, IActor> actorFactory)
     {
         if (!_stageFactories.TryAdd(stageType, stageFactory))
         {
@@ -71,7 +71,7 @@ public class PlayProducer
     /// Creates a new Stage instance for the specified stage type with its own DI scope.
     /// </summary>
     /// <param name="stageType">The stage type identifier.</param>
-    /// <param name="stageSender">The sender to inject into the Stage.</param>
+    /// <param name="stageLink">The sender to inject into the Stage.</param>
     /// <returns>A tuple containing the IStage instance and its IServiceScope.</returns>
     /// <exception cref="KeyNotFoundException">
     /// Thrown when the stageType is not registered.
@@ -80,13 +80,13 @@ public class PlayProducer
     /// The returned IServiceScope must be disposed when the Stage is destroyed
     /// to properly release Scoped dependencies.
     /// </remarks>
-    internal (IStage stage, IServiceScope scope) GetStageWithScope(string stageType, IStageSender stageSender)
+    internal (IStage stage, IServiceScope scope) GetStageWithScope(string stageType, IStageLink stageLink)
     {
         // Manual registration (factory-based) - still create scope for consistency
         if (_stageFactories.TryGetValue(stageType, out var factory))
         {
             var scope = _serviceProvider.CreateScope();
-            return (factory(stageSender), scope);
+            return (factory(stageLink), scope);
         }
 
         // Type-based registration with DI - create scope
@@ -98,7 +98,7 @@ public class PlayProducer
                 var stage = (IStage)ActivatorUtilities.CreateInstance(
                     scope.ServiceProvider,
                     type,
-                    stageSender);
+                    stageLink);
                 return (stage, scope);
             }
             catch
@@ -115,7 +115,7 @@ public class PlayProducer
     /// Creates a new Stage instance for the specified stage type.
     /// </summary>
     /// <param name="stageType">The stage type identifier.</param>
-    /// <param name="stageSender">The sender to inject into the Stage.</param>
+    /// <param name="stageLink">The sender to inject into the Stage.</param>
     /// <returns>A new IStage instance.</returns>
     /// <exception cref="KeyNotFoundException">
     /// Thrown when the stageType is not registered.
@@ -126,9 +126,9 @@ public class PlayProducer
     /// will not be properly disposed when the Stage is destroyed.
     /// </remarks>
     [Obsolete("Use GetStageWithScope for proper Scoped DI support.")]
-    internal IStage GetStage(string stageType, IStageSender stageSender)
+    internal IStage GetStage(string stageType, IStageLink stageLink)
     {
-        var (stage, scope) = GetStageWithScope(stageType, stageSender);
+        var (stage, scope) = GetStageWithScope(stageType, stageLink);
         // Note: scope is intentionally not tracked here for backward compatibility
         // This may cause Scoped dependency leaks
         return stage;
@@ -138,7 +138,7 @@ public class PlayProducer
     /// Creates a new Actor instance for the specified stage type with its own DI scope.
     /// </summary>
     /// <param name="stageType">The stage type identifier.</param>
-    /// <param name="actorSender">The sender to inject into the Actor.</param>
+    /// <param name="actorLink">The sender to inject into the Actor.</param>
     /// <returns>A tuple containing the IActor instance and its IServiceScope.</returns>
     /// <exception cref="KeyNotFoundException">
     /// Thrown when the stageType is not registered.
@@ -147,12 +147,12 @@ public class PlayProducer
     /// The returned IServiceScope must be disposed when the Actor is destroyed
     /// to properly release Scoped dependencies.
     /// </remarks>
-    internal (IActor actor, IServiceScope? scope) GetActorWithScope(string stageType, IActorSender actorSender)
+    internal (IActor actor, IServiceScope? scope) GetActorWithScope(string stageType, IActorLink actorLink)
     {
         // Manual registration (factory-based) - no scope needed
         if (_actorFactories.TryGetValue(stageType, out var factory))
         {
-            return (factory(actorSender), null);
+            return (factory(actorLink), null);
         }
 
         // Type-based registration with DI - create scope
@@ -164,7 +164,7 @@ public class PlayProducer
                 var actor = (IActor)ActivatorUtilities.CreateInstance(
                     scope.ServiceProvider,
                     actorType,
-                    actorSender);
+                    actorLink);
                 return (actor, scope);
             }
             catch
@@ -181,7 +181,7 @@ public class PlayProducer
     /// Creates a new Actor instance for the specified stage type.
     /// </summary>
     /// <param name="stageType">The stage type identifier.</param>
-    /// <param name="actorSender">The sender to inject into the Actor.</param>
+    /// <param name="actorLink">The sender to inject into the Actor.</param>
     /// <returns>A new IActor instance.</returns>
     /// <exception cref="KeyNotFoundException">
     /// Thrown when the stageType is not registered.
@@ -192,9 +192,9 @@ public class PlayProducer
     /// will not be properly disposed when the Actor leaves the Stage.
     /// </remarks>
     [Obsolete("Use GetActorWithScope for proper Scoped DI support.")]
-    internal IActor GetActor(string stageType, IActorSender actorSender)
+    internal IActor GetActor(string stageType, IActorLink actorLink)
     {
-        var (actor, scope) = GetActorWithScope(stageType, actorSender);
+        var (actor, scope) = GetActorWithScope(stageType, actorLink);
         // Note: scope is intentionally not tracked here for backward compatibility
         // This may cause Scoped dependency leaks
         return actor;

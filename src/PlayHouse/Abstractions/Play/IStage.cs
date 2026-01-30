@@ -32,7 +32,7 @@ public interface IStage
     /// <summary>
     /// Gets the sender for this Stage.
     /// </summary>
-    IStageSender StageSender { get; }
+    IStageLink StageLink { get; }
 
     #region Stage Lifecycle
 

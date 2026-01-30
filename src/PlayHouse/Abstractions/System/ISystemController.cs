@@ -8,8 +8,8 @@ namespace PlayHouse.Abstractions.System;
 /// 시스템 메시지 핸들러 델리게이트.
 /// </summary>
 /// <param name="packet">수신된 패킷.</param>
-/// <param name="sender">응답 및 메시지 전송용 sender.</param>
-public delegate Task SystemHandler(IPacket packet, ISender sender);
+/// <param name="link">응답 및 메시지 전송용 sender.</param>
+public delegate Task SystemHandler(IPacket packet, ILink link);
 
 /// <summary>
 /// 시스템 핸들러 등록 인터페이스.

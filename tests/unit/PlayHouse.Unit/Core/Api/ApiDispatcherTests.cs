@@ -45,7 +45,7 @@ public class ApiDispatcherTests : IDisposable
             register.Add("TestMessage", HandleTestMessage);
         }
 
-        private Task HandleTestMessage(IPacket packet, IApiSender sender)
+        private Task HandleTestMessage(IPacket packet, IApiLink link)
         {
             Interlocked.Increment(ref _callCount);
             lock (ReceivedMessages)

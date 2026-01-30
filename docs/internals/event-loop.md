@@ -282,7 +282,7 @@ Task.Run(async () =>  // async 메서드
 private async Task Dispatch(RoutePacket routePacket)
 {
     // 현재 패킷 컨텍스트 설정
-    StageSender.SetCurrentPacketHeader(routePacket.RouteHeader);
+    StageLink.SetCurrentPacketHeader(routePacket.RouteHeader);
 
     try
     {
@@ -310,13 +310,13 @@ private async Task Dispatch(RoutePacket routePacket)
     catch (Exception e)
     {
         // 에러 응답
-        StageSender.Reply((ushort)BaseErrorCode.SystemError);
+        StageLink.Reply((ushort)BaseErrorCode.SystemError);
         _log.Error(() => $"{e}");
     }
     finally
     {
         // 컨텍스트 정리
-        StageSender.ClearCurrentPacketHeader();
+        StageLink.ClearCurrentPacketHeader();
     }
 }
 ```
@@ -356,7 +356,7 @@ private async Task Dispatch(RoutePacket routePacket)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Stage 내부:
-    StageSender.AddRepeatTimer(interval, callback);
+    StageLink.AddRepeatTimer(interval, callback);
                     │
                     ▼
             ┌─────────────┐

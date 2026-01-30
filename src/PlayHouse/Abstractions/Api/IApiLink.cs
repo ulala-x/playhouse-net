@@ -20,13 +20,13 @@ public delegate void GetOrCreateStageCallback(ushort errorCode, GetOrCreateStage
 /// Provides functionality for API server handlers to send messages and manage stages.
 /// </summary>
 /// <remarks>
-/// IApiSender extends ISender with API-specific operations:
+/// IApiLink extends ILink with API-specific operations:
 /// - Stage creation and management
 /// - Authentication context
 ///
 /// This interface is injected into API handler methods.
 /// </remarks>
-public interface IApiSender : ISender
+public interface IApiLink : ILink
 {
     /// <summary>
     /// Gets whether the current message is a Request (expects a reply).

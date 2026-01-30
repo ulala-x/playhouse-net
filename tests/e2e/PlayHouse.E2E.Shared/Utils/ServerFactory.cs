@@ -243,8 +243,8 @@ public static class ServerFactory
             .AddApplicationPart(typeof(TestHttpApiController).Assembly);
 
         // ApiSender를 싱글톤으로 등록
-        var apiSender = apiServer.ApiSender ?? throw new InvalidOperationException("ApiServer.ApiSender is null");
-        builder.Services.AddSingleton<IApiSender>(apiSender);
+        var apiSender = apiServer.ApiLink ?? throw new InvalidOperationException("ApiServer.ApiSender is null");
+        builder.Services.AddSingleton<IApiLink>(apiSender);
 
         var app = builder.Build();
 

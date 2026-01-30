@@ -72,7 +72,7 @@ PlayHouse는 **극장 메타포**를 차용했습니다. 극장에서 연극이 
 public class ChatRoom : IStage
 {
     // 프레임워크가 자동으로 주입
-    public IStageSender StageSender { get; private set; } = null!;
+    public IStageLink StageLink { get; private set; } = null!;
 
     #region Stage Lifecycle
 
@@ -123,14 +123,14 @@ public class ChatRoom : IStage
     public Task OnDispatch(IActor actor, IPacket packet)
     {
         // 클라이언트 메시지 처리
-        actor.ActorSender.Reply(CPacket.Of(new ChatResponse { Message = "OK" }));
+        actor.ActorLink.Reply(CPacket.Of(new ChatResponse { Message = "OK" }));
         return Task.CompletedTask;
     }
 
     public Task OnDispatch(IPacket packet)
     {
         // 서버 간 메시지 처리 (다른 Stage나 API Server로부터)
-        StageSender.Reply(CPacket.Of(new AckResponse()));
+        StageLink.Reply(CPacket.Of(new AckResponse()));
         return Task.CompletedTask;
     }
 
@@ -144,7 +144,7 @@ public class ChatRoom : IStage
 public class ChatUser : IActor
 {
     // 프레임워크가 자동으로 주입
-    public IActorSender ActorSender { get; private set; } = null!;
+    public IActorLink ActorLink { get; private set; } = null!;
 
     // 플레이어별 상태
     public string Nickname { get; private set; } = "";
@@ -175,7 +175,7 @@ public class ChatUser : IActor
         if (ValidateToken(req.Token))
         {
             // 필수: AccountId 설정
-            ActorSender.AccountId = req.UserId;
+            ActorLink.AccountId = req.UserId;
             Nickname = req.Nickname;
 
             return Task.FromResult<(bool, IPacket?)>((
@@ -211,14 +211,14 @@ Stage에서 다른 서버와 손쉽게 통신할 수 있습니다.
 public async Task OnDispatch(IActor actor, IPacket packet)
 {
     // API Server로 랭킹 조회 (ServiceId 기반, 로드밸런싱)
-    var response = await StageSender.RequestToApiService(
+    var response = await StageLink.RequestToApiService(
         rankingServiceId,
-        CPacket.Of(new GetRankRequest { PlayerId = actor.ActorSender.AccountId })
+        CPacket.Of(new GetRankRequest { PlayerId = actor.ActorLink.AccountId })
     );
     var rank = GetRankResponse.Parser.ParseFrom(response.Payload.DataSpan);
 
     // 클라이언트에 응답
-    actor.ActorSender.Reply(CPacket.Of(new RankResponse { Rank = rank.Position }));
+    actor.ActorLink.Reply(CPacket.Of(new RankResponse { Rank = rank.Position }));
 }
 ```
 
@@ -228,7 +228,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 public Task OnDispatch(IActor actor, IPacket packet)
 {
     // 다른 Play Server의 Stage로 단방향 메시지
-    StageSender.SendToStage(
+    StageLink.SendToStage(
         targetPlayServerId,
         targetStageId,
         CPacket.Of(new CrossStageNotification { Message = "Hello!" })
@@ -244,14 +244,14 @@ public Task OnDispatch(IActor actor, IPacket packet)
 public async Task OnDispatch(IActor actor, IPacket packet)
 {
     // 다른 Stage로 요청 후 응답 대기
-    var response = await StageSender.RequestToStage(
+    var response = await StageLink.RequestToStage(
         targetPlayServerId,
         targetStageId,
         CPacket.Of(new StatusRequest())
     );
     var status = StatusResponse.Parser.ParseFrom(response.Payload.DataSpan);
 
-    actor.ActorSender.Reply(CPacket.Of(new ResultResponse { Status = status.Value }));
+    actor.ActorLink.Reply(CPacket.Of(new ResultResponse { Status = status.Value }));
 }
 ```
 
@@ -332,7 +332,7 @@ JoinStage 요청
 
 ## 핵심 API
 
-### IStageSender (Stage에서 사용)
+### IStageLink (Stage에서 사용)
 
 | 메서드 | 설명 |
 |--------|------|
@@ -344,7 +344,7 @@ JoinStage 요청
 | `AddRepeatTimer(delay, period, callback)` | 반복 타이머 등록 |
 | `CloseStage()` | Stage 종료 |
 
-### IActorSender (Actor에서 사용)
+### IActorLink (Actor에서 사용)
 
 | 메서드 | 설명 |
 |--------|------|

@@ -47,8 +47,8 @@ Stage/Actor 모델은 PlayHouse-NET의 핵심 프로그래밍 모델로, 게임 
 /// </remarks>
 public interface IStage
 {
-    /// <summary>Stage 제어를 위한 Sender 인터페이스</summary>
-    IStageSender StageSender { get; }
+    /// <summary>Stage 제어를 위한 Link 인터페이스</summary>
+    IStageLink StageLink { get; }
 
     // Stage 라이프사이클
     Task<(bool result, IPacket reply)> OnCreate(IPacket packet);
@@ -72,7 +72,7 @@ public interface IStage
 - **논리적 입장(OnJoinStage)과 물리적 연결(OnConnectionChanged) 분리**
   - `OnJoinStage` - Actor의 입장 허용 여부 결정
   - `OnConnectionChanged` - 연결/재연결/끊김 시마다 호출
-  - Actor 퇴장은 `StageSender.LeaveStage()` 호출로 처리
+  - Actor 퇴장은 `StageLink.LeaveStage()` 호출로 처리
 
 **주요 .NET 스타일 적용:**
 - `#nullable enable` - Nullable Reference Types 활성화
@@ -297,7 +297,7 @@ Task OnPostCreate();
 public async Task OnPostCreate()
 {
     // 주기 타이머 등록 (게임 틱)
-    StageSender.AddRepeatTimer(
+    StageLink.AddRepeatTimer(
         TimeSpan.FromSeconds(1), // 1초마다
         OnGameTick               // 콜백
     );
@@ -334,7 +334,7 @@ public async Task<bool> OnJoinStage(IActor actor)
     _actors.Add(actor);
 
     // 다른 플레이어에게 알림
-    var notify = CPacket.Of(new PlayerJoinedNotify { AccountId = actor.ActorSender.AccountId });
+    var notify = CPacket.Of(new PlayerJoinedNotify { AccountId = actor.ActorLink.AccountId });
     BroadcastToOthers(actor, notify);
 
     return true;  // 입장 허용
@@ -378,7 +378,7 @@ ValueTask OnConnectionChanged(IActor actor, bool isConnected);
 // 사용 예시
 public async ValueTask OnConnectionChanged(IActor actor, bool isConnected)
 {
-    var accountId = actor.ActorSender.AccountId;
+    var accountId = actor.ActorLink.AccountId;
 
     if (isConnected)
     {
@@ -387,7 +387,7 @@ public async ValueTask OnConnectionChanged(IActor actor, bool isConnected)
         // 재연결 타이머 취소
         if (_reconnectTimers.TryGetValue(accountId, out var timerId))
         {
-            StageSender.CancelTimer(timerId);
+            StageLink.CancelTimer(timerId);
             _reconnectTimers.Remove(accountId);
         }
 
@@ -399,7 +399,7 @@ public async ValueTask OnConnectionChanged(IActor actor, bool isConnected)
         LOG.Info($"Player disconnected: {accountId}");
 
         // 재연결 타이머 시작 (30초)
-        var timerId = StageSender.AddCountTimer(
+        var timerId = StageLink.AddCountTimer(
             TimeSpan.FromSeconds(30),
             TimeSpan.Zero,
             1,
@@ -459,12 +459,12 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 /// </summary>
 /// <remarks>
 /// Actor는 Stage 내에서만 존재하며, Stage 생명주기에 종속됩니다.
-/// OnAuthenticate에서 반드시 ActorSender.AccountId를 설정해야 합니다.
+/// OnAuthenticate에서 반드시 ActorLink.AccountId를 설정해야 합니다.
 /// </remarks>
 public interface IActor
 {
-    /// <summary>Actor 메시지 전송을 위한 Sender 인터페이스</summary>
-    IActorSender ActorSender { get; }
+    /// <summary>Actor 메시지 전송을 위한 Link 인터페이스</summary>
+    IActorLink ActorLink { get; }
 
     // 라이프사이클 메서드
     Task OnCreate();                                              // Actor 생성 시
@@ -479,7 +479,7 @@ public interface IActor
 **주요 특징:**
 - `OnAuthenticate` - 인증 성공/실패와 응답 패킷 반환
 - `OnPostAuthenticate` - 인증 완료 후 API 서버 호출 등 후처리
-- **중요**: `OnAuthenticate`에서 반드시 `ActorSender.AccountId`를 설정해야 함
+- **중요**: `OnAuthenticate`에서 반드시 `ActorLink.AccountId`를 설정해야 함
 
 ### 3.2 Actor 라이프사이클
 
@@ -658,12 +658,12 @@ public class GameActor : IActor
     public async Task OnCreate()
     {
         // DB에서 플레이어 상태 로드
-        _state = await LoadPlayerState(ActorSender.AccountId);
+        _state = await LoadPlayerState(ActorLink.AccountId);
 
         // 초기 인벤토리 설정
         _inventory = new Inventory(_state.Items);
 
-        LOG.Info($"Actor created: {ActorSender.AccountId}");
+        LOG.Info($"Actor created: {ActorLink.AccountId}");
     }
 }
 ```
@@ -681,7 +681,7 @@ public class GameActor : IActor
 /// - reply: 클라이언트에 보낼 응답 패킷 (옵션)
 /// </returns>
 /// <remarks>
-/// 중요: 이 메서드에서 ActorSender.AccountId를 반드시 설정해야 합니다.
+/// 중요: 이 메서드에서 ActorLink.AccountId를 반드시 설정해야 합니다.
 /// AccountId가 빈 문자열로 남으면 연결이 종료됩니다.
 /// </remarks>
 Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket);
@@ -698,9 +698,9 @@ public async Task<(bool, IPacket?)> OnAuthenticate(IPacket authPacket)
     }
 
     // AccountId 설정 (필수!)
-    ActorSender.AccountId = authReq.UserId;
+    ActorLink.AccountId = authReq.UserId;
 
-    LOG.Info($"Actor authenticated: {ActorSender.AccountId}");
+    LOG.Info($"Actor authenticated: {ActorLink.AccountId}");
 
     // 성공 응답
     return (true, CPacket.Of(new AuthReply { Success = true }));
@@ -728,7 +728,7 @@ public async Task OnDestroy()
     // 리소스 정리
     _inventory?.Dispose();
 
-    LOG.Info($"Actor destroyed: {ActorSender.AccountId}");
+    LOG.Info($"Actor destroyed: {ActorLink.AccountId}");
 }
 ```
 
@@ -777,7 +777,7 @@ Business Logic
     │ Broadcast to Others
     │
     ▼
-ActorSender.SendToClient(replyPacket)
+ActorLink.SendToClient(replyPacket)
     │
     ▼
 Client
@@ -821,9 +821,9 @@ Thread 3 ─┘
 - Race Condition 없음
 ```
 
-## 5. IStageSender 인터페이스
+## 5. IStageLink 인터페이스
 
-### 5.1 기본 ISender 인터페이스
+### 5.1 기본 ILink 인터페이스
 
 ```csharp
 #nullable enable
@@ -832,16 +832,16 @@ Thread 3 ─┘
 /// Provides base functionality for sending packets and replies.
 /// </summary>
 /// <remarks>
-/// ISender is the base interface for all sender types in the framework.
+/// ILink is the base interface for all link types in the framework.
 /// It provides methods for sending messages to API servers and Play stages,
 /// as well as replying to incoming requests.
 /// </remarks>
-public interface ISender
+public interface ILink
 {
-    /// <summary>Gets the server type of this sender.</summary>
+    /// <summary>Gets the server type of this link.</summary>
     ServerType ServerType { get; }
 
-    /// <summary>Gets the service ID of this sender.</summary>
+    /// <summary>Gets the service ID of this link.</summary>
     ushort ServiceId { get; }
 
     #region API Server Communication
@@ -953,21 +953,21 @@ public interface ISender
 - **SendToSystem/RequestToSystem**: 서버 간 시스템 메시지 전송 (ISystemController 핸들러로 처리)
 - **ServerSelectionPolicy**: 서버 선택 정책 (RoundRobin, Random 등)
 
-### 5.2 IStageSender 전체 인터페이스
+### 5.2 IStageLink 전체 인터페이스
 
 ```csharp
 /// <summary>
 /// Provides Stage-specific communication and management capabilities.
 /// </summary>
 /// <remarks>
-/// IStageSender extends ISender with:
+/// IStageLink extends ILink with:
 /// - Timer management (repeat, count, cancel)
 /// - Stage lifecycle management (close)
 /// - AsyncCompute/AsyncIO for safe external operations
 /// - Client messaging with StageId context
 /// - Game loop support with high-resolution timing
 /// </remarks>
-public interface IStageSender : ISender
+public interface IStageLink : ILink
 {
     /// <summary>Gets the unique identifier for this Stage.</summary>
     long StageId { get; }
@@ -1075,20 +1075,20 @@ public class GameStage : IStage
         BroadcastToOthers(actor, notification);
 
         // 요청자에게 응답
-        actor.ActorSender.Reply(CPacket.Empty("MoveReply"));
+        actor.ActorLink.Reply(CPacket.Empty("MoveReply"));
         return Task.CompletedTask;
     }
 
     // 브로드캐스트 헬퍼 메서드 (직접 구현 필요)
-    private void BroadcastToOthers(IActor sender, IPacket packet)
+    private void BroadcastToOthers(IActor link, IPacket packet)
     {
         foreach (var actor in _actors)
         {
-            if (actor.ActorSender.AccountId != sender.ActorSender.AccountId)
+            if (actor.ActorLink.AccountId != link.ActorLink.AccountId)
             {
-                StageSender.SendToClient(
-                    actor.ActorSender.SessionServerId,
-                    actor.ActorSender.SessionId,
+                StageLink.SendToClient(
+                    actor.ActorLink.SessionServerId,
+                    actor.ActorLink.SessionId,
                     packet);
             }
         }
@@ -1098,7 +1098,7 @@ public class GameStage : IStage
     public void NotifyLobby(string playServerId, long lobbyStageId, IPacket packet)
     {
         // SendToStage는 void (fire-and-forget)
-        StageSender.SendToStage(playServerId, lobbyStageId, packet);
+        StageLink.SendToStage(playServerId, lobbyStageId, packet);
     }
 }
 ```
@@ -1108,7 +1108,7 @@ public class GameStage : IStage
 - 브로드캐스트는 Stage에서 헬퍼 메서드로 직접 구현
 - `SendToStage`는 void 메서드 (응답이 필요하면 `RequestToStage` 사용)
 
-## 6. IActorSender 인터페이스
+## 6. IActorLink 인터페이스
 
 ### 6.1 인터페이스 정의
 
@@ -1119,12 +1119,12 @@ public class GameStage : IStage
 /// Provides Actor-specific communication capabilities.
 /// </summary>
 /// <remarks>
-/// IActorSender extends ISender with:
+/// IActorLink extends ILink with:
 /// - AccountId property for user identification (must be set in OnAuthenticate)
 /// - LeaveStageAsync() to exit from current Stage
 /// - SendToClient() for direct client messaging
 /// </remarks>
-public interface IActorSender : ISender
+public interface IActorLink : ILink
 {
     /// <summary>
     /// Gets or sets the account identifier for this Actor.
@@ -1157,22 +1157,22 @@ public interface IActorSender : ISender
 - **AccountId 타입**: `long` → `string` (다양한 ID 체계 지원)
 - **LeaveStage**: `LeaveStage()` → `LeaveStageAsync()` (비동기 처리)
 - **SendToClient**: 클라이언트에게 직접 메시지 전송 (sessionServerId, sid 파라미터 불필요)
-- **ISender 상속**: Reply, SendToApi, RequestToApi 등 모든 ISender 메서드 사용 가능
+- **ILink 상속**: Reply, SendToApi, RequestToApi 등 모든 ILink 메서드 사용 가능
 
 ### 6.2 사용 예시
 
 ```csharp
 public class GameActor : IActor
 {
-    public required IActorSender ActorSender { get; init; }
+    public required IActorLink ActorLink { get; init; }
 
     public async Task SendInventory()
     {
         var inventoryData = _inventory.Serialize();
         var packet = CreatePacket("InventoryUpdate", inventoryData);
 
-        // 자신의 클라이언트에게 전송 (ISender.SendAsync)
-        await ActorSender.SendAsync(packet);
+        // 자신의 클라이언트에게 전송 (ILink.SendAsync)
+        await ActorLink.SendAsync(packet);
     }
 
     public async ValueTask DisposeAsync()
@@ -1185,7 +1185,7 @@ public class GameActor : IActor
 
 **주요 변경사항:**
 - `required init` - 생성 시 필수 초기화
-- `SendToClient` → `SendAsync` (ISender에서 상속)
+- `SendToClient` → `SendAsync` (ILink에서 상속)
 
 ## 7. 비동기 작업 (AsyncCompute/AsyncIO)
 
@@ -1210,11 +1210,11 @@ public async Task HandleSaveRequest(IActor actor, IPacket packet)
     var saveData = packet.Parse<SaveData>();
 
     // I/O-bound 작업을 AsyncIO로 처리
-    StageSender.AsyncIO(
+    StageLink.AsyncIO(
         preCallback: async () =>
         {
             // IoTaskPool에서 실행 (블로킹 가능)
-            await _database.SavePlayerData(actor.ActorSender.AccountId, saveData);
+            await _database.SavePlayerData(actor.ActorLink.AccountId, saveData);
             return "Save completed";
         },
         postCallback: async (result) =>
@@ -1223,7 +1223,7 @@ public async Task HandleSaveRequest(IActor actor, IPacket packet)
             _log.Info($"Save result: {result}");
 
             // 클라이언트에 알림
-            actor.ActorSender.SendToClient(new SimplePacket(new SaveCompleteNotify
+            actor.ActorLink.SendToClient(new SimplePacket(new SaveCompleteNotify
             {
                 Success = true,
                 Message = result?.ToString() ?? string.Empty
@@ -1232,7 +1232,7 @@ public async Task HandleSaveRequest(IActor actor, IPacket packet)
     );
 
     // 즉시 리턴 (블로킹 안됨)
-    StageSender.Reply(ErrorCode.Success);
+    StageLink.Reply(ErrorCode.Success);
 }
 ```
 
@@ -1244,7 +1244,7 @@ public async Task HandlePathfinding(IActor actor, IPacket packet)
     var pathRequest = packet.Parse<PathfindingRequest>();
 
     // CPU-bound 작업을 AsyncCompute로 처리
-    StageSender.AsyncCompute(
+    StageLink.AsyncCompute(
         preCallback: async () =>
         {
             // ComputeTaskPool에서 실행 (CPU 집약적 계산)
@@ -1257,14 +1257,14 @@ public async Task HandlePathfinding(IActor actor, IPacket packet)
             var path = (List<Vector2>)result!;
 
             // 경로를 클라이언트에 전송
-            actor.ActorSender.SendToClient(new SimplePacket(new PathfindingResponse
+            actor.ActorLink.SendToClient(new SimplePacket(new PathfindingResponse
             {
                 Path = { path.Select(p => new Position { X = p.X, Y = p.Y }) }
             }));
         }
     );
 
-    StageSender.Reply(ErrorCode.Success);
+    StageLink.Reply(ErrorCode.Success);
 }
 
 // CPU 집약적 계산 (A* 알고리즘 등)
@@ -1289,7 +1289,7 @@ PostCallback (Stage 이벤트 루프):
 - Stage 메시지 큐를 통해 전달
 - Stage 상태 안전하게 접근 가능
 - 단일 스레드 보장
-- ISender 메서드 안전하게 사용 가능
+- ILink 메서드 안전하게 사용 가능
 ```
 
 ### 8.5 AsyncCompute vs AsyncIO 선택 가이드

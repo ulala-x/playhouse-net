@@ -65,7 +65,7 @@ public class ApiToApiVerifier : VerifierBase
             FromApiNid = ServerContext.ApiServer1Id,
             Content = "Hello from API1"
         };
-        ApiServer1.ApiSender!.SendToApi(api2ServerId, ProtoCPacketExtensions.OfProto(message));
+        ApiServer1.ApiLink!.SendToApi(api2ServerId, ProtoCPacketExtensions.OfProto(message));
 
         // 메시지 전달 대기
         await Task.Delay(1000);
@@ -86,7 +86,7 @@ public class ApiToApiVerifier : VerifierBase
 
         // When - ApiServer1에서 ApiServer2로 RequestToApi
         var echoRequest = new ApiEchoRequest { Content = testContent };
-        var responsePacket = await ApiServer1.ApiSender!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(echoRequest));
+        var responsePacket = await ApiServer1.ApiLink!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(echoRequest));
 
         // Then - E2E 검증: 응답 패킷 검증
         Assert.NotNull(responsePacket, "Should receive response");
@@ -113,7 +113,7 @@ public class ApiToApiVerifier : VerifierBase
             FromApiNid = api1ServerId,
             Content = contentAtoB
         };
-        var responseFromB = await ApiServer1.ApiSender!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(messageAtoB));
+        var responseFromB = await ApiServer1.ApiLink!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(messageAtoB));
         var replyFromB = InterApiReply.Parser.ParseFrom(responseFromB.Payload.DataSpan);
 
         Assert.IsTrue(replyFromB.Response.Contains(contentAtoB), "Response from API2 should contain API1's content");
@@ -124,7 +124,7 @@ public class ApiToApiVerifier : VerifierBase
             FromApiNid = api2ServerId,
             Content = contentBtoA
         };
-        var responseFromA = await ApiServer2.ApiSender!.RequestToApi(api1ServerId, ProtoCPacketExtensions.OfProto(messageBtoA));
+        var responseFromA = await ApiServer2.ApiLink!.RequestToApi(api1ServerId, ProtoCPacketExtensions.OfProto(messageBtoA));
         var replyFromA = InterApiReply.Parser.ParseFrom(responseFromA.Payload.DataSpan);
 
         Assert.IsTrue(replyFromA.Response.Contains(contentBtoA), "Response from API1 should contain API2's content");
@@ -147,7 +147,7 @@ public class ApiToApiVerifier : VerifierBase
             Query = testQuery
         };
 
-        var responsePacket = await ApiServer1.ApiSender!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(triggerRequest));
+        var responsePacket = await ApiServer1.ApiLink!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(triggerRequest));
 
         // Then - E2E 검증: 트리거 응답 검증
         Assert.Equals("TriggerRequestToApiServerReply", responsePacket.MsgId, "Should receive trigger reply");
@@ -174,7 +174,7 @@ public class ApiToApiVerifier : VerifierBase
             Message = testMessage
         };
 
-        var responsePacket = await ApiServer1.ApiSender!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(triggerRequest));
+        var responsePacket = await ApiServer1.ApiLink!.RequestToApi(api2ServerId, ProtoCPacketExtensions.OfProto(triggerRequest));
 
         // 메시지 전달 대기
         await Task.Delay(500);

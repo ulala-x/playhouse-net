@@ -27,16 +27,16 @@ public class BaseStageTests
 
     private class FakeStage : IStage
     {
-        public IStageSender StageSender { get; }
+        public IStageLink StageLink { get; }
         public int OnCreateCallCount { get; private set; }
         public int OnDestroyCallCount { get; private set; }
         public int OnDispatchActorCallCount { get; private set; }
         public int OnDispatchCallCount { get; private set; }
         public List<IPacket> ReceivedPackets { get; } = new();
 
-        public FakeStage(IStageSender stageSender)
+        public FakeStage(IStageLink stageLink)
         {
-            StageSender = stageSender;
+            StageLink = stageLink;
         }
 
         public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -74,12 +74,12 @@ public class BaseStageTests
 
     private class FakeActor : IActor
     {
-        public IActorSender ActorSender { get; }
+        public IActorLink ActorLink { get; }
         public int OnDestroyCallCount { get; private set; }
 
-        public FakeActor(IActorSender actorSender)
+        public FakeActor(IActorLink actorLink)
         {
-            ActorSender = actorSender;
+            ActorLink = actorLink;
         }
 
         public Task OnCreate() => Task.CompletedTask;
@@ -94,7 +94,7 @@ public class BaseStageTests
 
     #endregion
 
-    private (BaseStage baseStage, FakeStage fakeStage, XStageSender stageSender) CreateTestStage()
+    private (BaseStage baseStage, FakeStage fakeStage, XStageLink stageSender) CreateTestStage()
     {
         var communicator = Substitute.For<IClientCommunicator>();
         var requestCache = new RequestCache(NullLogger<RequestCache>.Instance);
@@ -102,7 +102,7 @@ public class BaseStageTests
         var replyRegistry = Substitute.For<IReplyPacketRegistry>();
         var serverInfoCenter = Substitute.For<IServerInfoCenter>();
 
-        var stageSender = new XStageSender(
+        var stageSender = new XStageLink(
             communicator,
             requestCache,
             serverInfoCenter,
@@ -194,7 +194,7 @@ public class BaseStageTests
     {
         // Given (전제조건)
         var (baseStage, _, _) = CreateTestStage();
-        var actorSender = new XActorSender("1", 1, "1", baseStage);
+        var actorSender = new XActorLink("1", 1, "1", baseStage);
         var actor = new BaseActor(new FakeActor(actorSender), actorSender);
 
         // When (행동)
@@ -210,7 +210,7 @@ public class BaseStageTests
     {
         // Given (전제조건)
         var (baseStage, _, _) = CreateTestStage();
-        var actorSender = new XActorSender("1", 1, "1", baseStage);
+        var actorSender = new XActorLink("1", 1, "1", baseStage);
         var actor = new BaseActor(new FakeActor(actorSender), actorSender);
         baseStage.AddActor(actor);
 
@@ -241,7 +241,7 @@ public class BaseStageTests
     {
         // Given (전제조건)
         var (baseStage, _, _) = CreateTestStage();
-        var actorSender = new XActorSender("1", 1, "1", baseStage);
+        var actorSender = new XActorLink("1", 1, "1", baseStage);
         var fakeActor = new FakeActor(actorSender);
         var actor = new BaseActor(fakeActor, actorSender);
         baseStage.AddActor(actor);

@@ -127,14 +127,14 @@ InvalidOperationException: AccountId must not be empty after authentication
 ```
 
 **원인:**
-`OnAuthenticate`에서 `ActorSender.AccountId`를 설정하지 않음
+`OnAuthenticate`에서 `ActorLink.AccountId`를 설정하지 않음
 
 **해결 방법:**
 
 ```csharp
 public class GameActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
     public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
     {
@@ -144,7 +144,7 @@ public class GameActor : IActor
         // return Task.FromResult<(bool, IPacket?)>((true, null));
 
         // ✅ 올바른 코드 - AccountId 설정 필수!
-        ActorSender.AccountId = authRequest.UserId;
+        ActorLink.AccountId = authRequest.UserId;
 
         var reply = new AuthenticateReply { Success = true };
         return Task.FromResult<(bool, IPacket?)>((true, CPacket.Of(reply)));
@@ -198,7 +198,7 @@ public async Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPack
     }
 
     // ✅ 성공 시 AccountId 설정
-    ActorSender.AccountId = authRequest.UserId;
+    ActorLink.AccountId = authRequest.UserId;
     return (true, CPacket.Of(new AuthenticateReply { Success = true }));
 }
 ```
@@ -305,16 +305,16 @@ InvalidOperationException: Failed to create Actor instance
 // ✅ 올바른 Actor 생성자
 public class GameActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    // IActorSender는 필수 파라미터
-    public GameActor(IActorSender actorSender)
+    // IActorLink는 필수 파라미터
+    public GameActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     // DI 서비스도 주입 가능
-    // public GameActor(IActorSender actorSender, IMyService myService)
+    // public GameActor(IActorLink actorLink, IMyService myService)
 }
 
 // DI 서비스 등록
@@ -404,7 +404,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 
             // ✅ 올바른 코드 - Reply 필수!
             await ProcessSlowOperation();
-            actor.ActorSender.Reply(CPacket.Of(new SlowReply()));
+            actor.ActorLink.Reply(CPacket.Of(new SlowReply()));
             break;
     }
 }
@@ -415,12 +415,12 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     if (packet.MsgId == "GetPlayerData")
     {
         // ✅ AsyncIO로 외부 API 호출
-        var playerData = await actor.ActorSender.AsyncIO(async () =>
+        var playerData = await actor.ActorLink.AsyncIO(async () =>
         {
             return await _httpClient.GetAsync("https://api.example.com/player");
         });
 
-        actor.ActorSender.Reply(CPacket.Of(playerData));
+        actor.ActorLink.Reply(CPacket.Of(playerData));
     }
 }
 ```
@@ -442,19 +442,19 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 {
     if (packet.MsgId == "StartTimer")
     {
-        StageSender.AddCountTimer(
+        StageLink.AddCountTimer(
             TimeSpan.FromSeconds(5),
             TimeSpan.FromSeconds(1),
             10,
             async () =>
             {
                 // ❌ 에러: 타이머 콜백에서는 Reply 불가!
-                // actor.ActorSender.Reply(CPacket.Empty("TimerTick"));
+                // actor.ActorLink.Reply(CPacket.Empty("TimerTick"));
             }
         );
 
         // Reply는 OnDispatch에서 즉시 호출해야 함
-        actor.ActorSender.Reply(CPacket.Empty("StartTimerReply"));
+        actor.ActorLink.Reply(CPacket.Empty("StartTimerReply"));
     }
 }
 
@@ -464,17 +464,17 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     if (packet.MsgId == "StartTimer")
     {
         // 즉시 응답
-        actor.ActorSender.Reply(CPacket.Empty("StartTimerReply"));
+        actor.ActorLink.Reply(CPacket.Empty("StartTimerReply"));
 
         // 타이머에서는 Push로 알림
-        StageSender.AddCountTimer(
+        StageLink.AddCountTimer(
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1),
             10,
             async () =>
             {
                 // ✅ Push 메시지 전송
-                actor.ActorSender.SendToClient(CPacket.Empty("TimerTick"));
+                actor.ActorLink.SendToClient(CPacket.Empty("TimerTick"));
             }
         );
     }
@@ -530,7 +530,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     catch (InvalidProtocolBufferException ex)
     {
         Console.WriteLine($"Failed to parse {packet.MsgId}: {ex.Message}");
-        actor.ActorSender.Reply(500); // 에러 응답
+        actor.ActorLink.Reply(500); // 에러 응답
     }
 }
 ```
@@ -599,7 +599,7 @@ public class GameStage : IStage
     public Task OnPostCreate()
     {
         // 타이머 시작
-        _timerId = StageSender.AddRepeatTimer(
+        _timerId = StageLink.AddRepeatTimer(
             initialDelay: TimeSpan.FromSeconds(5),  // 5초 후 시작
             period: TimeSpan.FromSeconds(10),       // 10초마다 반복
             callback: async () =>
@@ -616,9 +616,9 @@ public class GameStage : IStage
     public Task OnDestroy()
     {
         // ✅ 정리: 타이머 취소
-        if (StageSender.HasTimer(_timerId))
+        if (StageLink.HasTimer(_timerId))
         {
-            StageSender.CancelTimer(_timerId);
+            StageLink.CancelTimer(_timerId);
         }
         return Task.CompletedTask;
     }
@@ -643,10 +643,10 @@ public class GameStage : IStage
 public Task OnPostCreate()
 {
     // 60 FPS는 액션 게임에 적합하지만 CPU 부하가 높음
-    // StageSender.StartGameLoop(TimeSpan.FromMilliseconds(16), OnTick); // ~60 Hz
+    // StageLink.StartGameLoop(TimeSpan.FromMilliseconds(16), OnTick); // ~60 Hz
 
     // ✅ 20 FPS면 대부분의 게임에 충분
-    StageSender.StartGameLoop(TimeSpan.FromMilliseconds(50), OnTick); // 20 Hz
+    StageLink.StartGameLoop(TimeSpan.FromMilliseconds(50), OnTick); // 20 Hz
 
     return Task.CompletedTask;
 }
@@ -681,7 +681,7 @@ public Task OnPostCreate()
         MaxAccumulatorCap = TimeSpan.FromMilliseconds(200) // 최대 4 tick 누적
     };
 
-    StageSender.StartGameLoop(config, OnGameTick);
+    StageLink.StartGameLoop(config, OnGameTick);
     return Task.CompletedTask;
 }
 ```
@@ -706,7 +706,7 @@ public class GameStage : IStage
 
     public Task OnPostCreate()
     {
-        _timerId = StageSender.AddRepeatTimer(
+        _timerId = StageLink.AddRepeatTimer(
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1),
             async () =>
@@ -727,9 +727,9 @@ public class GameStage : IStage
     private void StopTimer()
     {
         _timerCancelled = true; // ✅ 플래그 먼저 설정
-        if (StageSender.HasTimer(_timerId))
+        if (StageLink.HasTimer(_timerId))
         {
-            StageSender.CancelTimer(_timerId);
+            StageLink.CancelTimer(_timerId);
         }
     }
 
@@ -788,12 +788,12 @@ var apiServer = new ApiServerBootstrap()
 public async Task OnDispatch(IActor actor, IPacket packet)
 {
     // ✅ SendToApi 사용
-    StageSender.SendToApi("api-1", CPacket.Of(request));
+    StageLink.SendToApi("api-1", CPacket.Of(request));
 
     // ✅ RequestToApi 사용 (응답 대기)
     try
     {
-        var response = await StageSender.RequestToApi("api-1", CPacket.Of(request));
+        var response = await StageLink.RequestToApi("api-1", CPacket.Of(request));
         var data = Response.Parser.ParseFrom(response.Payload.DataSpan);
     }
     catch (InvalidOperationException ex)
@@ -827,7 +827,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     try
     {
         // RequestToStage 호출
-        var response = await StageSender.RequestToStage(
+        var response = await StageLink.RequestToStage(
             targetStageType,
             targetStageId,
             CPacket.Of(request)
@@ -838,7 +838,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     catch (TimeoutException ex)
     {
         Console.WriteLine($"Stage {targetStageId} timeout: {ex.Message}");
-        actor.ActorSender.Reply(504); // Gateway Timeout
+        actor.ActorLink.Reply(504); // Gateway Timeout
     }
 }
 
@@ -852,7 +852,7 @@ public class TargetStage : IStage
             var request = CrossStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
             // ✅ 반드시 Reply 호출!
-            StageSender.ReplyToStage(CPacket.Of(new CrossStageReply
+            StageLink.ReplyToStage(CPacket.Of(new CrossStageReply
             {
                 Success = true
             }));
@@ -883,7 +883,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     {
         try
         {
-            var response = await StageSender.RequestToApi("api-1", CPacket.Of(request));
+            var response = await StageLink.RequestToApi("api-1", CPacket.Of(request));
             // 성공
             break;
         }
@@ -894,7 +894,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
             if (i == maxRetries - 1)
             {
                 // 최종 실패
-                actor.ActorSender.Reply(503); // Service Unavailable
+                actor.ActorLink.Reply(503); // Service Unavailable
                 return;
             }
 
@@ -911,7 +911,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     // ✅ ServiceId 사용 - 여러 서버 중 하나라도 살아있으면 성공
     try
     {
-        var response = await StageSender.RequestToApiService(
+        var response = await StageLink.RequestToApiService(
             serviceId,
             CPacket.Of(request),
             ServerSelectionPolicy.RoundRobin
@@ -921,7 +921,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     catch (InvalidOperationException ex)
     {
         Console.WriteLine($"All servers in service {serviceId} are down");
-        actor.ActorSender.Reply(503);
+        actor.ActorLink.Reply(503);
     }
 }
 ```
@@ -948,13 +948,13 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     // ❌ 잘못된 패턴
     // var request = new EchoRequest { Content = "Hello" };
     // var sendPacket = new Packet(request);
-    // actor.ActorSender.SendToClient(sendPacket);
+    // actor.ActorLink.SendToClient(sendPacket);
     // // Dispose 누락 → 메모리 누수!
 
     // ✅ 올바른 패턴 - using 사용
     var request = new EchoRequest { Content = "Hello" };
     using var sendPacket = new Packet(request);
-    actor.ActorSender.SendToClient(sendPacket);
+    actor.ActorLink.SendToClient(sendPacket);
     // 자동으로 Dispose됨
 }
 
@@ -963,7 +963,7 @@ private readonly List<long> _timerIds = new();
 
 public Task OnPostCreate()
 {
-    var timerId = StageSender.AddRepeatTimer(
+    var timerId = StageLink.AddRepeatTimer(
         TimeSpan.FromSeconds(1),
         TimeSpan.FromSeconds(1),
         async () => { await OnTick(); }
@@ -978,9 +978,9 @@ public Task OnDestroy()
     // ✅ 모든 타이머 취소
     foreach (var timerId in _timerIds)
     {
-        if (StageSender.HasTimer(timerId))
+        if (StageLink.HasTimer(timerId))
         {
-            StageSender.CancelTimer(timerId);
+            StageLink.CancelTimer(timerId);
         }
     }
 
@@ -991,9 +991,9 @@ public Task OnDestroy()
 // ✅ 게임루프 정리
 public Task OnDestroy()
 {
-    if (StageSender.IsGameLoopRunning)
+    if (StageLink.IsGameLoopRunning)
     {
-        StageSender.StopGameLoop();
+        StageLink.StopGameLoop();
     }
 
     return Task.CompletedTask;
@@ -1119,12 +1119,12 @@ public async Task HandleSlowRequest(IActor actor, IPacket packet)
     // var data = _httpClient.GetAsync("https://...").Result;
 
     // ✅ AsyncIO 사용 - 별도 스레드에서 실행
-    var data = await actor.ActorSender.AsyncIO(async () =>
+    var data = await actor.ActorLink.AsyncIO(async () =>
     {
         return await _httpClient.GetAsync("https://api.example.com/data");
     });
 
-    actor.ActorSender.Reply(CPacket.Of(new SlowReply { Data = data }));
+    actor.ActorLink.Reply(CPacket.Of(new SlowReply { Data = data }));
 }
 ```
 
@@ -1156,15 +1156,15 @@ public class GameStage : IStage
 {
     private readonly ILogger<GameStage> _logger;
 
-    public GameStage(IStageSender stageSender, ILogger<GameStage> logger)
+    public GameStage(IStageLink stageLink, ILogger<GameStage> logger)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _logger = logger;
     }
 
     public async Task OnDispatch(IActor actor, IPacket packet)
     {
-        _logger.LogDebug("Received {MsgId} from {AccountId}", packet.MsgId, actor.ActorSender.AccountId);
+        _logger.LogDebug("Received {MsgId} from {AccountId}", packet.MsgId, actor.ActorLink.AccountId);
 
         try
         {
@@ -1187,7 +1187,7 @@ public class GameStage : IStage
     public async Task OnDispatch(IActor actor, IPacket packet)
     {
         // 메시지 시작
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] → {packet.MsgId} from {actor.ActorSender.AccountId}");
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] → {packet.MsgId} from {actor.ActorLink.AccountId}");
 
         try
         {
@@ -1226,7 +1226,7 @@ public class GameStage : IStage
         if (packet.MsgId == "DebugDump")
         {
             DumpState();
-            actor.ActorSender.Reply(CPacket.Empty("DebugDumpReply"));
+            actor.ActorLink.Reply(CPacket.Empty("DebugDumpReply"));
             return;
         }
 
@@ -1236,11 +1236,11 @@ public class GameStage : IStage
     private void DumpState()
     {
         Console.WriteLine("=== Stage State Dump ===");
-        Console.WriteLine($"StageId: {StageSender.StageId}");
-        Console.WriteLine($"StageType: {StageSender.StageType}");
+        Console.WriteLine($"StageId: {StageLink.StageId}");
+        Console.WriteLine($"StageType: {StageLink.StageType}");
         Console.WriteLine($"ActorCount: {_actors.Count}");
         Console.WriteLine($"TickCount: {_tickCount}");
-        Console.WriteLine($"IsGameLoopRunning: {StageSender.IsGameLoopRunning}");
+        Console.WriteLine($"IsGameLoopRunning: {StageLink.IsGameLoopRunning}");
 
         Console.WriteLine("\nActors:");
         foreach (var (accountId, actor) in _actors)
@@ -1302,7 +1302,7 @@ Console.WriteLine($"[Recv] {response.MsgId}");
 
 **Q: "AccountId must not be empty" 에러가 계속 발생해요**
 
-A: `OnAuthenticate`에서 `ActorSender.AccountId = "user-id"`를 반드시 설정해야 합니다. 이 설정이 누락되면 연결이 즉시 종료됩니다.
+A: `OnAuthenticate`에서 `ActorLink.AccountId = "user-id"`를 반드시 설정해야 합니다. 이 설정이 누락되면 연결이 즉시 종료됩니다.
 
 **Q: Reply를 호출했는데 클라이언트가 타임아웃이 발생해요**
 

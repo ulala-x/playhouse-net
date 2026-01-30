@@ -15,11 +15,11 @@ public delegate void ReplyCallback(ushort errorCode, IPacket? reply);
 /// Provides base functionality for sending packets and replies.
 /// </summary>
 /// <remarks>
-/// ISender is the base interface for all sender types in the framework.
+/// ILink is the base interface for all link types in the framework.
 /// It provides methods for sending messages to API servers and Play stages,
 /// as well as replying to incoming requests.
 /// </remarks>
-public interface ISender
+public interface ILink
 {
     /// <summary>
     /// Gets the server type of this sender.

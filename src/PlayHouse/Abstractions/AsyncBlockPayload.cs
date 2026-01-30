@@ -7,7 +7,7 @@ namespace PlayHouse.Abstractions;
 /// </summary>
 /// <remarks>
 /// This payload carries the post-callback and result from an async block operation
-/// initiated via <see cref="IStageSender.AsyncBlock"/>. It is used internally by
+/// initiated via <see cref="IStageLink.AsyncBlock"/>. It is used internally by
 /// the routing system to execute the post-callback in the stage's context.
 /// </remarks>
 internal sealed class AsyncBlockPayload : IPayload

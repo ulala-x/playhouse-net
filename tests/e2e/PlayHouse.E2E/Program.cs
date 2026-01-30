@@ -167,7 +167,7 @@ class Program
                 try
                 {
                     var req = new ApiEchoRequest { Content = "HealthCheck" };
-                    var res = await s1.ApiSender!.RequestToApi("api-2", ProtoCPacketExtensions.OfProto(req));
+                    var res = await s1.ApiLink!.RequestToApi("api-2", ProtoCPacketExtensions.OfProto(req));
                     if (!res.MsgId.StartsWith("Error:"))
                     {
                         s1ToS2 = true;
@@ -181,7 +181,7 @@ class Program
                 try
                 {
                     var req = new ApiEchoRequest { Content = "HealthCheck" };
-                    var res = await s2.ApiSender!.RequestToApi("api-1", ProtoCPacketExtensions.OfProto(req));
+                    var res = await s2.ApiLink!.RequestToApi("api-1", ProtoCPacketExtensions.OfProto(req));
                     if (!res.MsgId.StartsWith("Error:"))
                     {
                         s2ToS1 = true;

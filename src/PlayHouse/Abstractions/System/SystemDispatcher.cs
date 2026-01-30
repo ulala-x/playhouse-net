@@ -47,9 +47,9 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
     /// 시스템 메시지를 디스패치합니다.
     /// </summary>
     /// <param name="packet">라우트 패킷.</param>
-    /// <param name="sender">응답 및 메시지 전송용 sender.</param>
+    /// <param name="link">응답 및 메시지 전송용 sender.</param>
     /// <returns>처리 성공 여부.</returns>
-    public async Task<bool> DispatchAsync(RoutePacket packet, ISender sender)
+    public async Task<bool> DispatchAsync(RoutePacket packet, ILink link)
     {
         var msgId = packet.MsgId;
 
@@ -58,7 +58,7 @@ public sealed class SystemDispatcher : ISystemHandlerRegister
             try
             {
                 var routePacket = new SystemPacket(packet);
-                await handler(routePacket, sender);
+                await handler(routePacket, link);
                 return true;
             }
             catch (Exception ex)

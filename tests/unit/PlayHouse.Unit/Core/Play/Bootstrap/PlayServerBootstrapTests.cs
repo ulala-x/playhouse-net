@@ -68,7 +68,7 @@ public class PlayServerBootstrapTests : IDisposable
 
     private class TestStage : IStage
     {
-        public IStageSender StageSender { get; private set; } = null!;
+        public IStageLink StageLink { get; private set; } = null!;
         public Task<(bool result, IPacket reply)> OnCreate(IPacket packet) =>
             Task.FromResult<(bool result, IPacket reply)>((true, CPacket.Empty("TestReply")));
         public Task OnPostCreate() => Task.CompletedTask;
@@ -82,7 +82,7 @@ public class PlayServerBootstrapTests : IDisposable
 
     private class TestActor : IActor
     {
-        public IActorSender ActorSender { get; private set; } = null!;
+        public IActorLink ActorLink { get; private set; } = null!;
         public Task OnCreate() => Task.CompletedTask;
         public Task OnDestroy() => Task.CompletedTask;
         public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket) => Task.FromResult<(bool, IPacket?)>((true, null));

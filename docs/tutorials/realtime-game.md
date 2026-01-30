@@ -449,7 +449,7 @@ public class GameMatchController : IApiController
     /// <summary>
     /// 매칭 요청 처리 - 새 게임방 생성
     /// </summary>
-    private async Task HandleFindMatch(IPacket packet, IApiSender sender)
+    private async Task HandleFindMatch(IPacket packet, IApiLink link)
     {
         var request = FindMatchRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         Console.WriteLine($"[GameMatch] Match request: mode={request.GameMode}, region={request.Region}");
@@ -457,7 +457,7 @@ public class GameMatchController : IApiController
         // 게임 모드 검증
         if (!GameModeMaxPlayers.TryGetValue(request.GameMode, out var maxPlayers))
         {
-            sender.Reply(CPacket.Of(new FindMatchResponse
+            link.Reply(CPacket.Of(new FindMatchResponse
             {
                 Success = false,
                 ErrorMessage = $"Unknown game mode: {request.GameMode}"
@@ -482,7 +482,7 @@ public class GameMatchController : IApiController
 
         try
         {
-            var createResult = await sender.CreateStage(
+            var createResult = await link.CreateStage(
                 PlayNid,           // Play Server NID
                 "BattleStage",     // Stage 타입
                 stageId,           // Stage ID
@@ -505,7 +505,7 @@ public class GameMatchController : IApiController
 
                 Console.WriteLine($"[GameMatch] Stage created: stageId={stageId}");
 
-                sender.Reply(CPacket.Of(new FindMatchResponse
+                link.Reply(CPacket.Of(new FindMatchResponse
                 {
                     Success = true,
                     RoomInfo = roomInfo
@@ -515,7 +515,7 @@ public class GameMatchController : IApiController
             {
                 Console.WriteLine($"[GameMatch] Stage creation failed");
 
-                sender.Reply(CPacket.Of(new FindMatchResponse
+                link.Reply(CPacket.Of(new FindMatchResponse
                 {
                     Success = false,
                     ErrorMessage = "Failed to create game stage"
@@ -526,7 +526,7 @@ public class GameMatchController : IApiController
         {
             Console.WriteLine($"[GameMatch] Error: {ex.Message}");
 
-            sender.Reply(CPacket.Of(new FindMatchResponse
+            link.Reply(CPacket.Of(new FindMatchResponse
             {
                 Success = false,
                 ErrorMessage = "Internal server error"
@@ -832,7 +832,7 @@ namespace RealtimeGameServer.Stages;
 
 public class BattleStage : IStage
 {
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
     private readonly GameWorld _gameWorld = new();
     private readonly Dictionary<string, IActor> _actors = new();
@@ -841,14 +841,14 @@ public class BattleStage : IStage
     private const int TickRate = 60; // 60 FPS
     private const int SyncRate = 20; // 20 FPS (3틱마다 동기화)
 
-    public BattleStage(IStageSender stageSender)
+    public BattleStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     {
-        Console.WriteLine($"[BattleStage] Stage created: {StageSender.StageId}");
+        Console.WriteLine($"[BattleStage] Stage created: {StageLink.StageId}");
 
         var reply = Packet.Empty("CreateStageReply");
         return Task.FromResult<(bool, IPacket)>((true, reply));
@@ -857,7 +857,7 @@ public class BattleStage : IStage
     public Task OnPostCreate()
     {
         // 60fps (16.67ms) 게임루프 시작
-        StageSender.StartGameLoop(
+        StageLink.StartGameLoop(
             fixedTimestep: TimeSpan.FromMilliseconds(1000.0 / TickRate),
             callback: OnGameLoopTick
         );
@@ -868,33 +868,33 @@ public class BattleStage : IStage
 
     public Task OnDestroy()
     {
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
 
-        Console.WriteLine($"[BattleStage] Stage destroyed: {StageSender.StageId}");
+        Console.WriteLine($"[BattleStage] Stage destroyed: {StageLink.StageId}");
         return Task.CompletedTask;
     }
 
     public Task<bool> OnJoinStage(IActor actor)
     {
-        Console.WriteLine($"[BattleStage] Actor joining: {actor.ActorSender.AccountId}");
+        Console.WriteLine($"[BattleStage] Actor joining: {actor.ActorLink.AccountId}");
         return Task.FromResult(true);
     }
 
     public Task OnPostJoinStage(IActor actor)
     {
-        _actors[actor.ActorSender.AccountId] = actor;
+        _actors[actor.ActorLink.AccountId] = actor;
 
         // 플레이어를 게임 월드에 추가
         var spawnPosition = GameWorld.GetRandomSpawnPosition();
-        _gameWorld.AddPlayer(actor.ActorSender.AccountId, spawnPosition);
+        _gameWorld.AddPlayer(actor.ActorLink.AccountId, spawnPosition);
 
         // 다른 플레이어들에게 참가 알림
         var joinNotify = new PlayerJoinedNotify
         {
-            AccountId = actor.ActorSender.AccountId,
+            AccountId = actor.ActorLink.AccountId,
             SpawnPosition = spawnPosition
         };
 
@@ -906,25 +906,25 @@ public class BattleStage : IStage
 
     public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
     {
-        Console.WriteLine($"[BattleStage] Connection changed: {actor.ActorSender.AccountId} = {isConnected}");
+        Console.WriteLine($"[BattleStage] Connection changed: {actor.ActorLink.AccountId} = {isConnected}");
         return ValueTask.CompletedTask;
     }
 
     public Task OnDisconnect(IActor actor)
     {
-        _actors.Remove(actor.ActorSender.AccountId);
-        _gameWorld.RemovePlayer(actor.ActorSender.AccountId);
+        _actors.Remove(actor.ActorLink.AccountId);
+        _gameWorld.RemovePlayer(actor.ActorLink.AccountId);
 
         // 다른 플레이어들에게 퇴장 알림
         var leaveNotify = new PlayerLeftNotify
         {
-            AccountId = actor.ActorSender.AccountId,
+            AccountId = actor.ActorLink.AccountId,
             Reason = "Disconnected"
         };
 
         BroadcastToAll(CPacket.Of(leaveNotify));
 
-        Console.WriteLine($"[BattleStage] Player left: {actor.ActorSender.AccountId}");
+        Console.WriteLine($"[BattleStage] Player left: {actor.ActorLink.AccountId}");
         return Task.CompletedTask;
     }
 
@@ -990,7 +990,7 @@ public class BattleStage : IStage
     private void HandleMoveInput(IActor actor, IPacket packet)
     {
         var input = MoveInput.Parser.ParseFrom(packet.Payload.DataSpan);
-        var player = _gameWorld.GetPlayer(actor.ActorSender.AccountId);
+        var player = _gameWorld.GetPlayer(actor.ActorLink.AccountId);
 
         if (player != null)
         {
@@ -1005,11 +1005,11 @@ public class BattleStage : IStage
     private void HandleActionInput(IActor actor, IPacket packet)
     {
         var input = ActionInput.Parser.ParseFrom(packet.Payload.DataSpan);
-        var player = _gameWorld.GetPlayer(actor.ActorSender.AccountId);
+        var player = _gameWorld.GetPlayer(actor.ActorLink.AccountId);
 
         if (player == null)
         {
-            actor.ActorSender.Reply(CPacket.Of(new ActionInputReply
+            actor.ActorLink.Reply(CPacket.Of(new ActionInputReply
             {
                 Success = false,
                 Reason = "Player not found"
@@ -1038,7 +1038,7 @@ public class BattleStage : IStage
         }
 
         // 응답 전송
-        actor.ActorSender.Reply(CPacket.Of(new ActionInputReply
+        actor.ActorLink.Reply(CPacket.Of(new ActionInputReply
         {
             Success = success,
             Reason = reason
@@ -1046,7 +1046,7 @@ public class BattleStage : IStage
 
         if (success)
         {
-            Console.WriteLine($"[BattleStage] {actor.ActorSender.AccountId} performed {input.Action}");
+            Console.WriteLine($"[BattleStage] {actor.ActorLink.AccountId} performed {input.Action}");
         }
     }
 
@@ -1076,7 +1076,7 @@ public class BattleStage : IStage
     {
         foreach (var actor in _actors.Values)
         {
-            actor.ActorSender.SendToClient(packet);
+            actor.ActorLink.SendToClient(packet);
         }
     }
 }
@@ -1096,11 +1096,11 @@ namespace RealtimeGameServer.Actors;
 
 public class PlayerActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public PlayerActor(IActorSender actorSender)
+    public PlayerActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public Task OnCreate()
@@ -1111,7 +1111,7 @@ public class PlayerActor : IActor
 
     public Task OnDestroy()
     {
-        Console.WriteLine($"[PlayerActor] Actor destroyed: {ActorSender.AccountId}");
+        Console.WriteLine($"[PlayerActor] Actor destroyed: {ActorLink.AccountId}");
         return Task.CompletedTask;
     }
 
@@ -1121,7 +1121,7 @@ public class PlayerActor : IActor
 
         // 간단한 인증 (실제로는 토큰 검증 등 필요)
         var accountId = authRequest.UserId;
-        ActorSender.AccountId = accountId;
+        ActorLink.AccountId = accountId;
 
         Console.WriteLine($"[PlayerActor] Authenticated: {accountId}");
 
@@ -1136,7 +1136,7 @@ public class PlayerActor : IActor
 
     public Task OnPostAuthenticate()
     {
-        Console.WriteLine($"[PlayerActor] Post-authenticate: {ActorSender.AccountId}");
+        Console.WriteLine($"[PlayerActor] Post-authenticate: {ActorLink.AccountId}");
         return Task.CompletedTask;
     }
 }
@@ -1468,7 +1468,7 @@ await Task.Delay(-1);
 private void HandleMoveInput(IActor actor, IPacket packet)
 {
     var input = MoveInput.Parser.ParseFrom(packet.Payload.DataSpan);
-    var player = _gameWorld.GetPlayer(actor.ActorSender.AccountId);
+    var player = _gameWorld.GetPlayer(actor.ActorLink.AccountId);
 
     if (player != null)
     {
@@ -1588,7 +1588,7 @@ private void BroadcastGameStateAOI()
             }
         }
 
-        actor.ActorSender.SendToClient(CPacket.Of(localState));
+        actor.ActorLink.SendToClient(CPacket.Of(localState));
     }
 }
 ```
@@ -1890,9 +1890,9 @@ public class BattleStageIntegrationTests : IAsyncLifetime
 
 **해결:**
 ```csharp
-if (!StageSender.IsGameLoopRunning)
+if (!StageLink.IsGameLoopRunning)
 {
-    StageSender.StartGameLoop(config, callback);
+    StageLink.StartGameLoop(config, callback);
 }
 ```
 

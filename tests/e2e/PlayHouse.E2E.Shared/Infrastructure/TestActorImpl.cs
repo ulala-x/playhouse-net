@@ -24,11 +24,11 @@ public class TestActorImpl : IActor
     private readonly ILogger<TestActorImpl> _logger;
     private static long _accountIdCounter;
 
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public TestActorImpl(IActorSender actorSender, ILogger<TestActorImpl>? logger = null)
+    public TestActorImpl(IActorLink actorLink, ILogger<TestActorImpl>? logger = null)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TestActorImpl>.Instance;
         _logger.LogDebug("TestActorImpl created");
     }
@@ -47,9 +47,9 @@ public class TestActorImpl : IActor
     {
         // 인증 시 AccountId 설정 (필수)
         var accountId = Interlocked.Increment(ref _accountIdCounter);
-        ActorSender.AccountId = accountId.ToString();
+        ActorLink.AccountId = accountId.ToString();
 
-        _logger.LogInformation("OnAuthenticate called for AccountId={AccountId}", ActorSender.AccountId);
+        _logger.LogInformation("OnAuthenticate called for AccountId={AccountId}", ActorLink.AccountId);
 
         // authPacket 파싱하여 E2E 검증 가능하도록 echo
         string receivedUserId = "";
@@ -71,7 +71,7 @@ public class TestActorImpl : IActor
         // Reply packet 생성 (클라이언트에 전달됨)
         var reply = new AuthenticateReply
         {
-            AccountId = ActorSender.AccountId,
+            AccountId = ActorLink.AccountId,
             Success = true,
             ReceivedUserId = receivedUserId,
             ReceivedToken = receivedToken

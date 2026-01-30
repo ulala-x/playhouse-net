@@ -25,20 +25,20 @@ using PlayHouse.Abstractions.Play;
 
 public class MyStage : IStage
 {
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public MyStage(IStageSender stageSender)
+    public MyStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     // 생명주기 메서드들...
 }
 ```
 
-### IStageSender
+### IStageLink
 
-`IStageSender`는 Stage에서 사용할 수 있는 통신 및 관리 기능을 제공합니다:
+`IStageLink`는 Stage에서 사용할 수 있는 통신 및 관리 기능을 제공합니다:
 
 - **StageId**: Stage의 고유 식별자
 - **StageType**: Stage 타입 이름
@@ -71,11 +71,11 @@ public class GameRoomStage : IStage
     private int _maxPlayers = 0;
     private readonly Dictionary<string, IActor> _players = new();
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public GameRoomStage(IStageSender stageSender)
+    public GameRoomStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -115,7 +115,7 @@ Stage 생성이 성공한 후 호출되며, 타이머나 외부 데이터 로드
 public Task OnPostCreate()
 {
     // 게임 시작 타이머 설정 (30초 후 자동 시작)
-    StageSender.AddCountTimer(
+    StageLink.AddCountTimer(
         initialDelay: TimeSpan.FromSeconds(30),
         period: TimeSpan.FromSeconds(1),
         count: 1,
@@ -150,7 +150,7 @@ public Task<bool> OnJoinStage(IActor actor)
     }
 
     // Actor를 플레이어 목록에 추가
-    _players[actor.ActorSender.AccountId] = actor;
+    _players[actor.ActorLink.AccountId] = actor;
 
     // 입장 허용
     return Task.FromResult(true);
@@ -162,14 +162,14 @@ public Task OnPostJoinStage(IActor actor)
     // 다른 플레이어들에게 입장 알림
     var notify = new PlayerJoinedNotify
     {
-        AccountId = actor.ActorSender.AccountId,
+        AccountId = actor.ActorLink.AccountId,
         PlayerCount = _players.Count
     };
 
     // 모든 플레이어에게 브로드캐스트
     foreach (var player in _players.Values)
     {
-        player.ActorSender.SendToClient(CPacket.Of(notify));
+        player.ActorLink.SendToClient(CPacket.Of(notify));
     }
 
     return Task.CompletedTask;
@@ -193,7 +193,7 @@ public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
         // 재연결
         var notify = new PlayerReconnectedNotify
         {
-            AccountId = actor.ActorSender.AccountId
+            AccountId = actor.ActorLink.AccountId
         };
         BroadcastToOthers(actor, notify);
     }
@@ -202,7 +202,7 @@ public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
         // 연결 끊김
         var notify = new PlayerDisconnectedNotify
         {
-            AccountId = actor.ActorSender.AccountId
+            AccountId = actor.ActorLink.AccountId
         };
         BroadcastToOthers(actor, notify);
     }
@@ -238,7 +238,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 
         default:
             // 알 수 없는 메시지
-            actor.ActorSender.Reply(500); // 에러 코드 반환
+            actor.ActorLink.Reply(500); // 에러 코드 반환
             break;
     }
 }
@@ -256,12 +256,12 @@ private Task HandleMove(IActor actor, IPacket packet)
         Position = newPosition,
         Success = true
     };
-    actor.ActorSender.Reply(CPacket.Of(reply));
+    actor.ActorLink.Reply(CPacket.Of(reply));
 
     // 다른 플레이어들에게 브로드캐스트
     var notify = new PlayerMovedNotify
     {
-        AccountId = actor.ActorSender.AccountId,
+        AccountId = actor.ActorLink.AccountId,
         Position = newPosition
     };
     BroadcastToOthers(actor, notify);
@@ -305,7 +305,7 @@ private void HandleInterStageRequest(IPacket packet)
     };
 
     // RequestToStage로 요청이 온 경우에만 Reply() 호출
-    StageSender.Reply(CPacket.Of(reply));
+    StageLink.Reply(CPacket.Of(reply));
 }
 
 // SendToStage로 온 알림: Reply() 호출하지 않음
@@ -335,7 +335,7 @@ public Task OnDestroy()
 
     foreach (var player in _players.Values)
     {
-        player.ActorSender.SendToClient(CPacket.Of(notify));
+        player.ActorLink.SendToClient(CPacket.Of(notify));
     }
 
     // 리소스 정리
@@ -346,7 +346,7 @@ public Task OnDestroy()
 ```
 
 **OnDestroy가 호출되는 경우:**
-- `StageSender.CloseStage()` 호출 시
+- `StageLink.CloseStage()` 호출 시
 - `OnCreate`가 실패한 경우
 - 서버 종료 시
 
@@ -360,18 +360,18 @@ private void BroadcastToAll(IMessage message)
     var packet = CPacket.Of(message);
     foreach (var player in _players.Values)
     {
-        player.ActorSender.SendToClient(packet);
+        player.ActorLink.SendToClient(packet);
     }
 }
 
-private void BroadcastToOthers(IActor sender, IMessage message)
+private void BroadcastToOthers(IActor link, IMessage message)
 {
     var packet = CPacket.Of(message);
     foreach (var player in _players.Values)
     {
-        if (player.ActorSender.AccountId != sender.ActorSender.AccountId)
+        if (player.ActorLink.AccountId != link.ActorLink.AccountId)
         {
-            player.ActorSender.SendToClient(packet);
+            player.ActorLink.SendToClient(packet);
         }
     }
 }
@@ -385,7 +385,7 @@ private void CloseRoomIfEmpty()
     if (_players.Count == 0)
     {
         // 플레이어가 모두 나간 경우 Stage 종료
-        StageSender.CloseStage();
+        StageLink.CloseStage();
     }
 }
 ```
@@ -405,11 +405,11 @@ public class GameRoomStage : IStage
     private bool _isGameStarted = false;
     private readonly Dictionary<string, IActor> _players = new();
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public GameRoomStage(IStageSender stageSender)
+    public GameRoomStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -441,7 +441,7 @@ public class GameRoomStage : IStage
             return Task.FromResult(false);
         }
 
-        _players[actor.ActorSender.AccountId] = actor;
+        _players[actor.ActorLink.AccountId] = actor;
         return Task.FromResult(true);
     }
 
@@ -449,7 +449,7 @@ public class GameRoomStage : IStage
     {
         var notify = new PlayerJoinedNotify
         {
-            AccountId = actor.ActorSender.AccountId,
+            AccountId = actor.ActorLink.AccountId,
             PlayerCount = _players.Count
         };
 
@@ -460,8 +460,8 @@ public class GameRoomStage : IStage
     public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
     {
         var notify = isConnected
-            ? new PlayerReconnectedNotify { AccountId = actor.ActorSender.AccountId }
-            : new PlayerDisconnectedNotify { AccountId = actor.ActorSender.AccountId };
+            ? new PlayerReconnectedNotify { AccountId = actor.ActorLink.AccountId }
+            : new PlayerDisconnectedNotify { AccountId = actor.ActorLink.AccountId };
 
         BroadcastToOthers(actor, notify);
         return ValueTask.CompletedTask;
@@ -480,7 +480,7 @@ public class GameRoomStage : IStage
                 break;
 
             default:
-                actor.ActorSender.Reply(500);
+                actor.ActorLink.Reply(500);
                 break;
         }
     }
@@ -503,7 +503,7 @@ public class GameRoomStage : IStage
     {
         if (_isGameStarted)
         {
-            actor.ActorSender.Reply(CPacket.Of(new StartGameReply
+            actor.ActorLink.Reply(CPacket.Of(new StartGameReply
             {
                 Success = false,
                 Error = "Already started"
@@ -514,7 +514,7 @@ public class GameRoomStage : IStage
         _isGameStarted = true;
 
         var reply = new StartGameReply { Success = true };
-        actor.ActorSender.Reply(CPacket.Of(reply));
+        actor.ActorLink.Reply(CPacket.Of(reply));
 
         var notify = new GameStartedNotify { RoomName = _roomName };
         BroadcastToAll(notify);
@@ -524,22 +524,22 @@ public class GameRoomStage : IStage
 
     private async Task HandleLeaveRoom(IActor actor)
     {
-        actor.ActorSender.Reply(CPacket.Of(new LeaveRoomReply { Success = true }));
+        actor.ActorLink.Reply(CPacket.Of(new LeaveRoomReply { Success = true }));
 
-        _players.Remove(actor.ActorSender.AccountId);
+        _players.Remove(actor.ActorLink.AccountId);
 
         var notify = new PlayerLeftNotify
         {
-            AccountId = actor.ActorSender.AccountId,
+            AccountId = actor.ActorLink.AccountId,
             PlayerCount = _players.Count
         };
         BroadcastToAll(notify);
 
-        await actor.ActorSender.LeaveStageAsync();
+        await actor.ActorLink.LeaveStageAsync();
 
         if (_players.Count == 0)
         {
-            StageSender.CloseStage();
+            StageLink.CloseStage();
         }
     }
 
@@ -548,18 +548,18 @@ public class GameRoomStage : IStage
         var packet = CPacket.Of(message);
         foreach (var player in _players.Values)
         {
-            player.ActorSender.SendToClient(packet);
+            player.ActorLink.SendToClient(packet);
         }
     }
 
-    private void BroadcastToOthers(IActor sender, IMessage message)
+    private void BroadcastToOthers(IActor link, IMessage message)
     {
         var packet = CPacket.Of(message);
         foreach (var player in _players.Values)
         {
-            if (player.ActorSender.AccountId != sender.ActorSender.AccountId)
+            if (player.ActorLink.AccountId != link.ActorLink.AccountId)
             {
-                player.ActorSender.SendToClient(packet);
+                player.ActorLink.SendToClient(packet);
             }
         }
     }

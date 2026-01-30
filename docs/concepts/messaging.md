@@ -9,7 +9,7 @@
 2. [Send (Fire-and-Forget)](#send-fire-and-forget)
 3. [Request/RequestAsync (요청-응답)](#requestrequestasync-요청-응답)
 4. [Push (서버 → 클라이언트)](#push-서버--클라이언트)
-5. [서버 간 통신 (Sender)](#서버-간-통신-sender)
+5. [서버 간 통신 (Link)](#서버-간-통신-link)
 6. [Proto 메시지 사용](#proto-메시지-사용)
 7. [에러 처리](#에러-처리)
 8. [고급 패턴](#고급-패턴)
@@ -80,7 +80,7 @@ public class GameStage : IStage
                 Console.WriteLine($"Player position: ({status.Position.X}, {status.Position.Z})");
 
                 // Send는 응답하지 않음
-                // actor.ActorSender.Reply(...) 호출하지 않음
+                // actor.ActorLink.Reply(...) 호출하지 않음
                 break;
         }
     }
@@ -178,7 +178,7 @@ private Task HandleEchoRequest(IActor actor, IPacket packet)
     };
 
     // 응답 전송
-    actor.ActorSender.Reply(CPacket.Of(reply));
+    actor.ActorLink.Reply(CPacket.Of(reply));
 
     return Task.CompletedTask;
 }
@@ -188,16 +188,16 @@ private async Task HandleGetPlayerData(IActor actor, IPacket packet)
     var request = GetPlayerDataRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
     // 외부 API 호출 (AsyncIO 사용)
-    var playerData = await LoadPlayerDataAsync(actor.ActorSender.AccountId);
+    var playerData = await LoadPlayerDataAsync(actor.ActorLink.AccountId);
 
     var reply = new GetPlayerDataReply
     {
-        AccountId = actor.ActorSender.AccountId,
+        AccountId = actor.ActorLink.AccountId,
         Level = playerData.Level,
         Gold = playerData.Gold
     };
 
-    actor.ActorSender.Reply(CPacket.Of(reply));
+    actor.ActorLink.Reply(CPacket.Of(reply));
 }
 ```
 
@@ -247,14 +247,14 @@ public async Task OnDispatch(IActor actor, IPacket packet)
         {
             EventType = trigger.EventType,
             Data = trigger.Data,
-            FromAccountId = long.Parse(actor.ActorSender.AccountId)
+            FromAccountId = long.Parse(actor.ActorLink.AccountId)
         };
 
         // 클라이언트에 Push 전송
-        actor.ActorSender.SendToClient(CPacket.Of(pushMessage));
+        actor.ActorLink.SendToClient(CPacket.Of(pushMessage));
 
         // Request에 대한 응답도 별도로 전송
-        actor.ActorSender.Reply(CPacket.Empty("BroadcastTriggerReply"));
+        actor.ActorLink.Reply(CPacket.Empty("BroadcastTriggerReply"));
     }
 }
 ```
@@ -268,7 +268,7 @@ public class GameStage : IStage
 
     public Task OnPostJoinStage(IActor actor)
     {
-        _actors[actor.ActorSender.AccountId] = actor;
+        _actors[actor.ActorLink.AccountId] = actor;
         return Task.CompletedTask;
     }
 
@@ -281,18 +281,18 @@ public class GameStage : IStage
             // 모든 클라이언트에 브로드캐스트
             var broadcastMsg = new ChatBroadcast
             {
-                SenderAccountId = actor.ActorSender.AccountId,
+                SenderAccountId = actor.ActorLink.AccountId,
                 Message = chatMsg.Message,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
 
             foreach (var otherActor in _actors.Values)
             {
-                otherActor.ActorSender.SendToClient(CPacket.Of(broadcastMsg));
+                otherActor.ActorLink.SendToClient(CPacket.Of(broadcastMsg));
             }
 
             // 발신자에게 성공 응답
-            actor.ActorSender.Reply(CPacket.Empty("ChatMessageReply"));
+            actor.ActorLink.Reply(CPacket.Empty("ChatMessageReply"));
         }
     }
 }
@@ -333,9 +333,9 @@ while (running)
 - **상태 변경**: 다른 플레이어의 상태 변경 알림
 - **브로드캐스트**: 전체 공지사항
 
-## 서버 간 통신 (Sender)
+## 서버 간 통신 (Link)
 
-PlayHouse의 강력한 기능 중 하나는 **Sender를 통한 손쉬운 서버 간 통신**입니다.
+PlayHouse의 강력한 기능 중 하나는 **Link를 통한 손쉬운 서버 간 통신**입니다.
 
 ### 통신 패턴 요약
 
@@ -349,24 +349,24 @@ PlayHouse의 강력한 기능 중 하나는 **Sender를 통한 손쉬운 서버 
 
 ```csharp
 // 랭킹 서비스로 요청-응답
-var response = await StageSender.RequestToApiService(
+var response = await StageLink.RequestToApiService(
     rankingServiceId,
-    CPacket.Of(new GetRankRequest { PlayerId = actor.ActorSender.AccountId })
+    CPacket.Of(new GetRankRequest { PlayerId = actor.ActorLink.AccountId })
 );
 var rank = GetRankResponse.Parser.ParseFrom(response.Payload.DataSpan);
 
 // 특정 API 서버로 단방향 전송
-StageSender.SendToApi(apiServerId, CPacket.Of(notification));
+StageLink.SendToApi(apiServerId, CPacket.Of(notification));
 ```
 
 ### API Server에서 Stage로 전송
 
 ```csharp
 // 특정 Stage로 메시지 전송
-ApiSender.SendToStage(playServerId, stageId, CPacket.Of(notification));
+ApiLink.SendToStage(playServerId, stageId, CPacket.Of(notification));
 
 // 특정 Stage로 요청-응답
-var response = await ApiSender.RequestToStage(
+var response = await ApiLink.RequestToStage(
     playServerId, stageId, CPacket.Of(request)
 );
 ```
@@ -375,10 +375,10 @@ var response = await ApiSender.RequestToStage(
 
 ```csharp
 // 다른 Play Server의 Stage로 단방향 전송
-StageSender.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
+StageLink.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
 
 // 다른 Stage로 요청-응답
-var response = await StageSender.RequestToStage(
+var response = await StageLink.RequestToStage(
     targetPlayServerId, targetStageId, CPacket.Of(request)
 );
 ```
@@ -462,7 +462,7 @@ var echoRequest = new EchoRequest { Content = "Hello", Sequence = 1 };
 using var packet = new Packet(echoRequest);
 
 // ✅ 서버에서 응답 생성
-actor.ActorSender.Reply(CPacket.Of(echoReply));
+actor.ActorLink.Reply(CPacket.Of(echoReply));
 
 // ❌ 잘못된 패턴: Empty 메시지 (테스트 외에는 사용 금지)
 // using var packet = Packet.Empty("EchoRequest");
@@ -504,15 +504,15 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     {
         case "FailRequest":
             // 에러 코드와 함께 응답
-            actor.ActorSender.Reply(500); // HTTP 스타일 에러 코드
+            actor.ActorLink.Reply(500); // HTTP 스타일 에러 코드
             break;
 
         case "NotFoundRequest":
-            actor.ActorSender.Reply(404);
+            actor.ActorLink.Reply(404);
             break;
 
         case "UnauthorizedRequest":
-            actor.ActorSender.Reply(401);
+            actor.ActorLink.Reply(401);
             break;
     }
 }
@@ -606,7 +606,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     if (packet.MsgId == "StartGameRequest")
     {
         // 1. 즉시 수락 응답
-        actor.ActorSender.Reply(CPacket.Empty("StartGameReply"));
+        actor.ActorLink.Reply(CPacket.Empty("StartGameReply"));
 
         // 2. 게임 준비 완료 후 Push 전송
         await PrepareGameAsync();
@@ -616,7 +616,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
             GameId = Guid.NewGuid().ToString(),
             StartTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
-        actor.ActorSender.SendToClient(CPacket.Of(readyNotify));
+        actor.ActorLink.SendToClient(CPacket.Of(readyNotify));
     }
 }
 ```
@@ -663,7 +663,7 @@ public class GameStage : IStage
             // 실제로는 Actor에 팀 정보를 저장해야 함
             if (GetActorTeam(actor) == teamId)
             {
-                actor.ActorSender.SendToClient(CPacket.Of(message));
+                actor.ActorLink.SendToClient(CPacket.Of(message));
             }
         }
     }
@@ -676,7 +676,7 @@ public class GameStage : IStage
             var actorPos = GetActorPosition(actor);
             if (Vector3.Distance(position, actorPos) <= range)
             {
-                actor.ActorSender.SendToClient(CPacket.Of(message));
+                actor.ActorLink.SendToClient(CPacket.Of(message));
             }
         }
     }
@@ -743,7 +743,7 @@ foreach (var player in players)
 {
     batch.PlayerUpdates.Add(player.GetStatus());
 }
-actor.ActorSender.SendToClient(CPacket.Of(batch));
+actor.ActorLink.SendToClient(CPacket.Of(batch));
 ```
 
 ### 메시지 풀링 (고급)
@@ -796,7 +796,7 @@ connector.Init(new ConnectorConfig
 });
 
 // 서버에서 반드시 Reply 호출
-actor.ActorSender.Reply(CPacket.Of(reply));
+actor.ActorLink.Reply(CPacket.Of(reply));
 ```
 
 ### Push 메시지가 수신되지 않음

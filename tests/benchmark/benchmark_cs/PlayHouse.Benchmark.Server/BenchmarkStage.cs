@@ -14,13 +14,13 @@ public class BenchmarkStage : IStage
 {
     private readonly ILogger<BenchmarkStage> _logger;
 
-    public BenchmarkStage(IStageSender stageSender, ILogger<BenchmarkStage>? logger = null)
+    public BenchmarkStage(IStageLink stageLink, ILogger<BenchmarkStage>? logger = null)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _logger = logger ?? NullLogger<BenchmarkStage>.Instance;
     }
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     {
@@ -68,7 +68,7 @@ public class BenchmarkStage : IStage
 
             default:
                 // 기본 응답
-                actor.ActorSender.Reply(CPacket.Empty(packet.MsgId + "Reply"));
+                actor.ActorLink.Reply(CPacket.Empty(packet.MsgId + "Reply"));
                 break;
         }
 
@@ -89,7 +89,7 @@ public class BenchmarkStage : IStage
         // Zero-copy: 소유권 이전
         var echoPayload = packet.Payload.Move();
 
-        actor.ActorSender.Reply(CPacket.Of("EchoReply", echoPayload));
+        actor.ActorLink.Reply(CPacket.Of("EchoReply", echoPayload));
 
         // 메트릭 기록
         sw.Stop();
@@ -106,7 +106,7 @@ public class BenchmarkStage : IStage
         var echoPayload = packet.Payload.Move();
 
         // SendToClient로 응답 (Reply가 아님)
-        actor.ActorSender.SendToClient(CPacket.Of("SendReply", echoPayload));
+        actor.ActorLink.SendToClient(CPacket.Of("SendReply", echoPayload));
 
         // 메트릭 기록
         var messageSize = packet.Payload.Length * 2;  // 요청 + 응답 (동일 크기)

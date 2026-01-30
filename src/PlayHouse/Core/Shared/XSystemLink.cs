@@ -8,17 +8,17 @@ using PlayHouse.Runtime.ServerMesh.Discovery;
 namespace PlayHouse.Core.Shared;
 
 /// <summary>
-/// System message handler용 ISender 구현체.
+/// System message handler용 ILink 구현체.
 /// </summary>
 /// <remarks>
 /// 시스템 메시지 핸들러에서 Reply 및 다른 서버로 메시지 전송을 지원합니다.
 /// </remarks>
-internal sealed class XSystemSender : XSender
+internal sealed class XSystemLink : XLink
 {
     /// <summary>
-    /// 새 XSystemSender 인스턴스를 생성합니다.
+    /// 새 XSystemLink 인스턴스를 생성합니다.
     /// </summary>
-    public XSystemSender(
+    public XSystemLink(
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,

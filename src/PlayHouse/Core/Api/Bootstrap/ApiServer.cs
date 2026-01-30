@@ -37,10 +37,10 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
     }
 
     /// <summary>
-    /// API Sender 인터페이스.
+    /// API Link 인터페이스.
     /// DI에 등록하여 Play Server에 요청을 보낼 때 사용합니다.
     /// </summary>
-    public IApiSender ApiSender { get; }
+    public IApiLink ApiLink { get; }
 
     internal ApiServer(
         ApiServerOption options,
@@ -64,7 +64,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         _communicator = new PlayCommunicator(serverConfig);
         _communicator.Bind(this);
 
-        // ServerInfoCenter 생성 (ApiDispatcher와 ApiSender에서 사용)
+        // ServerInfoCenter 생성 (ApiDispatcher와 ApiLink에서 사용)
         IServerInfoCenter serverInfoCenter = new XServerInfoCenter();
         var myServerInfo = new XServerInfo(
             _options.ServerType,
@@ -83,8 +83,8 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
             serviceProvider,
             loggerFactory);
 
-        // ApiSender 생성
-        ApiSender = new ApiSender(
+        // ApiLink 생성
+        ApiLink = new ApiLink(
             _communicator,
             _requestCache,
             serverInfoCenter,
@@ -179,7 +179,7 @@ public sealed class ApiServer : IApiServerControl, IAsyncDisposable, ICommunicat
         {
             _ = Task.Run(async () =>
             {
-                try { await _systemDispatcher.DispatchAsync(packet, ApiSender); }
+                try { await _systemDispatcher.DispatchAsync(packet, ApiLink); }
                 finally { packet.Dispose(); }
             });
             return;

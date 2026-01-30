@@ -165,7 +165,7 @@ public class SystemMessageVerifier : VerifierBase
             Message = testMessage
         };
 
-        var responsePacket = await ApiServer1.ApiSender!.RequestToApi(
+        var responsePacket = await ApiServer1.ApiLink!.RequestToApi(
             ServerContext.ApiServer1Id,
             ProtoCPacketExtensions.OfProto(triggerRequest));
 
@@ -200,7 +200,7 @@ public class SystemMessageVerifier : VerifierBase
             Message = testMessage
         };
 
-        var responsePacket = await ApiServer1.ApiSender!.RequestToApi(
+        var responsePacket = await ApiServer1.ApiLink!.RequestToApi(
             ServerContext.ApiServer1Id,
             ProtoCPacketExtensions.OfProto(triggerRequest));
 
@@ -235,7 +235,7 @@ public class SystemMessageVerifier : VerifierBase
             Message = testMessage
         };
 
-        var responsePacket = await ApiServer1.ApiSender!.RequestToApi(
+        var responsePacket = await ApiServer1.ApiLink!.RequestToApi(
             ServerContext.ApiServer1Id,
             ProtoCPacketExtensions.OfProto(triggerRequest));
 

@@ -196,7 +196,7 @@ try
         try
         {
             var createPacket = PlayHouse.Core.Shared.CPacket.Empty("CreateStage");
-            var result = await apiServer.ApiSender!.CreateStage(
+            var result = await apiServer.ApiLink!.CreateStage(
                 request.PlayNid,
                 request.StageType,
                 request.StageId,

@@ -146,9 +146,9 @@ public class HandlerRegisterTests
             register.Add("Test", nameof(HandleTest));
         }
 
-        public Task HandleTest(IPacket packet, IApiSender sender) => Task.CompletedTask;
-        public Task HandleTest2(IPacket packet, IApiSender sender) => Task.CompletedTask;
-        public Task HandleTest3(IPacket packet, IApiSender sender) => Task.CompletedTask;
+        public Task HandleTest(IPacket packet, IApiLink link) => Task.CompletedTask;
+        public Task HandleTest2(IPacket packet, IApiLink link) => Task.CompletedTask;
+        public Task HandleTest3(IPacket packet, IApiLink link) => Task.CompletedTask;
     }
 
     // Helper class for generic type testing

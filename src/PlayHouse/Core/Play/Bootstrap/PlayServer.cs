@@ -39,7 +39,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     private ITransportServer? _transportServer;
     private ServerAddressResolver? _addressResolver;
     private SystemDispatcher? _systemDispatcher;
-    private XSystemSender? _systemSender;
+    private XSystemLink? _systemLink;
     private CancellationTokenSource? _cts;
 
     private bool _isRunning;
@@ -132,8 +132,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         _systemDispatcher = new SystemDispatcher(_loggerFactory.CreateLogger<SystemDispatcher>());
         _systemController.Handles(_systemDispatcher);
 
-        // System message handler용 Sender 생성
-        _systemSender = new XSystemSender(
+        // System message handler용 Link 생성
+        _systemLink = new XSystemLink(
             _communicator,
             _requestCache,
             serverInfoCenter,
@@ -248,11 +248,11 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         }
 
         // 시스템 메시지 라우팅
-        if (packet.Header.IsSystem && _systemDispatcher != null && _systemSender != null)
+        if (packet.Header.IsSystem && _systemDispatcher != null && _systemLink != null)
         {
             _ = Task.Run(async () =>
             {
-                try { await _systemDispatcher.DispatchAsync(packet, _systemSender); }
+                try { await _systemDispatcher.DispatchAsync(packet, _systemLink); }
                 finally { packet.Dispose(); }
             });
             return;
@@ -403,16 +403,16 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             {
                 try
                 {
-                    // XActorSender 생성 (transport session 포함하여 직접 클라이언트 통신 가능)
-                    var actorSender = new XActorSender(_options.ServerId, session.SessionId, _options.ServerId, baseStage, session);
+                    // XActorLink 생성 (transport session 포함하여 직접 클라이언트 통신 가능)
+                    var actorLink = new XActorLink(_options.ServerId, session.SessionId, _options.ServerId, baseStage, session);
 
                     // IActor 생성 with DI scope
                     BaseActor actor;
                     IServiceScope? actorScope;
                     try
                     {
-                        (IActor iActor, actorScope) = _producer.GetActorWithScope(stageType, actorSender);
-                        actor = new BaseActor(iActor, actorSender, actorScope);
+                        (IActor iActor, actorScope) = _producer.GetActorWithScope(stageType, actorLink);
+                        actor = new BaseActor(iActor, actorLink, actorScope);
                     }
                     catch (KeyNotFoundException)
                     {
@@ -437,7 +437,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     }
 
                     // AccountId 검증
-                    if (string.IsNullOrEmpty(actorSender.AccountId))
+                    if (string.IsNullOrEmpty(actorLink.AccountId))
                     {
                         _logger.LogError("AccountId not set after authentication for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
@@ -447,7 +447,7 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                     }
 
                     // 세션에 인증 정보 설정
-                    session.AccountId = actorSender.AccountId;
+                    session.AccountId = actorLink.AccountId;
                     session.IsAuthenticated = true;
                     session.StageId = targetStageId;
                     await actor.Actor.OnPostAuthenticate();

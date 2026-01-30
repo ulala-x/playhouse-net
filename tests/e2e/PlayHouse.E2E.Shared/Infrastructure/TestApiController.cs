@@ -69,18 +69,18 @@ public class TestApiController : IApiController
         register.Add(typeof(TriggerApiRequestToSystemRequest).Name!, HandleApiRequestToSystem);
     }
 
-    private Task HandleApiEcho(IPacket packet, IApiSender sender)
+    private Task HandleApiEcho(IPacket packet, IApiLink link)
     {
         var request =  packet.Parse<ApiEchoRequest>();
         //var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var reply = new ApiEchoReply { Content = $"Echo: {request.Content}" };
         
         //sender.Reply(ProtoCPacketExtensions.OfProto(reply));
-        sender.Reply(reply);
+        link.Reply(reply);
         return Task.CompletedTask;
     }
 
-    private Task HandleApiDirectEcho(IPacket packet, IApiSender sender)
+    private Task HandleApiDirectEcho(IPacket packet, IApiLink link)
     {
         var request = ApiDirectEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var reply = new ApiDirectEchoReply { Message = $"Direct: {request.Message}" };
@@ -93,7 +93,7 @@ public class TestApiController : IApiController
         return Task.CompletedTask;
     }
 
-    private async Task HandleCreateStage(IPacket packet, IApiSender sender)
+    private async Task HandleCreateStage(IPacket packet, IApiLink link)
     {
         var request = TriggerCreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -103,7 +103,7 @@ public class TestApiController : IApiController
             StageName = request.StageType,
             MaxPlayers = 10
         };
-        var result = await sender.CreateStage(
+        var result = await link.CreateStage(
             playNid,
             request.StageType,
             request.StageId,
@@ -113,10 +113,10 @@ public class TestApiController : IApiController
         {
             Success = result.Result
         };
-        sender.Reply(reply);
+        link.Reply(reply);
     }
 
-    private async Task HandleGetOrCreateStage(IPacket packet, IApiSender sender)
+    private async Task HandleGetOrCreateStage(IPacket packet, IApiLink link)
     {
         var request = TriggerGetOrCreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -126,7 +126,7 @@ public class TestApiController : IApiController
             StageName = request.StageType,
             MaxPlayers = 10
         };
-        var result = await sender.GetOrCreateStage(
+        var result = await link.GetOrCreateStage(
             playNid,
             request.StageType,
             request.StageId,
@@ -137,10 +137,10 @@ public class TestApiController : IApiController
             Success = result.Result,
             IsCreated = result.IsCreated
         };
-        sender.Reply(reply);
+        link.Reply(reply);
     }
 
-    private Task HandleSendToApiServer(IPacket packet, IApiSender sender)
+    private Task HandleSendToApiServer(IPacket packet, IApiLink link)
     {
         var request = TriggerSendToApiServerRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -149,14 +149,14 @@ public class TestApiController : IApiController
             FromApiNid = "sender-api",
             Content = request.Message
         };
-        sender.SendToApi(request.TargetApiNid, message);
+        link.SendToApi(request.TargetApiNid, message);
 
         var reply = new TriggerSendToApiServerReply { Success = true };
-        sender.Reply(reply);
+        link.Reply(reply);
         return Task.CompletedTask;
     }
 
-    private async Task HandleRequestToApiServer(IPacket packet, IApiSender sender)
+    private async Task HandleRequestToApiServer(IPacket packet, IApiLink link)
     {
         var request = TriggerRequestToApiServerRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -169,17 +169,17 @@ public class TestApiController : IApiController
             FromApiNid = "sender-api",
             Content = request.Query
         };
-        var responsePacket = await sender.RequestToApi(request.TargetApiNid, message);
+        var responsePacket = await link.RequestToApi(request.TargetApiNid, message);
         var response = InterApiReply.Parser.ParseFrom(responsePacket.Payload.DataSpan);
 
         var reply = new TriggerRequestToApiServerReply
         {
             Response = response.Response
         };
-        sender.Reply(reply);
+        link.Reply(reply);
     }
 
-    private Task HandleInterApiMessage(IPacket packet, IApiSender sender)
+    private Task HandleInterApiMessage(IPacket packet, IApiLink link)
     {
         var request = InterApiMessage.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -187,11 +187,11 @@ public class TestApiController : IApiController
         {
             Response = $"Processed: {request.Content} from {request.FromApiNid}"
         };
-        sender.Reply(reply);
+        link.Reply(reply);
         return Task.CompletedTask;
     }
 
-    private Task HandleBenchmarkApi(IPacket packet, IApiSender sender)
+    private Task HandleBenchmarkApi(IPacket packet, IApiLink link)
     {
         var request = BenchmarkApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -206,11 +206,11 @@ public class TestApiController : IApiController
             Payload = payload
         };
 
-        sender.Reply(reply);
+        link.Reply(reply);
         return Task.CompletedTask;
     }
 
-    private Task HandleTimerApi(IPacket packet, IApiSender sender)
+    private Task HandleTimerApi(IPacket packet, IApiLink link)
     {
         var request = TimerApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -218,21 +218,21 @@ public class TestApiController : IApiController
         {
             Content = $"Timer API Response: {request.Content}"
         };
-        sender.Reply(reply);
+        link.Reply(reply);
         return Task.CompletedTask;
     }
 
-    private Task HandleGetApiAccountId(IPacket packet, IApiSender sender)
+    private Task HandleGetApiAccountId(IPacket packet, IApiLink link)
     {
         var reply = new GetApiAccountIdReply
         {
-            AccountId = sender.AccountId
+            AccountId = link.AccountId
         };
-        sender.Reply(reply);
+        link.Reply(reply);
         return Task.CompletedTask;
     }
 
-    private Task HandleApiSendToSystemPlay(IPacket packet, IApiSender sender)
+    private Task HandleApiSendToSystemPlay(IPacket packet, IApiLink link)
     {
         var request = TriggerApiSendToSystemPlayRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -242,13 +242,13 @@ public class TestApiController : IApiController
             FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        sender.SendToSystem(request.TargetPlayNid, systemMsg);
+        link.SendToSystem(request.TargetPlayNid, systemMsg);
 
-        sender.Reply(new TriggerApiSendToSystemPlayReply { Success = true });
+        link.Reply(new TriggerApiSendToSystemPlayReply { Success = true });
         return Task.CompletedTask;
     }
 
-    private Task HandleApiSendToSystemApi(IPacket packet, IApiSender sender)
+    private Task HandleApiSendToSystemApi(IPacket packet, IApiLink link)
     {
         var request = TriggerApiSendToSystemApiRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -258,13 +258,13 @@ public class TestApiController : IApiController
             FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        sender.SendToSystem(request.TargetApiNid, systemMsg);
+        link.SendToSystem(request.TargetApiNid, systemMsg);
 
-        sender.Reply(new TriggerApiSendToSystemApiReply { Success = true });
+        link.Reply(new TriggerApiSendToSystemApiReply { Success = true });
         return Task.CompletedTask;
     }
 
-    private async Task HandleApiRequestToSystem(IPacket packet, IApiSender sender)
+    private async Task HandleApiRequestToSystem(IPacket packet, IApiLink link)
     {
         var request = TriggerApiRequestToSystemRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -274,10 +274,10 @@ public class TestApiController : IApiController
             FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        var response = await sender.RequestToSystem(request.TargetServerId, systemMsg);
+        var response = await link.RequestToSystem(request.TargetServerId, systemMsg);
         var systemReply = SystemEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
 
-        sender.Reply(new TriggerApiRequestToSystemReply
+        link.Reply(new TriggerApiRequestToSystemReply
         {
             Response = systemReply.Content,
             HandledByServerId = systemReply.HandledByServerId

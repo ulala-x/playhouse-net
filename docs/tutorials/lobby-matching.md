@@ -24,7 +24,7 @@
 │                         │                     │
 │  - 매칭 큐 관리          │                     │
 │  - 매칭 로직 실행        │                     │
-│  ApiSender.CreateStage()│                     │
+│  ApiLink.CreateStage()│                     │
 │         │               │                     │
 └─────────┼───────────────┘                     │
           ▼                                     │
@@ -49,7 +49,7 @@
    - API Server가 매칭 로직 실행
 
 2. **매칭 완료 시**
-   - API Server가 Play Server에 GameRoom 생성 (`ApiSender.CreateStage`)
+   - API Server가 Play Server에 GameRoom 생성 (`ApiLink.CreateStage`)
    - 방 정보(playNid, stageId, stageType) 반환
 
 3. **클라이언트 → Play Server (TCP)**
@@ -223,7 +223,7 @@ public class LobbyController : IApiController
     /// <summary>
     /// 매칭 요청 처리
     /// </summary>
-    private async Task HandleRequestMatch(IPacket packet, IApiSender sender)
+    private async Task HandleRequestMatch(IPacket packet, IApiLink link)
     {
         var request = RequestMatchRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -248,12 +248,12 @@ public class LobbyController : IApiController
         queue.Enqueue(ticket);
 
         // 즉시 매칭 시도 (간단한 예제: 2명이면 매칭)
-        var matchResult = await TryCreateMatch(request.GameMode, sender);
+        var matchResult = await TryCreateMatch(request.GameMode, link);
 
         if (matchResult != null && _tickets.TryGetValue(ticket.TicketId, out var updatedTicket))
         {
             // 매칭 완료됨
-            sender.Reply(CPacket.Of(new RequestMatchResponse
+            link.Reply(CPacket.Of(new RequestMatchResponse
             {
                 Success = true,
                 MatchTicketId = ticket.TicketId,
@@ -263,7 +263,7 @@ public class LobbyController : IApiController
         else
         {
             // 매칭 대기 중
-            sender.Reply(CPacket.Of(new RequestMatchResponse
+            link.Reply(CPacket.Of(new RequestMatchResponse
             {
                 Success = true,
                 MatchTicketId = ticket.TicketId,
@@ -275,13 +275,13 @@ public class LobbyController : IApiController
     /// <summary>
     /// 매칭 상태 확인
     /// </summary>
-    private Task HandleCheckMatchStatus(IPacket packet, IApiSender sender)
+    private Task HandleCheckMatchStatus(IPacket packet, IApiLink link)
     {
         var request = CheckMatchStatusRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         if (!_tickets.TryGetValue(request.MatchTicketId, out var ticket))
         {
-            sender.Reply(CPacket.Of(new CheckMatchStatusResponse
+            link.Reply(CPacket.Of(new CheckMatchStatusResponse
             {
                 Status = "not_found"
             }));
@@ -298,14 +298,14 @@ public class LobbyController : IApiController
             response.RoomInfo = ticket.RoomInfo;
         }
 
-        sender.Reply(CPacket.Of(response));
+        link.Reply(CPacket.Of(response));
         return Task.CompletedTask;
     }
 
     /// <summary>
     /// 매칭 취소
     /// </summary>
-    private Task HandleCancelMatch(IPacket packet, IApiSender sender)
+    private Task HandleCancelMatch(IPacket packet, IApiLink link)
     {
         var request = CancelMatchRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -315,14 +315,14 @@ public class LobbyController : IApiController
             _tickets.TryRemove(request.MatchTicketId, out _);
         }
 
-        sender.Reply(CPacket.Of(new CancelMatchResponse { Success = true }));
+        link.Reply(CPacket.Of(new CancelMatchResponse { Success = true }));
         return Task.CompletedTask;
     }
 
     /// <summary>
     /// 매칭 시도 및 게임룸 생성
     /// </summary>
-    private async Task<RoomInfo?> TryCreateMatch(string gameMode, IApiSender sender)
+    private async Task<RoomInfo?> TryCreateMatch(string gameMode, IApiLink link)
     {
         if (!_matchQueues.TryGetValue(gameMode, out var queue))
             return null;
@@ -372,7 +372,7 @@ public class LobbyController : IApiController
 
         try
         {
-            var createResult = await sender.CreateStage(
+            var createResult = await link.CreateStage(
                 PlayNid,          // Play Server NID
                 "GameRoom",       // Stage 타입
                 stageId,          // Stage ID
@@ -450,13 +450,13 @@ using PlayHouse.Tutorial.LobbyMatching;
 
 public class PlayerActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
     public string PlayerName { get; private set; } = "";
 
-    public PlayerActor(IActorSender actorSender)
+    public PlayerActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public Task OnCreate()
@@ -471,14 +471,14 @@ public class PlayerActor : IActor
 
         // 실제 게임에서는 session_token 검증
         PlayerName = request.PlayerName;
-        ActorSender.AccountId = Guid.NewGuid().ToString(); // 임시 ID
+        ActorLink.AccountId = Guid.NewGuid().ToString(); // 임시 ID
 
-        Console.WriteLine($"[PlayerActor] Authenticated: {PlayerName} (ID: {ActorSender.AccountId})");
+        Console.WriteLine($"[PlayerActor] Authenticated: {PlayerName} (ID: {ActorLink.AccountId})");
 
         var response = new AuthenticateResponse
         {
             Success = true,
-            AccountId = ActorSender.AccountId
+            AccountId = ActorLink.AccountId
         };
 
         return Task.FromResult<(bool, IPacket?)>((true, CPacket.Of(response)));
@@ -510,16 +510,16 @@ using System.Collections.Concurrent;
 
 public class GameRoomStage : IStage
 {
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
     private string _gameMode = "";
     private readonly List<string> _expectedPlayerIds = new();
     private readonly ConcurrentDictionary<string, PlayerActor> _joinedPlayers = new();
     private bool _gameStarted = false;
 
-    public GameRoomStage(IStageSender stageSender)
+    public GameRoomStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     #region Stage Lifecycle
@@ -531,7 +531,7 @@ public class GameRoomStage : IStage
         _gameMode = request.GameMode;
         _expectedPlayerIds.AddRange(request.PlayerIds);
 
-        Console.WriteLine($"[GameRoomStage] Created: StageId={StageSender.StageId}, Mode={_gameMode}");
+        Console.WriteLine($"[GameRoomStage] Created: StageId={StageLink.StageId}, Mode={_gameMode}");
         Console.WriteLine($"[GameRoomStage] Expected players: {string.Join(", ", _expectedPlayerIds)}");
 
         return Task.FromResult<(bool, IPacket)>((true, CPacket.Empty));
@@ -540,7 +540,7 @@ public class GameRoomStage : IStage
     public Task OnPostCreate()
     {
         // 타임아웃: 60초 내에 모든 플레이어가 입장하지 않으면 방 닫기
-        StageSender.AddCountTimer(
+        StageLink.AddCountTimer(
             TimeSpan.FromSeconds(60),
             TimeSpan.FromSeconds(1),
             1,
@@ -549,7 +549,7 @@ public class GameRoomStage : IStage
                 if (!_gameStarted)
                 {
                     Console.WriteLine($"[GameRoomStage] Timeout: Not all players joined. Closing room.");
-                    StageSender.CloseStage();
+                    StageLink.CloseStage();
                 }
                 return Task.CompletedTask;
             }
@@ -560,7 +560,7 @@ public class GameRoomStage : IStage
 
     public Task OnDestroy()
     {
-        Console.WriteLine($"[GameRoomStage] Destroyed: StageId={StageSender.StageId}");
+        Console.WriteLine($"[GameRoomStage] Destroyed: StageId={StageLink.StageId}");
         return Task.CompletedTask;
     }
 
@@ -570,7 +570,7 @@ public class GameRoomStage : IStage
 
     public Task<bool> OnJoinStage(IActor actor)
     {
-        var accountId = actor.ActorSender.AccountId;
+        var accountId = actor.ActorLink.AccountId;
 
         // 매칭된 플레이어인지 확인
         if (!_expectedPlayerIds.Contains(accountId))
@@ -607,7 +607,7 @@ public class GameRoomStage : IStage
     {
         if (!isConnected && _gameStarted)
         {
-            Console.WriteLine($"[GameRoomStage] Player disconnected: {actor.ActorSender.AccountId}");
+            Console.WriteLine($"[GameRoomStage] Player disconnected: {actor.ActorLink.AccountId}");
             // 실제 게임에서는 재접속 대기 또는 게임 종료 처리
         }
 
@@ -620,7 +620,7 @@ public class GameRoomStage : IStage
 
     public Task OnDispatch(IActor actor, IPacket packet)
     {
-        Console.WriteLine($"[GameRoomStage] Received from {actor.ActorSender.AccountId}: {packet.MsgId}");
+        Console.WriteLine($"[GameRoomStage] Received from {actor.ActorLink.AccountId}: {packet.MsgId}");
 
         // 게임 내 메시지 처리 (실제 게임 로직)
         return Task.CompletedTask;
@@ -652,18 +652,18 @@ public class GameRoomStage : IStage
 
         foreach (var player in _joinedPlayers.Values)
         {
-            player.ActorSender.SendToClient(CPacket.Of(startNotify));
+            player.ActorLink.SendToClient(CPacket.Of(startNotify));
         }
 
         // 게임 종료 타이머 (5분 후)
-        StageSender.AddCountTimer(
+        StageLink.AddCountTimer(
             TimeSpan.FromMinutes(5),
             TimeSpan.FromSeconds(1),
             1,
             () =>
             {
                 Console.WriteLine($"[GameRoomStage] Game ended. Closing room.");
-                StageSender.CloseStage();
+                StageLink.CloseStage();
                 return Task.CompletedTask;
             }
         );
@@ -1055,7 +1055,7 @@ Players: alice-id, bob-id
 
 ```csharp
 // Stage 생성
-var result = await sender.CreateStage(
+var result = await link.CreateStage(
     playNid,       // Play Server 식별자
     "GameRoom",    // Stage 타입
     stageId,       // Stage ID
@@ -1067,7 +1067,7 @@ var result = await sender.CreateStage(
 
 ```csharp
 // Stage에서 클라이언트로 Push
-actor.ActorSender.SendToClient(CPacket.Of(notification));
+actor.ActorLink.SendToClient(CPacket.Of(notification));
 
 // 클라이언트에서 수신
 connector.SetOnReceive((packet) => {
