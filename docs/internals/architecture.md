@@ -165,13 +165,13 @@ Core Engine → Abstractions ← Infrastructure
 
 **특징**:
 - 외부 의존성 없음 (순수 C# 인터페이스와 값 객체만)
-- 프레임워크의 핵심 개념 정의 (IStage, IActor, ISender, IPacket 등)
+- 프레임워크의 핵심 개념 정의 (IStage, IActor, ILink, IPacket 등)
 - 도메인 모델과 에러 코드 정의
 
 **주요 컴포넌트**:
 - `IStage`: Stage 인터페이스
 - `IActor`: Actor 인터페이스
-- `ISender`: 메시지 전송 인터페이스
+- `ILink`: 메시지 전송 인터페이스
 - `IPacket`: 패킷 추상화
 - `RoutePacket`: 라우팅 정보를 포함한 값 객체
 - `ErrorCode`: 프레임워크 에러 코드 정의
@@ -218,7 +218,7 @@ playhouse-net/
 │       ├── Abstractions/          # Domain Layer (의존성 없음)
 │       │   ├── IStage.cs
 │       │   ├── IActor.cs
-│       │   ├── ISender.cs
+│       │   ├── ILink.cs
 │       │   ├── IPacket.cs
 │       │   ├── RoutePacket.cs
 │       │   └── ErrorCode.cs
@@ -434,7 +434,7 @@ Client/HTTP
        │
        ▼
 ┌─────────────┐
-│   Sender    │  - 클라이언트로 응답 전송
+│   Link      │  - 클라이언트로 응답 전송
 │             │  - 다른 Stage로 메시지 전송
 └─────────────┘
 ```
@@ -727,8 +727,8 @@ public enum ServerType : ushort
 **메시지 API**:
 ```csharp
 // Play Server의 Stage로 메시지 전송
-sender.SendToStage(playServerId, stageId, packet);
-sender.RequestToStage(playServerId, stageId, packet);
+link.SendToStage(playServerId, stageId, packet);
+link.RequestToStage(playServerId, stageId, packet);
 ```
 
 #### 7.2.2 API Server (ServerType.Api)
@@ -750,12 +750,12 @@ sender.RequestToStage(playServerId, stageId, packet);
 **메시지 API**:
 ```csharp
 // API Server로 메시지 전송
-sender.SendToApi(apiServerId, packet);
-sender.RequestToApi(apiServerId, packet);
+link.SendToApi(apiServerId, packet);
+link.RequestToApi(apiServerId, packet);
 
 // ServiceId로 API Server 선택
-sender.SendToApiService(serviceId, packet);
-sender.RequestToApiService(serviceId, packet);
+link.SendToApiService(serviceId, packet);
+link.RequestToApiService(serviceId, packet);
 ```
 
 ### 7.3 ServiceId
@@ -887,10 +887,10 @@ public enum ServerSelectionPolicy
 **사용 예시**:
 ```csharp
 // RoundRobin 방식으로 API 서버 선택 (기본값)
-sender.SendToApiService(serviceId: 1, packet);
+link.SendToApiService(serviceId: 1, packet);
 
 // 명시적으로 RoundRobin 지정
-sender.SendToApiService(
+link.SendToApiService(
     serviceId: 1,
     packet,
     ServerSelectionPolicy.RoundRobin
@@ -919,7 +919,7 @@ sender.SendToApiService(
 **사용 예시**:
 ```csharp
 // 가중치 기반으로 API 서버 선택
-sender.SendToApiService(
+link.SendToApiService(
     serviceId: 1,
     packet,
     ServerSelectionPolicy.Weighted
@@ -946,10 +946,10 @@ Weighted 정책 적용 시:
 
 ```csharp
 // 특정 API 서버로 전송
-sender.SendToApi(apiServerId: "api-seoul-1", packet);
+link.SendToApi(apiServerId: "api-seoul-1", packet);
 
 // 특정 API 서버로 요청
-var reply = await sender.RequestToApi(
+var reply = await link.RequestToApi(
     apiServerId: "api-seoul-1",
     packet
 );
@@ -966,23 +966,23 @@ var reply = await sender.RequestToApi(
 
 ```csharp
 // ServiceId로 전송 (RoundRobin)
-sender.SendToApiService(serviceId: 1, packet);
+link.SendToApiService(serviceId: 1, packet);
 
 // ServiceId로 요청 (RoundRobin)
-var reply = await sender.RequestToApiService(
+var reply = await link.RequestToApiService(
     serviceId: 1,
     packet
 );
 
 // ServiceId로 전송 (Weighted)
-sender.SendToApiService(
+link.SendToApiService(
     serviceId: 1,
     packet,
     ServerSelectionPolicy.Weighted
 );
 
 // ServiceId로 요청 (Weighted)
-var reply = await sender.RequestToApiService(
+var reply = await link.RequestToApiService(
     serviceId: 1,
     packet,
     ServerSelectionPolicy.Weighted
@@ -1020,13 +1020,13 @@ var reply = await sender.RequestToApiService(
 **라우팅 예시**:
 ```csharp
 // 서울 리전 API 사용
-await sender.RequestToApiService(serviceId: 1, packet);
+await link.RequestToApiService(serviceId: 1, packet);
 
 // 도쿄 리전 API 사용
-await sender.RequestToApiService(serviceId: 2, packet);
+await link.RequestToApiService(serviceId: 2, packet);
 
 // 싱가포르 리전 API 사용
-await sender.RequestToApiService(serviceId: 3, packet);
+await link.RequestToApiService(serviceId: 3, packet);
 ```
 
 #### 7.6.2 기능별 분리 배치
@@ -1050,19 +1050,19 @@ await sender.RequestToApiService(serviceId: 3, packet);
 **사용 예시**:
 ```csharp
 // 게임 데이터 조회
-var gameData = await sender.RequestToApiService(
+var gameData = await link.RequestToApiService(
     serviceId: 1,
     new GetPlayerDataRequest()
 );
 
 // 결제 처리
-var paymentResult = await sender.RequestToApiService(
+var paymentResult = await link.RequestToApiService(
     serviceId: 2,
     new ProcessPaymentRequest()
 );
 
 // 친구 목록 조회
-var friends = await sender.RequestToApiService(
+var friends = await link.RequestToApiService(
     serviceId: 3,
     new GetFriendsRequest()
 );
@@ -1095,7 +1095,7 @@ var friends = await sender.RequestToApiService(
 **개발자 관점**:
 ```csharp
 // 서버 선택 로직 불필요
-await sender.RequestToApiService(serviceId: 1, packet);
+await link.RequestToApiService(serviceId: 1, packet);
 ```
 
 **프레임워크 내부**:
@@ -1110,13 +1110,13 @@ await sender.RequestToApiService(serviceId: 1, packet);
 **Before** (특정 서버 ID 사용):
 ```csharp
 // 하드코딩된 서버 ID
-sender.SendToApi("hardcoded-api-server", packet);
+link.SendToApi("hardcoded-api-server", packet);
 ```
 
 **After** (ServiceId 사용):
 ```csharp
 // 서비스 그룹으로 추상화
-sender.SendToApiService(ServiceIdDefaults.Default, packet);
+link.SendToApiService(ServiceIdDefaults.Default, packet);
 ```
 
 #### 7.8.2 점진적 도입
@@ -1124,7 +1124,7 @@ sender.SendToApiService(ServiceIdDefaults.Default, packet);
 **Phase 1**: 모든 서버를 Default ServiceId로 설정
 ```csharp
 const ushort DEFAULT_SERVICE = ServiceIdDefaults.Default;
-sender.SendToApiService(DEFAULT_SERVICE, packet);
+link.SendToApiService(DEFAULT_SERVICE, packet);
 ```
 
 **Phase 2**: 기능별로 ServiceId 분리
@@ -1133,7 +1133,7 @@ const ushort GAME_DATA_SERVICE = 1;
 const ushort PAYMENT_SERVICE = 2;
 const ushort SOCIAL_SERVICE = 3;
 
-sender.SendToApiService(GAME_DATA_SERVICE, packet);
+link.SendToApiService(GAME_DATA_SERVICE, packet);
 ```
 
 **Phase 3**: 리전별 분리 (필요시)
@@ -1142,7 +1142,7 @@ const ushort SEOUL_SERVICE = 1;
 const ushort TOKYO_SERVICE = 2;
 
 var serviceId = GetRegionServiceId(playerRegion);
-sender.SendToApiService(serviceId, packet);
+link.SendToApiService(serviceId, packet);
 ```
 
 ## 8. 동시성 및 스레딩 모델
@@ -1269,7 +1269,7 @@ try {
     LOG.Error(ex);
 
     // 클라이언트에 에러 응답
-    sender.Reply(ErrorCode.InternalError);
+    link.Reply(ErrorCode.InternalError);
 
     // Stage는 계속 유지 (격리)
 }

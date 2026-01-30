@@ -21,7 +21,7 @@ namespace PlayHouse.E2E.Shared.Infrastructure;
 public class DITestActor : IActor
 {
     private readonly ILogger<DITestActor> _logger;
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
     private readonly ITestService _testService;
 
     private static long _accountIdCounter;
@@ -29,9 +29,9 @@ public class DITestActor : IActor
     /// <summary>
     /// DI 컨테이너가 IActorSender, ITestService, ILogger를 모두 주입합니다.
     /// </summary>
-    public DITestActor(IActorSender actorSender, ITestService testService, ILogger<DITestActor>? logger = null)
+    public DITestActor(IActorLink actorLink, ITestService testService, ILogger<DITestActor>? logger = null)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
         _testService = testService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<DITestActor>.Instance;
         _logger.LogDebug("DITestActor created");
@@ -51,7 +51,7 @@ public class DITestActor : IActor
     {
         // 인증 시 AccountId 설정 (필수)
         var accountId = Interlocked.Increment(ref _accountIdCounter);
-        ActorSender.AccountId = accountId.ToString();
+        ActorLink.AccountId = accountId.ToString();
 
         // authPacket 파싱하여 E2E 검증 가능하도록 echo
         string receivedUserId = "";
@@ -73,7 +73,7 @@ public class DITestActor : IActor
         // Reply packet 생성 (클라이언트에 전달됨)
         var reply = new AuthenticateReply
         {
-            AccountId = ActorSender.AccountId,
+            AccountId = ActorLink.AccountId,
             Success = true,
             ReceivedUserId = receivedUserId,
             ReceivedToken = receivedToken

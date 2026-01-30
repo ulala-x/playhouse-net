@@ -94,15 +94,15 @@ internal sealed class ApiDispatcher : IDisposable
     {
         var header = packet.Header;
 
-        // 매번 새 ApiSender 생성 (ThreadStatic 사용 시 async/await에서 race condition 발생)
-        var apiSender = new ApiSender(_communicator, _requestCache, _serverInfoCenter, _serverType, _serviceId, _serverId);
-        apiSender.SetSessionContext(header);
+        // 매번 새 ApiLink 생성 (ThreadStatic 사용 시 async/await에서 race condition 발생)
+        var apiLink = new ApiLink(_communicator, _requestCache, _serverInfoCenter, _serverType, _serviceId, _serverId);
+        apiLink.SetSessionContext(header);
 
         try
         {
             // Zero-copy contents packet
             var contentsPacket = CPacket.Of(packet.MsgId, packet.Payload);
-            await _apiReflection.CallMethodAsync(contentsPacket, apiSender);
+            await _apiReflection.CallMethodAsync(contentsPacket, apiLink);
         }
         catch (PlayException e)
         {
@@ -111,7 +111,7 @@ internal sealed class ApiDispatcher : IDisposable
 
             if (header.MsgSeq > 0)
             {
-                apiSender.Reply((ushort)e.ErrorCode);
+                apiLink.Reply((ushort)e.ErrorCode);
             }
         }
         catch (Exception e)
@@ -120,12 +120,12 @@ internal sealed class ApiDispatcher : IDisposable
 
             if (header.MsgSeq > 0)
             {
-                apiSender.Reply((ushort)ErrorCode.UncheckedContentsError);
+                apiLink.Reply((ushort)ErrorCode.UncheckedContentsError);
             }
         }
         finally
         {
-            apiSender.ClearSessionContext();
+            apiLink.ClearSessionContext();
         }
     }
 

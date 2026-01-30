@@ -10,20 +10,20 @@ using PlayHouse.Runtime.Proto;
 namespace PlayHouse.Core.Api;
 
 /// <summary>
-/// Implementation of IApiSender for API server handlers.
+/// Implementation of IApiLink for API server handlers.
 /// </summary>
 /// <remarks>
-/// ApiSender extends XSender with API-specific functionality:
+/// ApiLink extends XLink with API-specific functionality:
 /// - Stage creation and management
 /// - Authentication context management
 /// </remarks>
-internal class ApiSender : XSender, IApiSender
+internal class ApiLink : XLink, IApiLink
 {
     private string _accountId = string.Empty;
     private long _stageId;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ApiSender"/> class.
+    /// Initializes a new instance of the <see cref="ApiLink"/> class.
     /// </summary>
     /// <param name="communicator">The communicator for sending messages.</param>
     /// <param name="requestCache">The request cache for tracking pending requests.</param>
@@ -31,7 +31,7 @@ internal class ApiSender : XSender, IApiSender
     /// <param name="serverType">The server type of this API server.</param>
     /// <param name="serviceId">The service ID of this API server.</param>
     /// <param name="serverId">The ServerId of this API server.</param>
-    public ApiSender(
+    public ApiLink(
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,

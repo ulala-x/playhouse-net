@@ -19,7 +19,7 @@ namespace PlayHouse.Core.Play.Base;
 /// </summary>
 internal sealed class BaseStage(
     IStage stage,
-    XStageSender stageSender,
+    XStageLink stageLink,
     ILogger logger,
     BaseStageCmdHandler cmdHandler,
     IServiceScope serviceScope) : IReplyPacketRegistry
@@ -40,10 +40,10 @@ internal sealed class BaseStage(
     internal static BaseStage? Current => CurrentStage.Value;
 
     public IStage Stage { get; } = stage;
-    public XStageSender StageSender { get; } = stageSender;
+    public XStageLink StageLink { get; } = stageLink;
     public bool IsCreated { get; private set; }
-    public long StageId => StageSender.StageId;
-    public string StageType => StageSender.StageType;
+    public long StageId => StageLink.StageId;
+    public string StageType => StageLink.StageType;
 
     public void RegisterReplyForDisposal(IDisposable packet) => _pendingReplyPackets.Add(packet);
 
@@ -211,7 +211,7 @@ internal sealed class BaseStage(
 
     internal Task DispatchRoutePacketAsync(RoutePacket packet)
     {
-        StageSender.SetCurrentHeader(packet.Header);
+        StageLink.SetCurrentHeader(packet.Header);
         try
         {
             var msgId = packet.MsgId;
@@ -232,15 +232,15 @@ internal sealed class BaseStage(
             if (!task.IsCompleted)
             {
                 return task.ContinueWith(t => {
-                    StageSender.ClearCurrentHeader();
+                    StageLink.ClearCurrentHeader();
                     DisposePendingReplies();
                     if (t.IsFaulted) throw t.Exception!;
                 }, TaskScheduler.Default);
             }
-            StageSender.ClearCurrentHeader();
+            StageLink.ClearCurrentHeader();
             return task;
         }
-        catch { StageSender.ClearCurrentHeader(); throw; }
+        catch { StageLink.ClearCurrentHeader(); throw; }
     }
 
     private static bool IsSystemMessage(string msgId) =>
@@ -281,7 +281,7 @@ internal sealed class BaseStage(
         if (baseActor != null)
         {
             var header = new RouteHeader { MsgSeq = message.MsgSeq, ServiceId = 1, MsgId = message.MsgId, From = "client", StageId = StageId, AccountId = 0, Sid = message.Sid };
-            StageSender.SetCurrentHeader(header);
+            StageLink.SetCurrentHeader(header);
             try
             {
                 var payload = message.TakePayload();
@@ -292,16 +292,16 @@ internal sealed class BaseStage(
                     if (!task.IsCompleted)
                     {
                         return task.ContinueWith(t => {
-                            StageSender.ClearCurrentHeader();
+                            StageLink.ClearCurrentHeader();
                             DisposePendingReplies();
                             if (t.IsFaulted) throw t.Exception!;
                         }, TaskScheduler.Default);
                     }
-                    StageSender.ClearCurrentHeader();
+                    StageLink.ClearCurrentHeader();
                     return task;
                 }
             }
-            catch { StageSender.ClearCurrentHeader(); throw; }
+            catch { StageLink.ClearCurrentHeader(); throw; }
         }
         return Task.CompletedTask;
     }
@@ -317,7 +317,7 @@ internal sealed class BaseStage(
             {
                 await actor.Actor.OnDestroy();
                 actor.Dispose();  // Dispose new Actor's DI scope (keeping existing)
-                existingActor.ActorSender.Update(actor.ActorSender.SessionNid, actor.ActorSender.Sid, actor.ActorSender.ApiNid);
+                existingActor.ActorLink.Update(actor.ActorLink.SessionNid, actor.ActorLink.Sid, actor.ActorLink.ApiNid);
                 await Stage.OnConnectionChanged(existingActor.Actor, true);
             }
             else
@@ -374,12 +374,12 @@ internal sealed class BaseStage(
     #endregion
 
     #region Reply / Helpers
-    public void Reply(ushort errorCode) => StageSender.Reply(errorCode);
-    public void Reply(IPacket packet) => StageSender.Reply(packet);
+    public void Reply(ushort errorCode) => StageLink.Reply(errorCode);
+    public void Reply(IPacket packet) => StageLink.Reply(packet);
 
     public async Task<(bool success, IPacket? reply)> CreateStage(string stageType, IPacket packet)
     {
-        StageSender.SetStageType(stageType);
+        StageLink.SetStageType(stageType);
         var (result, replyPacket) = await Stage.OnCreate(packet);
         if (result) IsCreated = true;
         return (result, replyPacket);
@@ -387,7 +387,7 @@ internal sealed class BaseStage(
 
     public async Task<(bool success, ushort errorCode, BaseActor? actor, IPacket? authReply)> JoinActor(string sessionNid, long sid, string apiNid, IPacket authPacket, PlayProducer producer)
     {
-        var actorSender = new XActorSender(sessionNid, sid, apiNid, this);
+        var actorSender = new XActorLink(sessionNid, sid, apiNid, this);
         IActor actor;
         IServiceScope? actorScope;
         try

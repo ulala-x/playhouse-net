@@ -14,7 +14,7 @@ PlayHouse는 Stage에서 사용할 수 있는 두 가지 시간 기반 기능을
 
 ## 타이머 (Timer)
 
-타이머는 `IStageSender`를 통해 관리되며, 두 가지 타입이 있습니다:
+타이머는 `IStageLink`를 통해 관리되며, 두 가지 타입이 있습니다:
 
 - **RepeatTimer**: 무한 반복 타이머
 - **CountTimer**: 지정한 횟수만큼 실행되는 타이머
@@ -28,17 +28,17 @@ public class GameRoomStage : IStage
 {
     private long _autoSaveTimerId;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public GameRoomStage(IStageSender stageSender)
+    public GameRoomStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostCreate()
     {
         // 5분마다 자동 저장 타이머 시작
-        _autoSaveTimerId = StageSender.AddRepeatTimer(
+        _autoSaveTimerId = StageLink.AddRepeatTimer(
             initialDelay: TimeSpan.FromMinutes(5),   // 첫 실행: 5분 후
             period: TimeSpan.FromMinutes(5),         // 이후: 5분마다
             callback: async () =>
@@ -59,7 +59,7 @@ public class GameRoomStage : IStage
     public Task OnDestroy()
     {
         // Stage 종료 시 타이머 취소
-        StageSender.CancelTimer(_autoSaveTimerId);
+        StageLink.CancelTimer(_autoSaveTimerId);
         return Task.CompletedTask;
     }
 
@@ -83,7 +83,7 @@ public class GameRoomStage : IStage
 public Task OnPostCreate()
 {
     // 10초 후 게임 시작 카운트다운 (10, 9, 8, ... 1)
-    StageSender.AddCountTimer(
+    StageLink.AddCountTimer(
         initialDelay: TimeSpan.FromSeconds(1),  // 1초 후 시작
         period: TimeSpan.FromSeconds(1),        // 1초마다
         count: 10,                               // 10번 실행
@@ -119,7 +119,7 @@ public class GameRoomStage : IStage
     // 타이머 시작
     private void StartTimer()
     {
-        _timerId = StageSender.AddRepeatTimer(
+        _timerId = StageLink.AddRepeatTimer(
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1),
             async () => { await OnTimerTick(); }
@@ -129,16 +129,16 @@ public class GameRoomStage : IStage
     // 타이머 취소
     private void StopTimer()
     {
-        if (StageSender.HasTimer(_timerId))
+        if (StageLink.HasTimer(_timerId))
         {
-            StageSender.CancelTimer(_timerId);
+            StageLink.CancelTimer(_timerId);
         }
     }
 
     // 타이머 활성 여부 확인
     private bool IsTimerActive()
     {
-        return StageSender.HasTimer(_timerId);
+        return StageLink.HasTimer(_timerId);
     }
 
     private Task OnTimerTick()
@@ -167,7 +167,7 @@ public class GameRoomStage : IStage
     public Task OnPostCreate()
     {
         // 50ms(20Hz) 고정 타임스텝으로 게임루프 시작
-        StageSender.StartGameLoop(
+        StageLink.StartGameLoop(
             fixedTimestep: TimeSpan.FromMilliseconds(50),
             callback: async (deltaTime, totalElapsed) =>
             {
@@ -204,9 +204,9 @@ public class GameRoomStage : IStage
     public Task OnDestroy()
     {
         // Stage 종료 시 게임루프 중지
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
 
         return Task.CompletedTask;
@@ -219,7 +219,7 @@ public class GameRoomStage : IStage
 ### 게임루프 콜백 파라미터
 
 ```csharp
-StageSender.StartGameLoop(
+StageLink.StartGameLoop(
     TimeSpan.FromMilliseconds(16), // ~60fps
     async (deltaTime, totalElapsed) =>
     {
@@ -251,7 +251,7 @@ public Task OnPostCreate()
         MaxAccumulatorCap = TimeSpan.FromMilliseconds(200) // 최대 4 tick 누적
     };
 
-    StageSender.StartGameLoop(config, async (deltaTime, totalElapsed) =>
+    StageLink.StartGameLoop(config, async (deltaTime, totalElapsed) =>
     {
         await UpdateGameLogic(deltaTime, totalElapsed);
     });
@@ -274,9 +274,9 @@ public class GameRoomStage : IStage
     // 게임루프 시작
     private void StartGameLoop()
     {
-        if (!StageSender.IsGameLoopRunning)
+        if (!StageLink.IsGameLoopRunning)
         {
-            StageSender.StartGameLoop(
+            StageLink.StartGameLoop(
                 TimeSpan.FromMilliseconds(50),
                 async (dt, elapsed) => { await OnGameTick(dt, elapsed); }
             );
@@ -286,16 +286,16 @@ public class GameRoomStage : IStage
     // 게임루프 중지
     private void StopGameLoop()
     {
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
     }
 
     // 게임루프 실행 여부 확인
     private bool IsGameLoopActive()
     {
-        return StageSender.IsGameLoopRunning;
+        return StageLink.IsGameLoopRunning;
     }
 
     private Task OnGameTick(TimeSpan deltaTime, TimeSpan totalElapsed)
@@ -331,16 +331,16 @@ public class LobbyStage : IStage
     private int _countdown = 10;
     private readonly Dictionary<string, IActor> _players = new();
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public LobbyStage(IStageSender stageSender)
+    public LobbyStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostJoinStage(IActor actor)
     {
-        _players[actor.ActorSender.AccountId] = actor;
+        _players[actor.ActorLink.AccountId] = actor;
 
         // 4명이 모이면 10초 카운트다운 시작
         if (_players.Count == 4)
@@ -355,7 +355,7 @@ public class LobbyStage : IStage
     {
         _countdown = 10;
 
-        StageSender.AddCountTimer(
+        StageLink.AddCountTimer(
             initialDelay: TimeSpan.FromSeconds(1),
             period: TimeSpan.FromSeconds(1),
             count: 10,
@@ -389,7 +389,7 @@ public class LobbyStage : IStage
         var packet = CPacket.Of(message);
         foreach (var player in _players.Values)
         {
-            player.ActorSender.SendToClient(packet);
+            player.ActorLink.SendToClient(packet);
         }
     }
 
@@ -405,17 +405,17 @@ public class BattleStage : IStage
     private readonly Dictionary<string, PlayerState> _playerStates = new();
     private int _tickCount = 0;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public BattleStage(IStageSender stageSender)
+    public BattleStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostCreate()
     {
         // 50ms (20Hz) 고정 타임스텝으로 게임루프 시작
-        StageSender.StartGameLoop(
+        StageLink.StartGameLoop(
             TimeSpan.FromMilliseconds(50),
             async (deltaTime, totalElapsed) =>
             {
@@ -495,9 +495,9 @@ public class BattleStage : IStage
 
     public Task OnDestroy()
     {
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
 
         return Task.CompletedTask;
@@ -527,17 +527,17 @@ public class PersistentRoomStage : IStage
     private long _autoSaveTimerId;
     private long _cleanupTimerId;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public PersistentRoomStage(IStageSender stageSender)
+    public PersistentRoomStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostCreate()
     {
         // 5분마다 자동 저장
-        _autoSaveTimerId = StageSender.AddRepeatTimer(
+        _autoSaveTimerId = StageLink.AddRepeatTimer(
             initialDelay: TimeSpan.FromMinutes(5),
             period: TimeSpan.FromMinutes(5),
             callback: async () =>
@@ -547,7 +547,7 @@ public class PersistentRoomStage : IStage
         );
 
         // 1시간마다 비활성 플레이어 정리
-        _cleanupTimerId = StageSender.AddRepeatTimer(
+        _cleanupTimerId = StageLink.AddRepeatTimer(
             initialDelay: TimeSpan.FromHours(1),
             period: TimeSpan.FromHours(1),
             callback: async () =>
@@ -574,14 +574,14 @@ public class PersistentRoomStage : IStage
     public Task OnDestroy()
     {
         // 타이머 모두 취소
-        if (StageSender.HasTimer(_autoSaveTimerId))
+        if (StageLink.HasTimer(_autoSaveTimerId))
         {
-            StageSender.CancelTimer(_autoSaveTimerId);
+            StageLink.CancelTimer(_autoSaveTimerId);
         }
 
-        if (StageSender.HasTimer(_cleanupTimerId))
+        if (StageLink.HasTimer(_cleanupTimerId))
         {
-            StageSender.CancelTimer(_cleanupTimerId);
+            StageLink.CancelTimer(_cleanupTimerId);
         }
 
         return Task.CompletedTask;
@@ -599,8 +599,8 @@ public class PersistentRoomStage : IStage
 // ❌ 잘못된 예 - 게임루프를 여러 번 시작
 public Task OnPostCreate()
 {
-    StageSender.StartGameLoop(TimeSpan.FromMilliseconds(50), OnTick1);
-    StageSender.StartGameLoop(TimeSpan.FromMilliseconds(100), OnTick2); // 예외 발생!
+    StageLink.StartGameLoop(TimeSpan.FromMilliseconds(50), OnTick1);
+    StageLink.StartGameLoop(TimeSpan.FromMilliseconds(100), OnTick2); // 예외 발생!
 
     return Task.CompletedTask;
 }
@@ -608,7 +608,7 @@ public Task OnPostCreate()
 // ✅ 올바른 예 - 하나의 게임루프에서 모든 로직 처리
 public Task OnPostCreate()
 {
-    StageSender.StartGameLoop(
+    StageLink.StartGameLoop(
         TimeSpan.FromMilliseconds(50),
         async (deltaTime, totalElapsed) =>
         {
@@ -629,16 +629,16 @@ public Task OnDestroy()
     // 모든 타이머 취소
     foreach (var timerId in _activeTimerIds)
     {
-        if (StageSender.HasTimer(timerId))
+        if (StageLink.HasTimer(timerId))
         {
-            StageSender.CancelTimer(timerId);
+            StageLink.CancelTimer(timerId);
         }
     }
 
     // 게임루프 중지
-    if (StageSender.IsGameLoopRunning)
+    if (StageLink.IsGameLoopRunning)
     {
-        StageSender.StopGameLoop();
+        StageLink.StopGameLoop();
     }
 
     return Task.CompletedTask;
@@ -655,7 +655,7 @@ private readonly Dictionary<string, IActor> _players = new();
 
 public Task OnPostCreate()
 {
-    StageSender.AddRepeatTimer(
+    StageLink.AddRepeatTimer(
         TimeSpan.FromSeconds(1),
         TimeSpan.FromSeconds(1),
         async () =>
@@ -665,7 +665,7 @@ public Task OnPostCreate()
             // Stage의 다른 상태에도 접근 가능
             if (_gameTime >= 300 && _players.Count == 0)
             {
-                StageSender.CloseStage();
+                StageLink.CloseStage();
             }
         }
     );

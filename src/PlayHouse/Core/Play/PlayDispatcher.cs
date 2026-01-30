@@ -374,7 +374,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
         // Create temporary registry placeholder (will be replaced with BaseStage)
         var tempRegistry = new TempReplyPacketRegistry();
 
-        var stageSender = new XStageSender(
+        var stageLink = new XStageLink(
             _communicator,
             _requestCache,
             _serverInfoCenter,
@@ -386,18 +386,18 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
             tempRegistry,
             _clientReplyHandler);
 
-        stageSender.SetStageType(stageType);
+        stageLink.SetStageType(stageType);
 
         // Create and register command handler for system messages
         var cmdHandler = new BaseStageCmdHandler(_logger);
         RegisterCommands(cmdHandler);
 
-        var (stage, stageScope) = _producer.GetStageWithScope(stageType, stageSender);
-        var baseStage = new BaseStage(stage, stageSender, _logger, cmdHandler, stageScope);
+        var (stage, stageScope) = _producer.GetStageWithScope(stageType, stageLink);
+        var baseStage = new BaseStage(stage, stageLink, _logger, cmdHandler, stageScope);
 
-        // Set BaseStage reference in XStageSender for callback queueing and reply registry
-        stageSender.SetBaseStage(baseStage);
-        stageSender.SetReplyPacketRegistry(baseStage);
+        // Set BaseStage reference in XStageLink for callback queueing and reply registry
+        stageLink.SetBaseStage(baseStage);
+        stageLink.SetReplyPacketRegistry(baseStage);
 
         return baseStage;
     }
@@ -579,7 +579,7 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 }
 
 /// <summary>
-/// Temporary registry used during XStageSender creation before BaseStage is available.
+/// Temporary registry used during XStageLink creation before BaseStage is available.
 /// This registry does nothing - the real registry (BaseStage) is set later via SetReplyPacketRegistry.
 /// </summary>
 internal sealed class TempReplyPacketRegistry : IReplyPacketRegistry

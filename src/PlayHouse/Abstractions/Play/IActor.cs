@@ -11,13 +11,13 @@ namespace PlayHouse.Abstractions.Play;
 ///
 /// Join Sequence (in JoinStageCmd):
 /// 1. OnCreate() - Initialize actor state
-/// 2. OnAuthenticate() - Authenticate the client (MUST set ActorSender.AccountId)
+/// 2. OnAuthenticate() - Authenticate the client (MUST set ActorLink.AccountId)
 /// 3. OnPostAuthenticate() - Load user data from API server, etc.
 ///
 /// Cleanup:
 /// - OnDestroy() - Final cleanup when actor leaves stage
 ///
-/// IMPORTANT: ActorSender.AccountId MUST be set during OnAuthenticate().
+/// IMPORTANT: ActorLink.AccountId MUST be set during OnAuthenticate().
 /// If it remains empty after authentication, the connection will be terminated.
 /// </remarks>
 public interface IActor
@@ -25,7 +25,7 @@ public interface IActor
     /// <summary>
     /// Gets the sender for this Actor.
     /// </summary>
-    IActorSender ActorSender { get; }
+    IActorLink ActorLink { get; }
 
     #region Lifecycle
 
@@ -61,7 +61,7 @@ public interface IActor
     /// - reply: Optional response packet to send back to client
     /// </returns>
     /// <remarks>
-    /// CRITICAL: You MUST set ActorSender.AccountId in this method upon successful authentication.
+    /// CRITICAL: You MUST set ActorLink.AccountId in this method upon successful authentication.
     /// If AccountId remains empty ("") after this method returns true,
     /// the framework will throw an exception and terminate the connection.
     ///
@@ -72,7 +72,7 @@ public interface IActor
     ///     var authReq = AuthRequest.Parser.ParseFrom(authPacket.Payload.DataSpan);
     ///     if (ValidateToken(authReq.Token))
     ///     {
-    ///         ActorSender.AccountId = authReq.UserId; // REQUIRED!
+    ///         ActorLink.AccountId = authReq.UserId; // REQUIRED!
     ///         var reply = new AuthReply { Success = true };
     ///         return (true, CPacket.Of(reply));
     ///     }

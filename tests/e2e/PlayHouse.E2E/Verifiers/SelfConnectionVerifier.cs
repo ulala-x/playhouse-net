@@ -58,7 +58,7 @@ public class SelfConnectionVerifier : VerifierBase
         };
 
         // When - 자기 자신에게 메시지 전송
-        ApiServer1.ApiSender!.SendToApi(_apiServerId, ProtoCPacketExtensions.OfProto(message));
+        ApiServer1.ApiLink!.SendToApi(_apiServerId, ProtoCPacketExtensions.OfProto(message));
 
         // 메시지 전달 대기
         await Task.Delay(1000);
@@ -81,7 +81,7 @@ public class SelfConnectionVerifier : VerifierBase
 
         // When - 자기 자신에게 요청
         var echoRequest = new ApiEchoRequest { Content = testContent };
-        var response = await ApiServer1.ApiSender!.RequestToApi(_apiServerId, ProtoCPacketExtensions.OfProto(echoRequest));
+        var response = await ApiServer1.ApiLink!.RequestToApi(_apiServerId, ProtoCPacketExtensions.OfProto(echoRequest));
 
         // Then - E2E 검증: 응답 패킷 검증
         Assert.NotNull(response, "Should receive response");

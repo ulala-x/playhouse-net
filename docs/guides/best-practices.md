@@ -142,11 +142,11 @@ public class GameStage : IStage
     private GamePhase _currentPhase = GamePhase.Waiting;
     private int _maxPlayers = 4;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public GameStage(IStageSender stageSender)
+    public GameStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public async Task<(ushort, IPacket?)> OnJoinStage(IActor actor, IPacket packet)
@@ -156,7 +156,7 @@ public class GameStage : IStage
             return (ErrorCode.StageFull, null);
         }
 
-        _players[actor.ActorSender.AccountId] = new PlayerState();
+        _players[actor.ActorLink.AccountId] = new PlayerState();
         return (0, null);
     }
 }
@@ -201,11 +201,11 @@ public class LobbyStage : IStage
     public async Task HandleMatchFound(List<IActor> players)
     {
         // API 서버에 배틀 Stage 생성 요청
-        var result = await StageSender.RequestToApiService(
+        var result = await StageLink.RequestToApiService(
             serviceId: 200,
             packet: CPacket.Of(new CreateBattleRequest
             {
-                Players = players.Select(p => p.ActorSender.AccountId).ToList()
+                Players = players.Select(p => p.ActorLink.AccountId).ToList()
             })
         );
 
@@ -215,7 +215,7 @@ public class LobbyStage : IStage
         // 플레이어들에게 배틀 Stage 정보 전달
         foreach (var player in players)
         {
-            player.ActorSender.SendToClient(CPacket.Of(new MatchFoundNotify
+            player.ActorLink.SendToClient(CPacket.Of(new MatchFoundNotify
             {
                 BattleStageId = battleStageId
             }));
@@ -245,13 +245,13 @@ public class BattleStage : IStage
 
     public async ValueTask OnLeaveRoom(IActor actor, LeaveReason reason)
     {
-        _players.Remove(actor.ActorSender.AccountId);
+        _players.Remove(actor.ActorLink.AccountId);
 
         // 플레이어가 모두 떠나면 Stage 닫기
         if (_players.Count == 0)
         {
             // 비활성 타이머 시작 (5분 후 자동 닫기)
-            _inactivityTimerId = StageSender.AddCountTimer(
+            _inactivityTimerId = StageLink.AddCountTimer(
                 initialDelay: TimeSpan.FromMinutes(5),
                 period: TimeSpan.Zero,
                 count: 1,
@@ -259,7 +259,7 @@ public class BattleStage : IStage
                 {
                     if (_players.Count == 0)
                     {
-                        StageSender.CloseStage();
+                        StageLink.CloseStage();
                     }
                 }
             );
@@ -267,9 +267,9 @@ public class BattleStage : IStage
         else
         {
             // 플레이어가 다시 입장하면 타이머 취소
-            if (StageSender.HasTimer(_inactivityTimerId))
+            if (StageLink.HasTimer(_inactivityTimerId))
             {
-                StageSender.CancelTimer(_inactivityTimerId);
+                StageLink.CancelTimer(_inactivityTimerId);
             }
         }
     }
@@ -277,15 +277,15 @@ public class BattleStage : IStage
     public Task OnDestroy()
     {
         // 모든 타이머 정리
-        if (StageSender.HasTimer(_inactivityTimerId))
+        if (StageLink.HasTimer(_inactivityTimerId))
         {
-            StageSender.CancelTimer(_inactivityTimerId);
+            StageLink.CancelTimer(_inactivityTimerId);
         }
 
         // 게임루프 정리
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
 
         return Task.CompletedTask;
@@ -316,11 +316,11 @@ public class HeavyActor : IActor
     private Dictionary<int, Skill> _skills = new();
     private PlayerStats _stats = new();
 
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public HeavyActor(IActorSender actorSender)
+    public HeavyActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     // Actor가 너무 많은 로직을 가짐
@@ -345,11 +345,11 @@ public class LightActor : IActor
     // 최소한의 상태만 보유
     private bool _isReady = false;
 
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public LightActor(IActorSender actorSender)
+    public LightActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public Task OnCreate()
@@ -362,12 +362,12 @@ public class LightActor : IActor
         var request = authPacket.Parse<AuthenticateRequest>();
 
         // 필수: AccountId 설정
-        ActorSender.AccountId = request.UserId;
+        ActorLink.AccountId = request.UserId;
 
         return (true, CPacket.Of(new AuthenticateResponse
         {
             Success = true,
-            AccountId = ActorSender.AccountId
+            AccountId = ActorLink.AccountId
         }));
     }
 
@@ -404,17 +404,17 @@ public class CachedActor : IActor
     private int _level = 1;
     private bool _isInitialized = false;
 
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public CachedActor(IActorSender actorSender)
+    public CachedActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public async Task OnCreate()
     {
         // 최초 생성 시 DB에서 로드
-        var userData = await LoadUserDataFromDB(ActorSender.AccountId);
+        var userData = await LoadUserDataFromDB(ActorLink.AccountId);
         _nickname = userData.Nickname;
         _level = userData.Level;
     }
@@ -434,12 +434,12 @@ public class CachedActor : IActor
             }));
         }
 
-        ActorSender.AccountId = request.UserId;
+        ActorLink.AccountId = request.UserId;
 
         return (true, CPacket.Of(new AuthenticateResponse
         {
             Success = true,
-            AccountId = ActorSender.AccountId,
+            AccountId = ActorLink.AccountId,
             Nickname = _nickname,
             Level = _level
         }));
@@ -453,7 +453,7 @@ public class CachedActor : IActor
             _isInitialized = true;
 
             // 웰컴 메시지
-            ActorSender.SendToClient(CPacket.Of(new WelcomeMessage
+            ActorLink.SendToClient(CPacket.Of(new WelcomeMessage
             {
                 Message = $"Welcome, {_nickname}!"
             }));
@@ -461,7 +461,7 @@ public class CachedActor : IActor
         else
         {
             // 재연결 시 - 현재 게임 상태 동기화
-            ActorSender.SendToClient(CPacket.Of(new ReconnectedMessage
+            ActorLink.SendToClient(CPacket.Of(new ReconnectedMessage
             {
                 Message = "Reconnected successfully"
             }));
@@ -512,16 +512,16 @@ public class ReconnectableStage : IStage
     private readonly Dictionary<string, IActor> _actors = new();
     private readonly Dictionary<string, long> _reconnectTimers = new();
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public ReconnectableStage(IStageSender stageSender)
+    public ReconnectableStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public async ValueTask OnConnectionChanged(IActor actor, bool isConnected, DisconnectReason? reason)
     {
-        var accountId = actor.ActorSender.AccountId;
+        var accountId = actor.ActorLink.AccountId;
 
         if (isConnected)
         {
@@ -531,7 +531,7 @@ public class ReconnectableStage : IStage
             // 재연결 타이머 취소
             if (_reconnectTimers.TryGetValue(accountId, out var timerId))
             {
-                StageSender.CancelTimer(timerId);
+                StageLink.CancelTimer(timerId);
                 _reconnectTimers.Remove(accountId);
             }
 
@@ -547,7 +547,7 @@ public class ReconnectableStage : IStage
             LOG.Info($"Player disconnected: {accountId}, reason: {reason}");
 
             // 30초 재연결 타이머 시작
-            var timerId = StageSender.AddCountTimer(
+            var timerId = StageLink.AddCountTimer(
                 initialDelay: TimeSpan.FromSeconds(30),
                 period: TimeSpan.Zero,
                 count: 1,
@@ -556,7 +556,7 @@ public class ReconnectableStage : IStage
                     // 재연결 타임아웃 - Actor 제거
                     if (_actors.ContainsKey(accountId))
                     {
-                        await actor.ActorSender.LeaveStageAsync();
+                        await actor.ActorLink.LeaveStageAsync();
                     }
                 }
             );
@@ -570,14 +570,14 @@ public class ReconnectableStage : IStage
         }
     }
 
-    private async Task BroadcastToOthers(IActor sender, IMessage message)
+    private async Task BroadcastToOthers(IActor link, IMessage message)
     {
         var packet = CPacket.Of(message);
         foreach (var actor in _actors.Values)
         {
-            if (actor.ActorSender.AccountId != sender.ActorSender.AccountId)
+            if (actor.ActorLink.AccountId != link.ActorLink.AccountId)
             {
-                actor.ActorSender.SendToClient(packet);
+                actor.ActorLink.SendToClient(packet);
             }
         }
     }
@@ -770,7 +770,7 @@ public class GameStage : IStage
     public Task OnPostCreate()
     {
         // 5분마다 자동 저장
-        StageSender.AddRepeatTimer(
+        StageLink.AddRepeatTimer(
             initialDelay: TimeSpan.FromMinutes(5),
             period: TimeSpan.FromMinutes(5),
             callback: async () =>
@@ -780,7 +780,7 @@ public class GameStage : IStage
         );
 
         // 60초 카운트다운
-        StageSender.AddCountTimer(
+        StageLink.AddCountTimer(
             initialDelay: TimeSpan.FromSeconds(1),
             period: TimeSpan.FromSeconds(1),
             count: 60,
@@ -800,8 +800,8 @@ public class GameStage : IStage
     }
 
     // 나머지 메서드들...
-    public IStageSender StageSender { get; }
-    public GameStage(IStageSender stageSender) { StageSender = stageSender; }
+    public IStageLink StageLink { get; }
+    public GameStage(IStageLink stageLink) { StageLink = stageLink; }
     public Task<(ushort, IPacket?)> OnCreate(IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
     private int _countdown = 60;
     private Task SaveGameState() => Task.CompletedTask;
@@ -823,17 +823,17 @@ public class BattleStage : IStage
 {
     private int _tickCount = 0;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public BattleStage(IStageSender stageSender)
+    public BattleStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostCreate()
     {
         // 50ms (20Hz) 고정 타임스텝
-        StageSender.StartGameLoop(
+        StageLink.StartGameLoop(
             fixedTimestep: TimeSpan.FromMilliseconds(50),
             callback: async (deltaTime, totalElapsed) =>
             {
@@ -867,9 +867,9 @@ public class BattleStage : IStage
 
     public Task OnDestroy()
     {
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
         return Task.CompletedTask;
     }
@@ -903,7 +903,7 @@ public class LeakyStage : IStage
     public Task OnPostCreate()
     {
         // 타이머 ID를 저장하지 않음 - 취소 불가!
-        StageSender.AddRepeatTimer(
+        StageLink.AddRepeatTimer(
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1),
             async () => { /* ... */ }
@@ -919,8 +919,8 @@ public class LeakyStage : IStage
     }
 
     // 나머지 메서드들...
-    public IStageSender StageSender { get; }
-    public LeakyStage(IStageSender stageSender) { StageSender = stageSender; }
+    public IStageLink StageLink { get; }
+    public LeakyStage(IStageLink stageLink) { StageLink = stageLink; }
     public Task<(ushort, IPacket?)> OnCreate(IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
     public Task<(ushort, IPacket?)> OnJoinStage(IActor actor, IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
     public Task OnPostJoinStage(IActor actor) => Task.CompletedTask;
@@ -942,24 +942,24 @@ public class ProperStage : IStage
 {
     private readonly List<long> _timerIds = new();
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public ProperStage(IStageSender stageSender)
+    public ProperStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostCreate()
     {
         // 타이머 ID 저장
-        var timerId1 = StageSender.AddRepeatTimer(
+        var timerId1 = StageLink.AddRepeatTimer(
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(1),
             async () => { await OnTick(); }
         );
         _timerIds.Add(timerId1);
 
-        var timerId2 = StageSender.AddCountTimer(
+        var timerId2 = StageLink.AddCountTimer(
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(1),
             count: 10,
@@ -975,9 +975,9 @@ public class ProperStage : IStage
         // 모든 타이머 취소
         foreach (var timerId in _timerIds)
         {
-            if (StageSender.HasTimer(timerId))
+            if (StageLink.HasTimer(timerId))
             {
-                StageSender.CancelTimer(timerId);
+                StageLink.CancelTimer(timerId);
             }
         }
         _timerIds.Clear();
@@ -1016,16 +1016,16 @@ public class OptimizedGameLoop : IStage
 {
     private int _tickCount = 0;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public OptimizedGameLoop(IStageSender stageSender)
+    public OptimizedGameLoop(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public Task OnPostCreate()
     {
-        StageSender.StartGameLoop(
+        StageLink.StartGameLoop(
             TimeSpan.FromMilliseconds(50),  // 20Hz
             async (deltaTime, totalElapsed) =>
             {
@@ -1071,9 +1071,9 @@ public class OptimizedGameLoop : IStage
     public ValueTask OnDispatch(IActor actor, IPacket packet) => ValueTask.CompletedTask;
     public Task OnDestroy()
     {
-        if (StageSender.IsGameLoopRunning)
+        if (StageLink.IsGameLoopRunning)
         {
-            StageSender.StopGameLoop();
+            StageLink.StopGameLoop();
         }
         return Task.CompletedTask;
     }
@@ -1100,11 +1100,11 @@ public class IoStage : IStage
 {
     private readonly IUserRepository _userRepository;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public IoStage(IStageSender stageSender, IUserRepository userRepository)
+    public IoStage(IStageLink stageLink, IUserRepository userRepository)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _userRepository = userRepository;
     }
 
@@ -1113,18 +1113,18 @@ public class IoStage : IStage
         var request = packet.Parse<SaveDataRequest>();
 
         // 즉시 수락 응답
-        StageSender.Reply(CPacket.Of(new SaveDataResponse
+        StageLink.Reply(CPacket.Of(new SaveDataResponse
         {
             Accepted = true
         }));
 
         // AsyncIO로 DB 저장
-        StageSender.AsyncIO(
+        StageLink.AsyncIO(
             preCallback: async () =>
             {
                 // I/O 스레드 풀에서 실행 (블로킹 가능)
                 await _userRepository.SavePlayerDataAsync(
-                    actor.ActorSender.AccountId,
+                    actor.ActorLink.AccountId,
                     request.Data
                 );
                 return "Save completed";
@@ -1132,7 +1132,7 @@ public class IoStage : IStage
             postCallback: async (result) =>
             {
                 // Stage 이벤트 루프로 복귀
-                actor.ActorSender.SendToClient(CPacket.Of(new SaveCompletedNotify
+                actor.ActorLink.SendToClient(CPacket.Of(new SaveCompletedNotify
                 {
                     Success = true,
                     Message = result?.ToString() ?? ""
@@ -1159,24 +1159,24 @@ public class IoStage : IStage
 ```csharp
 public class ComputeStage : IStage
 {
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public ComputeStage(IStageSender stageSender)
+    public ComputeStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     public async Task HandlePathfinding(IActor actor, IPacket packet)
     {
         var request = packet.Parse<PathfindingRequest>();
 
-        StageSender.Reply(CPacket.Of(new PathfindingResponse
+        StageLink.Reply(CPacket.Of(new PathfindingResponse
         {
             Accepted = true
         }));
 
         // AsyncCompute로 경로 탐색 (CPU 집약적)
-        StageSender.AsyncCompute(
+        StageLink.AsyncCompute(
             preCallback: async () =>
             {
                 // Compute 스레드 풀에서 실행 (CPU 코어 수만큼 제한)
@@ -1187,7 +1187,7 @@ public class ComputeStage : IStage
             {
                 var path = (List<Vector2>)result!;
 
-                actor.ActorSender.SendToClient(CPacket.Of(new PathFoundNotify
+                actor.ActorLink.SendToClient(CPacket.Of(new PathFoundNotify
                 {
                     Path = { path.Select(p => new Position { X = p.X, Y = p.Y }) }
                 }));
@@ -1239,7 +1239,7 @@ public class ComputeStage : IStage
 public async Task HandleLoadUser(IActor actor, IPacket packet)
 {
     // ❌ Stage 이벤트 루프를 블로킹!
-    var userData = await _database.LoadUserAsync(actor.ActorSender.AccountId);
+    var userData = await _database.LoadUserAsync(actor.ActorLink.AccountId);
 
     // Stage가 블로킹되어 다른 메시지 처리 불가
 }
@@ -1258,22 +1258,22 @@ public class DatabaseStage : IStage
     private readonly IUserDatabase _database;
     private readonly Dictionary<string, PlayerData> _playerCache = new();
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public DatabaseStage(IStageSender stageSender, IUserDatabase database)
+    public DatabaseStage(IStageLink stageLink, IUserDatabase database)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _database = database;
     }
 
     public async Task HandleLoadUser(IActor actor, IPacket packet)
     {
-        var accountId = actor.ActorSender.AccountId;
+        var accountId = actor.ActorLink.AccountId;
 
         // 캐시 확인
         if (_playerCache.ContainsKey(accountId))
         {
-            StageSender.Reply(CPacket.Of(new UserDataResponse
+            StageLink.Reply(CPacket.Of(new UserDataResponse
             {
                 Data = _playerCache[accountId]
             }));
@@ -1281,13 +1281,13 @@ public class DatabaseStage : IStage
         }
 
         // 즉시 수락 응답
-        StageSender.Reply(CPacket.Of(new UserDataResponse
+        StageLink.Reply(CPacket.Of(new UserDataResponse
         {
             Loading = true
         }));
 
         // AsyncIO로 DB 로드
-        StageSender.AsyncIO(
+        StageLink.AsyncIO(
             preCallback: async () =>
             {
                 // I/O 스레드에서 DB 조회
@@ -1303,7 +1303,7 @@ public class DatabaseStage : IStage
                 _playerCache[accountId] = userData;
 
                 // 클라이언트에 알림
-                actor.ActorSender.SendToClient(CPacket.Of(new UserDataLoadedNotify
+                actor.ActorLink.SendToClient(CPacket.Of(new UserDataLoadedNotify
                 {
                     Data = userData
                 }));
@@ -1345,11 +1345,11 @@ public class ExternalApiStage : IStage
 {
     private readonly HttpClient _httpClient;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public ExternalApiStage(IStageSender stageSender, HttpClient httpClient)
+    public ExternalApiStage(IStageLink stageLink, HttpClient httpClient)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _httpClient = httpClient;
         _httpClient.Timeout = TimeSpan.FromSeconds(5);  // 타임아웃 설정
     }
@@ -1358,12 +1358,12 @@ public class ExternalApiStage : IStage
     {
         var request = packet.Parse<VerifyPurchaseRequest>();
 
-        StageSender.Reply(CPacket.Of(new VerifyPurchaseResponse
+        StageLink.Reply(CPacket.Of(new VerifyPurchaseResponse
         {
             Accepted = true
         }));
 
-        StageSender.AsyncIO(
+        StageLink.AsyncIO(
             preCallback: async () =>
             {
                 try
@@ -1399,7 +1399,7 @@ public class ExternalApiStage : IStage
                     // 결제 성공 - 아이템 지급
                     GiveItemToPlayer(actor, response.Result.ItemId);
 
-                    actor.ActorSender.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
+                    actor.ActorLink.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
                     {
                         Success = true,
                         ItemId = response.Result.ItemId
@@ -1408,7 +1408,7 @@ public class ExternalApiStage : IStage
                 else
                 {
                     // 결제 실패
-                    actor.ActorSender.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
+                    actor.ActorLink.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
                     {
                         Success = false,
                         Error = "Verification failed"
@@ -1477,11 +1477,11 @@ public class SafeStage : IStage
 {
     private readonly ILogger<SafeStage> _logger;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public SafeStage(IStageSender stageSender, ILogger<SafeStage> logger)
+    public SafeStage(IStageLink stageLink, ILogger<SafeStage> logger)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _logger = logger;
     }
 
@@ -1494,7 +1494,7 @@ public class SafeStage : IStage
             // 입력 검증
             if (string.IsNullOrEmpty(request.ActionId))
             {
-                StageSender.Reply(CPacket.Of(new ActionResponse
+                StageLink.Reply(CPacket.Of(new ActionResponse
                 {
                     Success = false,
                     ErrorCode = ErrorCode.InvalidParameter,
@@ -1507,7 +1507,7 @@ public class SafeStage : IStage
             var result = await PerformAction(request);
 
             // 성공 응답
-            StageSender.Reply(CPacket.Of(new ActionResponse
+            StageLink.Reply(CPacket.Of(new ActionResponse
             {
                 Success = true,
                 Result = result
@@ -1516,9 +1516,9 @@ public class SafeStage : IStage
         catch (InvalidOperationException ex)
         {
             // 비즈니스 로직 예외
-            _logger.LogWarning(ex, "Invalid action: {AccountId}", actor.ActorSender.AccountId);
+            _logger.LogWarning(ex, "Invalid action: {AccountId}", actor.ActorLink.AccountId);
 
-            StageSender.Reply(CPacket.Of(new ActionResponse
+            StageLink.Reply(CPacket.Of(new ActionResponse
             {
                 Success = false,
                 ErrorCode = ErrorCode.InvalidOperation,
@@ -1528,9 +1528,9 @@ public class SafeStage : IStage
         catch (Exception ex)
         {
             // 예상치 못한 예외
-            _logger.LogError(ex, "Action failed: {AccountId}", actor.ActorSender.AccountId);
+            _logger.LogError(ex, "Action failed: {AccountId}", actor.ActorLink.AccountId);
 
-            StageSender.Reply(CPacket.Of(new ActionResponse
+            StageLink.Reply(CPacket.Of(new ActionResponse
             {
                 Success = false,
                 ErrorCode = ErrorCode.InternalError,
@@ -1589,7 +1589,7 @@ enum ErrorCode {
 
 ```csharp
 // C# 에러 처리
-StageSender.Reply(CPacket.Of(new ActionResponse
+StageLink.Reply(CPacket.Of(new ActionResponse
 {
     Success = false,
     ErrorCode = ErrorCode.NotEnoughResource,
@@ -1615,11 +1615,11 @@ public class LoggingStage : IStage
 {
     private readonly ILogger<LoggingStage> _logger;
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public LoggingStage(IStageSender stageSender, ILogger<LoggingStage> logger)
+    public LoggingStage(IStageLink stageLink, ILogger<LoggingStage> logger)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _logger = logger;
     }
 
@@ -1628,8 +1628,8 @@ public class LoggingStage : IStage
         // 구조화된 로깅 (Serilog 스타일)
         _logger.LogInformation(
             "Player joined stage - StageId: {StageId}, AccountId: {AccountId}, Timestamp: {Timestamp}",
-            StageSender.StageId,
-            actor.ActorSender.AccountId,
+            StageLink.StageId,
+            actor.ActorLink.AccountId,
             DateTimeOffset.UtcNow
         );
 
@@ -1642,9 +1642,9 @@ public class LoggingStage : IStage
 
         using (_logger.BeginScope(new Dictionary<string, object>
         {
-            ["AccountId"] = actor.ActorSender.AccountId,
+            ["AccountId"] = actor.ActorLink.AccountId,
             ["TransactionId"] = request.TransactionId,
-            ["StageId"] = StageSender.StageId
+            ["StageId"] = StageLink.StageId
         }))
         {
             _logger.LogInformation("Transaction started");
@@ -1702,7 +1702,7 @@ public async Task BroadcastMessage(string message)
 
     foreach (var actor in _actors.Values)
     {
-        actor.ActorSender.SendToClient(packet);
+        actor.ActorLink.SendToClient(packet);
     }
 
     // using 블록 종료 시 packet 자동 반환
@@ -1771,8 +1771,8 @@ public class OptimizedStage : IStage
 
     // 나머지 필드 및 메서드들...
     private readonly Dictionary<string, PlayerState> _players = new();
-    public IStageSender StageSender { get; }
-    public OptimizedStage(IStageSender stageSender) { StageSender = stageSender; }
+    public IStageLink StageLink { get; }
+    public OptimizedStage(IStageLink stageLink) { StageLink = stageLink; }
     public Task<(ushort, IPacket?)> OnCreate(IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
     public Task OnPostCreate() => Task.CompletedTask;
     public Task<(ushort, IPacket?)> OnJoinStage(IActor actor, IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
@@ -1810,7 +1810,7 @@ public async Task BroadcastGameState()
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         });
 
-        actor.ActorSender.SendToClient(packet);
+        actor.ActorLink.SendToClient(packet);
     }
 }
 ```
@@ -1834,7 +1834,7 @@ public async Task BroadcastGameState()
     // 모든 플레이어에게 동일한 패킷 전송
     foreach (var actor in _actors.Values)
     {
-        actor.ActorSender.SendToClient(packet);
+        actor.ActorLink.SendToClient(packet);
     }
 }
 ```
@@ -1863,11 +1863,11 @@ public class GameStage : IStage
     private GamePhase _currentPhase = GamePhase.Waiting;
 
     // Stage는 특정 Play Server에 바인딩됨
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
-    public GameStage(IStageSender stageSender)
+    public GameStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     // 상태 기반 로직
@@ -1908,7 +1908,7 @@ public class ShopController : IApiController
         _userDatabase = userDatabase;
     }
 
-    public async Task<IPacket> BuyItem(IPacket packet, IApiSender sender)
+    public async Task<IPacket> BuyItem(IPacket packet, IApiLink link)
     {
         var request = packet.Parse<BuyItemRequest>();
 
@@ -1957,7 +1957,7 @@ public class ShopController : IApiController
 public async Task RequestToApiServer()
 {
     // ServiceId로 요청 (RoundRobin 방식)
-    var response = await StageSender.RequestToApiService(
+    var response = await StageLink.RequestToApiService(
         serviceId: 200,  // Shop 서비스
         packet: CPacket.Of(new GetItemListRequest())
     );
@@ -1977,7 +1977,7 @@ public async Task RequestToApiServer()
 
 ### 9.1 단위 테스트 패턴
 
-**Stage 로직은 Mock IStageSender를 사용하여 단위 테스트합니다.**
+**Stage 로직은 Mock IStageLink를 사용하여 단위 테스트합니다.**
 
 #### ✅ 올바른 예: Stage 단위 테스트
 
@@ -1987,11 +1987,11 @@ public class GameStageTests
     [Fact]
     public async Task OnJoinStage_WhenFull_ReturnsError()
     {
-        // Given: Stage 생성 (Mock IStageSender)
-        var mockStageSender = new Mock<IStageSender>();
-        mockStageSender.Setup(x => x.StageId).Returns(1001);
+        // Given: Stage 생성 (Mock IStageLink)
+        var mockStageLink = new Mock<IStageLink>();
+        mockStageLink.Setup(x => x.StageId).Returns(1001);
 
-        var stage = new GameStage(mockStageSender.Object);
+        var stage = new GameStage(mockStageLink.Object);
         await stage.OnCreate(CPacket.Empty(""));
 
         // 최대 인원 채우기
@@ -2011,11 +2011,11 @@ public class GameStageTests
 
     private IActor CreateMockActor(string accountId)
     {
-        var mockActorSender = new Mock<IActorSender>();
-        mockActorSender.Setup(x => x.AccountId).Returns(accountId);
+        var mockActorLink = new Mock<IActorLink>();
+        mockActorLink.Setup(x => x.AccountId).Returns(accountId);
 
         var mockActor = new Mock<IActor>();
-        mockActor.Setup(x => x.ActorSender).Returns(mockActorSender.Object);
+        mockActor.Setup(x => x.ActorLink).Returns(mockActorLink.Object);
 
         return mockActor.Object;
     }
@@ -2122,7 +2122,7 @@ public class SecureStage : IStage
         if (request.X < 0 || request.X > 1000 ||
             request.Y < 0 || request.Y > 1000)
         {
-            StageSender.Reply(CPacket.Of(new MoveResponse
+            StageLink.Reply(CPacket.Of(new MoveResponse
             {
                 Success = false,
                 Error = "Invalid position"
@@ -2131,16 +2131,16 @@ public class SecureStage : IStage
         }
 
         // 속도 검증 (치트 방지)
-        var lastPosition = GetPlayerPosition(actor.ActorSender.AccountId);
+        var lastPosition = GetPlayerPosition(actor.ActorLink.AccountId);
         var distance = CalculateDistance(lastPosition, new Vector2(request.X, request.Y));
         var maxDistance = GetMaxMoveDistance();
 
         if (distance > maxDistance)
         {
             // 치트 의심 - 로깅 및 거부
-            _logger.LogWarning("Suspicious move detected: {AccountId}", actor.ActorSender.AccountId);
+            _logger.LogWarning("Suspicious move detected: {AccountId}", actor.ActorLink.AccountId);
 
-            StageSender.Reply(CPacket.Of(new MoveResponse
+            StageLink.Reply(CPacket.Of(new MoveResponse
             {
                 Success = false,
                 Error = "Invalid move distance"
@@ -2149,8 +2149,8 @@ public class SecureStage : IStage
         }
 
         // 정상 처리
-        UpdatePlayerPosition(actor.ActorSender.AccountId, request.X, request.Y);
-        StageSender.Reply(CPacket.Of(new MoveResponse
+        UpdatePlayerPosition(actor.ActorLink.AccountId, request.X, request.Y);
+        StageLink.Reply(CPacket.Of(new MoveResponse
         {
             Success = true
         }));
@@ -2162,8 +2162,8 @@ public class SecureStage : IStage
     private void UpdatePlayerPosition(string accountId, float x, float y) { }
 
     private readonly ILogger<SecureStage> _logger;
-    public IStageSender StageSender { get; }
-    public SecureStage(IStageSender stageSender, ILogger<SecureStage> logger) { StageSender = stageSender; _logger = logger; }
+    public IStageLink StageLink { get; }
+    public SecureStage(IStageLink stageLink, ILogger<SecureStage> logger) { StageLink = stageLink; _logger = logger; }
     public Task<(ushort, IPacket?)> OnCreate(IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
     public Task OnPostCreate() => Task.CompletedTask;
     public Task<(ushort, IPacket?)> OnJoinStage(IActor actor, IPacket packet) => Task.FromResult<(ushort, IPacket?)>((0, null));
@@ -2209,7 +2209,7 @@ public async Task HandleAttack(IActor actor, IPacket packet)
 {
     var request = packet.Parse<AttackRequest>();
 
-    var attacker = _players[actor.ActorSender.AccountId];
+    var attacker = _players[actor.ActorLink.AccountId];
     var target = _players[request.TargetId];
 
     // ✅ 서버에서 데미지 계산
@@ -2218,7 +2218,7 @@ public async Task HandleAttack(IActor actor, IPacket packet)
     // ✅ 거리 검증
     if (!IsInAttackRange(attacker, target))
     {
-        StageSender.Reply(CPacket.Of(new AttackResponse
+        StageLink.Reply(CPacket.Of(new AttackResponse
         {
             Success = false,
             Error = "Out of range"
@@ -2229,7 +2229,7 @@ public async Task HandleAttack(IActor actor, IPacket packet)
     // ✅ 쿨다운 검증
     if (!attacker.CanAttack())
     {
-        StageSender.Reply(CPacket.Of(new AttackResponse
+        StageLink.Reply(CPacket.Of(new AttackResponse
         {
             Success = false,
             Error = "Skill on cooldown"
@@ -2244,7 +2244,7 @@ public async Task HandleAttack(IActor actor, IPacket packet)
     // 결과 브로드캐스트
     BroadcastToAll(new AttackNotify
     {
-        AttackerId = actor.ActorSender.AccountId,
+        AttackerId = actor.ActorLink.AccountId,
         TargetId = request.TargetId,
         Damage = damage,
         TargetHealth = target.Health
@@ -2313,7 +2313,7 @@ public async Task<(bool, IPacket?)> OnAuthenticate(IPacket authPacket)
         return (false, null);
     }
 
-    ActorSender.AccountId = request.UserId;
+    ActorLink.AccountId = request.UserId;
     return (true, null);
 }
 

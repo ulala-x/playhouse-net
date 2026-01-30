@@ -138,11 +138,11 @@ using MyGame.Proto;  // Protobuf 메시지
 
 public class GameActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public GameActor(IActorSender actorSender)
+    public GameActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
@@ -162,13 +162,13 @@ public class GameActor : IActor
         }
 
         // 3. ⚠️ 중요: AccountId 설정 (필수!)
-        ActorSender.AccountId = authRequest.UserId;
+        ActorLink.AccountId = authRequest.UserId;
 
         // 4. 성공 응답
         var reply = new AuthenticateReply
         {
             Success = true,
-            AccountId = ActorSender.AccountId,
+            AccountId = ActorLink.AccountId,
             SessionToken = GenerateSessionToken()
         };
 
@@ -189,7 +189,7 @@ public class GameActor : IActor
     public Task OnPostAuthenticate()
     {
         // 유저 데이터 로딩, 초기화 등
-        Console.WriteLine($"User {ActorSender.AccountId} authenticated");
+        Console.WriteLine($"User {ActorLink.AccountId} authenticated");
         return Task.CompletedTask;
     }
 
@@ -205,11 +205,11 @@ public class GameActor : IActor
 public class GameActor : IActor
 {
     private readonly IApiClient _apiClient;
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public GameActor(IActorSender actorSender, IApiClient apiClient)
+    public GameActor(IActorLink actorLink, IApiClient apiClient)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
         _apiClient = apiClient;
     }
 
@@ -229,12 +229,12 @@ public class GameActor : IActor
         }
 
         // AccountId 설정
-        ActorSender.AccountId = apiResponse.UserId;
+        ActorLink.AccountId = apiResponse.UserId;
 
         return (true, CPacket.Of(new AuthenticateReply
         {
             Success = true,
-            AccountId = ActorSender.AccountId
+            AccountId = ActorLink.AccountId
         }));
     }
 }
@@ -343,10 +343,10 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     if (packet.MsgId == "KickRequest")
     {
         // 응답 먼저 전송
-        actor.ActorSender.Reply(CPacket.Empty("KickReply"));
+        actor.ActorLink.Reply(CPacket.Empty("KickReply"));
 
         // Actor를 Stage에서 제거 (연결 해제)
-        await actor.ActorSender.LeaveStageAsync();
+        await actor.ActorLink.LeaveStageAsync();
     }
 }
 ```
@@ -379,11 +379,11 @@ public class GameStage : IStage
     {
         if (isConnected)
         {
-            Console.WriteLine($"{actor.ActorSender.AccountId} connected");
+            Console.WriteLine($"{actor.ActorLink.AccountId} connected");
         }
         else
         {
-            Console.WriteLine($"{actor.ActorSender.AccountId} disconnected");
+            Console.WriteLine($"{actor.ActorLink.AccountId} disconnected");
             // 재연결 대기, 타임아웃 처리 등
         }
 
@@ -459,7 +459,7 @@ public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
     // packet에는 생성 정보 포함 가능
     var payload = CreateStagePayload.Parser.ParseFrom(packet.Payload.DataSpan);
 
-    Console.WriteLine($"Creating stage {StageSender.StageId}");
+    Console.WriteLine($"Creating stage {StageLink.StageId}");
     Console.WriteLine($"  - MaxPlayers: {payload.MaxPlayers}");
 
     // 초기화 로직...
@@ -516,14 +516,14 @@ var server = new PlayServerBootstrap()
 
 ### "AccountId must not be empty after authentication"
 
-**원인:** `OnAuthenticate`에서 `ActorSender.AccountId`를 설정하지 않음
+**원인:** `OnAuthenticate`에서 `ActorLink.AccountId`를 설정하지 않음
 
 **해결:**
 ```csharp
 public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
 {
     // ✅ AccountId 설정 필수!
-    ActorSender.AccountId = "user-123";
+    ActorLink.AccountId = "user-123";
 
     return Task.FromResult<(bool, IPacket?)>((true, null));
 }

@@ -9,17 +9,17 @@ using PlayHouse.Runtime.ServerMesh.Discovery;
 namespace PlayHouse.Extensions.Proto;
 
 /// <summary>
-/// Extension methods for ISender and its derived interfaces to support Protobuf messages.
+/// Extension methods for ILink and its derived interfaces to support Protobuf messages.
 /// </summary>
-public static class ProtoSenderExtensions
+public static class ProtoLinkExtensions
 {
-    #region ISender - Reply
+    #region ILink - Reply
 
     /// <summary>
     /// Sends a Protobuf message as a reply to the current request.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="message">The Protobuf message to send as a reply.</param>
     /// <example>
     /// <code>
@@ -30,230 +30,230 @@ public static class ProtoSenderExtensions
     /// }
     /// </code>
     /// </example>
-    public static void Reply<T>(this ISender sender, T message) where T : IMessage
+    public static void Reply<T>(this ILink link, T message) where T : IMessage
     {
-        sender.Reply(ProtoCPacketExtensions.OfProto(message));
+        link.Reply(ProtoCPacketExtensions.OfProto(message));
     }
 
     #endregion
 
-    #region ISender - API Server Communication
+    #region ILink - API Server Communication
 
     /// <summary>
     /// Sends a one-way Protobuf message to an API server.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="apiServerId">Target API server ID.</param>
     /// <param name="message">The Protobuf message to send.</param>
-    public static void SendToApi<T>(this ISender sender, string apiServerId, T message) where T : IMessage
+    public static void SendToApi<T>(this ILink link, string apiServerId, T message) where T : IMessage
     {
-        sender.SendToApi(apiServerId, ProtoCPacketExtensions.OfProto(message));
+        link.SendToApi(apiServerId, ProtoCPacketExtensions.OfProto(message));
     }
 
     /// <summary>
     /// Sends a Protobuf request to an API server and awaits the reply.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="apiServerId">Target API server ID.</param>
     /// <param name="message">The Protobuf request message.</param>
     /// <returns>The reply packet.</returns>
-    public static Task<IPacket> RequestToApi<T>(this ISender sender, string apiServerId, T message) where T : IMessage
+    public static Task<IPacket> RequestToApi<T>(this ILink link, string apiServerId, T message) where T : IMessage
     {
-        return sender.RequestToApi(apiServerId, ProtoCPacketExtensions.OfProto(message));
+        return link.RequestToApi(apiServerId, ProtoCPacketExtensions.OfProto(message));
     }
 
     #endregion
 
-    #region ISender - Stage Communication
+    #region ILink - Stage Communication
 
     /// <summary>
     /// Sends a one-way Protobuf message to a stage on a Play server.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="playServerId">Target Play server ID.</param>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="message">The Protobuf message to send.</param>
-    public static void SendToStage<T>(this ISender sender, string playServerId, long stageId, T message) where T : IMessage
+    public static void SendToStage<T>(this ILink link, string playServerId, long stageId, T message) where T : IMessage
     {
-        sender.SendToStage(playServerId, stageId, ProtoCPacketExtensions.OfProto(message));
+        link.SendToStage(playServerId, stageId, ProtoCPacketExtensions.OfProto(message));
     }
 
     /// <summary>
     /// Sends a Protobuf request to a stage and awaits the reply.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="playServerId">Target Play server ID.</param>
     /// <param name="stageId">Target stage ID.</param>
     /// <param name="message">The Protobuf request message.</param>
     /// <returns>The reply packet.</returns>
-    public static Task<IPacket> RequestToStage<T>(this ISender sender, string playServerId, long stageId, T message) where T : IMessage
+    public static Task<IPacket> RequestToStage<T>(this ILink link, string playServerId, long stageId, T message) where T : IMessage
     {
-        return sender.RequestToStage(playServerId, stageId, ProtoCPacketExtensions.OfProto(message));
+        return link.RequestToStage(playServerId, stageId, ProtoCPacketExtensions.OfProto(message));
     }
 
     #endregion
 
-    #region ISender - API Service Communication
+    #region ILink - API Service Communication
 
     /// <summary>
     /// Sends a Protobuf message to an API server in the specified service using RoundRobin selection.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="message">The Protobuf message to send.</param>
-    public static void SendToApiService<T>(this ISender sender, ushort serviceId, T message) where T : IMessage
+    public static void SendToApiService<T>(this ILink link, ushort serviceId, T message) where T : IMessage
     {
-        sender.SendToApiService(serviceId, ProtoCPacketExtensions.OfProto(message));
+        link.SendToApiService(serviceId, ProtoCPacketExtensions.OfProto(message));
     }
 
     /// <summary>
     /// Sends a Protobuf message to an API server in the specified service using the specified selection policy.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="message">The Protobuf message to send.</param>
     /// <param name="policy">Server selection policy.</param>
-    public static void SendToApiService<T>(this ISender sender, ushort serviceId, T message, ServerSelectionPolicy policy) where T : IMessage
+    public static void SendToApiService<T>(this ILink link, ushort serviceId, T message, ServerSelectionPolicy policy) where T : IMessage
     {
-        sender.SendToApiService(serviceId, ProtoCPacketExtensions.OfProto(message), policy);
+        link.SendToApiService(serviceId, ProtoCPacketExtensions.OfProto(message), policy);
     }
 
     /// <summary>
     /// Sends a Protobuf request to an API server in the specified service and awaits the reply (RoundRobin).
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="message">The Protobuf request message.</param>
     /// <returns>The reply packet.</returns>
-    public static Task<IPacket> RequestToApiService<T>(this ISender sender, ushort serviceId, T message) where T : IMessage
+    public static Task<IPacket> RequestToApiService<T>(this ILink link, ushort serviceId, T message) where T : IMessage
     {
-        return sender.RequestToApiService(serviceId, ProtoCPacketExtensions.OfProto(message));
+        return link.RequestToApiService(serviceId, ProtoCPacketExtensions.OfProto(message));
     }
 
     /// <summary>
     /// Sends a Protobuf request to an API server in the specified service and awaits the reply with policy.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="serviceId">Target service ID.</param>
     /// <param name="message">The Protobuf request message.</param>
     /// <param name="policy">Server selection policy.</param>
     /// <returns>The reply packet.</returns>
-    public static Task<IPacket> RequestToApiService<T>(this ISender sender, ushort serviceId, T message, ServerSelectionPolicy policy) where T : IMessage
+    public static Task<IPacket> RequestToApiService<T>(this ILink link, ushort serviceId, T message, ServerSelectionPolicy policy) where T : IMessage
     {
-        return sender.RequestToApiService(serviceId, ProtoCPacketExtensions.OfProto(message), policy);
+        return link.RequestToApiService(serviceId, ProtoCPacketExtensions.OfProto(message), policy);
     }
 
     #endregion
 
-    #region ISender - System Communication
+    #region ILink - System Communication
 
     /// <summary>
     /// Sends a one-way Protobuf system message to a server.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="serverId">Target server ID.</param>
     /// <param name="message">The Protobuf message to send.</param>
-    public static void SendToSystem<T>(this ISender sender, string serverId, T message) where T : IMessage
+    public static void SendToSystem<T>(this ILink link, string serverId, T message) where T : IMessage
     {
-        sender.SendToSystem(serverId, ProtoCPacketExtensions.OfProto(message));
+        link.SendToSystem(serverId, ProtoCPacketExtensions.OfProto(message));
     }
 
     /// <summary>
     /// Sends a Protobuf system request and awaits the reply.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The sender instance.</param>
+    /// <param name="link">The sender instance.</param>
     /// <param name="serverId">Target server ID.</param>
     /// <param name="message">The Protobuf request message.</param>
     /// <returns>The reply packet.</returns>
-    public static Task<IPacket> RequestToSystem<T>(this ISender sender, string serverId, T message) where T : IMessage
+    public static Task<IPacket> RequestToSystem<T>(this ILink link, string serverId, T message) where T : IMessage
     {
-        return sender.RequestToSystem(serverId, ProtoCPacketExtensions.OfProto(message));
+        return link.RequestToSystem(serverId, ProtoCPacketExtensions.OfProto(message));
     }
 
     #endregion
 
-    #region IApiSender - Stage Creation
+    #region IApiLink - Stage Creation
 
     /// <summary>
     /// Creates a new stage on a Play server with a Protobuf payload.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type for the creation payload.</typeparam>
-    /// <param name="sender">The API sender instance.</param>
+    /// <param name="link">The API sender instance.</param>
     /// <param name="playNid">Target Play server NID.</param>
     /// <param name="stageType">Type of stage to create.</param>
     /// <param name="stageId">ID for the new stage.</param>
     /// <param name="payload">Protobuf creation payload.</param>
     /// <returns>Result containing the error code and create response.</returns>
     public static Task<CreateStageResult> CreateStage<T>(
-        this IApiSender sender,
+        this IApiLink link,
         string playNid,
         string stageType,
         long stageId,
         T payload) where T : IMessage
     {
-        return sender.CreateStage(playNid, stageType, stageId, ProtoCPacketExtensions.OfProto(payload));
+        return link.CreateStage(playNid, stageType, stageId, ProtoCPacketExtensions.OfProto(payload));
     }
 
     /// <summary>
     /// Gets an existing stage or creates a new one if it doesn't exist, with a Protobuf payload.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type for the creation payload.</typeparam>
-    /// <param name="sender">The API sender instance.</param>
+    /// <param name="link">The API sender instance.</param>
     /// <param name="playNid">Target Play server NID.</param>
     /// <param name="stageType">Type of stage to create if needed.</param>
     /// <param name="stageId">ID for the stage.</param>
     /// <param name="createPayload">Protobuf creation payload (used if stage doesn't exist).</param>
     /// <returns>Result containing whether stage was created and the response.</returns>
     public static Task<GetOrCreateStageResult> GetOrCreateStage<T>(
-        this IApiSender sender,
+        this IApiLink link,
         string playNid,
         string stageType,
         long stageId,
         T createPayload) where T : IMessage
     {
-        return sender.GetOrCreateStage(playNid, stageType, stageId, ProtoCPacketExtensions.OfProto(createPayload));
+        return link.GetOrCreateStage(playNid, stageType, stageId, ProtoCPacketExtensions.OfProto(createPayload));
     }
 
     #endregion
 
-    #region IStageSender - Client Communication
+    #region IStageLink - Client Communication
 
     /// <summary>
     /// Sends a Protobuf message to a specific client from a Stage.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The stage sender instance.</param>
+    /// <param name="link">The stage sender instance.</param>
     /// <param name="sessionServerId">The session server ID.</param>
     /// <param name="sid">The session ID.</param>
     /// <param name="message">The Protobuf message to send.</param>
-    public static void SendToClient<T>(this IStageSender sender, string sessionServerId, long sid, T message) where T : IMessage
+    public static void SendToClient<T>(this IStageLink link, string sessionServerId, long sid, T message) where T : IMessage
     {
-        sender.SendToClient(sessionServerId, sid, ProtoCPacketExtensions.OfProto(message));
+        link.SendToClient(sessionServerId, sid, ProtoCPacketExtensions.OfProto(message));
     }
 
     #endregion
 
-    #region IActorSender - Client Communication
+    #region IActorLink - Client Communication
 
     /// <summary>
     /// Sends a Protobuf message directly to the connected client from an Actor.
     /// </summary>
     /// <typeparam name="T">The Protobuf message type.</typeparam>
-    /// <param name="sender">The actor sender instance.</param>
+    /// <param name="link">The actor sender instance.</param>
     /// <param name="message">The Protobuf message to send.</param>
-    public static void SendToClient<T>(this IActorSender sender, T message) where T : IMessage
+    public static void SendToClient<T>(this IActorLink link, T message) where T : IMessage
     {
-        sender.SendToClient(ProtoCPacketExtensions.OfProto(message));
+        link.SendToClient(ProtoCPacketExtensions.OfProto(message));
     }
 
     #endregion

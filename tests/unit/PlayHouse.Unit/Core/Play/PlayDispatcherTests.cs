@@ -28,14 +28,14 @@ public class PlayDispatcherTests : IDisposable
 
     private class FakeStage : IStage
     {
-        public IStageSender StageSender { get; }
+        public IStageLink StageLink { get; }
         public bool OnCreateCalled { get; private set; }
         public bool OnDestroyCalled { get; private set; }
         public int OnDispatchCount { get; private set; }
 
-        public FakeStage(IStageSender stageSender)
+        public FakeStage(IStageLink stageLink)
         {
-            StageSender = stageSender;
+            StageLink = stageLink;
         }
 
         public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
@@ -71,11 +71,11 @@ public class PlayDispatcherTests : IDisposable
 
     private class FakeActor : IActor
     {
-        public IActorSender ActorSender { get; }
+        public IActorLink ActorLink { get; }
 
-        public FakeActor(IActorSender actorSender)
+        public FakeActor(IActorLink actorLink)
         {
-            ActorSender = actorSender;
+            ActorLink = actorLink;
         }
 
         public Task OnCreate() => Task.CompletedTask;

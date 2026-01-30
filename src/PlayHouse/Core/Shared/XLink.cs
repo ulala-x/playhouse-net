@@ -11,21 +11,21 @@ using PlayHouse.Runtime.Proto;
 namespace PlayHouse.Core.Shared;
 
 /// <summary>
-/// Base implementation of ISender providing common functionality.
+/// Base implementation of ILink providing common functionality.
 /// </summary>
 /// <remarks>
-/// XSender handles the low-level details of message routing and request-reply
-/// coordination. Derived classes (XActorSender, XStageSender, ApiSender) add
+/// XLink handles the low-level details of message routing and request-reply
+/// coordination. Derived classes (XActorLink, XStageLink, ApiLink) add
 /// specialized functionality.
 /// </remarks>
-public abstract class XSender : ISender
+public abstract class XLink : ILink
 {
     private readonly IClientCommunicator _communicator;
     private readonly RequestCache _requestCache;
     private readonly IServerInfoCenter _serverInfoCenter;
     private readonly int _requestTimeoutMs;
 
-    // 전역 MsgSeq 카운터 - 모든 XSender 인스턴스가 공유하여 RequestCache 키 충돌 방지
+    // 전역 MsgSeq 카운터 - 모든 XLink 인스턴스가 공유하여 RequestCache 키 충돌 방지
     private static int _globalMsgSeqCounter;
 
     /// <summary>
@@ -45,7 +45,7 @@ public abstract class XSender : ISender
     protected string ServerId { get; }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="XSender"/> class.
+    /// Initializes a new instance of the <see cref="XLink"/> class.
     /// </summary>
     /// <param name="communicator">Communicator for sending messages.</param>
     /// <param name="requestCache">Cache for tracking pending requests.</param>
@@ -54,7 +54,7 @@ public abstract class XSender : ISender
     /// <param name="serviceId">Service ID of this sender.</param>
     /// <param name="serverId">ServerId of this sender.</param>
     /// <param name="requestTimeoutMs">Request timeout in milliseconds.</param>
-    protected XSender(
+    protected XLink(
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,
@@ -90,10 +90,10 @@ public abstract class XSender : ISender
     }
 
     /// <summary>
-    /// Gets the sender's Stage ID for Stage-to-Stage communication.
-    /// Override this in XStageSender to return the actual StageId.
+    /// Gets the link's Stage ID for Stage-to-Stage communication.
+    /// Override this in XStageLink to return the actual StageId.
     /// </summary>
-    /// <returns>Stage ID for the sender (0 if not a Stage).</returns>
+    /// <returns>Stage ID for the link (0 if not a Stage).</returns>
     protected virtual long GetSenderStageId()
     {
         return 0;
@@ -101,7 +101,7 @@ public abstract class XSender : ISender
 
     /// <summary>
     /// Gets the delegate for posting callbacks to Stage event loop.
-    /// Override this in XStageSender to return the post callback delegate.
+    /// Override this in XStageLink to return the post callback delegate.
     /// </summary>
     /// <returns>Callback delegate (null if not a Stage).</returns>
     protected virtual Action<ReplyCallback, ushort, IPacket?>? GetPostToStageCallback()
@@ -393,19 +393,19 @@ public abstract class XSender : ISender
         var tcs = new TaskCompletionSource<IPacket>();
         _requestCache.Register(replyObject.MsgSeq, tcs, TimeSpan.FromMilliseconds(_requestTimeoutMs));
 
-        Console.WriteLine($"[XSender] Registered Reply: MsgSeq={replyObject.MsgSeq}");
+        Console.WriteLine($"[XLink] Registered Reply: MsgSeq={replyObject.MsgSeq}");
 
         // Bridge ReplyObject to RequestCache
         tcs.Task.ContinueWith(t =>
         {
             if (t.IsCompletedSuccessfully)
             {
-                Console.WriteLine($"[XSender] Reply Received: MsgSeq={replyObject.MsgSeq}, Success");
+                Console.WriteLine($"[XLink] Reply Received: MsgSeq={replyObject.MsgSeq}, Success");
                 replyObject.Complete(t.Result);
             }
             else
             {
-                Console.WriteLine($"[XSender] Reply Error: MsgSeq={replyObject.MsgSeq}, Exception={t.Exception?.Message}");
+                Console.WriteLine($"[XLink] Reply Error: MsgSeq={replyObject.MsgSeq}, Exception={t.Exception?.Message}");
                 replyObject.CompleteWithError((ushort)ErrorCode.RequestTimeout);
             }
         }, TaskContinuationOptions.ExecuteSynchronously);

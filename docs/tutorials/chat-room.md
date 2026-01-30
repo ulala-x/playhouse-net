@@ -22,7 +22,7 @@
 │                       │                   │
 │  - 방 목록 조회         │                   │
 │  - 방 생성/입장         │                   │
-│  ApiSender.CreateStage()                  │
+│  ApiLink.CreateStage()                  │
 │         │             │                   │
 └─────────┼─────────────┘                   │
           ▼                                 │
@@ -43,7 +43,7 @@
 
 1. **클라이언트 → API Server (HTTP)**
    - 방 목록 조회, 방 생성, 방 입장 요청
-   - API Server가 Play Server에 Stage 생성 (`ApiSender.CreateStage`)
+   - API Server가 Play Server에 Stage 생성 (`ApiLink.CreateStage`)
    - 생성된 방 정보(playNid, stageId, stageType) 반환
 
 2. **클라이언트 → Play Server (TCP)**
@@ -182,8 +182,8 @@ message SendChatReply {
 
 // 서버 → 클라이언트: 채팅 메시지 브로드캐스트 (Push)
 message ChatNotify {
-    string sender_id = 1;
-    string sender_nickname = 2;
+    string link_id = 1;
+    string link_nickname = 2;
     string message = 3;
     int64 timestamp = 4;
 }
@@ -378,7 +378,7 @@ public class ChatLobbyController : IApiController
 /// <summary>
 /// 현재 존재하는 방 목록 조회
 /// </summary>
-private Task HandleGetRoomList(IPacket packet, IApiSender sender)
+private Task HandleGetRoomList(IPacket packet, IApiLink link)
 {
     var response = new GetRoomListResponse();
 
@@ -387,7 +387,7 @@ private Task HandleGetRoomList(IPacket packet, IApiSender sender)
         response.Rooms.Add(room);
     }
 
-    sender.Reply(CPacket.Of(response));
+    link.Reply(CPacket.Of(response));
     Console.WriteLine($"[Lobby] Room list requested: {_rooms.Count} rooms");
 
     return Task.CompletedTask;
@@ -396,7 +396,7 @@ private Task HandleGetRoomList(IPacket packet, IApiSender sender)
 
 ### Step 3.3: 방 생성 (핵심!)
 
-**학습 목표**: `ApiSender.CreateStage`로 Play Server에 Stage 생성
+**학습 목표**: `ApiLink.CreateStage`로 Play Server에 Stage 생성
 
 ```csharp
 /// <summary>
@@ -404,7 +404,7 @@ private Task HandleGetRoomList(IPacket packet, IApiSender sender)
 /// 1. Play Server에 Stage 생성 요청
 /// 2. 성공 시 방 정보를 클라이언트에 반환
 /// </summary>
-private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
+private async Task HandleCreateRoom(IPacket packet, IApiLink link)
 {
     var request = CreateRoomRequest.Parser.ParseFrom(packet.Payload.DataSpan);
     var stageId = Interlocked.Increment(ref _nextStageId);
@@ -419,7 +419,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
         MaxUsers = request.MaxUsers
     };
 
-    var result = await sender.CreateStage(
+    var result = await link.CreateStage(
         PlayNid,           // Play Server NID
         "ChatRoom",        // Stage 타입
         stageId,           // Stage ID
@@ -443,7 +443,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
 
         _rooms[stageId] = roomInfo;
 
-        sender.Reply(CPacket.Of(new CreateRoomResponse
+        link.Reply(CPacket.Of(new CreateRoomResponse
         {
             Success = true,
             RoomInfo = roomInfo
@@ -453,7 +453,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
     }
     else
     {
-        sender.Reply(CPacket.Of(new CreateRoomResponse
+        link.Reply(CPacket.Of(new CreateRoomResponse
         {
             Success = false,
             ErrorMessage = "Failed to create room on Play Server"
@@ -471,7 +471,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
 /// 기존 방에 입장
 /// 방 정보를 반환하면 클라이언트가 Play Server에 직접 연결합니다.
 /// </summary>
-private Task HandleJoinRoom(IPacket packet, IApiSender sender)
+private Task HandleJoinRoom(IPacket packet, IApiLink link)
 {
     var request = JoinRoomRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -480,7 +480,7 @@ private Task HandleJoinRoom(IPacket packet, IApiSender sender)
         // 최대 인원 체크 (선택 사항)
         if (roomInfo.MaxUsers > 0 && roomInfo.CurrentUsers >= roomInfo.MaxUsers)
         {
-            sender.Reply(CPacket.Of(new JoinRoomResponse
+            link.Reply(CPacket.Of(new JoinRoomResponse
             {
                 Success = false,
                 ErrorMessage = "Room is full"
@@ -489,7 +489,7 @@ private Task HandleJoinRoom(IPacket packet, IApiSender sender)
         }
 
         // 방 정보 반환 (클라이언트가 이 정보로 Play Server에 연결)
-        sender.Reply(CPacket.Of(new JoinRoomResponse
+        link.Reply(CPacket.Of(new JoinRoomResponse
         {
             Success = true,
             RoomInfo = roomInfo
@@ -499,7 +499,7 @@ private Task HandleJoinRoom(IPacket packet, IApiSender sender)
     }
     else
     {
-        sender.Reply(CPacket.Of(new JoinRoomResponse
+        link.Reply(CPacket.Of(new JoinRoomResponse
         {
             Success = false,
             ErrorMessage = "Room not found"
@@ -542,8 +542,8 @@ namespace ChatRoomServer.Stages;
 /// </summary>
 public class ChatRoomStage : IStage
 {
-    // Stage 통신 및 관리 기능을 제공하는 Sender
-    public IStageSender StageSender { get; }
+    // Stage 통신 및 관리 기능을 제공하는 Link
+    public IStageLink StageLink { get; }
 
     // 채팅방에 참가한 사용자들 (AccountId -> Actor)
     private readonly Dictionary<string, IActor> _users = new();
@@ -554,9 +554,9 @@ public class ChatRoomStage : IStage
     // 채팅방 이름
     private string _roomName = "";
 
-    public ChatRoomStage(IStageSender stageSender)
+    public ChatRoomStage(IStageLink stageLink)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
     }
 
     // ... 생명주기 메서드들은 아래에서 구현
@@ -576,7 +576,7 @@ public class ChatRoomStage : IStage
 public Task<(bool result, IPacket reply)> OnCreate(IPacket packet)
 {
     // 채팅방 이름 설정 (StageId를 이름으로 사용)
-    _roomName = $"Room-{StageSender.StageId}";
+    _roomName = $"Room-{StageLink.StageId}";
 
     Console.WriteLine($"[ChatRoom] Created: {_roomName}");
 
@@ -616,7 +616,7 @@ public Task OnDestroy()
 /// </summary>
 public Task<bool> OnJoinStage(IActor actor)
 {
-    var accountId = actor.ActorSender.AccountId;
+    var accountId = actor.ActorLink.AccountId;
 
     // Actor를 채팅방 참가자 목록에 추가
     _users[accountId] = actor;
@@ -633,7 +633,7 @@ public Task<bool> OnJoinStage(IActor actor)
 /// </summary>
 public Task OnPostJoinStage(IActor actor)
 {
-    var accountId = actor.ActorSender.AccountId;
+    var accountId = actor.ActorLink.AccountId;
 
     // 닉네임 가져오기 (ChatActor에서 인증 시 설정됨)
     var nickname = _nicknames.GetValueOrDefault(accountId, "Unknown");
@@ -663,7 +663,7 @@ public Task OnPostJoinStage(IActor actor)
 /// </summary>
 public ValueTask OnConnectionChanged(IActor actor, bool isConnected)
 {
-    var accountId = actor.ActorSender.AccountId;
+    var accountId = actor.ActorLink.AccountId;
     var nickname = _nicknames.GetValueOrDefault(accountId, "Unknown");
 
     if (isConnected)
@@ -702,7 +702,7 @@ public Task OnDispatch(IActor actor, IPacket packet)
 
         default:
             Console.WriteLine($"[ChatRoom] Unknown message: {packet.MsgId}");
-            actor.ActorSender.Reply(500); // 에러 코드 반환
+            actor.ActorLink.Reply(500); // 에러 코드 반환
             break;
     }
 
@@ -729,7 +729,7 @@ public Task OnDispatch(IPacket packet)
 private void HandleSendChat(IActor actor, IPacket packet)
 {
     var request = SendChatRequest.Parser.ParseFrom(packet.Payload.DataSpan);
-    var accountId = actor.ActorSender.AccountId;
+    var accountId = actor.ActorLink.AccountId;
     var nickname = _nicknames.GetValueOrDefault(accountId, "Unknown");
     var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -741,7 +741,7 @@ private void HandleSendChat(IActor actor, IPacket packet)
         Success = true,
         Timestamp = timestamp
     };
-    actor.ActorSender.Reply(CPacket.Of(reply));
+    actor.ActorLink.Reply(CPacket.Of(reply));
 
     // 2. 모든 사용자에게 채팅 메시지 브로드캐스트 (Push)
     var chatNotify = new ChatNotify
@@ -776,7 +776,7 @@ private void HandleGetUsers(IActor actor, IPacket packet)
         });
     }
 
-    actor.ActorSender.Reply(CPacket.Of(reply));
+    actor.ActorLink.Reply(CPacket.Of(reply));
 }
 ```
 
@@ -794,23 +794,23 @@ private void BroadcastToAll(Google.Protobuf.IMessage message)
 
     foreach (var user in _users.Values)
     {
-        user.ActorSender.SendToClient(packet);
+        user.ActorLink.SendToClient(packet);
     }
 }
 
 /// <summary>
 /// 특정 사용자를 제외한 나머지에게 브로드캐스트
 /// </summary>
-private void BroadcastToOthers(IActor sender, Google.Protobuf.IMessage message)
+private void BroadcastToOthers(IActor link, Google.Protobuf.IMessage message)
 {
     var packet = CPacket.Of(message);
-    var senderId = sender.ActorSender.AccountId;
+    var linkId = link.ActorLink.AccountId;
 
     foreach (var user in _users.Values)
     {
-        if (user.ActorSender.AccountId != senderId)
+        if (user.ActorLink.AccountId != linkId)
         {
-            user.ActorSender.SendToClient(packet);
+            user.ActorLink.SendToClient(packet);
         }
     }
 }
@@ -850,13 +850,13 @@ namespace ChatRoomServer.Actors;
 /// </summary>
 public class ChatActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
     private string _nickname = "";
 
-    public ChatActor(IActorSender actorSender)
+    public ChatActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     // ... 생명주기 메서드들은 아래에서 구현
@@ -880,7 +880,7 @@ public Task OnCreate()
 /// </summary>
 public Task OnDestroy()
 {
-    Console.WriteLine($"[ChatActor] {_nickname} ({ActorSender.AccountId}) destroyed");
+    Console.WriteLine($"[ChatActor] {_nickname} ({ActorLink.AccountId}) destroyed");
     return Task.CompletedTask;
 }
 ```
@@ -905,7 +905,7 @@ public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
     // 2. AccountId 생성 및 설정 (필수!)
     // 실제 서비스에서는 토큰 검증 후 DB에서 조회
     var accountId = Guid.NewGuid().ToString();
-    ActorSender.AccountId = accountId;
+    ActorLink.AccountId = accountId;
 
     Console.WriteLine($"[ChatActor] Authenticated: {_nickname} ({accountId})");
 
@@ -958,7 +958,7 @@ public string GetNickname() => _nickname;
 ```csharp
 public Task<bool> OnJoinStage(IActor actor)
 {
-    var accountId = actor.ActorSender.AccountId;
+    var accountId = actor.ActorLink.AccountId;
 
     // Actor를 채팅방 참가자 목록에 추가
     _users[accountId] = actor;
@@ -1052,7 +1052,7 @@ Console.WriteLine("Press Ctrl+C to stop\n");
 
 // 종료 시그널 대기
 var cts = new CancellationTokenSource();
-Console.CancelKeyPress += (sender, e) =>
+Console.CancelKeyPress += (link, e) =>
 {
     e.Cancel = true;
     cts.Cancel();
@@ -1552,7 +1552,7 @@ Hi Bob!
    - 클라이언트는 API Server에서 방 정보를 얻은 후 Play Server에 접속
 
 2. **API Server (IApiController)**
-   - `ApiSender.CreateStage()`: Play Server에 Stage 생성
+   - `ApiLink.CreateStage()`: Play Server에 Stage 생성
    - HTTP 스타일 요청 처리 (Stateless)
    - 방 관리, 로비 기능 담당
 
@@ -1563,7 +1563,7 @@ Hi Bob!
 
 4. **Actor**: 개별 사용자를 나타냄
    - `OnAuthenticate`: 인증 및 AccountId 설정 (필수!)
-   - `ActorSender.AccountId`: 사용자 식별자
+   - `ActorLink.AccountId`: 사용자 식별자
 
 5. **메시지 패턴**:
    - **Request-Response**: `SendChatRequest` → `SendChatReply`
@@ -1571,7 +1571,7 @@ Hi Bob!
 
 6. **브로드캐스트**:
    - `BroadcastToAll`: 모든 사용자에게 전송
-   - `actor.ActorSender.SendToClient`: 특정 사용자에게 Push
+   - `actor.ActorLink.SendToClient`: 특정 사용자에게 Push
 
 ---
 

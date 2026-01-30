@@ -45,10 +45,10 @@ docs/
 
 | 문서 | 설명 |
 |------|------|
-| [Overview](./concepts/overview.md) | **시작점** - Play/API 서버, Sender 통신 |
+| [Overview](./concepts/overview.md) | **시작점** - Play/API 서버, Link 통신 |
 | [Stage/Actor](./concepts/stage-actor.md) | **핵심 모델** - 게임방과 참가자 |
 | [Connection Lifecycle](./concepts/connection-lifecycle.md) | 연결 및 인증 생명주기 |
-| [Messaging](./concepts/messaging.md) | 메시지 패턴 (Request-Reply, Push, Sender) |
+| [Messaging](./concepts/messaging.md) | 메시지 패턴 (Request-Reply, Push, Link) |
 | [Timer & GameLoop](./concepts/timer-gameloop.md) | 타이머 및 게임루프 개념 |
 
 ## Guides

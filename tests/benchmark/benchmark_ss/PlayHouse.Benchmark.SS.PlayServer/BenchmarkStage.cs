@@ -16,13 +16,13 @@ public class BenchmarkStage : IStage
     private readonly ILogger<BenchmarkStage> _logger;
     private readonly ConcurrentQueue<long> _latencyQueue = new();
 
-    public BenchmarkStage(IStageSender stageSender, ILogger<BenchmarkStage>? logger = null)
+    public BenchmarkStage(IStageLink stageLink, ILogger<BenchmarkStage>? logger = null)
     {
-        StageSender = stageSender;
+        StageLink = stageLink;
         _logger = logger ?? NullLogger<BenchmarkStage>.Instance;
     }
 
-    public IStageSender StageSender { get; }
+    public IStageLink StageLink { get; }
 
     public Task<(bool result, IPacket reply)> OnCreate(IPacket packet) => 
         Task.FromResult<(bool, IPacket)>((true, CPacket.Empty("CreateStageReply")));
@@ -80,7 +80,7 @@ public class BenchmarkStage : IStage
 
         sw.Stop();
 
-        actor.ActorSender.Reply(ProtoCPacketExtensions.OfProto(new TriggerSSEchoReply 
+        actor.ActorLink.Reply(ProtoCPacketExtensions.OfProto(new TriggerSSEchoReply 
         { 
             Count = req.BatchSize,
             ElapsedTicks = sw.ElapsedTicks 
@@ -93,7 +93,7 @@ public class BenchmarkStage : IStage
         {
             var start = Stopwatch.GetTimestamp();
             try {
-                using var reply = await StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data));
+                using var reply = await StageLink.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data));
                 ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, data.Length);
             } catch { }
         }
@@ -110,7 +110,7 @@ public class BenchmarkStage : IStage
             var start = Stopwatch.GetTimestamp();
             
             
-            StageSender.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data), (err, reply) =>
+            StageLink.RequestToApi("api-1", CPacket.Of("SSEchoRequest", data), (err, reply) =>
             {
                 if (err == 0) ServerMetricsCollector.Instance.RecordMessage(Stopwatch.GetTimestamp() - start, data.Length);
                 reply?.Dispose();
@@ -129,7 +129,7 @@ public class BenchmarkStage : IStage
         {
             // 전송 시각 기록
             _latencyQueue.Enqueue(Stopwatch.GetTimestamp());
-            StageSender.SendToApi("api-1", CPacket.Of("SSEchoRequest", data));
+            StageLink.SendToApi("api-1", CPacket.Of("SSEchoRequest", data));
         }
     }
 }

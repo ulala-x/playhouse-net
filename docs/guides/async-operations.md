@@ -34,10 +34,10 @@ public class GameStage : IStage
             var request = LoadUserDataRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
             // 즉시 수락 응답
-            actor.ActorSender.Reply(CPacket.Empty("LoadUserDataAccepted"));
+            actor.ActorLink.Reply(CPacket.Empty("LoadUserDataAccepted"));
 
             // AsyncIO로 DB 조회
-            StageSender.AsyncIO(
+            StageLink.AsyncIO(
                 preCallback: async () =>
                 {
                     // I/O 스레드 풀에서 실행
@@ -52,7 +52,7 @@ public class GameStage : IStage
                     var userData = (UserData)result!;
 
                     // 로드된 데이터를 클라이언트로 전송
-                    actor.ActorSender.SendToClient(CPacket.Of(new LoadUserDataNotify
+                    actor.ActorLink.SendToClient(CPacket.Of(new LoadUserDataNotify
                     {
                         UserId = userData.Id,
                         Level = userData.Level,
@@ -73,10 +73,10 @@ PostCallback은 선택적입니다. 결과를 Stage로 돌려보낼 필요가 �
 
 ```csharp
 // 로그만 기록하는 경우
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
-        await _logger.WriteLogAsync("Player joined", actor.ActorSender.AccountId);
+        await _logger.WriteLogAsync("Player joined", actor.ActorLink.AccountId);
         return null;
     }
     // postCallback 생략
@@ -86,7 +86,7 @@ StageSender.AsyncIO(
 ### 1.3 여러 I/O 작업 조합
 
 ```csharp
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
         // 여러 I/O 작업을 병렬로 수행
@@ -108,7 +108,7 @@ StageSender.AsyncIO(
         var data = (dynamic)result!;
 
         // 모든 데이터를 한 번에 전송
-        actor.ActorSender.SendToClient(CPacket.Of(new InitialDataNotify
+        actor.ActorLink.SendToClient(CPacket.Of(new InitialDataNotify
         {
             UserData = ConvertToProto(data.User),
             InventoryData = ConvertToProto(data.Inventory),
@@ -133,9 +133,9 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     {
         var request = EncryptDataRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
-        actor.ActorSender.Reply(CPacket.Empty("EncryptDataAccepted"));
+        actor.ActorLink.Reply(CPacket.Empty("EncryptDataAccepted"));
 
-        StageSender.AsyncCompute(
+        StageLink.AsyncCompute(
             preCallback: async () =>
             {
                 // CPU 집약적인 암호화 작업
@@ -147,7 +147,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
             {
                 var encrypted = (byte[])result!;
 
-                actor.ActorSender.SendToClient(CPacket.Of(new EncryptDataNotify
+                actor.ActorLink.SendToClient(CPacket.Of(new EncryptDataNotify
                 {
                     EncryptedData = Google.Protobuf.ByteString.CopyFrom(encrypted)
                 }));
@@ -163,7 +163,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 
 ```csharp
 // AI 경로 탐색
-StageSender.AsyncCompute(
+StageLink.AsyncCompute(
     async () =>
     {
         // A* 알고리즘 같은 무거운 경로 탐색
@@ -186,7 +186,7 @@ StageSender.AsyncCompute(
 );
 
 // 물리 시뮬레이션
-StageSender.AsyncCompute(
+StageLink.AsyncCompute(
     async () =>
     {
         // 충돌 감지 및 물리 계산
@@ -242,26 +242,26 @@ public class RankedGameStage : IStage
     {
         if (packet.MsgId == "GameFinished")
         {
-            var finalScore = _playerScores[actor.ActorSender.AccountId];
+            var finalScore = _playerScores[actor.ActorLink.AccountId];
 
-            actor.ActorSender.Reply(CPacket.Empty("GameFinishedAccepted"));
+            actor.ActorLink.Reply(CPacket.Empty("GameFinishedAccepted"));
 
             // AsyncIO로 DB 저장 및 랭킹 업데이트
-            StageSender.AsyncIO(
+            StageLink.AsyncIO(
                 async () =>
                 {
                     // DB에 게임 결과 저장
                     await _gameRepository.SaveGameResultAsync(new GameResult
                     {
-                        PlayerId = actor.ActorSender.AccountId,
-                        StageId = StageSender.StageId,
+                        PlayerId = actor.ActorLink.AccountId,
+                        StageId = StageLink.StageId,
                         Score = finalScore,
                         Timestamp = DateTimeOffset.UtcNow
                     });
 
                     // 리더보드 업데이트
                     var newRank = await _leaderboard.UpdateScoreAsync(
-                        actor.ActorSender.AccountId,
+                        actor.ActorLink.AccountId,
                         finalScore
                     );
 
@@ -272,7 +272,7 @@ public class RankedGameStage : IStage
                     var newRank = (int)result!;
 
                     // 최종 결과를 클라이언트에 전송
-                    actor.ActorSender.SendToClient(CPacket.Of(new GameResultNotify
+                    actor.ActorLink.SendToClient(CPacket.Of(new GameResultNotify
                     {
                         FinalScore = finalScore,
                         NewRank = newRank,
@@ -300,9 +300,9 @@ public class ShopStage : IStage
         {
             var request = VerifyPurchaseRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
-            actor.ActorSender.Reply(CPacket.Empty("VerifyPurchaseAccepted"));
+            actor.ActorLink.Reply(CPacket.Empty("VerifyPurchaseAccepted"));
 
-            StageSender.AsyncIO(
+            StageLink.AsyncIO(
                 async () =>
                 {
                     // 외부 결제 API 호출 (Google Play, App Store 등)
@@ -322,7 +322,7 @@ public class ShopStage : IStage
                         // 검증 성공: 아이템 지급
                         GiveItemToPlayer(actor, verifyResult.ItemId, verifyResult.Quantity);
 
-                        actor.ActorSender.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
+                        actor.ActorLink.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
                         {
                             Success = true,
                             ItemId = verifyResult.ItemId,
@@ -332,7 +332,7 @@ public class ShopStage : IStage
                     else
                     {
                         // 검증 실패
-                        actor.ActorSender.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
+                        actor.ActorLink.SendToClient(CPacket.Of(new PurchaseVerifiedNotify
                         {
                             Success = false,
                             ErrorMessage = verifyResult.ErrorMessage
@@ -363,9 +363,9 @@ public class DungeonStage : IStage
             var request = MoveNPCRequest.Parser.ParseFrom(packet.Payload.DataSpan);
             var npc = _npcs[request.NpcId];
 
-            actor.ActorSender.Reply(CPacket.Empty("MoveNPCAccepted"));
+            actor.ActorLink.Reply(CPacket.Empty("MoveNPCAccepted"));
 
-            StageSender.AsyncCompute(
+            StageLink.AsyncCompute(
                 async () =>
                 {
                     // CPU 집약적인 경로 탐색 (A* 알고리즘)
@@ -422,14 +422,14 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     {
         var request = LoadExternalDataRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
-        actor.ActorSender.Reply(CPacket.Empty("LoadExternalDataAccepted"));
+        actor.ActorLink.Reply(CPacket.Empty("LoadExternalDataAccepted"));
 
-        StageSender.AsyncIO(
+        StageLink.AsyncIO(
             async () =>
             {
                 // PreCallback에서 API 서버로 요청
                 // ConfigureAwait(false) 사용 권장
-                using var response = await StageSender.RequestToApiService(
+                using var response = await StageLink.RequestToApiService(
                     serviceId: 200,
                     packet: CPacket.Of(new GetExternalDataRequest
                     {
@@ -451,7 +451,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
                 UpdateStageWithExternalData(data);
 
                 // 클라이언트에 알림
-                actor.ActorSender.SendToClient(CPacket.Of(new ExternalDataLoadedNotify
+                actor.ActorLink.SendToClient(CPacket.Of(new ExternalDataLoadedNotify
                 {
                     DataId = data.DataId,
                     Success = true
@@ -472,7 +472,7 @@ PreCallback은 백그라운드 스레드에서 실행되므로 Stage 상태에 �
 
 ```csharp
 // 잘못된 예
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
         // ❌ 위험: Stage 필드 접근 (Race condition)
@@ -486,7 +486,7 @@ StageSender.AsyncIO(
 // 올바른 예
 var playerId = _players[0].AccountId; // Stage 이벤트 루프에서 읽기
 
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
         // ✅ 안전: 캡처된 지역 변수 사용
@@ -507,7 +507,7 @@ StageSender.AsyncIO(
 PreCallback 내에서 async/await를 사용할 때는 `ConfigureAwait(false)`를 사용하는 것이 좋습니다.
 
 ```csharp
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
         // ConfigureAwait(false) 권장
@@ -529,7 +529,7 @@ StageSender.AsyncIO(
 AsyncBlock 내에서 발생한 예외는 적절히 처리해야 합니다.
 
 ```csharp
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
         try
@@ -550,14 +550,14 @@ StageSender.AsyncIO(
 
         if (response.Success)
         {
-            actor.ActorSender.SendToClient(CPacket.Of(new DataLoadedNotify
+            actor.ActorLink.SendToClient(CPacket.Of(new DataLoadedNotify
             {
                 Data = ConvertToProto(response.Data)
             }));
         }
         else
         {
-            actor.ActorSender.SendToClient(CPacket.Of(new DataLoadFailedNotify
+            actor.ActorLink.SendToClient(CPacket.Of(new DataLoadFailedNotify
             {
                 ErrorMessage = "Failed to load data"
             }));
@@ -574,13 +574,13 @@ StageSender.AsyncIO(
 
 ```csharp
 // PostCallback 없이 사용 (fire-and-forget 로깅)
-StageSender.AsyncIO(
+StageLink.AsyncIO(
     async () =>
     {
         await _analyticsService.LogEventAsync("player_joined", new
         {
-            playerId = actor.ActorSender.AccountId,
-            stageId = StageSender.StageId,
+            playerId = actor.ActorLink.AccountId,
+            stageId = StageLink.StageId,
             timestamp = DateTimeOffset.UtcNow
         });
         return null;
@@ -594,14 +594,14 @@ AsyncBlock은 스레드 전환 오버헤드가 있습니다. 간단한 작업은
 
 ```csharp
 // 나쁜 예: 간단한 계산을 AsyncCompute로
-StageSender.AsyncCompute(
+StageLink.AsyncCompute(
     async () => playerScore + 100,  // 불필요한 AsyncBlock
     async (result) => { /* ... */ }
 );
 
 // 좋은 예: 직접 계산
 var newScore = playerScore + 100;
-actor.ActorSender.Reply(CPacket.Of(new ScoreUpdateNotify { Score = newScore }));
+actor.ActorLink.Reply(CPacket.Of(new ScoreUpdateNotify { Score = newScore }));
 ```
 
 ## 6. 스레드 풀 설정

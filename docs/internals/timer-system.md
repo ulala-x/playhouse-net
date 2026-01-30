@@ -104,7 +104,7 @@ void CancelTimer(long timerId);
 
 ```csharp
 // Stage 종료 시 모든 타이머 자동 취소
-StageSender.CloseStage();
+StageLink.CloseStage();
 
 // 내부 동작:
 // 1. 등록된 모든 타이머 ID 조회
@@ -120,7 +120,7 @@ StageSender.CloseStage();
 ```
 [타이머 등록 프로세스]
 
-StageSender.AddRepeatTimer()
+StageLink.AddRepeatTimer()
     │
     ▼
 timerId = GenerateTimerId()
@@ -410,7 +410,7 @@ Frame X: accumulator = 300ms
 ```
 [게임루프 시작 프로세스]
 
-StageSender.StartGameLoop(config, callback)
+StageLink.StartGameLoop(config, callback)
     │
     ▼
 GameLoopTimer 생성

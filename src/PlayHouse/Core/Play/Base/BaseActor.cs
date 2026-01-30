@@ -6,11 +6,11 @@ using PlayHouse.Abstractions.Play;
 namespace PlayHouse.Core.Play.Base;
 
 /// <summary>
-/// Wrapper class that links an IActor with its XActorSender and DI scope.
+/// Wrapper class that links an IActor with its XActorLink and DI scope.
 /// </summary>
 /// <remarks>
 /// BaseActor is managed by BaseStage and provides the association
-/// between the content-implemented IActor and the framework's XActorSender.
+/// between the content-implemented IActor and the framework's XActorLink.
 /// It also manages the IServiceScope for proper Scoped dependency lifecycle.
 /// </remarks>
 internal sealed class BaseActor
@@ -23,25 +23,25 @@ internal sealed class BaseActor
     public IActor Actor { get; }
 
     /// <summary>
-    /// Gets the framework-provided ActorSender.
+    /// Gets the framework-provided ActorLink.
     /// </summary>
-    public XActorSender ActorSender { get; }
+    public XActorLink ActorLink { get; }
 
     /// <summary>
     /// Gets the account ID for this Actor.
     /// </summary>
-    public string AccountId => ActorSender.AccountId;
+    public string AccountId => ActorLink.AccountId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BaseActor"/> class.
     /// </summary>
     /// <param name="actor">Content-implemented Actor.</param>
-    /// <param name="actorSender">Framework ActorSender.</param>
+    /// <param name="actorLink">Framework ActorLink.</param>
     /// <param name="serviceScope">Optional DI scope for Scoped dependency management.</param>
-    public BaseActor(IActor actor, XActorSender actorSender, IServiceScope? serviceScope = null)
+    public BaseActor(IActor actor, XActorLink actorLink, IServiceScope? serviceScope = null)
     {
         Actor = actor;
-        ActorSender = actorSender;
+        ActorLink = actorLink;
         _serviceScope = serviceScope;
     }
 

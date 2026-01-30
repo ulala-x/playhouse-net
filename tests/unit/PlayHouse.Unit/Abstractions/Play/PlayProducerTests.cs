@@ -33,12 +33,12 @@ public class PlayProducerTests
 
     private class FakeStage : IStage
     {
-        public IStageSender StageSender { get; }
+        public IStageLink StageLink { get; }
         public string StageType { get; }
 
-        public FakeStage(IStageSender stageSender, string stageType = "test")
+        public FakeStage(IStageLink stageLink, string stageType = "test")
         {
-            StageSender = stageSender;
+            StageLink = stageLink;
             StageType = stageType;
         }
 
@@ -56,12 +56,12 @@ public class PlayProducerTests
 
     private class FakeActor : IActor
     {
-        public IActorSender ActorSender { get; }
+        public IActorLink ActorLink { get; }
         public string ActorType { get; }
 
-        public FakeActor(IActorSender actorSender, string actorType = "test")
+        public FakeActor(IActorLink actorLink, string actorType = "test")
         {
-            ActorSender = actorSender;
+            ActorLink = actorLink;
             ActorType = actorType;
         }
 
@@ -132,7 +132,7 @@ public class PlayProducerTests
         // Given (전제조건)
         var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
-        var stageSender = Substitute.For<IStageSender>();
+        var stageSender = Substitute.For<IStageLink>();
 
         producer.Register(
             stageType,
@@ -146,7 +146,7 @@ public class PlayProducerTests
         stage.Should().NotBeNull("Stage 인스턴스가 생성되어야 함");
         stage.Should().BeOfType<FakeStage>();
         (stage as FakeStage)!.StageType.Should().Be(stageType);
-        stage.StageSender.Should().BeSameAs(stageSender);
+        stage.StageLink.Should().BeSameAs(stageSender);
     }
 
     [Fact(DisplayName = "GetStage - 등록되지 않은 타입은 예외를 발생한다")]
@@ -154,7 +154,7 @@ public class PlayProducerTests
     {
         // Given (전제조건)
         var producer = CreateProducerForManualRegistration();
-        var stageSender = Substitute.For<IStageSender>();
+        var stageSender = Substitute.For<IStageLink>();
         const string stageType = "non_existent";
 
         // When (행동)
@@ -171,7 +171,7 @@ public class PlayProducerTests
         // Given (전제조건)
         var producer = CreateProducerForManualRegistration();
         const string stageType = "game_room";
-        var actorSender = Substitute.For<IActorSender>();
+        var actorSender = Substitute.For<IActorLink>();
 
         producer.Register(
             stageType,
@@ -185,7 +185,7 @@ public class PlayProducerTests
         actor.Should().NotBeNull("Actor 인스턴스가 생성되어야 함");
         actor.Should().BeOfType<FakeActor>();
         (actor as FakeActor)!.ActorType.Should().Be(stageType);
-        actor.ActorSender.Should().BeSameAs(actorSender);
+        actor.ActorLink.Should().BeSameAs(actorSender);
     }
 
     [Fact(DisplayName = "GetActor - 등록되지 않은 타입은 예외를 발생한다")]
@@ -193,7 +193,7 @@ public class PlayProducerTests
     {
         // Given (전제조건)
         var producer = CreateProducerForManualRegistration();
-        var actorSender = Substitute.For<IActorSender>();
+        var actorSender = Substitute.For<IActorLink>();
         const string stageType = "non_existent";
 
         // When (행동)
@@ -222,8 +222,8 @@ public class PlayProducerTests
             sender => new FakeStage(sender, type2),
             sender => new FakeActor(sender, type2));
 
-        var stageSender1 = Substitute.For<IStageSender>();
-        var stageSender2 = Substitute.For<IStageSender>();
+        var stageSender1 = Substitute.For<IStageLink>();
+        var stageSender2 = Substitute.For<IStageLink>();
 
         // When (행동)
         var stage1 = producer.GetStage(type1, stageSender1);
@@ -247,7 +247,7 @@ public class PlayProducerTests
             sender => new FakeStage(sender),
             sender => new FakeActor(sender));
 
-        var stageSender = Substitute.For<IStageSender>();
+        var stageSender = Substitute.For<IStageLink>();
 
         // When (행동)
         var stage1 = producer.GetStage(stageType, stageSender);

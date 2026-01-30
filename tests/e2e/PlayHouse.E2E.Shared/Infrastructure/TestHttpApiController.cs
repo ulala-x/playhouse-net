@@ -16,17 +16,17 @@ namespace PlayHouse.E2E.Shared.Infrastructure;
 [Route("api")]
 public class TestHttpApiController : ControllerBase
 {
-    private readonly IApiSender _apiSender;
+    private readonly IApiLink _apiLink;
     private readonly string _playServerId;
 
     /// <summary>
     /// Initializes a new instance of the TestHttpApiController.
     /// </summary>
-    /// <param name="apiSender">The API sender for communicating with PlayServer</param>
+    /// <param name="apiLink">The API sender for communicating with PlayServer</param>
     /// <param name="config">Configuration containing PlayServerId</param>
-    public TestHttpApiController(IApiSender apiSender, IConfiguration config)
+    public TestHttpApiController(IApiLink apiLink, IConfiguration config)
     {
-        _apiSender = apiSender;
+        _apiLink = apiLink;
         _playServerId = config["PlayServerId"] ?? throw new InvalidOperationException("PlayServerId not configured");
     }
 
@@ -43,7 +43,7 @@ public class TestHttpApiController : ControllerBase
             StageName = req.StageType,
             MaxPlayers = 10
         };
-        var result = await _apiSender.CreateStage(
+        var result = await _apiLink.CreateStage(
             _playServerId,
             req.StageType,
             req.StageId,
@@ -78,7 +78,7 @@ public class TestHttpApiController : ControllerBase
             StageName = req.StageType,
             MaxPlayers = 10
         };
-        var result = await _apiSender.GetOrCreateStage(
+        var result = await _apiLink.GetOrCreateStage(
             _playServerId,
             req.StageType,
             req.StageId,
@@ -117,7 +117,7 @@ public class TestHttpApiController : ControllerBase
             MaxPlayers = 10
         };
 
-        _apiSender.CreateStage(
+        _apiLink.CreateStage(
             _playServerId,
             req.StageType,
             req.StageId,
@@ -160,7 +160,7 @@ public class TestHttpApiController : ControllerBase
             MaxPlayers = 10
         };
 
-        _apiSender.GetOrCreateStage(
+        _apiLink.GetOrCreateStage(
             _playServerId,
             req.StageType,
             req.StageId,

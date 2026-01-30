@@ -31,7 +31,7 @@ public class UserController : IApiController
     }
 
     // 핸들러 메서드
-    private async Task HandleLogin(IPacket packet, IApiSender sender)
+    private async Task HandleLogin(IPacket packet, IApiLink link)
     {
         var request = LoginRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -39,27 +39,27 @@ public class UserController : IApiController
         var userId = await AuthenticateUser(request.Username, request.Password);
 
         // 응답 전송
-        sender.Reply(CPacket.Of(new LoginResponse
+        link.Reply(CPacket.Of(new LoginResponse
         {
             Success = userId != null,
             UserId = userId ?? ""
         }));
     }
 
-    private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
+    private async Task HandleCreateRoom(IPacket packet, IApiLink link)
     {
         var request = CreateRoomRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // Play Server에 Stage 생성
         var roomId = GenerateRoomId();
-        var result = await sender.CreateStage(
+        var result = await link.CreateStage(
             "play-1",
             "GameRoom",
             roomId,
             CPacket.Of(new CreateRoomPayload { MaxPlayers = request.MaxPlayers })
         );
 
-        sender.Reply(CPacket.Of(new CreateRoomResponse
+        link.Reply(CPacket.Of(new CreateRoomResponse
         {
             Success = result.Result,
             RoomId = roomId
@@ -92,44 +92,44 @@ public void Handles(IHandlerRegister register)
 
 권장하는 방식은 메서드 이름을 전달하는 방식(1, 2)입니다. 이 방식은 요청마다 새로운 컨트롤러 인스턴스를 생성하여 Scoped DI를 올바르게 지원합니다.
 
-## 2. IApiSender 사용
+## 2. IApiLink 사용
 
-핸들러 메서드는 `IApiSender` 파라미터를 통해 다양한 기능에 접근할 수 있습니다.
+핸들러 메서드는 `IApiLink` 파라미터를 통해 다양한 기능에 접근할 수 있습니다.
 
 ### 2.1 기본 속성
 
 ```csharp
-private async Task HandleRequest(IPacket packet, IApiSender sender)
+private async Task HandleRequest(IPacket packet, IApiLink link)
 {
     // 요청 타입 확인
-    bool isRequest = sender.IsRequest; // true이면 Reply 필요
+    bool isRequest = link.IsRequest; // true이면 Reply 필요
 
     // 요청 컨텍스트 정보
-    long stageId = sender.StageId;           // 요청한 Stage ID
-    string accountId = sender.AccountId;     // 요청한 사용자 ID
-    string fromNid = sender.FromNid;         // 요청 출처 서버 NID
-    ushort serviceId = sender.ServiceId;     // 현재 서버의 Service ID
-    ServerType serverType = sender.ServerType; // 현재 서버 타입
+    long stageId = link.StageId;           // 요청한 Stage ID
+    string accountId = link.AccountId;     // 요청한 사용자 ID
+    string fromNid = link.FromNid;         // 요청 출처 서버 NID
+    ushort serviceId = link.ServiceId;     // 현재 서버의 Service ID
+    ServerType serverType = link.ServerType; // 현재 서버 타입
 
     // AccountId 설정 (필요시)
-    sender.AccountId = "user123";
+    link.AccountId = "user123";
 }
 ```
 
 ### 2.2 응답 전송
 
 ```csharp
-private async Task HandleRequest(IPacket packet, IApiSender sender)
+private async Task HandleRequest(IPacket packet, IApiLink link)
 {
     // 성공 응답
-    sender.Reply(CPacket.Of(new Response { Data = "success" }));
+    link.Reply(CPacket.Of(new Response { Data = "success" }));
 
     // 에러 응답 (에러 코드만)
-    sender.Reply(404); // Not Found
-    sender.Reply(500); // Internal Server Error
+    link.Reply(404); // Not Found
+    link.Reply(500); // Internal Server Error
 
     // 빈 응답
-    sender.Reply(CPacket.Empty("EmptyResponse"));
+    link.Reply(CPacket.Empty("EmptyResponse"));
 }
 ```
 
@@ -140,7 +140,7 @@ private async Task HandleRequest(IPacket packet, IApiSender sender)
 새로운 Stage를 생성합니다. 이미 존재하면 실패합니다.
 
 ```csharp
-private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
+private async Task HandleCreateRoom(IPacket packet, IApiLink link)
 {
     var request = CreateRoomRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -153,7 +153,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
     };
 
     // CreateStage (async/await)
-    var result = await sender.CreateStage(
+    var result = await link.CreateStage(
         playNid: "play-1",
         stageType: "GameRoom",
         stageId: roomId,
@@ -166,7 +166,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
         // result.Reply는 IStage.OnCreate()의 reply 반환값
         var stageReply = CreateStageReply.Parser.ParseFrom(result.Reply.Payload.DataSpan);
 
-        sender.Reply(CPacket.Of(new CreateRoomResponse
+        link.Reply(CPacket.Of(new CreateRoomResponse
         {
             Success = true,
             RoomId = roomId,
@@ -176,7 +176,7 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
     else
     {
         // Stage 생성 실패
-        sender.Reply(500);
+        link.Reply(500);
     }
 }
 ```
@@ -184,12 +184,12 @@ private async Task HandleCreateRoom(IPacket packet, IApiSender sender)
 #### CreateStage (Callback 버전)
 
 ```csharp
-private void HandleCreateRoomCallback(IPacket packet, IApiSender sender)
+private void HandleCreateRoomCallback(IPacket packet, IApiLink link)
 {
     var request = CreateRoomRequest.Parser.ParseFrom(packet.Payload.DataSpan);
     var roomId = GenerateRoomId();
 
-    sender.CreateStage(
+    link.CreateStage(
         "play-1",
         "GameRoom",
         roomId,
@@ -198,7 +198,7 @@ private void HandleCreateRoomCallback(IPacket packet, IApiSender sender)
         {
             if (errorCode == 0 && result != null && result.Result)
             {
-                sender.Reply(CPacket.Of(new CreateRoomResponse
+                link.Reply(CPacket.Of(new CreateRoomResponse
                 {
                     Success = true,
                     RoomId = roomId
@@ -206,7 +206,7 @@ private void HandleCreateRoomCallback(IPacket packet, IApiSender sender)
             }
             else
             {
-                sender.Reply(500);
+                link.Reply(500);
             }
         }
     );
@@ -218,7 +218,7 @@ private void HandleCreateRoomCallback(IPacket packet, IApiSender sender)
 Stage가 존재하면 가져오고, 없으면 생성합니다.
 
 ```csharp
-private async Task HandleJoinOrCreateRoom(IPacket packet, IApiSender sender)
+private async Task HandleJoinOrCreateRoom(IPacket packet, IApiLink link)
 {
     var request = JoinOrCreateRoomRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -229,14 +229,14 @@ private async Task HandleJoinOrCreateRoom(IPacket packet, IApiSender sender)
         MaxPlayers = 10
     };
 
-    var result = await sender.GetOrCreateStage(
+    var result = await link.GetOrCreateStage(
         playNid: "play-1",
         stageType: "GameRoom",
         stageId: roomId,
         createPacket: CPacket.Of(createPayload)
     );
 
-    sender.Reply(CPacket.Of(new JoinOrCreateRoomResponse
+    link.Reply(CPacket.Of(new JoinOrCreateRoomResponse
     {
         Success = result.Result,
         IsCreated = result.IsCreated, // true면 새로 생성, false면 기존 Stage
@@ -273,7 +273,7 @@ public class UserController : IApiController
         register.Add<LoginRequest>(nameof(HandleLogin));
     }
 
-    private async Task HandleLogin(IPacket packet, IApiSender sender)
+    private async Task HandleLogin(IPacket packet, IApiLink link)
     {
         var request = LoginRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -281,7 +281,7 @@ public class UserController : IApiController
 
         var user = await _userRepository.FindByUsername(request.Username);
 
-        sender.Reply(CPacket.Of(new LoginResponse
+        link.Reply(CPacket.Of(new LoginResponse
         {
             Success = user != null,
             UserId = user?.Id ?? ""
@@ -344,7 +344,7 @@ public class GameController : IApiController
         register.Add<JoinGameRequest>(nameof(HandleJoinGame));
     }
 
-    private async Task HandleLogin(IPacket packet, IApiSender sender)
+    private async Task HandleLogin(IPacket packet, IApiLink link)
     {
         var request = LoginRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -358,13 +358,13 @@ public class GameController : IApiController
 
             if (user == null)
             {
-                sender.Reply(401); // Unauthorized
+                link.Reply(401); // Unauthorized
                 return;
             }
 
             _logger.LogInformation("User logged in: {UserId}", user.Id);
 
-            sender.Reply(CPacket.Of(new LoginResponse
+            link.Reply(CPacket.Of(new LoginResponse
             {
                 Success = true,
                 UserId = user.Id,
@@ -375,11 +375,11 @@ public class GameController : IApiController
         catch (Exception ex)
         {
             _logger.LogError(ex, "Login failed");
-            sender.Reply(500);
+            link.Reply(500);
         }
     }
 
-    private async Task HandleJoinGame(IPacket packet, IApiSender sender)
+    private async Task HandleJoinGame(IPacket packet, IApiLink link)
     {
         var request = JoinGameRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -407,7 +407,7 @@ public class GameController : IApiController
                     RequiredRating = request.Rating
                 };
 
-                var result = await sender.CreateStage(
+                var result = await link.CreateStage(
                     playServerId,
                     "MatchStage",
                     stageId,
@@ -416,7 +416,7 @@ public class GameController : IApiController
 
                 if (!result.Result)
                 {
-                    sender.Reply(503); // Service Unavailable
+                    link.Reply(503); // Service Unavailable
                     return;
                 }
 
@@ -429,7 +429,7 @@ public class GameController : IApiController
                 playServerId = match.PlayServerId;
             }
 
-            sender.Reply(CPacket.Of(new JoinGameResponse
+            link.Reply(CPacket.Of(new JoinGameResponse
             {
                 Success = true,
                 PlayServerId = playServerId,
@@ -440,7 +440,7 @@ public class GameController : IApiController
         catch (Exception ex)
         {
             _logger.LogError(ex, "Join game failed");
-            sender.Reply(500);
+            link.Reply(500);
         }
     }
 
@@ -482,7 +482,7 @@ public class LeaderboardController : IApiController
         register.Add<GetLeaderboardRequest>(nameof(HandleGet));
     }
 
-    private async Task HandleUpdate(IPacket packet, IApiSender sender)
+    private async Task HandleUpdate(IPacket packet, IApiLink link)
     {
         var request = UpdateLeaderboardRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -503,7 +503,7 @@ public class LeaderboardController : IApiController
                 request.PlayerId, request.Score, newRank
             );
 
-            sender.Reply(CPacket.Of(new UpdateLeaderboardResponse
+            link.Reply(CPacket.Of(new UpdateLeaderboardResponse
             {
                 Success = true,
                 NewRank = newRank,
@@ -513,11 +513,11 @@ public class LeaderboardController : IApiController
         catch (Exception ex)
         {
             _logger.LogError(ex, "Update leaderboard failed");
-            sender.Reply(500);
+            link.Reply(500);
         }
     }
 
-    private async Task HandleGet(IPacket packet, IApiSender sender)
+    private async Task HandleGet(IPacket packet, IApiLink link)
     {
         var request = GetLeaderboardRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -529,7 +529,7 @@ public class LeaderboardController : IApiController
 
             if (cached != null)
             {
-                sender.Reply(CPacket.Of(CreateResponse(cached)));
+                link.Reply(CPacket.Of(CreateResponse(cached)));
                 return;
             }
 
@@ -543,12 +543,12 @@ public class LeaderboardController : IApiController
             // 캐시 저장
             await _cache.SetAsync(cacheKey, data, TimeSpan.FromMinutes(5));
 
-            sender.Reply(CPacket.Of(CreateResponse(data)));
+            link.Reply(CPacket.Of(CreateResponse(data)));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get leaderboard failed");
-            sender.Reply(500);
+            link.Reply(500);
         }
     }
 
@@ -584,7 +584,7 @@ public class RoutingController : IApiController
         register.Add<SendGiftRequest>(nameof(HandleSendGift));
     }
 
-    private async Task HandleSendGift(IPacket packet, IApiSender sender)
+    private async Task HandleSendGift(IPacket packet, IApiLink link)
     {
         var request = SendGiftRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -595,7 +595,7 @@ public class RoutingController : IApiController
 
             if (targetStage == null)
             {
-                sender.Reply(404); // Not Found
+                link.Reply(404); // Not Found
                 return;
             }
 
@@ -608,7 +608,7 @@ public class RoutingController : IApiController
                 Message = request.Message
             };
 
-            sender.SendToStage(
+            link.SendToStage(
                 targetStage.PlayServerId,
                 targetStage.StageId,
                 CPacket.Of(notification)
@@ -620,12 +620,12 @@ public class RoutingController : IApiController
                 request.TargetPlayerId
             );
 
-            sender.Reply(CPacket.Of(new SendGiftResponse { Success = true }));
+            link.Reply(CPacket.Of(new SendGiftResponse { Success = true }));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Send gift failed");
-            sender.Reply(500);
+            link.Reply(500);
         }
     }
 
@@ -645,9 +645,9 @@ public class RoutingController : IApiController
 Request 타입 메시지는 반드시 응답을 전송해야 합니다.
 
 ```csharp
-private async Task HandleRequest(IPacket packet, IApiSender sender)
+private async Task HandleRequest(IPacket packet, IApiLink link)
 {
-    if (!sender.IsRequest)
+    if (!link.IsRequest)
     {
         // Send 타입은 응답 불필요
         return;
@@ -656,12 +656,12 @@ private async Task HandleRequest(IPacket packet, IApiSender sender)
     try
     {
         // 처리 로직
-        sender.Reply(CPacket.Of(response));
+        link.Reply(CPacket.Of(response));
     }
     catch (Exception)
     {
         // 예외 발생 시에도 반드시 응답
-        sender.Reply(500);
+        link.Reply(500);
     }
 }
 ```
@@ -672,14 +672,14 @@ private async Task HandleRequest(IPacket packet, IApiSender sender)
 
 ```csharp
 // 올바른 방식
-private async Task HandleRequest(IPacket packet, IApiSender sender)
+private async Task HandleRequest(IPacket packet, IApiLink link)
 {
     var data = await _repository.GetDataAsync();
-    sender.Reply(CPacket.Of(new Response { Data = data }));
+    link.Reply(CPacket.Of(new Response { Data = data }));
 }
 
 // 잘못된 방식: async void
-private async void HandleRequest(IPacket packet, IApiSender sender)
+private async void HandleRequest(IPacket packet, IApiLink link)
 {
     // 예외가 전파되지 않아 문제 발생
 }
@@ -690,16 +690,16 @@ private async void HandleRequest(IPacket packet, IApiSender sender)
 Request로 받은 응답 패킷은 자동으로 해제됩니다. 명시적으로 해제할 필요가 없습니다.
 
 ```csharp
-private async Task HandleRequest(IPacket packet, IApiSender sender)
+private async Task HandleRequest(IPacket packet, IApiLink link)
 {
     // packet은 자동 해제됨 (using 불필요)
     var request = Request.Parser.ParseFrom(packet.Payload.DataSpan);
 
     // 다른 서버로 요청 시에는 using 권장
-    using var response = await sender.RequestToApiService(100, CPacket.Of(request));
+    using var response = await link.RequestToApiService(100, CPacket.Of(request));
     var data = Response.Parser.ParseFrom(response.Payload.DataSpan);
 
-    sender.Reply(CPacket.Of(data));
+    link.Reply(CPacket.Of(data));
 }
 ```
 
@@ -709,7 +709,7 @@ API Controller는 다음과 같은 패턴으로 구현합니다.
 
 1. `IApiController` 인터페이스 구현
 2. `Handles()`에서 메시지 핸들러 등록 (메서드 이름 사용 권장)
-3. 핸들러 메서드에서 `IApiSender`를 통해 기능 사용
+3. 핸들러 메서드에서 `IApiLink`를 통해 기능 사용
 4. 의존성 주입을 통해 서비스 사용
 5. 항상 응답 전송 (Request 타입인 경우)
 6. 예외 처리 및 로깅 구현

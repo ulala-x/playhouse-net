@@ -25,30 +25,30 @@ public class BenchmarkApiController : IApiController
         register.Add(nameof(SSEchoRequest), HandleSSEchoRequest);
     }
 
-    private async Task HandleCreateStage(IPacket packet, IApiSender sender)
+    private async Task HandleCreateStage(IPacket packet, IApiLink link)
     {
         var request = CreateStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         try {
-            var result = await sender.CreateStage(request.PlayNid, request.StageType, request.StageId, CPacket.Empty("CreateStage"));
-            sender.Reply(ProtoCPacketExtensions.OfProto(new CreateStageReply { Success = result.Result, StageId = request.StageId, PlayNid = request.PlayNid }));
+            var result = await link.CreateStage(request.PlayNid, request.StageType, request.StageId, CPacket.Empty("CreateStage"));
+            link.Reply(ProtoCPacketExtensions.OfProto(new CreateStageReply { Success = result.Result, StageId = request.StageId, PlayNid = request.PlayNid }));
         } catch (Exception ex) {
-            sender.Reply(ProtoCPacketExtensions.OfProto(new CreateStageReply { Success = false, ErrorMessage = ex.Message }));
+            link.Reply(ProtoCPacketExtensions.OfProto(new CreateStageReply { Success = false, ErrorMessage = ex.Message }));
         }
     }
 
-    private Task HandleSSEchoRequest(IPacket packet, IApiSender sender)
+    private Task HandleSSEchoRequest(IPacket packet, IApiLink link)
     {
         var request = SSEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var replyPacket = ProtoCPacketExtensions.OfProto(new SSEchoReply { Payload = request.Payload });
 
         // IsRequest 속성을 사용하여 응답 방식 결정
-        if (sender.IsRequest)
+        if (link.IsRequest)
         {
-            sender.Reply(replyPacket);
+            link.Reply(replyPacket);
         }
-        else if (sender.StageId != 0)
+        else if (link.StageId != 0)
         {
-            sender.SendToStage(sender.FromNid, sender.StageId, replyPacket);
+            link.SendToStage(link.FromNid, link.StageId, replyPacket);
         }
 
         return Task.CompletedTask;

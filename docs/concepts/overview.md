@@ -25,7 +25,7 @@ PlayHouse의 모든 개념은 **극장(Theater)** 메타포를 따릅니다.
 
 ## 한 줄 요약
 
-**인게임 로직(Play Server)** + **아웃게임 로직(API Server)** + **Sender로 손쉬운 서버 간 통신**
+**인게임 로직(Play Server)** + **아웃게임 로직(API Server)** + **Link로 손쉬운 서버 간 통신**
 
 ---
 
@@ -39,7 +39,7 @@ PlayHouse의 모든 개념은 **극장(Theater)** 메타포를 따릅니다.
           ┌───────────────────┴───────────────────┐
           ▼                                       ▼
 ┌─────────────────────┐               ┌─────────────────────┐
-│    Play Server      │◄───Sender────►│    API Server       │
+│    Play Server      │◄────Link─────►│    API Server       │
 │    (인게임 로직)     │               │   (아웃게임 로직)    │
 │                     │               │                     │
 │  ┌───────────────┐  │               │  - DB 조회/저장      │
@@ -82,17 +82,17 @@ PlayHouse의 모든 개념은 **극장(Theater)** 메타포를 따릅니다.
 
 ---
 
-## Sender: 손쉬운 서버 간 통신
+## Link: 손쉬운 서버 간 통신
 
-PlayHouse의 가장 강력한 기능 중 하나는 **Sender**를 통한 손쉬운 서버 간 통신입니다.
+PlayHouse의 가장 강력한 기능 중 하나는 **Link**를 통한 손쉬운 서버 간 통신입니다.
 
 ### Play Server → API Server
 
 ```csharp
 // Stage에서 API Server로 요청-응답
-var response = await StageSender.RequestToApiService(
+var response = await StageLink.RequestToApiService(
     leaderboardServiceId,
-    CPacket.Of(new GetRankRequest { PlayerId = actor.ActorSender.AccountId })
+    CPacket.Of(new GetRankRequest { PlayerId = actor.ActorLink.AccountId })
 );
 var rank = GetRankResponse.Parser.ParseFrom(response.Payload.DataSpan);
 ```
@@ -101,14 +101,14 @@ var rank = GetRankResponse.Parser.ParseFrom(response.Payload.DataSpan);
 
 ```csharp
 // API Server에서 특정 Stage로 메시지 전송
-ApiSender.SendToStage(playServerId, stageId, CPacket.Of(notification));
+ApiLink.SendToStage(playServerId, stageId, CPacket.Of(notification));
 ```
 
 ### Play Server → Play Server (Stage 간)
 
 ```csharp
 // 다른 Play Server의 Stage로 메시지 전송
-StageSender.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
+StageLink.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
 ```
 
 **이게 전부입니다** - 복잡한 네트워크 코드가 필요 없습니다!
@@ -123,7 +123,7 @@ StageSender.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
 | **API Server** | 아웃게임 (DB, 외부 연동) | 백오피스 서버 |
 | **Stage** | 게임방 (채팅방, 배틀필드) | 방, 채널 |
 | **Actor** | 참가자 (플레이어) | 플레이어 세션 |
-| **Sender** | 서버 간 통신 | RPC 클라이언트 |
+| **Link** | 서버 간 통신 | RPC 클라이언트 |
 
 ---
 
@@ -150,7 +150,7 @@ StageSender.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
 ```csharp
 public class GameRoom : IStage
 {
-    public IStageSender StageSender { get; private set; } = null!;
+    public IStageLink StageLink { get; private set; } = null!;
 
     public Task<(bool, IPacket)> OnCreate(IPacket packet)
     {
@@ -161,7 +161,7 @@ public class GameRoom : IStage
     public Task OnDispatch(IActor actor, IPacket packet)
     {
         // 클라이언트 메시지 처리
-        actor.ActorSender.Reply(CPacket.Of(new EchoResponse()));
+        actor.ActorLink.Reply(CPacket.Of(new EchoResponse()));
         return Task.CompletedTask;
     }
 
@@ -179,11 +179,11 @@ public class RankingController : IApiController
         register.Add<GetRankRequest>(nameof(HandleGetRank));
     }
 
-    private async Task HandleGetRank(IPacket packet, IApiSender sender)
+    private async Task HandleGetRank(IPacket packet, IApiLink link)
     {
         var req = GetRankRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var rank = await _db.GetRankAsync(req.PlayerId);
-        sender.Reply(CPacket.Of(new GetRankResponse { Rank = rank }));
+        link.Reply(CPacket.Of(new GetRankResponse { Rank = rank }));
     }
 }
 ```

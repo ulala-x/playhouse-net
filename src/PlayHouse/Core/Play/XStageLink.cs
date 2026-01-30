@@ -17,16 +17,16 @@ using TimerCallbackDelegate = PlayHouse.Abstractions.Play.TimerCallback;
 namespace PlayHouse.Core.Play;
 
 /// <summary>
-/// Internal implementation of IStageSender.
+/// Internal implementation of IStageLink.
 /// </summary>
 /// <remarks>
-/// XStageSender extends XSender with Stage-specific functionality:
+/// XStageLink extends XLink with Stage-specific functionality:
 /// - Timer management (repeat, count, cancel)
 /// - AsyncBlock for external I/O operations
 /// - CloseStage for stage lifecycle management
 /// - SendToClient with StageId context
 /// </remarks>
-internal sealed class XStageSender : XSender, IStageSender
+internal sealed class XStageLink : XLink, IStageLink
 {
     private readonly IPlayDispatcher _dispatcher;
     private readonly IClientCommunicator _communicator;
@@ -48,9 +48,9 @@ internal sealed class XStageSender : XSender, IStageSender
     public new string ServerId => base.ServerId;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="XStageSender"/> class.
+    /// Initializes a new instance of the <see cref="XStageLink"/> class.
     /// </summary>
-    public XStageSender(
+    public XStageLink(
         IClientCommunicator communicator,
         RequestCache requestCache,
         IServerInfoCenter serverInfoCenter,
@@ -286,7 +286,7 @@ internal sealed class XStageSender : XSender, IStageSender
     /// <summary>
     /// Internal work item to execute async operations on task pools.
     /// </summary>
-    private sealed class AsyncWorkItem(XStageSender sender, AsyncPreCallback pre, AsyncPostCallback? post) : ITaskPoolWorkItem
+    private sealed class AsyncWorkItem(XStageLink link, AsyncPreCallback pre, AsyncPostCallback? post) : ITaskPoolWorkItem
     {
         public async Task ExecuteAsync()
         {
@@ -296,7 +296,7 @@ internal sealed class XStageSender : XSender, IStageSender
                 if (post != null)
                 {
                     // Dispatch post-callback back to the Stage event loop
-                    sender._dispatcher.OnPost(new AsyncMessage(new AsyncBlockPacket(sender.StageId, post, result)));
+                    link._dispatcher.OnPost(new AsyncMessage(new AsyncBlockPacket(link.StageId, post, result)));
                 }
             }
             catch (Exception ex)

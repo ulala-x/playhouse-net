@@ -26,7 +26,7 @@ public class ApiReflectionTests
         // Static to track across multiple instances (per-request instantiation)
         public static bool HandlerCalled { get; set; }
         public static IPacket? LastPacket { get; set; }
-        public static IApiSender? LastSender { get; set; }
+        public static IApiLink? LastSender { get; set; }
         public static int InstanceCount { get; set; }
 
         public TestApiController()
@@ -48,15 +48,15 @@ public class ApiReflectionTests
             register.Add("AnotherMessage", HandleAnotherMessage);
         }
 
-        private Task HandleTestMessage(IPacket packet, IApiSender sender)
+        private Task HandleTestMessage(IPacket packet, IApiLink link)
         {
             HandlerCalled = true;
             LastPacket = packet;
-            LastSender = sender;
+            LastSender = link;
             return Task.CompletedTask;
         }
 
-        private Task HandleAnotherMessage(IPacket packet, IApiSender sender)
+        private Task HandleAnotherMessage(IPacket packet, IApiLink link)
         {
             return Task.CompletedTask;
         }
@@ -89,7 +89,7 @@ public class ApiReflectionTests
             register.Add("TestScoped", HandleTestScoped);
         }
 
-        private Task HandleTestScoped(IPacket packet, IApiSender sender)
+        private Task HandleTestScoped(IPacket packet, IApiLink link)
         {
             LastDependency = _dependency;
             return Task.CompletedTask;
@@ -128,7 +128,7 @@ public class ApiReflectionTests
         var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         var packet = CPacket.Empty("TestMessage");
-        var sender = Substitute.For<IApiSender>();
+        var sender = Substitute.For<IApiLink>();
 
         // When (행동)
         await reflection.CallMethodAsync(packet, sender);
@@ -149,7 +149,7 @@ public class ApiReflectionTests
 
         var initialCount = TestApiController.InstanceCount;  // 1 (registration)
         var packet = CPacket.Empty("TestMessage");
-        var sender = Substitute.For<IApiSender>();
+        var sender = Substitute.For<IApiLink>();
 
         // When (행동)
         await reflection.CallMethodAsync(packet, sender);
@@ -173,7 +173,7 @@ public class ApiReflectionTests
 
         var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
         var packet = CPacket.Empty("TestScoped");
-        var sender = Substitute.For<IApiSender>();
+        var sender = Substitute.For<IApiLink>();
 
         // When (행동)
         await reflection.CallMethodAsync(packet, sender);
@@ -198,7 +198,7 @@ public class ApiReflectionTests
         var reflection = new ApiReflection(serviceProvider, NullLogger<ApiReflection>.Instance);
 
         var packet = CPacket.Empty("UnknownMessage");
-        var sender = Substitute.For<IApiSender>();
+        var sender = Substitute.For<IApiLink>();
 
         // When (행동)
         var action = () => reflection.CallMethodAsync(packet, sender);

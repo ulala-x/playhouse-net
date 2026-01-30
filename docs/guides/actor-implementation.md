@@ -25,20 +25,20 @@ using PlayHouse.Abstractions.Play;
 
 public class MyActor : IActor
 {
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public MyActor(IActorSender actorSender)
+    public MyActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     // 생명주기 메서드들...
 }
 ```
 
-### IActorSender
+### IActorLink
 
-`IActorSender`는 Actor에서 사용할 수 있는 통신 기능을 제공합니다:
+`IActorLink`는 Actor에서 사용할 수 있는 통신 기능을 제공합니다:
 
 - **AccountId**: Actor의 고유 계정 식별자 (필수 설정!)
 - **LeaveStageAsync()**: 현재 Stage에서 나가기
@@ -67,11 +67,11 @@ public class GameActor : IActor
     private int _level = 0;
     private int _gold = 0;
 
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public GameActor(IActorSender actorSender)
+    public GameActor(IActorLink actorLink)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
     }
 
     public Task OnCreate()
@@ -115,13 +115,13 @@ public async Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPack
 
         // ⚠️ 필수: AccountId 설정
         // AccountId를 설정하지 않으면 연결이 종료됩니다!
-        ActorSender.AccountId = authRequest.UserId;
+        ActorLink.AccountId = authRequest.UserId;
 
         // 인증 성공 응답
         var reply = new AuthReply
         {
             Success = true,
-            AccountId = ActorSender.AccountId
+            AccountId = ActorLink.AccountId
         };
 
         return (true, CPacket.Of(reply));
@@ -147,7 +147,7 @@ private async Task<bool> ValidateToken(string token)
 ```
 
 **중요 사항:**
-- **`ActorSender.AccountId`를 반드시 설정해야 합니다!**
+- **`ActorLink.AccountId`를 반드시 설정해야 합니다!**
 - `AccountId`가 비어있으면 프레임워크가 예외를 발생시키고 연결을 종료합니다
 - `OnAuthenticate`가 `(false, reply)`를 반환하면 인증 실패로 간주됩니다
 - `(true, reply)`를 반환하면 `OnPostAuthenticate`가 호출됩니다
@@ -160,7 +160,7 @@ private async Task<bool> ValidateToken(string token)
 public async Task OnPostAuthenticate()
 {
     // 외부 API에서 사용자 데이터 로드
-    var userData = await LoadUserDataFromApi(ActorSender.AccountId);
+    var userData = await LoadUserDataFromApi(ActorLink.AccountId);
 
     if (userData != null)
     {
@@ -195,7 +195,7 @@ Actor가 Stage를 떠날 때 호출됩니다. 리소스 정리, 상태 저장 �
 public async Task OnDestroy()
 {
     // 사용자 데이터 저장
-    await SaveUserDataToApi(ActorSender.AccountId, _level, _gold);
+    await SaveUserDataToApi(ActorLink.AccountId, _level, _gold);
 
     // 리소스 정리
     _level = 0;
@@ -211,7 +211,7 @@ private async Task SaveUserDataToApi(string accountId, int level, int gold)
 ```
 
 **OnDestroy가 호출되는 경우:**
-- `ActorSender.LeaveStageAsync()` 호출 시
+- `ActorLink.LeaveStageAsync()` 호출 시
 - Stage가 종료될 때
 - 인증이 실패했을 때
 - 클라이언트 연결이 끊어졌을 때
@@ -261,7 +261,7 @@ public async Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPack
         }
 
         // AccountId 설정 (필수!)
-        ActorSender.AccountId = userId;
+        ActorLink.AccountId = userId;
 
         return (true, CPacket.Of(new AuthReply
         {
@@ -314,7 +314,7 @@ public async Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPack
     }
 
     // AccountId 설정 (필수!)
-    ActorSender.AccountId = authResult.UserId;
+    ActorLink.AccountId = authResult.UserId;
 
     return (true, CPacket.Of(new AuthReply
     {
@@ -344,7 +344,7 @@ public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
     }
 
     // AccountId 설정 (필수!)
-    ActorSender.AccountId = authRequest.UserId;
+    ActorLink.AccountId = authRequest.UserId;
 
     return Task.FromResult<(bool, IPacket?)>((true, CPacket.Of(new AuthReply
     {
@@ -370,11 +370,11 @@ public class GameActor : IActor
     private int _gold = 0;
     private string _nickname = "";
 
-    public IActorSender ActorSender { get; }
+    public IActorLink ActorLink { get; }
 
-    public GameActor(IActorSender actorSender, ILogger<GameActor> logger)
+    public GameActor(IActorLink actorLink, ILogger<GameActor> logger)
     {
-        ActorSender = actorSender;
+        ActorLink = actorLink;
         _logger = logger;
     }
 
@@ -409,14 +409,14 @@ public class GameActor : IActor
             }
 
             // ⚠️ 필수: AccountId 설정
-            ActorSender.AccountId = authRequest.UserId;
+            ActorLink.AccountId = authRequest.UserId;
 
-            _logger.LogInformation("Authentication succeeded for AccountId: {AccountId}", ActorSender.AccountId);
+            _logger.LogInformation("Authentication succeeded for AccountId: {AccountId}", ActorLink.AccountId);
 
             var reply = new AuthReply
             {
                 Success = true,
-                AccountId = ActorSender.AccountId
+                AccountId = ActorLink.AccountId
             };
 
             return (true, CPacket.Of(reply));
@@ -435,10 +435,10 @@ public class GameActor : IActor
 
     public async Task OnPostAuthenticate()
     {
-        _logger.LogInformation("Loading user data for AccountId: {AccountId}", ActorSender.AccountId);
+        _logger.LogInformation("Loading user data for AccountId: {AccountId}", ActorLink.AccountId);
 
         // 외부 API에서 사용자 데이터 로드
-        var userData = await LoadUserDataFromApi(ActorSender.AccountId);
+        var userData = await LoadUserDataFromApi(ActorLink.AccountId);
 
         if (userData != null)
         {
@@ -457,18 +457,18 @@ public class GameActor : IActor
                 Gold = _gold,
                 Nickname = _nickname
             };
-            ActorSender.SendToClient(CPacket.Of(notify));
+            ActorLink.SendToClient(CPacket.Of(notify));
         }
     }
 
     public async Task OnDestroy()
     {
-        _logger.LogInformation("Actor destroyed for AccountId: {AccountId}", ActorSender.AccountId);
+        _logger.LogInformation("Actor destroyed for AccountId: {AccountId}", ActorLink.AccountId);
 
         // 사용자 데이터 저장
-        if (!string.IsNullOrEmpty(ActorSender.AccountId))
+        if (!string.IsNullOrEmpty(ActorLink.AccountId))
         {
-            await SaveUserDataToApi(ActorSender.AccountId, _level, _gold);
+            await SaveUserDataToApi(ActorLink.AccountId, _level, _gold);
         }
 
         // 리소스 정리
@@ -528,7 +528,7 @@ public Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPacket)
     var request = AuthRequest.Parser.ParseFrom(authPacket.Payload.DataSpan);
 
     // 필수: AccountId 설정!
-    ActorSender.AccountId = request.UserId;
+    ActorLink.AccountId = request.UserId;
 
     return Task.FromResult<(bool, IPacket?)>((true, CPacket.Of(new AuthReply
     {
@@ -546,9 +546,9 @@ public async Task OnPostAuthenticate()
     // (현재 OnPostAuthenticate는 Actor 전용 메서드이므로 직접 async/await 사용)
 
     // 여러 작업을 병렬로 수행
-    var loadUserTask = LoadUserDataFromApi(ActorSender.AccountId);
-    var loadInventoryTask = LoadInventoryFromApi(ActorSender.AccountId);
-    var loadFriendsTask = LoadFriendsFromApi(ActorSender.AccountId);
+    var loadUserTask = LoadUserDataFromApi(ActorLink.AccountId);
+    var loadInventoryTask = LoadInventoryFromApi(ActorLink.AccountId);
+    var loadFriendsTask = LoadFriendsFromApi(ActorLink.AccountId);
 
     await Task.WhenAll(loadUserTask, loadInventoryTask, loadFriendsTask);
 
@@ -582,7 +582,7 @@ public async Task<(bool result, IPacket? reply)> OnAuthenticate(IPacket authPack
         }));
     }
 
-    ActorSender.AccountId = request.UserId;
+    ActorLink.AccountId = request.UserId;
     return (true, CPacket.Of(new AuthReply { Success = true }));
 }
 ```

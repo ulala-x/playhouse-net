@@ -533,7 +533,7 @@ public class GameStage : IStage
         // 분산 추적 Span 시작
         using var activity = PlayHouseActivitySource.StartMessageProcessing(
             packet.MsgId,
-            StageSender.StageType);
+            StageLink.StageType);
 
         var sw = Stopwatch.StartNew();
 
@@ -549,7 +549,7 @@ public class GameStage : IStage
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.RecordException(ex);
 
-            _metrics.RecordError(ex.GetType().Name, StageSender.StageType);
+            _metrics.RecordError(ex.GetType().Name, StageLink.StageType);
             throw;
         }
         finally
@@ -557,7 +557,7 @@ public class GameStage : IStage
             sw.Stop();
             _metrics.RecordProcessingTime(
                 sw.Elapsed.TotalMilliseconds,
-                StageSender.StageType,
+                StageLink.StageType,
                 packet.MsgId);
         }
     }
@@ -771,7 +771,7 @@ public class MetricsAwareStage : IStage
     private readonly ILogger<MetricsAwareStage> _logger;
     private readonly Stopwatch _lifetimeWatch = Stopwatch.StartNew();
 
-    public required IStageSender StageSender { get; init; }
+    public required IStageLink StageLink { get; init; }
 
     public MetricsAwareStage(
         PlayHouseMetrics metrics,
@@ -783,12 +783,12 @@ public class MetricsAwareStage : IStage
 
     public async Task<(ushort, IPacket?)> OnCreate(IPacket packet)
     {
-        _metrics.StageCreated(StageSender.StageType);
+        _metrics.StageCreated(StageLink.StageType);
 
         _logger.LogInformation(
             "Stage created: {StageType} {StageId}",
-            StageSender.StageType,
-            StageSender.StageId);
+            StageLink.StageType,
+            StageLink.StageId);
 
         return (0, null);
     }
@@ -800,7 +800,7 @@ public class MetricsAwareStage : IStage
         try
         {
             // 참여 로직
-            _metrics.ActorJoined(StageSender.StageType);
+            _metrics.ActorJoined(StageLink.StageType);
 
             return (0, CreateReply("Joined"));
         }
@@ -809,7 +809,7 @@ public class MetricsAwareStage : IStage
             sw.Stop();
             _metrics.RecordJoinStageDuration(
                 sw.Elapsed.TotalMilliseconds,
-                StageSender.StageType);
+                StageLink.StageType);
         }
     }
 
@@ -817,13 +817,13 @@ public class MetricsAwareStage : IStage
     {
         using var activity = PlayHouseActivitySource.StartMessageProcessing(
             packet.MsgId,
-            StageSender.StageType);
+            StageLink.StageType);
 
         var sw = Stopwatch.StartNew();
 
         try
         {
-            _metrics.RecordMessageReceived(StageSender.StageType, packet.MsgId);
+            _metrics.RecordMessageReceived(StageLink.StageType, packet.MsgId);
             _metrics.RecordPacketSize(packet.Payload.Length, "inbound");
 
             // 메시지 처리
@@ -838,12 +838,12 @@ public class MetricsAwareStage : IStage
 
             _metrics.RecordError(
                 MetricTags.NormalizeErrorType(ex),
-                StageSender.StageType);
+                StageLink.StageType);
 
             _logger.LogError(ex,
                 "Error processing message {MsgId} in stage {StageId}",
                 packet.MsgId,
-                StageSender.StageId);
+                StageLink.StageId);
 
             throw;
         }
@@ -852,30 +852,30 @@ public class MetricsAwareStage : IStage
             sw.Stop();
             _metrics.RecordProcessingTime(
                 sw.Elapsed.TotalMilliseconds,
-                StageSender.StageType,
+                StageLink.StageType,
                 packet.MsgId);
         }
     }
 
     public async ValueTask OnDisconnect(IActor actor)
     {
-        _metrics.ActorLeft(StageSender.StageType);
+        _metrics.ActorLeft(StageLink.StageType);
 
         _logger.LogInformation(
             "Actor left: {AccountId} from stage {StageId}",
-            actor.ActorSender.AccountId,
-            StageSender.StageId);
+            actor.ActorLink.AccountId,
+            StageLink.StageId);
     }
 
     public async ValueTask DisposeAsync()
     {
         _lifetimeWatch.Stop();
-        _metrics.StageClosed(StageSender.StageType);
+        _metrics.StageClosed(StageLink.StageType);
 
         _logger.LogInformation(
             "Stage closed: {StageType} {StageId}, lifetime: {Lifetime}s",
-            StageSender.StageType,
-            StageSender.StageId,
+            StageLink.StageType,
+            StageLink.StageId,
             _lifetimeWatch.Elapsed.TotalSeconds);
     }
 
@@ -1572,7 +1572,7 @@ public class MetricsUsageExampleTests : MetricsIntegrationTestBase
         var logger = new Mock<ILogger<MetricsAwareStage>>();
         var stage = new MetricsAwareStage(Metrics, logger.Object)
         {
-            StageSender = CreateMockStageSender("BattleStage", 1)
+            StageLink = CreateMockStageLink("BattleStage", 1)
         };
 
         // When: OnCreate 호출
@@ -1597,7 +1597,7 @@ public class MetricsUsageExampleTests : MetricsIntegrationTestBase
         var logger = new Mock<ILogger<MetricsAwareStage>>();
         var stage = new MetricsAwareStage(Metrics, logger.Object)
         {
-            StageSender = CreateMockStageSender("BattleStage", 1)
+            StageLink = CreateMockStageLink("BattleStage", 1)
         };
 
         // When: OnJoinStage 호출
@@ -1620,7 +1620,7 @@ public class MetricsUsageExampleTests : MetricsIntegrationTestBase
         var logger = new Mock<ILogger<MetricsAwareStage>>();
         var stage = new ThrowingStage(Metrics, logger.Object)
         {
-            StageSender = CreateMockStageSender("BattleStage", 1)
+            StageLink = CreateMockStageLink("BattleStage", 1)
         };
 
         // When: OnDispatch 호출 시 예외 발생
@@ -1644,7 +1644,7 @@ public class MetricsUsageExampleTests : MetricsIntegrationTestBase
         var logger = new Mock<ILogger<MetricsAwareStage>>();
         var stage = new MetricsAwareStage(Metrics, logger.Object)
         {
-            StageSender = CreateMockStageSender("BattleStage", 1)
+            StageLink = CreateMockStageLink("BattleStage", 1)
         };
 
         // When: 전체 생명주기 실행

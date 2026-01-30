@@ -6,12 +6,12 @@ namespace PlayHouse.Abstractions.Play;
 /// Provides Actor-specific communication capabilities.
 /// </summary>
 /// <remarks>
-/// IActorSender extends ISender with:
+/// IActorLink extends ILink with:
 /// - AccountId property for user identification (must be set in OnAuthenticate)
 /// - LeaveStage() to exit from current Stage
 /// - SendToClient() for direct client messaging
 /// </remarks>
-public interface IActorSender : ISender
+public interface IActorLink : ILink
 {
     /// <summary>
     /// Gets or sets the account identifier for this Actor.

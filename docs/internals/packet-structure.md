@@ -452,7 +452,7 @@ var chatMsg = new ChatMsg
 var packet = new SimplePacket(chatMsg);
 
 // 브로드캐스트
-await StageSender.BroadcastAsync(packet);
+await StageLink.BroadcastAsync(packet);
 
 
 // ========================================

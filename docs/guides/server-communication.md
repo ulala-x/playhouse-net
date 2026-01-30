@@ -4,11 +4,11 @@ PlayHouse는 분산 서버 아키텍처를 지원하며, 다양한 방식으로 
 
 ## 개요
 
-서버간 통신은 `ISender` 인터페이스를 통해 제공되며, 다음과 같은 컨텍스트에서 사용할 수 있습니다.
+서버간 통신은 `ILink` 인터페이스를 통해 제공되며, 다음과 같은 컨텍스트에서 사용할 수 있습니다.
 
-- `IActorSender` (Actor 핸들러)
-- `IStageSender` (Stage 핸들러)
-- `IApiSender` (API Controller 핸들러)
+- `IActorLink` (Actor 핸들러)
+- `IStageLink` (Stage 핸들러)
+- `IApiLink` (API Controller 핸들러)
 
 모든 통신 방식은 두 가지 패턴을 지원합니다.
 
@@ -27,17 +27,17 @@ public class MyStage : IStage
 {
     public async Task OnDispatch(IActor actor, IPacket packet)
     {
-        var request = new PlayerDataRequest { PlayerId = actor.ActorSender.AccountId };
+        var request = new PlayerDataRequest { PlayerId = actor.ActorLink.AccountId };
 
         // 단방향 전송
-        StageSender.SendToApi("api-1", CPacket.Of(request));
+        StageLink.SendToApi("api-1", CPacket.Of(request));
 
         // 요청-응답 (async/await)
-        var response = await StageSender.RequestToApi("api-1", CPacket.Of(request));
+        var response = await StageLink.RequestToApi("api-1", CPacket.Of(request));
         var playerData = PlayerDataResponse.Parser.ParseFrom(response.Payload.DataSpan);
 
         // 요청-응답 (callback)
-        StageSender.RequestToApi("api-1", CPacket.Of(request), (errorCode, reply) =>
+        StageLink.RequestToApi("api-1", CPacket.Of(request), (errorCode, reply) =>
         {
             if (errorCode == 0 && reply != null)
             {
@@ -61,24 +61,24 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     ushort leaderboardServiceId = 100;
 
     // RoundRobin 방식으로 전송 (기본값)
-    StageSender.SendToApiService(leaderboardServiceId, CPacket.Of(request));
+    StageLink.SendToApiService(leaderboardServiceId, CPacket.Of(request));
 
     // Weighted 정책 사용 (Weight가 높은 서버 우선)
-    StageSender.SendToApiService(
+    StageLink.SendToApiService(
         leaderboardServiceId,
         CPacket.Of(request),
         ServerSelectionPolicy.Weighted
     );
 
     // 요청-응답 (async/await)
-    var response = await StageSender.RequestToApiService(
+    var response = await StageLink.RequestToApiService(
         leaderboardServiceId,
         CPacket.Of(request)
     );
     var leaderboard = LeaderboardResponse.Parser.ParseFrom(response.Payload.DataSpan);
 
     // Weighted 정책으로 요청
-    var weightedResponse = await StageSender.RequestToApiService(
+    var weightedResponse = await StageLink.RequestToApiService(
         leaderboardServiceId,
         CPacket.Of(request),
         ServerSelectionPolicy.Weighted
@@ -106,15 +106,15 @@ public class StageA : IStage
 
         var message = new InterStageMessage
         {
-            FromStageId = StageSender.StageId,
+            FromStageId = StageLink.StageId,
             Content = "Hello from Stage A"
         };
 
         // 단방향 전송
-        StageSender.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
+        StageLink.SendToStage(targetPlayServerId, targetStageId, CPacket.Of(message));
 
         // 요청-응답 (async/await)
-        var response = await StageSender.RequestToStage(
+        var response = await StageLink.RequestToStage(
             targetPlayServerId,
             targetStageId,
             CPacket.Of(message)
@@ -122,7 +122,7 @@ public class StageA : IStage
         var reply = InterStageReply.Parser.ParseFrom(response.Payload.DataSpan);
 
         // 요청-응답 (callback)
-        StageSender.RequestToStage(
+        StageLink.RequestToStage(
             targetPlayServerId,
             targetStageId,
             CPacket.Of(message),
@@ -150,7 +150,7 @@ public class StageB : IStage
         var message = InterStageMessage.Parser.ParseFrom(packet.Payload.DataSpan);
 
         // 응답 전송
-        StageSender.Reply(CPacket.Of(new InterStageReply
+        StageLink.Reply(CPacket.Of(new InterStageReply
         {
             Response = $"Echo: {message.Content}"
         }));
@@ -174,11 +174,11 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     };
 
     // 단방향 시스템 메시지
-    StageSender.SendToSystem("api-1", CPacket.Of(systemMsg));
+    StageLink.SendToSystem("api-1", CPacket.Of(systemMsg));
 
     // 요청-응답 시스템 메시지
     // 주의: 수신 서버의 시스템 핸들러가 명시적으로 Reply를 호출해야 함
-    var response = await StageSender.RequestToSystem("api-1", CPacket.Of(systemMsg));
+    var response = await StageLink.RequestToSystem("api-1", CPacket.Of(systemMsg));
     var systemReply = SystemMaintenanceReply.Parser.ParseFrom(response.Payload.DataSpan);
 }
 ```
@@ -194,7 +194,7 @@ public class MySystemController : ISystemController
         register.Add("SystemMaintenanceNotify", HandleMaintenance);
     }
 
-    private Task HandleMaintenance(IPacket packet, ISender sender)
+    private Task HandleMaintenance(IPacket packet, ILink link)
     {
         var notify = SystemMaintenanceNotify.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -202,7 +202,7 @@ public class MySystemController : ISystemController
         Console.WriteLine($"Maintenance: {notify.Message}");
 
         // RequestToSystem의 경우 명시적으로 응답 필요
-        sender.Reply(CPacket.Of(new SystemMaintenanceReply { Acknowledged = true }));
+        link.Reply(CPacket.Of(new SystemMaintenanceReply { Acknowledged = true }));
 
         return Task.CompletedTask;
     }
@@ -222,7 +222,7 @@ public class MatchmakingController : IApiController
         register.Add<MatchmakingRequest>(nameof(HandleMatchmaking));
     }
 
-    private async Task HandleMatchmaking(IPacket packet, IApiSender sender)
+    private async Task HandleMatchmaking(IPacket packet, IApiLink link)
     {
         var request = MatchmakingRequest.Parser.ParseFrom(packet.Payload.DataSpan);
 
@@ -232,7 +232,7 @@ public class MatchmakingController : IApiController
 
         // 2. Play Server에 Stage 생성
         var createPayload = new CreateMatchStagePayload { MatchId = matchId };
-        var result = await sender.CreateStage(
+        var result = await link.CreateStage(
             playServerId,
             "MatchStage",
             matchId,
@@ -240,7 +240,7 @@ public class MatchmakingController : IApiController
         );
 
         // 3. 클라이언트에 응답
-        sender.Reply(CPacket.Of(new MatchmakingResponse
+        link.Reply(CPacket.Of(new MatchmakingResponse
         {
             Success = result.Result,
             PlayServerId = playServerId,
@@ -265,18 +265,18 @@ public class GameStage : IStage
             // 다른 Play Server의 Stage로 메시지 전송
             var chatMessage = new InterStageChatMessage
             {
-                FromPlayer = actor.ActorSender.AccountId,
+                FromPlayer = actor.ActorLink.AccountId,
                 Message = request.Message,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
 
-            StageSender.SendToStage(
+            StageLink.SendToStage(
                 request.TargetPlayServerId,
                 request.TargetStageId,
                 CPacket.Of(chatMessage)
             );
 
-            actor.ActorSender.Reply(CPacket.Of(new CrossServerChatResponse
+            actor.ActorLink.Reply(CPacket.Of(new CrossServerChatResponse
             {
                 Success = true
             }));
@@ -316,12 +316,12 @@ public class GameStage : IStage
             // 리더보드 서비스로 점수 전송 (RoundRobin)
             var updateRequest = new UpdateLeaderboardRequest
             {
-                PlayerId = actor.ActorSender.AccountId,
+                PlayerId = actor.ActorLink.AccountId,
                 Score = result.FinalScore,
                 GameMode = "ranked"
             };
 
-            var response = await StageSender.RequestToApiService(
+            var response = await StageLink.RequestToApiService(
                 LeaderboardServiceId,
                 CPacket.Of(updateRequest)
             );
@@ -330,7 +330,7 @@ public class GameStage : IStage
                 response.Payload.DataSpan
             );
 
-            actor.ActorSender.Reply(CPacket.Of(new GameFinishedResponse
+            actor.ActorLink.Reply(CPacket.Of(new GameFinishedResponse
             {
                 NewRank = updateResult.NewRank,
                 ScoreUpdated = true
@@ -349,7 +349,7 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 {
     try
     {
-        var response = await StageSender.RequestToApi(
+        var response = await StageLink.RequestToApi(
             "api-1",
             CPacket.Of(request)
         );
@@ -358,12 +358,12 @@ public async Task OnDispatch(IActor actor, IPacket packet)
     catch (TimeoutException)
     {
         // 타임아웃 처리 (기본 30초)
-        actor.ActorSender.Reply(503); // Service Unavailable
+        actor.ActorLink.Reply(503); // Service Unavailable
     }
     catch (Exception ex)
     {
         // 기타 에러 처리
-        actor.ActorSender.Reply(500); // Internal Server Error
+        actor.ActorLink.Reply(500); // Internal Server Error
     }
 }
 ```
@@ -371,24 +371,24 @@ public async Task OnDispatch(IActor actor, IPacket packet)
 ### Callback 에러 처리
 
 ```csharp
-StageSender.RequestToApi("api-1", CPacket.Of(request), (errorCode, reply) =>
+StageLink.RequestToApi("api-1", CPacket.Of(request), (errorCode, reply) =>
 {
     if (errorCode != 0)
     {
         // 에러 코드 처리
-        actor.ActorSender.Reply(errorCode);
+        actor.ActorLink.Reply(errorCode);
         return;
     }
 
     if (reply == null)
     {
-        actor.ActorSender.Reply(500);
+        actor.ActorLink.Reply(500);
         return;
     }
 
     // 정상 처리
     var response = Response.Parser.ParseFrom(reply.Payload.DataSpan);
-    actor.ActorSender.Reply(CPacket.Of(response));
+    actor.ActorLink.Reply(CPacket.Of(response));
 });
 ```
 
@@ -403,11 +403,11 @@ StageSender.RequestToApi("api-1", CPacket.Of(request), (errorCode, reply) =>
 
 ```csharp
 // async/await 사용 시 using으로 자동 해제 (권장)
-using var response = await StageSender.RequestToApi("api-1", CPacket.Of(request));
+using var response = await StageLink.RequestToApi("api-1", CPacket.Of(request));
 var data = Response.Parser.ParseFrom(response.Payload.DataSpan);
 
 // 또는 명시적 해제
-var response = await StageSender.RequestToApi("api-1", CPacket.Of(request));
+var response = await StageLink.RequestToApi("api-1", CPacket.Of(request));
 try
 {
     var data = Response.Parser.ParseFrom(response.Payload.DataSpan);

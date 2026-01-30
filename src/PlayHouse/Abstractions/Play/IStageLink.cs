@@ -32,13 +32,13 @@ public delegate Task GameLoopCallback(TimeSpan deltaTime, TimeSpan totalElapsed)
 /// Provides Stage-specific communication and management capabilities.
 /// </summary>
 /// <remarks>
-/// IStageSender extends ISender with:
+/// IStageLink extends ILink with:
 /// - Timer management (repeat, count, cancel)
 /// - Stage lifecycle management (close)
 /// - AsyncCompute/AsyncIO for safe external operations
 /// - Client messaging with StageId context
 /// </remarks>
-public interface IStageSender : ISender
+public interface IStageLink : ILink
 {
     /// <summary>
     /// Gets the unique identifier for this Stage.

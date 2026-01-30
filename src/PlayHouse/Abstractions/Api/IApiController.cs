@@ -6,9 +6,9 @@ namespace PlayHouse.Abstractions.Api;
 /// Delegate for API handler methods.
 /// </summary>
 /// <param name="packet">The incoming request packet.</param>
-/// <param name="sender">The sender context for replying and sending messages.</param>
+/// <param name="link">The sender context for replying and sending messages.</param>
 /// <returns>A task representing the asynchronous operation.</returns>
-public delegate Task ApiHandler(IPacket packet, IApiSender sender);
+public delegate Task ApiHandler(IPacket packet, IApiLink link);
 
 /// <summary>
 /// Interface for registering API handlers.
@@ -87,11 +87,11 @@ public interface IHandlerRegister
 ///         register.Add&lt;CreateRoomReq&gt;(HandleCreateRoom);
 ///     }
 ///
-///     private async Task HandleLogin(IPacket packet, IApiSender sender)
+///     private async Task HandleLogin(IPacket packet, IApiLink link)
 ///     {
 ///         var req = packet.Parse&lt;LoginReq&gt;();
 ///         // ... handle login logic
-///         sender.Reply(new LoginRes { Success = true });
+///         link.Reply(new LoginRes { Success = true });
 ///     }
 /// }
 /// </code>

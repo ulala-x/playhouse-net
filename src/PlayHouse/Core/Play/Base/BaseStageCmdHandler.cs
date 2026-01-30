@@ -43,8 +43,8 @@ internal sealed class BaseStageCmdHandler(ILogger logger)
                 logger.LogError(ex, "Error executing command {MsgId}", msgId);
                 if (packet.MsgSeq != 0)
                 {
-                    baseStage.StageSender.SetCurrentHeader(packet.Header);
-                    baseStage.StageSender.Reply(500); // Internal error
+                    baseStage.StageLink.SetCurrentHeader(packet.Header);
+                    baseStage.StageLink.Reply(500); // Internal error
                 }
                 return false;
             }
