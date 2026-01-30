@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\src\PlayHouse\PlayHouse.csproj" />
     <ProjectReference Include="..\PlayHouse.Benchmark.Shared\PlayHouse.Benchmark.Shared.csproj" />
+    <ProjectReference Include="..\..\..\..\extensions\PlayHouse.Extensions.Proto\PlayHouse.Extensions.Proto.csproj" />
   </ItemGroup>
 
 </Project>

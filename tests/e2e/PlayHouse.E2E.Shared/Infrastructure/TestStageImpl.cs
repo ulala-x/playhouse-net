@@ -6,6 +6,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Shared.Infrastructure;
 
@@ -45,7 +46,7 @@ public class TestStageImpl : IStage
             Created = true
         };
 
-        return Task.FromResult<(bool, IPacket)>((true, CPacket.Of(reply)));
+        return Task.FromResult<(bool, IPacket)>((true, ProtoCPacketExtensions.OfProto(reply)));
     }
 
     public Task OnPostCreate()
@@ -220,7 +221,7 @@ public class TestStageImpl : IStage
         if (packet.MsgId.Contains("InterStageMessage"))
         {
             var request = InterStageMessage.Parser.ParseFrom(packet.Payload.DataSpan);
-            StageSender.Reply(CPacket.Of(new InterStageReply { Response = $"Echo: {request.Content}" }));
+            StageSender.Reply(new InterStageReply { Response = $"Echo: {request.Content}" });
         }
 
         return Task.CompletedTask;
@@ -236,7 +237,7 @@ public class TestStageImpl : IStage
             ProcessedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
 
-        actor.ActorSender.Reply(CPacket.Of(echoReply));
+        actor.ActorSender.Reply(echoReply);
         return Task.CompletedTask;
     }
 
@@ -251,7 +252,7 @@ public class TestStageImpl : IStage
         };
 
         // SendToClient로 Push 전송
-        actor.ActorSender.SendToClient(CPacket.Of(pushMessage));
+        actor.ActorSender.SendToClient(pushMessage);
 
         // 성공 응답
         actor.ActorSender.Reply(CPacket.Empty("BroadcastTriggerReply"));
@@ -267,7 +268,7 @@ public class TestStageImpl : IStage
             StageType = StageSender.StageType
         };
 
-        actor.ActorSender.Reply(CPacket.Of(statusReply));
+        actor.ActorSender.Reply(statusReply);
         return Task.CompletedTask;
     }
 
@@ -288,11 +289,11 @@ public class TestStageImpl : IStage
                     Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     TimerType = "repeat"
                 };
-                actor.ActorSender.SendToClient(CPacket.Of(notify));
+                actor.ActorSender.SendToClient(notify);
                 return Task.CompletedTask;
             });
 
-        actor.ActorSender.Reply(CPacket.Of(new StartTimerReply { TimerId = timerId, Success = true }));
+        actor.ActorSender.Reply(new StartTimerReply { TimerId = timerId, Success = true });
         return Task.CompletedTask;
     }
 
@@ -314,11 +315,11 @@ public class TestStageImpl : IStage
                     Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     TimerType = "count"
                 };
-                actor.ActorSender.SendToClient(CPacket.Of(notify));
+                actor.ActorSender.SendToClient(notify);
                 return Task.CompletedTask;
             });
 
-        actor.ActorSender.Reply(CPacket.Of(new StartTimerReply { TimerId = timerId, Success = true }));
+        actor.ActorSender.Reply(new StartTimerReply { TimerId = timerId, Success = true });
         return Task.CompletedTask;
     }
 
@@ -354,7 +355,7 @@ public class TestStageImpl : IStage
                 };
 
                 // AsyncBlock의 post 콜백에서는 SendToClient로 Push 메시지 전송
-                actor.ActorSender.SendToClient(CPacket.Of(reply));
+                actor.ActorSender.SendToClient(reply);
                 return Task.CompletedTask;
             });
 
@@ -365,7 +366,7 @@ public class TestStageImpl : IStage
     private void HandleCloseStage(IActor actor, IPacket packet)
     {
         var request = CloseStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
-        actor.ActorSender.Reply(CPacket.Of(new CloseStageReply { Success = true }));
+        actor.ActorSender.Reply(new CloseStageReply { Success = true });
         StageSender.CloseStage();
     }
 
@@ -375,14 +376,14 @@ public class TestStageImpl : IStage
         {
             AccountId = actor.ActorSender.AccountId
         };
-        actor.ActorSender.Reply(CPacket.Of(reply));
+        actor.ActorSender.Reply(reply);
     }
 
     private async Task HandleLeaveStageAsync(IActor actor, IPacket packet)
     {
         var request = LeaveStageRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         // 먼저 Reply를 보낸 후 LeaveStage 호출 (순서 중요)
-        actor.ActorSender.Reply(CPacket.Of(new LeaveStageReply { Success = true }));
+        actor.ActorSender.Reply(new LeaveStageReply { Success = true });
         await actor.ActorSender.LeaveStageAsync();
     }
 
@@ -398,10 +399,10 @@ public class TestStageImpl : IStage
         };
 
         var targetNid = string.IsNullOrEmpty(request.TargetNid) ? "1" : request.TargetNid;
-        StageSender.SendToStage(targetNid, request.TargetStageId, CPacket.Of(interStageMsg));
+        StageSender.SendToStage(targetNid, request.TargetStageId, interStageMsg);
 
         // 성공 응답
-        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToStageReply { Success = true }));
+        actor.ActorSender.Reply(new TriggerSendToStageReply { Success = true });
     }
 
     private async Task HandleTriggerRequestToStage(IActor actor, IPacket packet)
@@ -418,11 +419,11 @@ public class TestStageImpl : IStage
         var response = await StageSender.RequestToStage(
             targetNid,
             request.TargetStageId,
-            CPacket.Of(interStageMsg));
+            interStageMsg);
 
         // Stage B의 응답을 클라이언트에 전달
         var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.DataSpan);
-        actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToStageReply { Response = interStageReply.Response }));
+        actor.ActorSender.Reply(new TriggerRequestToStageReply { Response = interStageReply.Response });
     }
 
     private void HandleTriggerRequestToStageCallback(IActor actor, IPacket packet)
@@ -441,24 +442,24 @@ public class TestStageImpl : IStage
         StageSender.RequestToStage(
             targetNid,
             request.TargetStageId,
-            CPacket.Of(interStageMsg),
+            ProtoCPacketExtensions.OfProto(interStageMsg),
             (errorCode, reply) =>
             {
                 // Callback에서 응답을 클라이언트에 전달
                 if (errorCode == 0 && reply != null)
                 {
                     var interStageReply = InterStageReply.Parser.ParseFrom(reply.Payload.DataSpan);
-                    actor.ActorSender.SendToClient(CPacket.Of(new TriggerRequestToStageCallbackReply
+                    actor.ActorSender.SendToClient(new TriggerRequestToStageCallbackReply
                     {
                         Response = interStageReply.Response
-                    }));
+                    });
                 }
                 else
                 {
-                    actor.ActorSender.SendToClient(CPacket.Of(new TriggerRequestToStageCallbackReply
+                    actor.ActorSender.SendToClient(new TriggerRequestToStageCallbackReply
                     {
                         Response = $"Error: {errorCode}"
-                    }));
+                    });
                 }
             });
 
@@ -470,7 +471,7 @@ public class TestStageImpl : IStage
     {
         const string apiNid = "api-1";
         var request = new ApiDirectEchoRequest { Message = "Verify StageId" };
-        StageSender.SendToApi(apiNid, CPacket.Of(request));
+        StageSender.SendToApi(apiNid, request);
 
         actor.ActorSender.Reply(CPacket.Empty("TriggerApiDirectEchoAccepted"));
     }
@@ -481,9 +482,9 @@ public class TestStageImpl : IStage
 
         const string apiNid = "api-1";
         var apiMsg = new ApiEchoRequest { Content = request.Message };
-        StageSender.SendToApi(apiNid, CPacket.Of(apiMsg));
+        StageSender.SendToApi(apiNid, apiMsg);
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToApiReply { Success = true }));
+        actor.ActorSender.Reply(new TriggerSendToApiReply { Success = true });
     }
 
     private async Task HandleTriggerRequestToApi(IActor actor, IPacket packet)
@@ -492,10 +493,10 @@ public class TestStageImpl : IStage
 
         const string apiNid = "api-1";
         var apiMsg = new ApiEchoRequest { Content = request.Query };
-        var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
+        var response = await StageSender.RequestToApi(apiNid, apiMsg);
 
         var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
-        actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToApiReply { ApiResponse = apiReply.Content }));
+        actor.ActorSender.Reply(new TriggerRequestToApiReply { ApiResponse = apiReply.Content });
     }
 
     private void HandleTriggerRequestToApiCallback(IActor actor, IPacket packet)
@@ -508,24 +509,24 @@ public class TestStageImpl : IStage
         // Callback 버전 RequestToApi 호출
         StageSender.RequestToApi(
             apiNid,
-            CPacket.Of(apiMsg),
+            ProtoCPacketExtensions.OfProto(apiMsg),
             (errorCode, reply) =>
             {
                 // Callback에서 응답을 클라이언트에 전달
                 if (errorCode == 0 && reply != null)
                 {
                     var apiReply = ApiEchoReply.Parser.ParseFrom(reply.Payload.DataSpan);
-                    actor.ActorSender.SendToClient(CPacket.Of(new TriggerRequestToApiCallbackReply
+                    actor.ActorSender.SendToClient(new TriggerRequestToApiCallbackReply
                     {
                         ApiResponse = apiReply.Content
-                    }));
+                    });
                 }
                 else
                 {
-                    actor.ActorSender.SendToClient(CPacket.Of(new TriggerRequestToApiCallbackReply
+                    actor.ActorSender.SendToClient(new TriggerRequestToApiCallbackReply
                     {
                         ApiResponse = $"Error: {errorCode}"
-                    }));
+                    });
                 }
             });
 
@@ -551,7 +552,7 @@ public class TestStageImpl : IStage
             Payload = Google.Protobuf.ByteString.CopyFrom(payload)
         };
 
-        actor.ActorSender.Reply(CPacket.Of(reply));
+        actor.ActorSender.Reply(reply);
     }
 
     private void HandleTriggerAsyncBlockRequestToApi(IActor actor, IPacket packet)
@@ -564,7 +565,7 @@ public class TestStageImpl : IStage
                 const string apiNid = "api-1";
                 var apiMsg = new ApiEchoRequest { Content = request.Query };
 
-                using var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg)).ConfigureAwait(false);
+                using var response = await StageSender.RequestToApi(apiNid, apiMsg).ConfigureAwait(false);
                 var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
 
                 return apiReply.Content;
@@ -579,7 +580,7 @@ public class TestStageImpl : IStage
                     PostBlockCalled = true
                 };
 
-                actor.ActorSender.SendToClient(CPacket.Of(reply));
+                actor.ActorSender.SendToClient(reply);
                 return Task.CompletedTask;
             });
 
@@ -597,7 +598,7 @@ public class TestStageImpl : IStage
                 const string apiNid = "api-1";
                 var apiMsg = new ApiEchoRequest { Content = request.Message };
 
-                StageSender.SendToApi(apiNid, CPacket.Of(apiMsg));
+                StageSender.SendToApi(apiNid, apiMsg);
 
                 await Task.CompletedTask;
                 return true;
@@ -635,7 +636,7 @@ public class TestStageImpl : IStage
             var memoryBefore = GC.GetTotalAllocatedBytes(precise: false);
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiRequest));
+            var response = await StageSender.RequestToApi(apiNid, apiRequest);
             sw.Stop();
 
             var memoryAfter = GC.GetTotalAllocatedBytes(precise: false);
@@ -658,7 +659,7 @@ public class TestStageImpl : IStage
         reply.ElapsedTicksList.AddRange(elapsedTicksList);
         reply.MemoryAllocatedList.AddRange(memoryAllocatedList);
 
-        actor.ActorSender.Reply(CPacket.Of(reply));
+        actor.ActorSender.Reply(reply);
     }
 
     private async Task HandleTriggerAutoDisposeApi(IActor actor, IPacket packet)
@@ -667,14 +668,14 @@ public class TestStageImpl : IStage
 
         const string apiNid = "api-1";
         var apiMsg = new ApiEchoRequest { Content = request.Query };
-        var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
+        var response = await StageSender.RequestToApi(apiNid, apiMsg);
 
         var apiReply = ApiEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerAutoDisposeApiReply
+        actor.ActorSender.Reply(new TriggerAutoDisposeApiReply
         {
             ApiResponse = apiReply.Content
-        }));
+        });
     }
 
     private async Task HandleTriggerAutoDisposeStage(IActor actor, IPacket packet)
@@ -691,14 +692,14 @@ public class TestStageImpl : IStage
         var response = await StageSender.RequestToStage(
             targetNid,
             request.TargetStageId,
-            CPacket.Of(interStageMsg));
+            interStageMsg);
 
         var interStageReply = InterStageReply.Parser.ParseFrom(response.Payload.DataSpan);
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerAutoDisposeStageReply
+        actor.ActorSender.Reply(new TriggerAutoDisposeStageReply
         {
             Response = interStageReply.Response
-        }));
+        });
     }
 
     private Task HandleStartTimerWithRequest(IActor actor, IPacket packet)
@@ -716,27 +717,27 @@ public class TestStageImpl : IStage
 
                 try
                 {
-                    var response = await StageSender.RequestToApi(apiNid, CPacket.Of(apiMsg));
+                    var response = await StageSender.RequestToApi(apiNid, apiMsg);
 
                     var apiReply = TimerApiReply.Parser.ParseFrom(response.Payload.DataSpan);
 
-                    actor.ActorSender.SendToClient(CPacket.Of(new TimerRequestResultNotify
+                    actor.ActorSender.SendToClient(new TimerRequestResultNotify
                     {
                         Result = apiReply.Content,
                         Success = true
-                    }));
+                    });
                 }
                 catch (Exception)
                 {
-                    actor.ActorSender.SendToClient(CPacket.Of(new TimerRequestResultNotify
+                    actor.ActorSender.SendToClient(new TimerRequestResultNotify
                     {
                         Result = "error",
                         Success = false
-                    }));
+                    });
                 }
             });
 
-        actor.ActorSender.Reply(CPacket.Of(new StartTimerWithRequestReply { TimerId = timerId }));
+        actor.ActorSender.Reply(new StartTimerWithRequestReply { TimerId = timerId });
         return Task.CompletedTask;
     }
 
@@ -746,10 +747,10 @@ public class TestStageImpl : IStage
         var response = await StageSender.RequestToApi(apiNid, CPacket.Empty("GetApiAccountIdRequest"));
 
         var apiReply = GetApiAccountIdReply.Parser.ParseFrom(response.Payload.DataSpan);
-        actor.ActorSender.Reply(CPacket.Of(new TriggerGetApiAccountIdReply
+        actor.ActorSender.Reply(new TriggerGetApiAccountIdReply
         {
             ApiAccountId = apiReply.AccountId
-        }));
+        });
     }
 
     private void HandleStartGameLoop(IActor actor, IPacket packet)
@@ -769,7 +770,7 @@ public class TestStageImpl : IStage
                     DeltaTimeMs = deltaTime.TotalMilliseconds,
                     TotalElapsedMs = totalElapsed.TotalMilliseconds
                 };
-                actor.ActorSender.SendToClient(CPacket.Of(notify));
+                actor.ActorSender.SendToClient(notify);
 
                 if (maxTicks > 0 && _gameLoopTickCount >= maxTicks)
                 {
@@ -779,17 +780,17 @@ public class TestStageImpl : IStage
                 return Task.CompletedTask;
             });
 
-        actor.ActorSender.Reply(CPacket.Of(new StartGameLoopReply { Success = true }));
+        actor.ActorSender.Reply(new StartGameLoopReply { Success = true });
     }
 
     private void HandleStopGameLoop(IActor actor)
     {
         StageSender.StopGameLoop();
-        actor.ActorSender.Reply(CPacket.Of(new StopGameLoopReply
+        actor.ActorSender.Reply(new StopGameLoopReply
         {
             Success = true,
             TotalTicks = _gameLoopTickCount
-        }));
+        });
     }
 
     private void HandleTriggerSendToSystemApi(IActor actor, IPacket packet)
@@ -802,9 +803,9 @@ public class TestStageImpl : IStage
             FromServerId = "play-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        StageSender.SendToSystem(request.TargetApiNid, CPacket.Of(systemMsg));
+        StageSender.SendToSystem(request.TargetApiNid, systemMsg);
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToSystemApiReply { Success = true }));
+        actor.ActorSender.Reply(new TriggerSendToSystemApiReply { Success = true });
     }
 
     private void HandleTriggerSendToSystemPlay(IActor actor, IPacket packet)
@@ -817,9 +818,9 @@ public class TestStageImpl : IStage
             FromServerId = "play-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        StageSender.SendToSystem(request.TargetPlayNid, CPacket.Of(systemMsg));
+        StageSender.SendToSystem(request.TargetPlayNid, systemMsg);
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerSendToSystemPlayReply { Success = true }));
+        actor.ActorSender.Reply(new TriggerSendToSystemPlayReply { Success = true });
     }
 
     private async Task HandleTriggerRequestToSystem(IActor actor, IPacket packet)
@@ -832,13 +833,13 @@ public class TestStageImpl : IStage
             FromServerId = "play-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        var response = await StageSender.RequestToSystem(request.TargetServerId, CPacket.Of(systemMsg));
+        var response = await StageSender.RequestToSystem(request.TargetServerId, systemMsg);
         var systemReply = SystemEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
 
-        actor.ActorSender.Reply(CPacket.Of(new TriggerRequestToSystemReply
+        actor.ActorSender.Reply(new TriggerRequestToSystemReply
         {
             Response = systemReply.Content,
             HandledByServerId = systemReply.HandledByServerId
-        }));
+        });
     }
 }

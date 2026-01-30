@@ -1,6 +1,7 @@
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
 using PlayHouse.Runtime.ServerMesh.Discovery;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Verifiers;
 
@@ -54,8 +55,8 @@ public class ServiceRoutingVerifier : VerifierBase
         var request1 = new ApiEchoRequest { Content = "RoundRobin Test 1" };
         var request2 = new ApiEchoRequest { Content = "RoundRobin Test 2" };
 
-        var response1 = await ApiServer1.ApiSender!.RequestToApiService(apiServiceId, CPacket.Of(request1));
-        var response2 = await ApiServer1.ApiSender!.RequestToApiService(apiServiceId, CPacket.Of(request2));
+        var response1 = await ApiServer1.ApiSender!.RequestToApiService(apiServiceId, ProtoCPacketExtensions.OfProto(request1));
+        var response2 = await ApiServer1.ApiSender!.RequestToApiService(apiServiceId, ProtoCPacketExtensions.OfProto(request2));
 
         // Then - 응답 수신 확인
         Assert.NotNull(response1, "첫 번째 응답이 수신되어야 함");
@@ -82,7 +83,7 @@ public class ServiceRoutingVerifier : VerifierBase
         var request = new ApiEchoRequest { Content = "Weighted Test" };
         var response = await ApiServer1.ApiSender!.RequestToApiService(
             apiServiceId,
-            CPacket.Of(request),
+            ProtoCPacketExtensions.OfProto(request),
             ServerSelectionPolicy.Weighted);
 
         // Then - 응답 수신 확인
@@ -107,7 +108,7 @@ public class ServiceRoutingVerifier : VerifierBase
             FromApiNid = ServerContext.ApiServer1Id,
             Content = "SendToApiService Test"
         };
-        ApiServer1.ApiSender!.SendToApiService(apiServiceId, CPacket.Of(message));
+        ApiServer1.ApiSender!.SendToApiService(apiServiceId, ProtoCPacketExtensions.OfProto(message));
 
         // 메시지 전달 대기
         await Task.Delay(500);
@@ -127,7 +128,7 @@ public class ServiceRoutingVerifier : VerifierBase
 
         // When - Callback 버전으로 호출
         var request = new ApiEchoRequest { Content = "Callback Test" };
-        ApiServer1.ApiSender!.RequestToApiService(apiServiceId, CPacket.Of(request), (errorCode, reply) =>
+        ApiServer1.ApiSender!.RequestToApiService(apiServiceId, ProtoCPacketExtensions.OfProto(request), (errorCode, reply) =>
         {
             if (errorCode == 0 && reply != null)
             {

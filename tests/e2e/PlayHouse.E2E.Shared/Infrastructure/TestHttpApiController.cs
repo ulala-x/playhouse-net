@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Shared;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Shared.Infrastructure;
 
@@ -46,7 +47,7 @@ public class TestHttpApiController : ControllerBase
             _playServerId,
             req.StageType,
             req.StageId,
-            CPacket.Of(createPayload));
+            ProtoCPacketExtensions.OfProto(createPayload));
 
         // OnCreate reply 파싱하여 반환
         string? replyPayloadId = null;
@@ -81,7 +82,7 @@ public class TestHttpApiController : ControllerBase
             _playServerId,
             req.StageType,
             req.StageId,
-            CPacket.Of(createPayload));
+            ProtoCPacketExtensions.OfProto(createPayload));
 
         // OnCreate reply 파싱하여 반환 (새로 생성된 경우에만)
         string? replyPayloadId = null;
@@ -120,7 +121,7 @@ public class TestHttpApiController : ControllerBase
             _playServerId,
             req.StageType,
             req.StageId,
-            CPacket.Of(createPayload),
+            ProtoCPacketExtensions.OfProto(createPayload),
             (errorCode, result) =>
             {
                 string? replyPayloadId = null;
@@ -163,7 +164,7 @@ public class TestHttpApiController : ControllerBase
             _playServerId,
             req.StageType,
             req.StageId,
-            CPacket.Of(createPayload),
+            ProtoCPacketExtensions.OfProto(createPayload),
             (errorCode, result) =>
             {
                 string? replyPayloadId = null;

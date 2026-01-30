@@ -5,6 +5,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Shared.Infrastructure;
 
@@ -46,7 +47,7 @@ public class DITestStage : IStage
             Created = true
         };
 
-        return Task.FromResult<(bool, IPacket)>((true, CPacket.Of(reply)));
+        return Task.FromResult<(bool, IPacket)>((true, ProtoCPacketExtensions.OfProto(reply)));
     }
 
     public Task OnPostCreate()
@@ -109,7 +110,7 @@ public class DITestStage : IStage
             ProcessedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
 
-        actor.ActorSender.Reply(CPacket.Of(echoReply));
+        actor.ActorSender.Reply(ProtoCPacketExtensions.OfProto(echoReply));
     }
 
     private void HandleGetDiValue(IActor actor)
@@ -120,6 +121,6 @@ public class DITestStage : IStage
             Value = _testService.GetValue()
         };
 
-        actor.ActorSender.Reply(CPacket.Of(reply));
+        actor.ActorSender.Reply(ProtoCPacketExtensions.OfProto(reply));
     }
 }

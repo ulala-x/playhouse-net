@@ -5,6 +5,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Api;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Shared.Infrastructure;
 
@@ -70,9 +71,12 @@ public class TestApiController : IApiController
 
     private Task HandleApiEcho(IPacket packet, IApiSender sender)
     {
-        var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+        var request =  packet.Parse<ApiEchoRequest>();
+        //var request = ApiEchoRequest.Parser.ParseFrom(packet.Payload.DataSpan);
         var reply = new ApiEchoReply { Content = $"Echo: {request.Content}" };
-        sender.Reply(CPacket.Of(reply));
+        
+        //sender.Reply(ProtoCPacketExtensions.OfProto(reply));
+        sender.Reply(reply);
         return Task.CompletedTask;
     }
 
@@ -103,13 +107,13 @@ public class TestApiController : IApiController
             playNid,
             request.StageType,
             request.StageId,
-            CPacket.Of(createPayload));
+            ProtoCPacketExtensions.OfProto(createPayload));
 
         var reply = new TriggerCreateStageReply
         {
             Success = result.Result
         };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
     }
 
     private async Task HandleGetOrCreateStage(IPacket packet, IApiSender sender)
@@ -126,14 +130,14 @@ public class TestApiController : IApiController
             playNid,
             request.StageType,
             request.StageId,
-            CPacket.Of(createPayload));
+            ProtoCPacketExtensions.OfProto(createPayload));
 
         var reply = new TriggerGetOrCreateStageReply
         {
             Success = result.Result,
             IsCreated = result.IsCreated
         };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
     }
 
     private Task HandleSendToApiServer(IPacket packet, IApiSender sender)
@@ -145,10 +149,10 @@ public class TestApiController : IApiController
             FromApiNid = "sender-api",
             Content = request.Message
         };
-        sender.SendToApi(request.TargetApiNid, CPacket.Of(message));
+        sender.SendToApi(request.TargetApiNid, message);
 
         var reply = new TriggerSendToApiServerReply { Success = true };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
         return Task.CompletedTask;
     }
 
@@ -165,14 +169,14 @@ public class TestApiController : IApiController
             FromApiNid = "sender-api",
             Content = request.Query
         };
-        var responsePacket = await sender.RequestToApi(request.TargetApiNid, CPacket.Of(message));
+        var responsePacket = await sender.RequestToApi(request.TargetApiNid, message);
         var response = InterApiReply.Parser.ParseFrom(responsePacket.Payload.DataSpan);
 
         var reply = new TriggerRequestToApiServerReply
         {
             Response = response.Response
         };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
     }
 
     private Task HandleInterApiMessage(IPacket packet, IApiSender sender)
@@ -183,7 +187,7 @@ public class TestApiController : IApiController
         {
             Response = $"Processed: {request.Content} from {request.FromApiNid}"
         };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
         return Task.CompletedTask;
     }
 
@@ -202,7 +206,7 @@ public class TestApiController : IApiController
             Payload = payload
         };
 
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
         return Task.CompletedTask;
     }
 
@@ -214,7 +218,7 @@ public class TestApiController : IApiController
         {
             Content = $"Timer API Response: {request.Content}"
         };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
         return Task.CompletedTask;
     }
 
@@ -224,7 +228,7 @@ public class TestApiController : IApiController
         {
             AccountId = sender.AccountId
         };
-        sender.Reply(CPacket.Of(reply));
+        sender.Reply(reply);
         return Task.CompletedTask;
     }
 
@@ -238,9 +242,9 @@ public class TestApiController : IApiController
             FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        sender.SendToSystem(request.TargetPlayNid, CPacket.Of(systemMsg));
+        sender.SendToSystem(request.TargetPlayNid, systemMsg);
 
-        sender.Reply(CPacket.Of(new TriggerApiSendToSystemPlayReply { Success = true }));
+        sender.Reply(new TriggerApiSendToSystemPlayReply { Success = true });
         return Task.CompletedTask;
     }
 
@@ -254,9 +258,9 @@ public class TestApiController : IApiController
             FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        sender.SendToSystem(request.TargetApiNid, CPacket.Of(systemMsg));
+        sender.SendToSystem(request.TargetApiNid, systemMsg);
 
-        sender.Reply(CPacket.Of(new TriggerApiSendToSystemApiReply { Success = true }));
+        sender.Reply(new TriggerApiSendToSystemApiReply { Success = true });
         return Task.CompletedTask;
     }
 
@@ -270,13 +274,13 @@ public class TestApiController : IApiController
             FromServerId = "api-1"  // E2E test infrastructure uses fixed server IDs
         };
 
-        var response = await sender.RequestToSystem(request.TargetServerId, CPacket.Of(systemMsg));
+        var response = await sender.RequestToSystem(request.TargetServerId, systemMsg);
         var systemReply = SystemEchoReply.Parser.ParseFrom(response.Payload.DataSpan);
 
-        sender.Reply(CPacket.Of(new TriggerApiRequestToSystemReply
+        sender.Reply(new TriggerApiRequestToSystemReply
         {
             Response = systemReply.Content,
             HandledByServerId = systemReply.HandledByServerId
-        }));
+        });
     }
 }

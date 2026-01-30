@@ -1,14 +1,15 @@
 #nullable enable
 
 using Google.Protobuf;
+using PlayHouse.Abstractions;
 using PlayHouse.Core.Shared;
 
-namespace PlayHouse.Abstractions;
+namespace PlayHouse.Extensions.Proto;
 
 /// <summary>
 /// Extension methods for IPacket interface.
 /// </summary>
-public static class PacketExtensions
+public static class ProtoPacketExtensions
 {
     /// <summary>
     /// Parses the packet payload as a Protobuf message.

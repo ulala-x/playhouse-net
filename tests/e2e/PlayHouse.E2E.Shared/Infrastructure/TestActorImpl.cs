@@ -5,6 +5,7 @@ using PlayHouse.Abstractions;
 using PlayHouse.Abstractions.Play;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E.Shared.Infrastructure;
 
@@ -76,7 +77,7 @@ public class TestActorImpl : IActor
             ReceivedToken = receivedToken
         };
 
-        return Task.FromResult<(bool, IPacket?)>((true, CPacket.Of(reply)));
+        return Task.FromResult<(bool, IPacket?)>((true, ProtoCPacketExtensions.OfProto(reply)));
     }
 
     public Task OnPostAuthenticate()

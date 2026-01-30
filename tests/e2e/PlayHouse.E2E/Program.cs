@@ -4,6 +4,7 @@ using PlayHouse.Core.Play.Bootstrap;
 using PlayHouse.Core.Shared;
 using PlayHouse.E2E.Shared.Proto;
 using PlayHouse.E2E.Shared.Utils;
+using PlayHouse.Extensions.Proto;
 
 namespace PlayHouse.E2E;
 
@@ -166,7 +167,7 @@ class Program
                 try
                 {
                     var req = new ApiEchoRequest { Content = "HealthCheck" };
-                    var res = await s1.ApiSender!.RequestToApi("api-2", CPacket.Of(req));
+                    var res = await s1.ApiSender!.RequestToApi("api-2", ProtoCPacketExtensions.OfProto(req));
                     if (!res.MsgId.StartsWith("Error:"))
                     {
                         s1ToS2 = true;
@@ -180,7 +181,7 @@ class Program
                 try
                 {
                     var req = new ApiEchoRequest { Content = "HealthCheck" };
-                    var res = await s2.ApiSender!.RequestToApi("api-1", CPacket.Of(req));
+                    var res = await s2.ApiSender!.RequestToApi("api-1", ProtoCPacketExtensions.OfProto(req));
                     if (!res.MsgId.StartsWith("Error:"))
                     {
                         s2ToS1 = true;
