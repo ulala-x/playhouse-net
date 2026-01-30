@@ -69,10 +69,15 @@
   connector.MainThreadAction();
   ```
 
-### Send 모드 동작
-- Send 모드는 fire-and-forget이 **아님**
-- 흐름: 클라이언트 `Send()` → 서버 처리 → 서버 `SendToClient()` → 클라이언트 `OnReceive` 콜백
-- Send 요청에 Send 응답이 있음
+### 메시지 패턴
+| 패턴 | 응답 | 설명 |
+|------|------|------|
+| Send | ❌ 없음 | 단방향 메시지 (fire-and-forget) |
+| Request | ✅ Reply | 요청-응답 패턴 |
+| Push | - | 서버→클라이언트 알림 (SendToClient) |
+
+- Send는 응답이 없는 단방향 메시지
+- 서버가 클라이언트에 알림을 보내려면 `SendToClient()`로 Push 전송
 
 ## 메시지 정의 규칙
 

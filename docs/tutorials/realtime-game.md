@@ -9,14 +9,16 @@ PlayHouse의 고해상도 GameLoop를 활용한 실시간 멀티플레이 게임
 ## 목차
 
 1. [완성된 결과 미리보기](#완성된-결과-미리보기)
-2. [GameLoop 개념 이해](#gameloop-개념-이해)
-3. [프로젝트 설정](#프로젝트-설정)
-4. [Proto 메시지 정의](#proto-메시지-정의)
-5. [GameStage 구현](#gamestage-구현)
-6. [클라이언트 통합](#클라이언트-통합)
-7. [서버 권위 모델](#서버-권위-모델)
-8. [성능 최적화](#성능-최적화)
-9. [테스트](#테스트)
+2. [전체 아키텍처](#전체-아키텍처)
+3. [GameLoop 개념 이해](#gameloop-개념-이해)
+4. [프로젝트 설정](#프로젝트-설정)
+5. [Proto 메시지 정의](#proto-메시지-정의)
+6. [API Server - 게임 매칭](#api-server---게임-매칭)
+7. [Play Server - GameStage 구현](#play-server---gamestage-구현)
+8. [클라이언트 구현](#클라이언트-구현)
+9. [서버 권위 모델](#서버-권위-모델)
+10. [성능 최적화](#성능-최적화)
+11. [테스트](#테스트)
 
 ## 완성된 결과 미리보기
 
@@ -50,6 +52,98 @@ PlayHouse의 고해상도 GameLoop를 활용한 실시간 멀티플레이 게임
       │    (Player A: x,y)         │    (Player A: x,y)        │
       │    (Player B: x,y)         │    (Player B: x,y)        │
 ```
+
+## 전체 아키텍처
+
+### API Server + Play Server 구조
+
+실시간 게임은 **API Server**와 **Play Server**가 협력하여 동작합니다:
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                              클라이언트                                    │
+└───────────────────────────────┬───────────────────────────────────────────┘
+                                │
+                ┌───────────────┴────────────────┐
+                │ ① HTTP 요청 (게임 매칭/방 찾기)  │
+                ▼                                │
+┌────────────────────────────┐                   │
+│        API Server          │                   │
+│      (GameMatchController) │                   │
+│                            │                   │
+│  - 매칭 요청 처리           │                   │
+│  - 방 생성/참가 관리         │                   │
+│  - Play Server 연동         │                   │
+│                            │                   │
+│  CreateStage() ──────────────────▶ BattleStage 생성
+│         │                  │                   │
+└─────────┼──────────────────┘                   │
+          │                                      │
+          │ ② 게임방 정보 반환                     │
+          │    (serverId, stageId, stageType)    │
+          ▼                                      │
+┌────────────────────────────┐                   │
+│        Play Server         │                   │
+│       (BattleStage)        │◀──────────────────┘
+│                            │    ③ TCP 연결
+│  ┌──────────────────────┐  │    (반환받은 정보로)
+│  │     BattleStage      │  │
+│  │                      │  │
+│  │  ┌────────────────┐  │  │
+│  │  │ 60fps GameLoop │  │  │
+│  │  │ - 입력 처리     │  │  │
+│  │  │ - 물리 업데이트  │  │  │
+│  │  │ - 상태 동기화   │  │  │
+│  │  └────────────────┘  │  │
+│  │                      │  │
+│  │  ┌─────┐  ┌─────┐   │  │
+│  │  │Actor│  │Actor│   │  │
+│  │  └─────┘  └─────┘   │  │
+│  └──────────────────────┘  │
+└────────────────────────────┘
+```
+
+### 게임 참가 흐름
+
+클라이언트는 항상 **API Server를 통해 게임방 정보를 얻은 후** Play Server에 접속합니다:
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│   Client    │      │  API Server │      │ Play Server │
+└──────┬──────┘      └──────┬──────┘      └──────┬──────┘
+       │                    │                    │
+       │ ① FindMatch (HTTP) │                    │
+       │───────────────────►│                    │
+       │                    │                    │
+       │                    │ ② CreateStage     │
+       │                    │───────────────────►│
+       │                    │                    │
+       │                    │ ③ Stage Created   │
+       │                    │◄───────────────────│
+       │                    │                    │
+       │ ④ RoomInfo 반환    │                    │
+       │◄───────────────────│                    │
+       │   (serverId,       │                    │
+       │    stageId,        │                    │
+       │    stageType)      │                    │
+       │                    │                    │
+       │ ⑤ TCP Connect (stageId, stageType)     │
+       │────────────────────────────────────────►│
+       │                    │                    │
+       │ ⑥ Authenticate     │                    │
+       │────────────────────────────────────────►│
+       │                    │                    │
+       │ ⑦ 게임 시작 (MoveInput, GameState)      │
+       │◄───────────────────────────────────────►│
+       │                    │                    │
+```
+
+### 역할 분담
+
+| 서버 | 역할 | 프로토콜 |
+|------|------|----------|
+| **API Server** | 게임 매칭, 방 생성/관리, 플레이어 목록 | HTTP |
+| **Play Server** | 실시간 게임 로직, GameLoop, 상태 동기화 | TCP |
 
 ## GameLoop 개념 이해
 
@@ -238,6 +332,42 @@ message AuthenticateReply {
     string account_id = 1;
     bool success = 2;
 }
+
+// ============================================
+// API Server 메시지 (HTTP 통신용)
+// ============================================
+
+// 매칭 요청
+message FindMatchRequest {
+    string game_mode = 1;     // "1v1", "2v2", "battle_royale" 등
+    string region = 2;        // "kr", "us", "eu" 등
+}
+
+// 매칭 응답
+message FindMatchResponse {
+    bool success = 1;
+    RoomInfo room_info = 2;
+    string error_message = 3;
+}
+
+// 방 정보
+message RoomInfo {
+    string play_nid = 1;           // Play Server NID
+    string server_address = 2;     // Play Server 주소
+    int32 port = 3;                // Play Server 포트
+    int64 stage_id = 4;            // Stage ID
+    string stage_type = 5;         // "BattleStage"
+    string game_mode = 6;          // 게임 모드
+    int32 max_players = 7;         // 최대 플레이어 수
+    int32 current_players = 8;     // 현재 플레이어 수
+}
+
+// Stage 생성 페이로드 (API Server → Play Server)
+message CreateBattlePayload {
+    string game_mode = 1;
+    int32 max_players = 2;
+    string map_id = 3;
+}
 ```
 
 ### .csproj 설정
@@ -261,7 +391,198 @@ message AuthenticateReply {
 </Project>
 ```
 
-## GameStage 구현
+## API Server - 게임 매칭
+
+API Server는 게임 매칭 요청을 처리하고, Play Server에 게임 Stage를 생성합니다.
+
+### 디렉토리 구조 (API Server)
+
+```
+GameMatchApiServer/
+├── GameMatchApiServer.csproj
+├── Program.cs
+├── Controllers/
+│   └── GameMatchController.cs
+└── Proto/
+    └── realtime_game.proto      # (Play Server와 공유)
+```
+
+### GameMatchController 구현
+
+`Controllers/GameMatchController.cs`:
+
+```csharp
+using PlayHouse.Abstractions;
+using PlayHouse.Abstractions.Api;
+using PlayHouse.Core.Shared;
+using RealtimeGameServer.Proto;
+
+namespace GameMatchApiServer.Controllers;
+
+/// <summary>
+/// 게임 매칭 API Controller
+/// </summary>
+public class GameMatchController : IApiController
+{
+    // Play Server 설정
+    private const string PlayNid = "battle-server-1";
+    private const string PlayServerAddress = "127.0.0.1";
+    private const int PlayServerPort = 12000;
+
+    // 게임 모드별 설정
+    private static readonly Dictionary<string, int> GameModeMaxPlayers = new()
+    {
+        ["1v1"] = 2,
+        ["2v2"] = 4,
+        ["battle_royale"] = 20
+    };
+
+    // Stage ID 생성기
+    private static long _stageIdCounter = 1;
+    private static readonly object _lock = new();
+
+    public void Handles(IHandlerRegister register)
+    {
+        register.Add<FindMatchRequest>(nameof(HandleFindMatch));
+    }
+
+    /// <summary>
+    /// 매칭 요청 처리 - 새 게임방 생성
+    /// </summary>
+    private async Task HandleFindMatch(IPacket packet, IApiSender sender)
+    {
+        var request = FindMatchRequest.Parser.ParseFrom(packet.Payload.DataSpan);
+        Console.WriteLine($"[GameMatch] Match request: mode={request.GameMode}, region={request.Region}");
+
+        // 게임 모드 검증
+        if (!GameModeMaxPlayers.TryGetValue(request.GameMode, out var maxPlayers))
+        {
+            sender.Reply(CPacket.Of(new FindMatchResponse
+            {
+                Success = false,
+                ErrorMessage = $"Unknown game mode: {request.GameMode}"
+            }));
+            return;
+        }
+
+        // Stage ID 생성
+        long stageId;
+        lock (_lock)
+        {
+            stageId = _stageIdCounter++;
+        }
+
+        // Play Server에 Stage 생성 요청
+        var createPayload = new CreateBattlePayload
+        {
+            GameMode = request.GameMode,
+            MaxPlayers = maxPlayers,
+            MapId = GetMapForMode(request.GameMode)
+        };
+
+        try
+        {
+            var createResult = await sender.CreateStage(
+                PlayNid,           // Play Server NID
+                "BattleStage",     // Stage 타입
+                stageId,           // Stage ID
+                CPacket.Of(createPayload)
+            );
+
+            if (createResult.Result)
+            {
+                var roomInfo = new RoomInfo
+                {
+                    PlayNid = PlayNid,
+                    ServerAddress = PlayServerAddress,
+                    Port = PlayServerPort,
+                    StageId = stageId,
+                    StageType = "BattleStage",
+                    GameMode = request.GameMode,
+                    MaxPlayers = maxPlayers,
+                    CurrentPlayers = 0
+                };
+
+                Console.WriteLine($"[GameMatch] Stage created: stageId={stageId}");
+
+                sender.Reply(CPacket.Of(new FindMatchResponse
+                {
+                    Success = true,
+                    RoomInfo = roomInfo
+                }));
+            }
+            else
+            {
+                Console.WriteLine($"[GameMatch] Stage creation failed");
+
+                sender.Reply(CPacket.Of(new FindMatchResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Failed to create game stage"
+                }));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GameMatch] Error: {ex.Message}");
+
+            sender.Reply(CPacket.Of(new FindMatchResponse
+            {
+                Success = false,
+                ErrorMessage = "Internal server error"
+            }));
+        }
+    }
+
+    /// <summary>
+    /// 게임 모드에 따른 맵 선택
+    /// </summary>
+    private static string GetMapForMode(string gameMode)
+    {
+        return gameMode switch
+        {
+            "1v1" => "arena_small",
+            "2v2" => "arena_medium",
+            "battle_royale" => "island_large",
+            _ => "arena_default"
+        };
+    }
+}
+```
+
+### API Server 시작 코드
+
+`Program.cs` (API Server):
+
+```csharp
+using Microsoft.Extensions.Logging;
+using PlayHouse.Core.Api.Bootstrap;
+using GameMatchApiServer.Controllers;
+
+var server = new ApiServerBootstrap()
+    .Configure(options =>
+    {
+        options.ServerId = "api-server-1";
+        options.ServiceId = "game-match";
+        options.BindEndpoint = "tcp://127.0.0.1:11100";
+        options.HttpPort = 5000;
+    })
+    .UseController<GameMatchController>()
+    .UseLoggerFactory(LoggerFactory.Create(builder =>
+    {
+        builder.AddConsole();
+        builder.SetMinimumLevel(LogLevel.Information);
+    }))
+    .Build();
+
+await server.StartAsync();
+Console.WriteLine("GameMatch API Server started on http://localhost:5000");
+Console.WriteLine("Press Ctrl+C to stop.");
+
+await Task.Delay(-1);
+```
+
+## Play Server - GameStage 구현
 
 ### 게임 로직 클래스
 
@@ -821,17 +1142,23 @@ public class PlayerActor : IActor
 }
 ```
 
-## 클라이언트 통합
+## 클라이언트 구현
+
+클라이언트는 **2단계 접속 패턴**을 사용합니다:
+1. **API Server**에 HTTP로 매칭 요청 → 게임방 정보 획득
+2. **Play Server**에 TCP로 접속 → 실시간 게임 플레이
 
 ### 클라이언트 예제 코드
 
 ```csharp
+using System.Net.Http.Json;
 using PlayHouse.Connector;
 using PlayHouse.Connector.Protocol;
 using RealtimeGameServer.Proto;
 
 public class GameClient
 {
+    private readonly HttpClient _httpClient;
     private readonly PlayHouse.Connector.Connector _connector;
     private bool _running = true;
 
@@ -839,14 +1166,49 @@ public class GameClient
     private long _clientTick = 0;
     private Vector2 _predictedPosition = new();
 
+    // 현재 접속 중인 방 정보
+    private RoomInfo? _currentRoom;
+
     public GameClient()
     {
+        _httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
         _connector = new PlayHouse.Connector.Connector();
     }
 
     public async Task RunAsync()
     {
-        // 초기화
+        // ============================================
+        // Step 1: API Server에서 게임방 정보 획득
+        // ============================================
+
+        Console.WriteLine("Finding a match...");
+
+        var matchRequest = new FindMatchRequest
+        {
+            GameMode = "1v1",
+            Region = "kr"
+        };
+
+        var httpResponse = await _httpClient.PostAsJsonAsync("/match/find", matchRequest);
+        var matchResponse = await httpResponse.Content.ReadFromJsonAsync<FindMatchResponse>();
+
+        if (matchResponse == null || !matchResponse.Success)
+        {
+            Console.WriteLine($"Match failed: {matchResponse?.ErrorMessage ?? "Unknown error"}");
+            return;
+        }
+
+        _currentRoom = matchResponse.RoomInfo;
+        Console.WriteLine($"Match found!");
+        Console.WriteLine($"  - Server: {_currentRoom.ServerAddress}:{_currentRoom.Port}");
+        Console.WriteLine($"  - Stage ID: {_currentRoom.StageId}");
+        Console.WriteLine($"  - Game Mode: {_currentRoom.GameMode}");
+
+        // ============================================
+        // Step 2: Play Server에 TCP 연결
+        // ============================================
+
+        // Connector 초기화
         _connector.Init(new ConnectorConfig
         {
             RequestTimeoutMs = 10000
@@ -855,16 +1217,23 @@ public class GameClient
         // Push 메시지 수신 핸들러
         _connector.OnReceive += OnReceivePush;
 
-        // 연결
-        Console.WriteLine("Connecting to server...");
-        var connected = await _connector.ConnectAsync("127.0.0.1", 12000, 1L, "BattleStage");
+        // API Server에서 받은 정보로 Play Server에 연결
+        Console.WriteLine($"\nConnecting to Play Server...");
+
+        var connected = await _connector.ConnectAsync(
+            _currentRoom.ServerAddress,    // API Server에서 받은 주소
+            _currentRoom.Port,             // API Server에서 받은 포트
+            _currentRoom.StageId,          // API Server에서 받은 stageId
+            _currentRoom.StageType         // "BattleStage"
+        );
+
         if (!connected)
         {
-            Console.WriteLine("Connection failed!");
+            Console.WriteLine("Connection to Play Server failed!");
             return;
         }
 
-        Console.WriteLine("Connected!");
+        Console.WriteLine("Connected to Play Server!");
 
         // 인증
         var authRequest = new AuthenticateRequest
@@ -1336,27 +1705,61 @@ public class GameWorldTests
 
 ### 통합 테스트 예제
 
+통합 테스트에서도 API Server를 통한 2단계 접속 패턴을 사용합니다.
+
 ```csharp
+using System.Net.Http.Json;
 using Xunit;
 using PlayHouse.Connector;
 using RealtimeGameServer.Proto;
 
 public class BattleStageIntegrationTests : IAsyncLifetime
 {
+    private readonly HttpClient _httpClient;
     private PlayHouse.Connector.Connector _client1;
     private PlayHouse.Connector.Connector _client2;
+    private RoomInfo _roomInfo;
+
+    public BattleStageIntegrationTests()
+    {
+        _httpClient = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+    }
 
     public async Task InitializeAsync()
     {
-        // 클라이언트 2명 연결
+        // ============================================
+        // Step 1: API Server에서 게임방 생성
+        // ============================================
+        var matchRequest = new FindMatchRequest { GameMode = "1v1", Region = "kr" };
+        var httpResponse = await _httpClient.PostAsJsonAsync("/match/find", matchRequest);
+        var matchResponse = await httpResponse.Content.ReadFromJsonAsync<FindMatchResponse>();
+
+        Assert.NotNull(matchResponse);
+        Assert.True(matchResponse.Success, matchResponse.ErrorMessage);
+        _roomInfo = matchResponse.RoomInfo;
+
+        // ============================================
+        // Step 2: Play Server에 클라이언트 2명 연결
+        // ============================================
         _client1 = new PlayHouse.Connector.Connector();
         _client2 = new PlayHouse.Connector.Connector();
 
         _client1.Init(new ConnectorConfig { RequestTimeoutMs = 5000 });
         _client2.Init(new ConnectorConfig { RequestTimeoutMs = 5000 });
 
-        await _client1.ConnectAsync("127.0.0.1", 12000, 1L, "BattleStage");
-        await _client2.ConnectAsync("127.0.0.1", 12000, 1L, "BattleStage");
+        // API Server에서 받은 정보로 Play Server에 연결
+        await _client1.ConnectAsync(
+            _roomInfo.ServerAddress,
+            _roomInfo.Port,
+            _roomInfo.StageId,
+            _roomInfo.StageType
+        );
+        await _client2.ConnectAsync(
+            _roomInfo.ServerAddress,
+            _roomInfo.Port,
+            _roomInfo.StageId,
+            _roomInfo.StageType
+        );
 
         // 인증
         using var auth1 = new Packet(new AuthenticateRequest { UserId = "player1" });
@@ -1373,6 +1776,8 @@ public class BattleStageIntegrationTests : IAsyncLifetime
 
         await (_client1?.DisposeAsync() ?? ValueTask.CompletedTask);
         await (_client2?.DisposeAsync() ?? ValueTask.CompletedTask);
+
+        _httpClient?.Dispose();
     }
 
     [Fact]
@@ -1537,4 +1942,18 @@ if (Distance(_predictedPosition, serverPosition) > threshold)
 
 ---
 
-**축하합니다!** 실시간 게임 서버 구축 튜토리얼을 완료했습니다. 이제 PlayHouse GameLoop를 활용하여 다양한 실시간 멀티플레이 게임을 개발할 수 있습니다.
+## 배운 내용
+
+이 튜토리얼에서 다룬 핵심 내용:
+
+| 주제 | 내용 |
+|------|------|
+| **전체 아키텍처** | API Server(매칭) + Play Server(게임) 구조 |
+| **2단계 접속 패턴** | HTTP로 방 정보 획득 → TCP로 게임 접속 |
+| **GameLoop** | 60fps 고정 타임스텝 물리 시뮬레이션 |
+| **API Server** | GameMatchController로 매칭/방 생성 처리 |
+| **Play Server** | BattleStage에서 실시간 게임 로직 |
+| **상태 동기화** | 20Hz로 GameState 브로드캐스트 |
+| **서버 권위** | 서버에서 물리 계산, 치팅 방지 |
+
+**축하합니다!** 실시간 게임 서버 구축 튜토리얼을 완료했습니다. 이제 PlayHouse GameLoop와 API Server/Play Server 구조를 활용하여 다양한 실시간 멀티플레이 게임을 개발할 수 있습니다.

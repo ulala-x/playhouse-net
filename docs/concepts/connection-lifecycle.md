@@ -1,6 +1,7 @@
 # 연결 및 인증 (Connection & Authentication)
 
-클라이언트 연결과 인증 프로세스를 상세히 다룹니다.
+> Play Server의 클라이언트 연결 및 인증 프로세스를 다룹니다.
+> 전체 구조는 [개요](./overview.md)를, Stage/Actor 모델은 [Stage/Actor 개념](./stage-actor.md)을 참고하세요.
 
 ## 목차
 
