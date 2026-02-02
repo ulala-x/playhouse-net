@@ -32,6 +32,7 @@ export class WsConnection {
     private _receiveBuffer: Uint8Array = new Uint8Array(0);
     private _expectedPacketSize = -1;
     private _callbacks: ConnectionCallbacks = {};
+    private _connectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     constructor(private readonly _config: Required<ConnectorConfig>) {}
 
@@ -77,23 +78,30 @@ export class WsConnection {
                 this._ws = new WebSocket(url);
                 this._ws.binaryType = 'arraybuffer';
 
-                const timeoutId = setTimeout(() => {
+                this._connectionTimeoutId = setTimeout(() => {
                     if (this._state === 'connecting') {
                         this._ws?.close();
                         this._state = 'disconnected';
+                        this._connectionTimeoutId = null;
                         reject(new Error('Connection timeout'));
                     }
                 }, this._config.connectionIdleTimeoutMs);
 
                 this._ws.onopen = () => {
-                    clearTimeout(timeoutId);
+                    if (this._connectionTimeoutId) {
+                        clearTimeout(this._connectionTimeoutId);
+                        this._connectionTimeoutId = null;
+                    }
                     this._state = 'connected';
                     this._callbacks.onConnect?.();
                     resolve();
                 };
 
                 this._ws.onerror = (_event) => {
-                    clearTimeout(timeoutId);
+                    if (this._connectionTimeoutId) {
+                        clearTimeout(this._connectionTimeoutId);
+                        this._connectionTimeoutId = null;
+                    }
                     const error = new Error('WebSocket error');
                     if (this._state === 'connecting') {
                         this._state = 'disconnected';
@@ -104,7 +112,10 @@ export class WsConnection {
                 };
 
                 this._ws.onclose = () => {
-                    clearTimeout(timeoutId);
+                    if (this._connectionTimeoutId) {
+                        clearTimeout(this._connectionTimeoutId);
+                        this._connectionTimeoutId = null;
+                    }
                     const wasConnected = this._state === 'connected';
                     this._state = 'disconnected';
                     this.resetReceiveBuffer();
@@ -128,6 +139,12 @@ export class WsConnection {
      * Disconnects from the server
      */
     disconnect(): void {
+        // Clear connection timeout if still pending
+        if (this._connectionTimeoutId) {
+            clearTimeout(this._connectionTimeoutId);
+            this._connectionTimeoutId = null;
+        }
+
         if (this._ws) {
             // Remove handlers to avoid disconnect callback
             this._ws.onclose = null;
@@ -233,6 +250,10 @@ export class WsConnection {
                 // Skip this packet and continue
                 this._receiveBuffer = this._receiveBuffer.subarray(this._expectedPacketSize);
                 this._expectedPacketSize = -1;
+                // Surface decode errors to onError callback
+                this._callbacks.onError?.(
+                    new Error(`Failed to parse packet: ${error instanceof Error ? error.message : String(error)}`)
+                );
             }
         }
     }

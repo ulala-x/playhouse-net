@@ -20,22 +20,29 @@ describe('C-02: WebSocket Connection', () => {
     });
 
     test('C-02-01: Connection succeeds after stage creation', async () => {
+        console.log('C-02-01: Starting test...');
+
+
         // Given: Stage is created
+        console.log('C-02-01: Creating stage via TestServerClient...');
         const stageInfo = await testContext['testServer'].createTestStage();
+        console.log('C-02-01: Stage created:', stageInfo);
 
         // When: Attempt WebSocket connection
         const wsUrl = testContext['testServer'].wsUrl;
+        console.log('C-02-01: Connecting to:', wsUrl, 'with stageId:', stageInfo.stageId);
         const connected = await testContext['connector']!.connect(
             wsUrl,
             stageInfo.stageId,
             stageInfo.stageType
         );
+        console.log('C-02-01: Connect result:', connected);
 
         // Then: Connection should succeed
         expect(connected).toBe(true);
         expect(testContext['connector']!.isConnected).toBe(true);
-        expect(testContext['connector']!.stageId).toBe(stageInfo.stageId);
-        expect(testContext['connector']!.stageType).toBe(stageInfo.stageType);
+        expect(testContext['connector']!.stageId).toBe(BigInt(stageInfo.stageId));
+        console.log('C-02-01: Test complete');
     });
 
     test('C-02-02: IsConnected returns true after connection', async () => {
@@ -124,6 +131,6 @@ describe('C-02: WebSocket Connection', () => {
         // Then: Reconnection should succeed
         expect(reconnected).toBe(true);
         expect(testContext['connector']!.isConnected).toBe(true);
-        expect(testContext['connector']!.stageId).toBe(newStageInfo.stageId);
+        expect(testContext['connector']!.stageId).toBe(BigInt(newStageInfo.stageId));
     });
 });

@@ -112,21 +112,25 @@ public:
             std::lock_guard<std::mutex> lock(pending_mutex_);
             auto it = pending_requests_.find(msg_seq);
             if (it != pending_requests_.end()) {
-                auto callback = std::move(it->second);
+                // Use shared_ptr to allow copy-construction for std::function
+                auto callback_ptr = std::make_shared<std::function<void(Packet)>>(std::move(it->second));
+                auto packet_ptr = std::make_shared<Packet>(std::move(packet));
                 pending_requests_.erase(it);
 
                 // Queue callback for main thread
-                QueueCallback([callback, p = std::move(packet)]() mutable {
-                    callback(std::move(p));
+                QueueCallback([callback_ptr, packet_ptr]() {
+                    (*callback_ptr)(std::move(*packet_ptr));
                 });
                 return;
             }
         }
 
         // Handle push message or unmatched response
-        QueueCallback([this, p = std::move(packet)]() mutable {
+        // Use shared_ptr to allow copy-construction for std::function
+        auto packet_ptr = std::make_shared<Packet>(std::move(packet));
+        QueueCallback([this, packet_ptr]() {
             if (on_receive_) {
-                on_receive_(std::move(p));
+                on_receive_(std::move(*packet_ptr));
             }
         });
     }
@@ -157,19 +161,34 @@ ClientNetwork::ClientNetwork(const ConnectorConfig& config)
 ClientNetwork::~ClientNetwork() = default;
 
 std::future<bool> ClientNetwork::ConnectAsync(const std::string& host, uint16_t port) {
-    auto future = impl_->connection_.ConnectAsync(host, port);
+    // Create a shared promise to coordinate between the returned future and callback
+    auto promise = std::make_shared<std::promise<bool>>();
+    auto future = promise->get_future();
 
-    // Queue connection callback
-    impl_->QueueCallback([this, future_ptr = std::make_shared<std::future<bool>>(std::move(future))]() mutable {
-        bool result = future_ptr->get();
-        if (impl_->on_connect_) {
-            impl_->on_connect_(result);
+    // Start single connection attempt
+    auto connect_future = impl_->connection_.ConnectAsync(host, port);
+
+    // Use async to wait for connection result and trigger callbacks
+    std::thread([this, connect_future = std::move(connect_future), promise]() mutable {
+        bool result = false;
+        try {
+            result = connect_future.get();
+        } catch (...) {
+            result = false;
         }
-    });
 
-    return std::async(std::launch::async, [this, host, port]() {
-        return impl_->connection_.ConnectAsync(host, port).get();
-    });
+        // Queue connection callback for main thread
+        impl_->QueueCallback([this, result]() {
+            if (impl_->on_connect_) {
+                impl_->on_connect_(result);
+            }
+        });
+
+        // Fulfill the promise
+        promise->set_value(result);
+    }).detach();
+
+    return future;
 }
 
 void ClientNetwork::Disconnect() {
@@ -227,6 +246,14 @@ std::future<Packet> ClientNetwork::RequestAsync(Packet packet, int64_t stage_id)
     auto promise = std::make_shared<std::promise<Packet>>();
     auto future = promise->get_future();
 
+    // Check connection status before calling Request
+    // Request() returns early without calling callback when not connected
+    if (!IsConnected()) {
+        promise->set_exception(std::make_exception_ptr(
+            std::runtime_error("Not connected")));
+        return future;
+    }
+
     Request(std::move(packet), [promise](Packet response) {
         promise->set_value(std::move(response));
     }, stage_id);
@@ -246,6 +273,14 @@ void ClientNetwork::Authenticate(Packet packet, std::function<void(Packet)> call
 std::future<Packet> ClientNetwork::AuthenticateAsync(Packet packet, int64_t stage_id) {
     auto promise = std::make_shared<std::promise<Packet>>();
     auto future = promise->get_future();
+
+    // Check connection status before calling Authenticate
+    // Authenticate() calls Request() which returns early without calling callback when not connected
+    if (!IsConnected()) {
+        promise->set_exception(std::make_exception_ptr(
+            std::runtime_error("Not connected")));
+        return future;
+    }
 
     Authenticate(std::move(packet), [promise](Packet response) {
         promise->set_value(std::move(response));

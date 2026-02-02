@@ -181,8 +181,14 @@ export class Connector {
             return;
         }
 
-        const data = encodePacket(packet, 0, this._stageId);
-        this._connection!.send(data);
+        try {
+            const data = encodePacket(packet, 0, this._stageId);
+            this._connection!.send(data);
+        } catch (error) {
+            this.queueAction(() =>
+                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, (error as Error).message, packet)
+            );
+        }
     }
 
     /**
@@ -671,9 +677,9 @@ export class Connector {
 
         const now = Date.now();
         if (now - this._lastReceivedTime > this._config.heartbeatTimeoutMs) {
-            // Connection timeout
+            // Connection timeout - disconnect() already triggers onDisconnect via the connection callback,
+            // so we don't queue another onDisconnect here to avoid double callback
             this.disconnect();
-            this.queueAction(() => this.onDisconnect?.());
         }
     }
 

@@ -8,6 +8,18 @@ import { beforeEach, afterEach } from 'vitest';
 import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
 import { TestServerClient, CreateStageResponse } from './TestServerClient.js';
+import {
+    serializeAuthenticateRequest,
+    parseAuthenticateReply,
+    serializeEchoRequest,
+    parseEchoReply,
+    parseFailReply,
+    parseBroadcastNotify,
+    AuthenticateReply,
+    EchoReply,
+    FailReply,
+    BroadcastNotify
+} from './TestMessages.js';
 
 /**
  * Protobuf message interface
@@ -76,65 +88,83 @@ export class BaseIntegrationTest {
     }
 
     /**
-     * Authenticate with the test server
+     * Authenticate with the test server (using protobuf format)
      * @param userId User ID for authentication
      * @param token Authentication token
      * @returns Authentication reply
      */
-    protected async authenticate(userId: string, token: string = 'valid_token'): Promise<IProtobufMessage> {
+    protected async authenticate(userId: string, token: string = 'valid_token'): Promise<AuthenticateReply> {
         if (!this.connector) {
             throw new Error('Connector not initialized');
         }
 
-        const authRequest = {
-            userId,
-            token
-        };
+        const payload = serializeAuthenticateRequest({ userId, token });
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
+        const responsePacket = await this.connector.authenticate(requestPacket);
 
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
-        const responsePacket = await this.connector.authenticateAsync(requestPacket);
-
-        return this.parsePayload(responsePacket);
+        return parseAuthenticateReply(responsePacket.payload);
     }
 
     /**
-     * Send an echo request
+     * Send an echo request (using protobuf format)
      * @param content Content to echo
      * @param sequence Sequence number
      * @returns Echo reply
      */
-    protected async echo(content: string, sequence: number = 1): Promise<IProtobufMessage> {
+    protected async echo(content: string, sequence: number = 1): Promise<EchoReply> {
         if (!this.connector) {
             throw new Error('Connector not initialized');
         }
 
-        const echoRequest = {
-            content,
-            sequence
-        };
-
-        const requestPacket = Packet.create('EchoRequest', echoRequest);
+        const payload = serializeEchoRequest({ content, sequence });
+        const requestPacket = Packet.fromBytes('EchoRequest', payload);
         const responsePacket = await this.connector.request(requestPacket);
 
-        return this.parsePayload(responsePacket);
+        return parseEchoReply(responsePacket.payload);
     }
 
     /**
-     * Parse packet payload as a generic object
+     * Parse packet payload as a protobuf AuthenticateReply
+     * @param packet Packet to parse
+     * @returns Parsed AuthenticateReply
+     */
+    protected parseAuthReply(packet: Packet): AuthenticateReply {
+        return parseAuthenticateReply(packet.payload);
+    }
+
+    /**
+     * Parse packet payload as a protobuf EchoReply
+     * @param packet Packet to parse
+     * @returns Parsed EchoReply
+     */
+    protected parseEchoReply(packet: Packet): EchoReply {
+        return parseEchoReply(packet.payload);
+    }
+
+    /**
+     * Parse packet payload as a generic object (using protobuf parsers)
      * @param packet Packet to parse
      * @returns Parsed payload
      */
     protected parsePayload(packet: Packet): IProtobufMessage {
-        // Simple JSON parsing for now
-        // In production, use proper protobuf deserialization
         try {
-            if (packet.payload && packet.payload.length > 0) {
-                // For test purposes, we'll work with the raw payload
-                // and assume the test server sends JSON-compatible data
-                return JSON.parse(new TextDecoder().decode(packet.payload));
+            switch (packet.msgId) {
+                case 'AuthenticateReply':
+                    return parseAuthenticateReply(packet.payload) as unknown as IProtobufMessage;
+                case 'EchoReply':
+                    return parseEchoReply(packet.payload) as unknown as IProtobufMessage;
+                case 'FailReply':
+                    return parseFailReply(packet.payload) as unknown as IProtobufMessage;
+                case 'BroadcastNotify':
+                    return parseBroadcastNotify(packet.payload) as unknown as IProtobufMessage;
+                default:
+                    // Unknown message type, try JSON fallback
+                    if (packet.payload && packet.payload.length > 0) {
+                        return JSON.parse(new TextDecoder().decode(packet.payload));
+                    }
             }
         } catch (e) {
-            // If not JSON, return empty object
+            console.error(`Failed to parse ${packet.msgId}:`, e);
         }
         return {};
     }

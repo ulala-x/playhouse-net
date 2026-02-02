@@ -8,6 +8,8 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Connector } from '../../../src/connector.js';
+import { Packet } from '../../../src/packet.js';
+import { serializeAuthenticateRequest } from '../helpers/TestMessages.js';
 
 describe('C-07: Heartbeat Automatic Handling', () => {
     let testContext: BaseIntegrationTest;
@@ -21,7 +23,7 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         await testContext['afterEach']();
     });
 
-    test('C-07-01: Connection maintained over time without disconnection', async () => {
+    test('C-07-01: Connection maintained over time without disconnection', { timeout: 10000 }, async () => {
         // Given: Connected and authenticated
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('heartbeatUser');
@@ -29,10 +31,11 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         expect(testContext['connector']!.isConnected).toBe(true);
 
         // When: Wait 5 seconds without any action (Heartbeat should be sent automatically)
-        await testContext['delay'](5000);
-
-        // Process any pending callbacks
-        testContext['connector']!.mainThreadAction();
+        const startTime = Date.now();
+        while (Date.now() - startTime < 5000) {
+            testContext['connector']!.mainThreadAction();
+            await testContext['delay'](50);
+        }
 
         // Then: Connection should remain active
         expect(testContext['connector']!.isConnected).toBe(true);
@@ -56,7 +59,7 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         expect(testContext['connector']!.isConnected).toBe(true);
     });
 
-    test('C-07-03: Short heartbeat interval works correctly', async () => {
+    test('C-07-03: Short heartbeat interval works correctly', { timeout: 10000 }, async () => {
         // Given: Short heartbeat interval (1 second)
         const connector = new Connector();
         connector.init({
@@ -84,7 +87,7 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         expect(echoReply.content).toBe('Short Interval Test');
     });
 
-    test('C-07-04: Message transmission works correctly during heartbeat', async () => {
+    test('C-07-04: Message transmission works correctly during heartbeat', { timeout: 15000 }, async () => {
         // Given: Connected and authenticated
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('transmitUser');
@@ -101,7 +104,7 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         expect(testContext['connector']!.isConnected).toBe(true);
     });
 
-    test('C-07-05: OnDisconnect event does not trigger during normal operation', async () => {
+    test('C-07-05: OnDisconnect event does not trigger during normal operation', { timeout: 15000 }, async () => {
         // Given: Connected and authenticated
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('noDisconnectUser');
@@ -123,7 +126,7 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         expect(testContext['connector']!.isConnected).toBe(true);
     });
 
-    test('C-07-06: Multiple connectors can maintain heartbeat simultaneously', async () => {
+    test('C-07-06: Multiple connectors can maintain heartbeat simultaneously', { timeout: 30000 }, async () => {
         // Given: Create 3 connectors
         const stage1 = await testContext['testServer'].createStage('TestStage');
         const stage2 = await testContext['testServer'].createStage('TestStage');
@@ -139,18 +142,22 @@ describe('C-07: Heartbeat Automatic Handling', () => {
             connector3.init({ requestTimeoutMs: 5000, heartbeatIntervalMs: 10000 });
 
             const wsUrl = testContext['testServer'].wsUrl;
-            await connector1.connect(wsUrl, stage1.stageId);
-            await connector2.connect(wsUrl, stage2.stageId);
-            await connector3.connect(wsUrl, stage3.stageId);
+            await connector1.connect(wsUrl, stage1.stageId, stage1.stageType);
+            await connector2.connect(wsUrl, stage2.stageId, stage2.stageType);
+            await connector3.connect(wsUrl, stage3.stageId, stage3.stageType);
 
-            // Authenticate all connectors
-            const authPacket1 = await connector1.authenticate('TestStage', 'user1');
-            const authPacket2 = await connector2.authenticate('TestStage', 'user2');
-            const authPacket3 = await connector3.authenticate('TestStage', 'user3');
+            // Authenticate all connectors using protobuf format
+            const authPayload1 = serializeAuthenticateRequest({ userId: 'user1', token: 'token1' });
+            const authPayload2 = serializeAuthenticateRequest({ userId: 'user2', token: 'token2' });
+            const authPayload3 = serializeAuthenticateRequest({ userId: 'user3', token: 'token3' });
 
-            expect(authPacket1).toBe(true);
-            expect(authPacket2).toBe(true);
-            expect(authPacket3).toBe(true);
+            await connector1.authenticate(Packet.fromBytes('AuthenticateRequest', authPayload1));
+            await connector2.authenticate(Packet.fromBytes('AuthenticateRequest', authPayload2));
+            await connector3.authenticate(Packet.fromBytes('AuthenticateRequest', authPayload3));
+
+            expect(connector1.isAuthenticated).toBe(true);
+            expect(connector2.isAuthenticated).toBe(true);
+            expect(connector3.isAuthenticated).toBe(true);
 
             // When: Wait 5 seconds (all connectors' heartbeats should work)
             const startTime = Date.now();

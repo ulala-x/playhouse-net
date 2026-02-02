@@ -8,6 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeBroadcastRequest, parseBroadcastNotify } from '../helpers/TestMessages.js';
 
 describe('A-01: WebSocket Advanced', () => {
     let testContext: BaseIntegrationTest;
@@ -74,13 +75,14 @@ describe('A-01: WebSocket Advanced', () => {
         testContext['connector']!.onReceive = (packet: Packet) => {
             if (packet.msgId === 'BroadcastNotify') {
                 receivedPush = true;
-                const notify = testContext['parsePayload'](packet);
-                pushContent = notify.data || notify.content || '';
+                const notify = parseBroadcastNotify(packet.payload);
+                pushContent = notify.data;
             }
         };
 
         // When: Send broadcast request (triggers push)
-        const broadcastRequest = Packet.empty('BroadcastRequest');
+        const payload = serializeBroadcastRequest({ content: 'Test broadcast' });
+        const broadcastRequest = Packet.fromBytes('BroadcastRequest', payload);
         testContext['connector']!.send(broadcastRequest);
 
         // Wait for push message
@@ -125,20 +127,20 @@ describe('A-01: WebSocket Advanced', () => {
 
         // When: Send 10 parallel echo requests
         const requests = Array.from({ length: 10 }, (_, i) => {
-            const echoRequest = Packet.empty('EchoRequest');
-            return testContext['connector']!.request(echoRequest);
+            return testContext['echo'](`Echo ${i}`, i);
         });
 
         // Then: All requests should complete successfully
         const responses = await Promise.all(requests);
         expect(responses).toHaveLength(10);
-        responses.forEach(response => {
+        responses.forEach((response, i) => {
             expect(response).toBeDefined();
-            expect(response.msgId).toBe('EchoReply');
+            expect(response.content).toBe(`Echo ${i}`);
+            expect(response.sequence).toBe(i);
         });
     });
 
-    test('A-01-07: OnConnect event fires on successful connection', async () => {
+    test('A-01-07: OnConnect event fires on successful connection', { timeout: 10000 }, async () => {
         // Given: Stage is created
         const stageInfo = await testContext['testServer'].createStage();
 

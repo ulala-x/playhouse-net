@@ -47,8 +47,20 @@ public final class RequestCache {
      *
      * @param packet 요청 패킷
      * @return CompletableFuture<Packet>
+     * @deprecated Use {@link #registerWithSeq(Packet)} instead to get msgSeq directly and avoid race conditions
      */
+    @Deprecated
     public CompletableFuture<Packet> register(Packet packet) {
+        return registerWithSeq(packet).future;
+    }
+
+    /**
+     * 새로운 요청 등록 (msgSeq와 future 함께 반환)
+     *
+     * @param packet 요청 패킷
+     * @return RegisterResult containing msgSeq and CompletableFuture
+     */
+    public RegisterResult registerWithSeq(Packet packet) {
         short msgSeq = generateMsgSeq();
         CompletableFuture<Packet> future = new CompletableFuture<>();
         RequestEntry entry = new RequestEntry(packet, future, System.currentTimeMillis());
@@ -73,7 +85,20 @@ public final class RequestCache {
             logger.debug("Registered request: msgId={}, msgSeq={}", packet.getMsgId(), msgSeq);
         }
 
-        return future;
+        return new RegisterResult(msgSeq, future);
+    }
+
+    /**
+     * Result of registering a request containing msgSeq and the response future.
+     */
+    public static final class RegisterResult {
+        public final short msgSeq;
+        public final CompletableFuture<Packet> future;
+
+        RegisterResult(short msgSeq, CompletableFuture<Packet> future) {
+            this.msgSeq = msgSeq;
+            this.future = future;
+        }
     }
 
     /**
@@ -119,7 +144,9 @@ public final class RequestCache {
      *
      * @param future CompletableFuture
      * @return MsgSeq (없으면 -1)
+     * @deprecated Use {@link #registerWithSeq(Packet)} instead to avoid O(n) scan and race conditions
      */
+    @Deprecated
     public short getMsgSeq(CompletableFuture<Packet> future) {
         for (var entry : requests.entrySet()) {
             if (entry.getValue().future == future) {
@@ -127,6 +154,18 @@ public final class RequestCache {
             }
         }
         return -1;
+    }
+
+    /**
+     * 요청 항목 제거 (전송 실패 시 사용)
+     *
+     * @param msgSeq 메시지 시퀀스
+     */
+    public void remove(short msgSeq) {
+        RequestEntry entry = requests.remove(msgSeq);
+        if (entry != null && logger.isDebugEnabled()) {
+            logger.debug("Removed request entry: msgId={}, msgSeq={}", entry.packet.getMsgId(), msgSeq);
+        }
     }
 
     /**
@@ -149,13 +188,26 @@ public final class RequestCache {
      * 리소스 정리
      */
     public void shutdown() {
+        logger.info("Shutting down RequestCache");
         cancelAll();
+
+        if (timeoutExecutor == null || timeoutExecutor.isShutdown()) {
+            return;
+        }
+
         timeoutExecutor.shutdown();
         try {
             if (!timeoutExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                logger.warn("Timeout executor did not terminate gracefully, forcing shutdown");
                 timeoutExecutor.shutdownNow();
+
+                // 강제 종료 후에도 종료되지 않으면 재확인
+                if (!timeoutExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    logger.error("Timeout executor did not terminate after forced shutdown");
+                }
             }
         } catch (InterruptedException e) {
+            logger.warn("Interrupted while waiting for timeout executor to terminate");
             timeoutExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }

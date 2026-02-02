@@ -20,6 +20,17 @@ public final class PacketCodec {
 
     private static final Logger logger = LoggerFactory.getLogger(PacketCodec.class);
 
+    /**
+     * Maximum allowed packet size (16MB) to prevent memory DoS attacks.
+     * This should be configurable if larger packets are needed.
+     */
+    public static final int MAX_PACKET_SIZE = 16 * 1024 * 1024;
+
+    /**
+     * Minimum header size: ContentSize(4) + MsgIdLen(1) + MsgId(1) + MsgSeq(2) + StageId(8)
+     */
+    private static final int MIN_HEADER_SIZE = 16;
+
     private PacketCodec() {
         // Utility class
     }
@@ -115,7 +126,7 @@ public final class PacketCodec {
      * 다음 패킷 크기 읽기 (ContentSize만 읽음)
      *
      * @param buffer 수신된 데이터 버퍼
-     * @return 패킷 크기 (헤더 4바이트 포함), 데이터 부족 시 -1
+     * @return 패킷 크기 (헤더 4바이트 포함), 데이터 부족 시 -1, 유효하지 않은 크기 시 -2
      */
     public static int peekPacketSize(ByteBuffer buffer) {
         if (buffer.remaining() < 4) {
@@ -125,6 +136,18 @@ public final class PacketCodec {
         int position = buffer.position();
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         int contentSize = buffer.getInt(position);
+
+        // Validate contentSize to prevent memory DoS and buffer issues
+        if (contentSize < MIN_HEADER_SIZE - 4) {
+            // contentSize should be at least minimum header size minus ContentSize(4) field
+            logger.error("Invalid packet: contentSize {} is too small (min: {})", contentSize, MIN_HEADER_SIZE - 4);
+            return -2;
+        }
+
+        if (contentSize > MAX_PACKET_SIZE) {
+            logger.error("Invalid packet: contentSize {} exceeds maximum allowed size ({})", contentSize, MAX_PACKET_SIZE);
+            return -2;
+        }
 
         // Total size = ContentSize (header) + ContentSize (body)
         return 4 + contentSize;

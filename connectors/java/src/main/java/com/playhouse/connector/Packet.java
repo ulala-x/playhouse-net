@@ -98,7 +98,8 @@ public final class Packet implements AutoCloseable {
     }
 
     public byte[] getPayload() {
-        return payload;
+        // 방어적 복사: 외부에서 배열을 수정할 수 없도록 복사본 반환
+        return payload.clone();
     }
 
     /**

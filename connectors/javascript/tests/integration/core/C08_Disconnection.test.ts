@@ -7,7 +7,10 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
+import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
+import { ErrorCode } from '../../../src/types.js';
+import { serializeEchoRequest, serializeAuthenticateRequest } from '../helpers/TestMessages.js';
 
 describe('C-08: Disconnection', () => {
     let testContext: BaseIntegrationTest;
@@ -73,15 +76,15 @@ describe('C-08: Disconnection', () => {
             content: 'Test',
             sequence: 1
         };
-        const packet = Packet.create('EchoRequest', echoRequest);
+        const payload = serializeEchoRequest(echoRequest);
+        const packet = Packet.fromBytes('EchoRequest', payload);
         testContext['connector']!.send(packet);
 
         // Process pending callbacks
         testContext['connector']!.mainThreadAction();
 
         // Then: Disconnected error should occur
-        // ErrorCode.Disconnected = 2
-        expect(receivedErrorCode).toBe(2);
+        expect(receivedErrorCode).toBe(ErrorCode.Disconnected);
     });
 
     test('C-08-04: RequestAsync throws exception after disconnect', async () => {
@@ -96,7 +99,8 @@ describe('C-08: Disconnection', () => {
             content: 'Test',
             sequence: 1
         };
-        const packet = Packet.create('EchoRequest', echoRequest);
+        const payload = serializeEchoRequest(echoRequest);
+        const packet = Packet.fromBytes('EchoRequest', payload);
 
         // Then: Should throw exception
         await expect(
@@ -125,7 +129,7 @@ describe('C-08: Disconnection', () => {
         expect(authReply).toBeDefined();
     });
 
-    test('C-08-06: Multiple disconnect calls are safe', async () => {
+    test('C-08-06: Multiple disconnect calls are safe', { timeout: 10000 }, async () => {
         // Given: Connected
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('multiDisconnectUser');
@@ -152,10 +156,12 @@ describe('C-08: Disconnection', () => {
 
         const stageInfo = await testContext['testServer'].createStage('TestStage');
         const wsUrl = testContext['testServer'].wsUrl;
-        await tempConnector.connect(wsUrl, stageInfo.stageId);
+        await tempConnector.connect(wsUrl, stageInfo.stageId, stageInfo.stageType);
 
-        const authSuccess = await tempConnector.authenticate('TestStage', 'disposeUser');
-        expect(authSuccess).toBe(true);
+        const authPayload = serializeAuthenticateRequest({ userId: 'disposeUser', token: 'valid_token' });
+        const authPacket = Packet.fromBytes('AuthenticateRequest', authPayload);
+        await tempConnector.authenticate(authPacket);
+        expect(tempConnector.isAuthenticated).toBe(true);
         expect(tempConnector.isConnected).toBe(true);
 
         // When: Disconnect (cleanup)

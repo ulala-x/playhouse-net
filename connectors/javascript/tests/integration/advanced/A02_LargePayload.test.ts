@@ -8,14 +8,15 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeLargePayloadRequest, parseBenchmarkReply } from '../helpers/TestMessages.js';
 
 describe('A-02: Large Payload', () => {
     let testContext: BaseIntegrationTest;
 
     beforeEach(async () => {
         testContext = new BaseIntegrationTest();
+        await testContext['beforeEach']();
         // Use longer timeout for large payloads
-        testContext['connector'] = testContext['connector'];
         testContext['connector']!.init({
             requestTimeoutMs: 30000,  // 30 seconds
             heartbeatIntervalMs: 10000
@@ -32,7 +33,8 @@ describe('A-02: Large Payload', () => {
         await testContext['authenticate']('large-payload-user-1');
 
         // When: Request 1MB payload
-        const largePayloadRequest = Packet.empty('LargePayloadRequest');
+        const payload = serializeLargePayloadRequest({ sizeBytes: 1048576 });
+        const largePayloadRequest = Packet.fromBytes('LargePayloadRequest', payload);
         const response = await testContext['connector']!.request(largePayloadRequest);
 
         // Then: Should receive 1MB response
@@ -41,7 +43,7 @@ describe('A-02: Large Payload', () => {
         expect(response.payload.length).toBeGreaterThan(0);
 
         // Parse the response
-        const reply = testContext['parsePayload'](response);
+        const reply = parseBenchmarkReply(response.payload);
         expect(reply.payload).toBeDefined();
         // Server returns 1MB (1048576 bytes)
         expect(reply.payload.length).toBe(1048576);
@@ -53,9 +55,10 @@ describe('A-02: Large Payload', () => {
         await testContext['authenticate']('large-payload-user-2');
 
         // When: Request large payload
-        const largePayloadRequest = Packet.empty('LargePayloadRequest');
+        const payload = serializeLargePayloadRequest({ sizeBytes: 1048576 });
+        const largePayloadRequest = Packet.fromBytes('LargePayloadRequest', payload);
         const response = await testContext['connector']!.request(largePayloadRequest);
-        const reply = testContext['parsePayload'](response);
+        const reply = parseBenchmarkReply(response.payload);
 
         // Then: Data should have sequential byte pattern
         const data = reply.payload;
@@ -74,9 +77,10 @@ describe('A-02: Large Payload', () => {
         const results: number[] = [];
 
         for (let i = 0; i < 3; i++) {
-            const request = Packet.empty('LargePayloadRequest');
+            const payload = serializeLargePayloadRequest({ sizeBytes: 1048576 });
+            const request = Packet.fromBytes('LargePayloadRequest', payload);
             const response = await testContext['connector']!.request(request);
-            const reply = testContext['parsePayload'](response);
+            const reply = parseBenchmarkReply(response.payload);
             results.push(reply.payload.length);
         }
 
@@ -100,14 +104,15 @@ describe('A-02: Large Payload', () => {
         expect(echoReply.content).toBe(largeContent);
     });
 
-    test('A-02-05: Parallel large payload requests are handled', async () => {
+    test('A-02-05: Parallel large payload requests are handled', { timeout: 30000 }, async () => {
         // Given: Connected and authenticated
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('large-payload-user-5');
 
         // When: Send 3 parallel large payload requests (512KB each)
         const requests = Array.from({ length: 3 }, () => {
-            const request = Packet.empty('LargePayloadRequest');
+            const payload = serializeLargePayloadRequest({ sizeBytes: 1048576 });
+            const request = Packet.fromBytes('LargePayloadRequest', payload);
             return testContext['connector']!.request(request);
         });
 
@@ -116,7 +121,7 @@ describe('A-02: Large Payload', () => {
         // Then: All should complete successfully
         expect(responses).toHaveLength(3);
         responses.forEach(response => {
-            const reply = testContext['parsePayload'](response);
+            const reply = parseBenchmarkReply(response.payload);
             // Server always returns 1MB regardless of request size
             expect(reply.payload.length).toBe(1048576);
         });

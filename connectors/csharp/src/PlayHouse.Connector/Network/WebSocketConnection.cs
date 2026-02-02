@@ -354,9 +354,18 @@ internal sealed class WebSocketConnection : IConnection
         {
             // Non-compressed path: Use ArrayPool
             var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
-            buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
-            offset += payloadSize;
-            payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
+            try
+            {
+                buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
+                offset += payloadSize;
+                payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
+            }
+            catch
+            {
+                // Return buffer on parse error to prevent leak
+                ArrayPool<byte>.Shared.Return(payloadBuffer);
+                throw;
+            }
         }
 
         // Create ParsedPacket wrapper to pass metadata

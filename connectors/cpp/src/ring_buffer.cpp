@@ -139,7 +139,13 @@ size_t RingBuffer::GetContiguousReadSize() const {
         return 0;
     }
 
-    if (tail_ < head_ || (tail_ == head_ && count_ == 0)) {
+    // When buffer is full (count_ == capacity_), head_ == tail_
+    // In this case, data wraps around and we return from tail to end
+    if (count_ == capacity_) {
+        return capacity_ - tail_;
+    }
+
+    if (tail_ < head_) {
         // Data is contiguous
         return head_ - tail_;
     } else {

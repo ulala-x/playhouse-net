@@ -9,6 +9,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
 import { TestServerClient, CreateStageResponse } from '../helpers/TestServerClient.js';
+import { serializeAuthenticateRequest, parseAuthenticateReply, serializeNoResponseRequest } from '../helpers/TestMessages.js';
 
 describe('A-06: Edge Cases', () => {
     const testServer = new TestServerClient();
@@ -17,7 +18,7 @@ describe('A-06: Edge Cases', () => {
 
     beforeEach(async () => {
         stageInfo = await testServer.createStage();
-    });
+    }, 15000);
 
     afterEach(async () => {
         if (connector) {
@@ -39,21 +40,11 @@ describe('A-06: Edge Cases', () => {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    function parsePayload(packet: Packet): any {
-        try {
-            if (packet.payload && packet.payload.length > 0) {
-                return JSON.parse(new TextDecoder().decode(packet.payload));
-            }
-        } catch (e) {
-            // If not JSON, return empty object
-        }
-        return {};
-    }
-
     async function authenticate(conn: Connector, userId: string): Promise<any> {
-        const authRequest = Packet.empty('AuthenticateRequest');
+        const payload = serializeAuthenticateRequest({ userId, token: `token-${userId}` });
+        const authRequest = Packet.fromBytes('AuthenticateRequest', payload);
         const response = await conn.authenticate(authRequest);
-        return parsePayload(response);
+        return parseAuthenticateReply(response.payload);
     }
 
     test('A-06-01: Connect without init throws or fails', async () => {
@@ -114,7 +105,8 @@ describe('A-06: Edge Cases', () => {
         await authenticate(connector!, 'timeout-user');
 
         // When: Request that takes longer than timeout
-        const noResponseRequest = Packet.empty('NoResponseRequest');
+        const payload = serializeNoResponseRequest({ delayMs: 5000 });
+        const noResponseRequest = Packet.fromBytes('NoResponseRequest', payload);
 
         // Then: Should timeout
         await expect(
@@ -130,14 +122,14 @@ describe('A-06: Edge Cases', () => {
         });
 
         // When: Try to connect to invalid host
-        const connected = await connector!.connect(
-            'ws://invalid.host.that.does.not.exist.local:8080/ws',
-            stageInfo!.stageId,
-            stageInfo!.stageType
-        );
-
-        // Then: Connection should fail
-        expect(connected).toBe(false);
+        // Then: Connection should throw an error
+        await expect(
+            connector!.connect(
+                'ws://invalid.host.that.does.not.exist.local:8080/ws',
+                stageInfo!.stageId,
+                stageInfo!.stageType
+            )
+        ).rejects.toThrow();
         expect(connector!.isConnected).toBe(false);
     });
 
@@ -149,14 +141,14 @@ describe('A-06: Edge Cases', () => {
         });
 
         // When: Try to connect to unused port
-        const connected = await connector!.connect(
-            'ws://localhost:59999/ws',  // Unlikely to be used
-            stageInfo!.stageId,
-            stageInfo!.stageType
-        );
-
-        // Then: Connection should fail
-        expect(connected).toBe(false);
+        // Then: Connection should throw an error
+        await expect(
+            connector!.connect(
+                'ws://localhost:59999/ws',  // Unlikely to be used
+                stageInfo!.stageId,
+                stageInfo!.stageType
+            )
+        ).rejects.toThrow();
         expect(connector!.isConnected).toBe(false);
     });
 
@@ -282,9 +274,8 @@ describe('A-06: Edge Cases', () => {
             stageInfo!.stageType
         );
 
-        // Then: StageId and StageType should be stored
-        expect(connector!.stageId).toBe(stageInfo!.stageId);
-        expect(connector!.stageType).toBe(stageInfo!.stageType);
+        // Then: StageId should be stored (Connector doesn't track stageType)
+        expect(connector!.stageId).toBe(BigInt(stageInfo!.stageId));
     });
 
     test('A-06-12: Very long string can be echoed', async () => {

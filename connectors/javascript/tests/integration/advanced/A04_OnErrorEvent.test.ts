@@ -9,6 +9,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeEchoRequest, serializeAuthenticateRequest } from '../helpers/TestMessages.js';
 
 describe('A-04: OnError Event', () => {
     let testContext: BaseIntegrationTest;
@@ -36,7 +37,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Try to send after disconnect
-        const echoRequest = Packet.empty('EchoRequest');
+        const payload = serializeEchoRequest({ content: 'Test', sequence: 1 });
+        const echoRequest = Packet.fromBytes('EchoRequest', payload);
         testContext['connector']!.send(echoRequest);
         testContext['connector']!.mainThreadAction();
 
@@ -60,7 +62,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Try to request after disconnect using callback
-        const echoRequest = Packet.empty('EchoRequest');
+        const payload = serializeEchoRequest({ content: 'Test', sequence: 1 });
+        const echoRequest = Packet.fromBytes('EchoRequest', payload);
         let callbackFired = false;
 
         testContext['connector']!.requestWithCallback(echoRequest, (response: Packet) => {
@@ -88,7 +91,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Send request
-        const echoRequest = Packet.empty('EchoRequest');
+        const payload = serializeEchoRequest({ content: 'Test', sequence: 1 });
+        const echoRequest = Packet.fromBytes('EchoRequest', payload);
         testContext['connector']!.send(echoRequest);
         testContext['connector']!.mainThreadAction();
 
@@ -113,7 +117,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Send after disconnect
-        const echoRequest = Packet.empty('EchoRequest');
+        const payload = serializeEchoRequest({ content: 'Test', sequence: 1 });
+        const echoRequest = Packet.fromBytes('EchoRequest', payload);
         testContext['connector']!.send(echoRequest);
         testContext['connector']!.mainThreadAction();
 
@@ -134,7 +139,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Try to authenticate after disconnect using callback
-        const authRequest = Packet.empty('AuthenticateRequest');
+        const payload = serializeAuthenticateRequest({ userId: 'test-user', token: 'test-token' });
+        const authRequest = Packet.fromBytes('AuthenticateRequest', payload);
         let callbackFired = false;
 
         testContext['connector']!.requestWithCallback(authRequest, (response: Packet) => {
@@ -167,7 +173,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Trigger error
-        const echoRequest = Packet.empty('EchoRequest');
+        const payload = serializeEchoRequest({ content: 'Test', sequence: 1 });
+        const echoRequest = Packet.fromBytes('EchoRequest', payload);
         testContext['connector']!.send(echoRequest);
         testContext['connector']!.mainThreadAction();
 
@@ -192,7 +199,8 @@ describe('A-04: OnError Event', () => {
         await testContext['delay'](500);
 
         // When: Trigger error
-        const echoRequest = Packet.empty('EchoRequest');
+        const payload = serializeEchoRequest({ content: 'Test', sequence: 1 });
+        const echoRequest = Packet.fromBytes('EchoRequest', payload);
 
         try {
             testContext['connector']!.send(echoRequest);

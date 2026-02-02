@@ -79,10 +79,15 @@ public:
     }
 
     void HandleDisconnect() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        is_connected_ = false;
-        if (disconnect_callback_) {
-            disconnect_callback_();
+        std::function<void()> callback;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            is_connected_ = false;
+            callback = disconnect_callback_;
+        }
+        // Invoke callback outside the lock to prevent potential deadlock
+        if (callback) {
+            callback();
         }
     }
 };
@@ -147,11 +152,15 @@ void TcpConnection::Send(const uint8_t* data, size_t size) {
         throw std::runtime_error("Not connected");
     }
 
-    // Async write
+    // Copy data to shared buffer to ensure it lives until async_write completes
+    auto buffer = std::make_shared<std::vector<uint8_t>>(data, data + size);
+
+    // Async write with shared buffer ownership
     asio::async_write(
         impl_->socket_,
-        asio::buffer(data, size),
-        [](const asio::error_code& error, size_t) {
+        asio::buffer(*buffer),
+        [buffer](const asio::error_code& error, size_t) {
+            // buffer is captured by value to extend its lifetime
             if (error) {
                 std::cerr << "Send error: " << error.message() << std::endl;
             }

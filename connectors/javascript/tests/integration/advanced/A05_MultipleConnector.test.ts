@@ -10,6 +10,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
 import { TestServerClient, CreateStageResponse } from '../helpers/TestServerClient.js';
+import { serializeAuthenticateRequest, parseAuthenticateReply, serializeEchoRequest, parseEchoReply, serializeBroadcastRequest, parseBroadcastNotify } from '../helpers/TestMessages.js';
 
 describe('A-05: Multiple Connectors', () => {
     const testServer = new TestServerClient();
@@ -21,7 +22,7 @@ describe('A-05: Multiple Connectors', () => {
         for (let i = 0; i < 5; i++) {
             stages.push(await testServer.createStage());
         }
-    });
+    }, 30000);
 
     afterEach(async () => {
         // Cleanup all connectors
@@ -49,15 +50,11 @@ describe('A-05: Multiple Connectors', () => {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    function parsePayload(packet: Packet): any {
-        try {
-            if (packet.payload && packet.payload.length > 0) {
-                return JSON.parse(new TextDecoder().decode(packet.payload));
-            }
-        } catch (e) {
-            // If not JSON, return empty object
-        }
-        return {};
+    async function authenticate(conn: Connector, userId: string): Promise<any> {
+        const payload = serializeAuthenticateRequest({ userId, token: `token-${userId}` });
+        const authRequest = Packet.fromBytes('AuthenticateRequest', payload);
+        const response = await conn.authenticate(authRequest);
+        return parseAuthenticateReply(response.payload);
     }
 
     test('A-05-01: Multiple connectors can connect simultaneously', async () => {
@@ -90,8 +87,7 @@ describe('A-05: Multiple Connectors', () => {
 
         // When: Authenticate each with different user
         const authPromises = testConnectors.map(async (connector, index) => {
-            const authRequest = Packet.empty('AuthenticateRequest');
-            return await connector.authenticate(authRequest);
+            return await authenticate(connector, `multi-user-${index}`);
         });
 
         const authResults = await Promise.all(authPromises);
@@ -100,7 +96,7 @@ describe('A-05: Multiple Connectors', () => {
         expect(testConnectors.every(c => c.isAuthenticated)).toBe(true);
         authResults.forEach((result, index) => {
             expect(result).toBeDefined();
-            expect(result.msgId).toBe('AuthenticateReply');
+            expect(result.success).toBe(true);
         });
     });
 
@@ -115,13 +111,13 @@ describe('A-05: Multiple Connectors', () => {
                 stages[i].stageType
             );
 
-            const authRequest = Packet.empty('AuthenticateRequest');
-            await testConnectors[i].authenticate(authRequest);
+            await authenticate(testConnectors[i], `multi-user-${i}`);
         }
 
         // When: Send echo requests simultaneously
         const requestPromises = testConnectors.map(async (connector, index) => {
-            const echoRequest = Packet.empty('EchoRequest');
+            const payload = serializeEchoRequest({ content: `Echo ${index}`, sequence: index });
+            const echoRequest = Packet.fromBytes('EchoRequest', payload);
             return await connector.request(echoRequest);
         });
 
@@ -131,6 +127,9 @@ describe('A-05: Multiple Connectors', () => {
         expect(responses).toHaveLength(3);
         responses.forEach((response, index) => {
             expect(response.msgId).toBe('EchoReply');
+            const reply = parseEchoReply(response.payload);
+            expect(reply.content).toBe(`Echo ${index}`);
+            expect(reply.sequence).toBe(index);
         });
     });
 
@@ -145,8 +144,7 @@ describe('A-05: Multiple Connectors', () => {
                 stages[i].stageType
             );
 
-            const authRequest = Packet.empty('AuthenticateRequest');
-            await testConnectors[i].authenticate(authRequest);
+            await authenticate(testConnectors[i], `multi-user-${i}`);
         }
 
         // When: Disconnect first connector
@@ -160,9 +158,12 @@ describe('A-05: Multiple Connectors', () => {
 
         // Others can still make requests
         for (let i = 1; i < testConnectors.length; i++) {
-            const echoRequest = Packet.empty('EchoRequest');
+            const payload = serializeEchoRequest({ content: `Echo ${i}`, sequence: i });
+            const echoRequest = Packet.fromBytes('EchoRequest', payload);
             const response = await testConnectors[i].request(echoRequest);
             expect(response.msgId).toBe('EchoReply');
+            const reply = parseEchoReply(response.payload);
+            expect(reply.content).toBe(`Echo ${i}`);
         }
     });
 
@@ -179,15 +180,17 @@ describe('A-05: Multiple Connectors', () => {
                 sharedStage.stageType
             );
 
-            const authRequest = Packet.empty('AuthenticateRequest');
-            await testConnectors[i].authenticate(authRequest);
+            await authenticate(testConnectors[i], `multi-user-${i}`);
         }
 
         // Then: All can make independent requests
         for (let i = 0; i < testConnectors.length; i++) {
-            const echoRequest = Packet.empty('EchoRequest');
+            const payload = serializeEchoRequest({ content: `Echo ${i}`, sequence: i });
+            const echoRequest = Packet.fromBytes('EchoRequest', payload);
             const response = await testConnectors[i].request(echoRequest);
             expect(response.msgId).toBe('EchoReply');
+            const reply = parseEchoReply(response.payload);
+            expect(reply.content).toBe(`Echo ${i}`);
         }
     });
 
@@ -237,15 +240,15 @@ describe('A-05: Multiple Connectors', () => {
 
         connector1.onReceive = (packet: Packet) => {
             if (packet.msgId === 'BroadcastNotify') {
-                const notify = parsePayload(packet);
-                connector1Received.push(notify.data || 'From Connector 1');
+                const notify = parseBroadcastNotify(packet.payload);
+                connector1Received.push(notify.data);
             }
         };
 
         connector2.onReceive = (packet: Packet) => {
             if (packet.msgId === 'BroadcastNotify') {
-                const notify = parsePayload(packet);
-                connector2Received.push(notify.data || 'From Connector 2');
+                const notify = parseBroadcastNotify(packet.payload);
+                connector2Received.push(notify.data);
             }
         };
 
@@ -253,17 +256,16 @@ describe('A-05: Multiple Connectors', () => {
         await connector1.connect(testServer.wsUrl, stages[0].stageId, stages[0].stageType);
         await connector2.connect(testServer.wsUrl, stages[1].stageId, stages[1].stageType);
 
-        const auth1 = Packet.empty('AuthenticateRequest');
-        await connector1.authenticate(auth1);
-
-        const auth2 = Packet.empty('AuthenticateRequest');
-        await connector2.authenticate(auth2);
+        await authenticate(connector1, 'connector1-user');
+        await authenticate(connector2, 'connector2-user');
 
         // When: Each sends broadcast request
-        const broadcast1 = Packet.empty('BroadcastRequest');
+        const payload1 = serializeBroadcastRequest({ content: 'From Connector 1' });
+        const broadcast1 = Packet.fromBytes('BroadcastRequest', payload1);
         connector1.send(broadcast1);
 
-        const broadcast2 = Packet.empty('BroadcastRequest');
+        const payload2 = serializeBroadcastRequest({ content: 'From Connector 2' });
+        const broadcast2 = Packet.fromBytes('BroadcastRequest', payload2);
         connector2.send(broadcast2);
 
         // Wait for push messages

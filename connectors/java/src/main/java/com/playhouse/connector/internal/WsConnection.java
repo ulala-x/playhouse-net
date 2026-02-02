@@ -196,11 +196,19 @@ public final class WsConnection implements IConnection {
             return CompletableFuture.completedFuture(false);
         }
 
+        if (data == null || !data.hasRemaining()) {
+            logger.warn("Attempted to send null or empty data");
+            return CompletableFuture.completedFuture(false);
+        }
+
         CompletableFuture<Boolean> future = new CompletableFuture<>();
 
         try {
-            // ByteBuffer를 Netty ByteBuf로 변환
-            ByteBuf byteBuf = Unpooled.wrappedBuffer(data);
+            // ByteBuffer를 복사하여 Netty ByteBuf로 변환 (원본 ByteBuffer 보호)
+            int dataSize = data.remaining();
+            byte[] dataBytes = new byte[dataSize];
+            data.get(dataBytes);
+            ByteBuf byteBuf = Unpooled.wrappedBuffer(dataBytes);
 
             // Binary WebSocket Frame으로 전송
             BinaryWebSocketFrame frame = new BinaryWebSocketFrame(byteBuf);
@@ -210,7 +218,7 @@ public final class WsConnection implements IConnection {
             writeFuture.addListener((ChannelFutureListener) channelFuture -> {
                 if (channelFuture.isSuccess()) {
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Sent {} bytes via WebSocket", data.remaining());
+                        logger.debug("Sent {} bytes via WebSocket", dataSize);
                     }
                     future.complete(true);
                 } else {
@@ -338,17 +346,25 @@ public final class WsConnection implements IConnection {
         protected void channelRead0(ChannelHandlerContext ctx, WebSocketFrame frame) {
             if (frame instanceof BinaryWebSocketFrame) {
                 ByteBuf byteBuf = frame.content();
-                try {
-                    int readableBytes = byteBuf.readableBytes();
-                    if (readableBytes > 0) {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("Received {} bytes via WebSocket", readableBytes);
-                        }
+                int readableBytes = byteBuf.readableBytes();
 
+                if (readableBytes <= 0) {
+                    return;
+                }
+
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Received {} bytes via WebSocket", readableBytes);
+                }
+
+                synchronized (receiveBuffer) {
+                    try {
                         // ByteBuf를 ByteBuffer로 변환하여 기존 버퍼에 추가
                         ensureBufferCapacity(receiveBuffer.position() + readableBytes);
-                        byteBuf.readBytes(receiveBuffer.array(), receiveBuffer.position(), readableBytes);
-                        receiveBuffer.position(receiveBuffer.position() + readableBytes);
+
+                        // ByteBuf의 데이터를 안전하게 복사
+                        byte[] tempBuffer = new byte[readableBytes];
+                        byteBuf.readBytes(tempBuffer);
+                        receiveBuffer.put(tempBuffer);
 
                         // 버퍼를 읽기 모드로 전환
                         receiveBuffer.flip();
@@ -358,13 +374,15 @@ public final class WsConnection implements IConnection {
                             onReceive.accept(receiveBuffer);
                         } catch (Exception e) {
                             logger.error("Error processing received data", e);
+                        } finally {
+                            // 버퍼 정리 (finally에서 처리하여 예외 발생 시에도 안전)
+                            receiveBuffer.compact();
                         }
-
-                        // 버퍼 정리
-                        receiveBuffer.compact();
+                    } catch (Exception e) {
+                        logger.error("Error reading WebSocket frame", e);
+                        // 버퍼 상태 복구
+                        receiveBuffer.clear();
                     }
-                } catch (Exception e) {
-                    logger.error("Error reading WebSocket frame", e);
                 }
             } else if (frame instanceof TextWebSocketFrame) {
                 logger.warn("Received text frame, but expected binary frame");
@@ -382,6 +400,10 @@ public final class WsConnection implements IConnection {
         public void channelInactive(ChannelHandlerContext ctx) {
             logger.info("WebSocket connection closed by server");
             connected = false;
+            // Complete handshakeFuture if it's still pending (prevents hang on connection failure before handshake)
+            if (handshakeFuture != null && !handshakeFuture.isDone()) {
+                handshakeFuture.complete(false);
+            }
             onClosed.run();
         }
 
@@ -389,6 +411,10 @@ public final class WsConnection implements IConnection {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             logger.error("Exception caught in WebSocket channel", cause);
             connected = false;
+            // Complete handshakeFuture if it's still pending (prevents hang on connection failure before handshake)
+            if (handshakeFuture != null && !handshakeFuture.isDone()) {
+                handshakeFuture.complete(false);
+            }
             onClosed.run();
             ctx.close();
         }

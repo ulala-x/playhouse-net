@@ -27,8 +27,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pendingRequests = new();
     private readonly ConcurrentQueue<ParsedPacket> _packetQueue = new();
     private int _msgSeqCounter;
-    private bool _isAuthenticated;
-    private bool _debugMode;
+    private volatile bool _isAuthenticated;
+    private volatile bool _debugMode;
 
     // HeartBeat & IdleTimeout
     private readonly Stopwatch _lastReceivedTime = new();
@@ -432,47 +432,56 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private void ProcessPacket(ParsedPacket parsed)
     {
         // Response 처리 (MsgSeq > 0)
-        if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
+        if (parsed.MsgSeq > 0)
         {
-            // 타임아웃 타이머 취소
-            pending.Dispose();
-
-            if (pending.IsAuthenticate && parsed.ErrorCode == 0)
+            if (_pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
             {
-                _isAuthenticated = true;
-            }
+                // 타임아웃 타이머 취소
+                pending.Dispose();
 
-            if (parsed.ErrorCode != 0)
-            {
-                parsed.Dispose(); // Error case - dispose packet
-                if (pending.Tcs != null)
+                if (pending.IsAuthenticate && parsed.ErrorCode == 0)
                 {
-                    pending.Tcs.TrySetException(new ConnectorException(parsed.StageId, parsed.ErrorCode, pending.Request, parsed.MsgSeq));
+                    _isAuthenticated = true;
                 }
-                else if (pending.Callback != null)
+
+                if (parsed.ErrorCode != 0)
                 {
-                    _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
+                    parsed.Dispose(); // Error case - dispose packet
+                    if (pending.Tcs != null)
+                    {
+                        pending.Tcs.TrySetException(new ConnectorException(parsed.StageId, parsed.ErrorCode, pending.Request, parsed.MsgSeq));
+                    }
+                    else if (pending.Callback != null)
+                    {
+                        _callback.ErrorCallback(parsed.StageId, parsed.ErrorCode, pending.Request);
+                    }
+                }
+                else
+                {
+                    if (pending.Tcs != null)
+                    {
+                        // Async pattern - caller owns the packet and is responsible for disposal
+                        pending.Tcs.TrySetResult(parsed);
+                    }
+                    else if (pending.Callback != null)
+                    {
+                        // Callback pattern - dispose after callback
+                        try
+                        {
+                            pending.Callback(parsed);
+                        }
+                        finally
+                        {
+                            parsed.Dispose();
+                        }
+                    }
                 }
             }
             else
             {
-                if (pending.Tcs != null)
-                {
-                    // Async pattern - caller owns the packet and is responsible for disposal
-                    pending.Tcs.TrySetResult(parsed);
-                }
-                else if (pending.Callback != null)
-                {
-                    // Callback pattern - dispose after callback
-                    try
-                    {
-                        pending.Callback(parsed);
-                    }
-                    finally
-                    {
-                        parsed.Dispose();
-                    }
-                }
+                // Late response arrived after timeout - dispose and ignore
+                // Do NOT route to push handler as this is a stale response
+                parsed.Dispose();
             }
 
             return;
@@ -529,9 +538,13 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_connection != null)
+        // Properly clean up all resources: pending requests, queued packets, and connection
+        await DisconnectAsync();
+
+        // Drain and dispose any remaining queued packets
+        while (_packetQueue.TryDequeue(out var packet))
         {
-            await _connection.DisposeAsync();
+            packet.Dispose();
         }
     }
 

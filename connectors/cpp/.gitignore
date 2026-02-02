@@ -30,5 +30,8 @@ Makefile
 # vcpkg
 vcpkg_installed/
 
+# Third-party dependencies (downloaded at build time)
+third_party/
+
 # Test results
 Testing/

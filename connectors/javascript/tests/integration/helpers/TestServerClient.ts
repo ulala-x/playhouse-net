@@ -21,18 +21,25 @@ export interface CreateStageResponse {
  * Environment variables:
  * - TEST_SERVER_HOST: Server hostname (default: localhost)
  * - TEST_SERVER_HTTP_PORT: HTTP port (default: 8080)
- * - TEST_SERVER_WS_PORT: WebSocket port (default: 38001)
+ * - TEST_SERVER_WS_PORT: WebSocket port (default: 8080, same as HTTP)
+ * - TEST_SERVER_WS_PATH: WebSocket path (default: /ws)
  */
 export class TestServerClient {
     public readonly host: string;
     public readonly httpPort: number;
     public readonly wsPort: number;
-    private stageIdCounter = 1;
+    public readonly wsPath: string;
+    // stageId must fit in UInt16 (0-65535)
+    // Use random offset to avoid conflicts with other test runs
+    private stageIdCounter: number;
 
     constructor() {
         this.host = process.env.TEST_SERVER_HOST || 'localhost';
         this.httpPort = parseInt(process.env.TEST_SERVER_HTTP_PORT || '8080', 10);
-        this.wsPort = parseInt(process.env.TEST_SERVER_WS_PORT || '38001', 10);
+        this.wsPort = parseInt(process.env.TEST_SERVER_WS_PORT || '8080', 10);
+        this.wsPath = process.env.TEST_SERVER_WS_PATH || '/ws';
+        // Start with random offset within valid UInt16 range (1000-60000) to avoid conflicts
+        this.stageIdCounter = 1000 + Math.floor(Math.random() * 59000);
     }
 
     /**
@@ -46,7 +53,7 @@ export class TestServerClient {
      * Get the WebSocket URL
      */
     get wsUrl(): string {
-        return `ws://${this.host}:${this.wsPort}`;
+        return `ws://${this.host}:${this.wsPort}${this.wsPath}`;
     }
 
     /**
@@ -73,7 +80,8 @@ export class TestServerClient {
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to create stage: ${response.status} ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(`Failed to create stage: ${response.status} ${response.statusText}: ${errorText}`);
         }
 
         const data = await response.json() as { success: boolean; stageId: number; replyPayloadId?: string };

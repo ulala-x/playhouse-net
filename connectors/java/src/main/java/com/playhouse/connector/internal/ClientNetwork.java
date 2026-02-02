@@ -25,11 +25,11 @@ public final class ClientNetwork {
     private final RequestCache requestCache;
     private final BlockingQueue<Runnable> callbackQueue;
 
-    // Callbacks
-    private Consumer<Boolean> onConnect;
-    private Consumer<Packet> onReceive;
-    private BiConsumer<Integer, String> onError;
-    private Runnable onDisconnect;
+    // Callbacks - volatile for thread safety (callbacks set from main thread, read from Netty threads)
+    private volatile Consumer<Boolean> onConnect;
+    private volatile Consumer<Packet> onReceive;
+    private volatile BiConsumer<Integer, String> onError;
+    private volatile Runnable onDisconnect;
 
     private volatile boolean authenticated;
 
@@ -171,14 +171,18 @@ public final class ClientNetwork {
             );
         }
 
-        CompletableFuture<Packet> responseFuture = requestCache.register(packet);
-        short msgSeq = requestCache.getMsgSeq(responseFuture);
+        // Use registerWithSeq to get msgSeq directly (avoids O(n) scan and race conditions)
+        RequestCache.RegisterResult result = requestCache.registerWithSeq(packet);
+        short msgSeq = result.msgSeq;
+        CompletableFuture<Packet> responseFuture = result.future;
 
         ByteBuffer buffer = PacketCodec.encodeRequest(packet, msgSeq, stageId);
         connection.sendAsync(buffer)
             .thenAccept(success -> {
                 if (!success) {
                     logger.error("Failed to send request: {}", packet.getMsgId());
+                    // Remove the entry from cache to prevent orphaned requests
+                    requestCache.remove(msgSeq);
                     responseFuture.completeExceptionally(
                         new ConnectorException(1000, "Send failed", packet)
                     );
@@ -222,6 +226,19 @@ public final class ClientNetwork {
             if (packetSize == -1 || buffer.remaining() < packetSize) {
                 // 데이터 부족, 다음 수신 대기
                 break;
+            }
+
+            if (packetSize == -2) {
+                // 유효하지 않은 패킷 크기 (보안 위반 또는 프로토콜 오류)
+                logger.error("Invalid packet size detected, closing connection");
+                enqueueCallback(() -> {
+                    if (onError != null) {
+                        onError.accept(2002, "Invalid packet size");
+                    }
+                });
+                // 연결 종료
+                disconnectAsync();
+                return;
             }
 
             // 패킷 추출
@@ -275,9 +292,16 @@ public final class ClientNetwork {
      * 콜백 큐에 추가
      */
     private void enqueueCallback(Runnable callback) {
+        if (callback == null) {
+            logger.warn("Null callback provided, ignoring");
+            return;
+        }
+
         if (!callbackQueue.offer(callback)) {
-            logger.warn("Callback queue full, executing immediately");
-            callback.run();
+            logger.error("Callback queue full (size: {}), dropping callback. Consider increasing queue size or processing callbacks more frequently.",
+                callbackQueue.size());
+            // 큐가 가득 찬 경우 즉시 실행하는 것은 위험할 수 있음 (스택 오버플로우 가능성)
+            // 대신 에러 로그만 남기고 드롭
         }
     }
 

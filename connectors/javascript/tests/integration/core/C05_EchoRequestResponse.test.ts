@@ -7,6 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeEchoRequest, parseEchoReply } from '../helpers/TestMessages.js';
 
 describe('C-05: Echo Request-Response', () => {
     let testContext: BaseIntegrationTest;
@@ -44,14 +45,15 @@ describe('C-05: Echo Request-Response', () => {
         };
 
         // When: Call requestAsync
-        const requestPacket = Packet.create('EchoRequest', echoRequest);
+        const payload = serializeEchoRequest(echoRequest);
+        const requestPacket = Packet.fromBytes('EchoRequest', payload);
         const responsePacket = await testContext['connector']!.request(requestPacket);
 
         // Then: Response should be correct
         expect(responsePacket).toBeDefined();
         expect(responsePacket.msgId).toBe('EchoReply');
 
-        const echoReply = testContext['parsePayload'](responsePacket);
+        const echoReply = parseEchoReply(responsePacket.payload);
         expect(echoReply.content).toBe('Async Echo Test');
         expect(echoReply.sequence).toBe(1);
     });
@@ -67,9 +69,10 @@ describe('C-05: Echo Request-Response', () => {
         let callbackInvoked = false;
 
         // When: Request with callback
-        const requestPacket = Packet.create('EchoRequest', echoRequest);
-        testContext['connector']!.request(requestPacket, (responsePacket) => {
-            echoReply = testContext['parsePayload'](responsePacket);
+        const payload = serializeEchoRequest(echoRequest);
+        const requestPacket = Packet.fromBytes('EchoRequest', payload);
+        testContext['connector']!.requestWithCallback(requestPacket, (responsePacket) => {
+            echoReply = parseEchoReply(responsePacket.payload);
             callbackInvoked = true;
         });
 
@@ -159,7 +162,8 @@ describe('C-05: Echo Request-Response', () => {
         };
 
         // When: Send echo request
-        const requestPacket = Packet.create('EchoRequest', echoRequest);
+        const payload = serializeEchoRequest(echoRequest);
+        const requestPacket = Packet.fromBytes('EchoRequest', payload);
         const responsePacket = await testContext['connector']!.request(requestPacket);
 
         // Then: Response message type should be EchoReply

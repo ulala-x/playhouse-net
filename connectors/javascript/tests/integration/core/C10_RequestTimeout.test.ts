@@ -9,6 +9,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
+import { ErrorCode } from '../../../src/types.js';
+import { serializeNoResponseRequest } from '../helpers/TestMessages.js';
 
 describe('C-10: Request Timeout', () => {
     let testContext: BaseIntegrationTest;
@@ -39,7 +41,8 @@ describe('C-10: Request Timeout', () => {
         };
 
         // When: Send request without response
-        const requestPacket = Packet.create('NoResponseRequest', noResponseRequest);
+        const payload = serializeNoResponseRequest(noResponseRequest);
+        const requestPacket = Packet.fromBytes('NoResponseRequest', payload);
 
         // Then: Should timeout
         await expect(
@@ -64,7 +67,8 @@ describe('C-10: Request Timeout', () => {
         };
 
         // When: Timeout occurs
-        const requestPacket = Packet.create('NoResponseRequest', noResponseRequest);
+        const payload = serializeNoResponseRequest(noResponseRequest);
+        const requestPacket = Packet.fromBytes('NoResponseRequest', payload);
         try {
             await connector.request(requestPacket);
         } catch (error) {
@@ -106,7 +110,8 @@ describe('C-10: Request Timeout', () => {
         };
 
         // When: Callback-based request without response
-        const requestPacket = Packet.create('NoResponseRequest', noResponseRequest);
+        const payload = serializeNoResponseRequest(noResponseRequest);
+        const requestPacket = Packet.fromBytes('NoResponseRequest', payload);
         connector.requestWithCallback(requestPacket, () => {
             callbackInvoked = true;
         });
@@ -119,8 +124,7 @@ describe('C-10: Request Timeout', () => {
 
         // Then: OnError event should occur and callback should not be invoked
         expect(completed).toBe(true);
-        // ErrorCode.RequestTimeout = 3
-        expect(errorCode).toBe(3);
+        expect(errorCode).toBe(ErrorCode.RequestTimeout);
         expect(callbackInvoked).toBe(false);
     });
 
@@ -143,7 +147,8 @@ describe('C-10: Request Timeout', () => {
         const noResponseRequest = {
             delayMs: 10000
         };
-        const timeoutPacket = Packet.create('NoResponseRequest', noResponseRequest);
+        const payload = serializeNoResponseRequest(noResponseRequest);
+        const timeoutPacket = Packet.fromBytes('NoResponseRequest', payload);
         const timeoutTask = connector.request(timeoutPacket);
 
         const echoTask3 = testContext['echo']('Normal 3', 3);
@@ -222,7 +227,8 @@ describe('C-10: Request Timeout', () => {
         };
 
         // When: Timeout occurs
-        const requestPacket = Packet.create('NoResponseRequest', noResponseRequest);
+        const payload = serializeNoResponseRequest(noResponseRequest);
+        const requestPacket = Packet.fromBytes('NoResponseRequest', payload);
         let caughtException: Error | null = null;
 
         try {

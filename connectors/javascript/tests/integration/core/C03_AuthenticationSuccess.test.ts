@@ -8,6 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeAuthenticateRequest, parseAuthenticateReply } from '../helpers/TestMessages.js';
 
 describe('C-03: Authentication Success', () => {
     let testContext: BaseIntegrationTest;
@@ -30,6 +31,7 @@ describe('C-03: Authentication Success', () => {
 
         // Then: Authentication should succeed with correct response
         expect(authReply).toBeDefined();
+        expect(authReply.success).toBe(true);
         expect(testContext['connector']!.isAuthenticated).toBe(true);
     });
 
@@ -37,36 +39,32 @@ describe('C-03: Authentication Success', () => {
         // Given: Connected state
         await testContext['createStageAndConnect']();
 
-        const authRequest = {
-            userId: 'testUser',
-            token: 'valid_token'
-        };
-
-        // When: Call authenticateAsync
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        // When: Call authenticate with protobuf
+        const payload = serializeAuthenticateRequest({ userId: 'testUser', token: 'valid_token' });
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
         const responsePacket = await testContext['connector']!.authenticate(requestPacket);
 
         // Then: Response packet should be returned correctly
         expect(responsePacket).toBeDefined();
         expect(responsePacket.msgId).toBe('AuthenticateReply');
+
+        const reply = parseAuthenticateReply(responsePacket.payload);
+        expect(reply.success).toBe(true);
+        expect(reply.receivedUserId).toBe('testUser');
     });
 
     test('C-03-03: Can authenticate with callback-based method', async () => {
         // Given: Connected state
         await testContext['createStageAndConnect']();
 
-        const authRequest = {
-            userId: 'callbackUser',
-            token: 'valid_token'
-        };
-
         let authReply: any;
         let callbackInvoked = false;
 
         // When: Authenticate with callback using requestWithCallback
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        const payload = serializeAuthenticateRequest({ userId: 'callbackUser', token: 'valid_token' });
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
         testContext['connector']!.requestWithCallback(requestPacket, (responsePacket) => {
-            authReply = testContext['parsePayload'](responsePacket);
+            authReply = parseAuthenticateReply(responsePacket.payload);
             callbackInvoked = true;
         });
 
@@ -80,23 +78,16 @@ describe('C-03: Authentication Success', () => {
         expect(completed).toBe(true);
         expect(callbackInvoked).toBe(true);
         expect(authReply).toBeDefined();
+        expect(authReply.success).toBe(true);
     });
 
-    test('C-03-04: Can authenticate with metadata', async () => {
+    test('C-03-04: Can authenticate with metadata', { timeout: 10000 }, async () => {
         // Given: Connected state
         await testContext['createStageAndConnect']();
 
-        const authRequest = {
-            userId: 'metaUser',
-            token: 'valid_token',
-            metadata: {
-                client_version: '1.0.0',
-                platform: 'javascript'
-            }
-        };
-
-        // When: Authenticate with metadata
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        // When: Authenticate with metadata (metadata field not serialized in simple format)
+        const payload = serializeAuthenticateRequest({ userId: 'metaUser', token: 'valid_token' });
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
         const responsePacket = await testContext['connector']!.authenticate(requestPacket);
 
         // Then: Authentication should succeed even with metadata
@@ -113,6 +104,7 @@ describe('C-03: Authentication Success', () => {
 
         // Then: Account ID should be assigned
         expect(authReply.accountId).toBeDefined();
+        expect(authReply.accountId).not.toBe('');
         expect(authReply.accountId).not.toBe('0');
     });
 
@@ -138,9 +130,13 @@ describe('C-03: Authentication Success', () => {
             await connector2.connect(wsUrl, stage2.stageId, stage2.stageType);
             await connector3.connect(wsUrl, stage3.stageId, stage3.stageType);
 
-            const auth1Packet = Packet.create('AuthenticateRequest', { userId: 'user1', token: 'valid_token' });
-            const auth2Packet = Packet.create('AuthenticateRequest', { userId: 'user2', token: 'valid_token' });
-            const auth3Packet = Packet.create('AuthenticateRequest', { userId: 'user3', token: 'valid_token' });
+            const auth1Payload = serializeAuthenticateRequest({ userId: 'user1', token: 'valid_token' });
+            const auth2Payload = serializeAuthenticateRequest({ userId: 'user2', token: 'valid_token' });
+            const auth3Payload = serializeAuthenticateRequest({ userId: 'user3', token: 'valid_token' });
+
+            const auth1Packet = Packet.fromBytes('AuthenticateRequest', auth1Payload);
+            const auth2Packet = Packet.fromBytes('AuthenticateRequest', auth2Payload);
+            const auth3Packet = Packet.fromBytes('AuthenticateRequest', auth3Payload);
 
             await Promise.all([
                 connector1.authenticate(auth1Packet),

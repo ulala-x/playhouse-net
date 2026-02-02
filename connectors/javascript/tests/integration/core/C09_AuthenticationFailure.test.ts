@@ -9,6 +9,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeAuthenticateRequest, serializeEchoRequest } from '../helpers/TestMessages.js';
 
 describe('C-09: Authentication Failure', () => {
     let testContext: BaseIntegrationTest;
@@ -35,7 +36,8 @@ describe('C-09: Authentication Failure', () => {
             token: 'invalid_token' // Invalid token
         };
 
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        const payload = serializeAuthenticateRequest(authRequest);
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
 
         // Then: Authentication should fail with error
         await expect(
@@ -56,7 +58,8 @@ describe('C-09: Authentication Failure', () => {
             token: 'valid_token'
         };
 
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        const payload = serializeAuthenticateRequest(authRequest);
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
 
         // Then: Authentication should fail with error
         await expect(
@@ -76,7 +79,8 @@ describe('C-09: Authentication Failure', () => {
             token: '' // Empty token
         };
 
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        const payload = serializeAuthenticateRequest(authRequest);
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
 
         // Then: Authentication should fail with error
         await expect(
@@ -97,7 +101,8 @@ describe('C-09: Authentication Failure', () => {
             userId: 'testUser',
             token: 'invalid_token'
         };
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        const payload = serializeAuthenticateRequest(authRequest);
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
 
         try {
             await testContext['connector']!.authenticate(requestPacket);
@@ -119,7 +124,8 @@ describe('C-09: Authentication Failure', () => {
             userId: 'testUser',
             token: 'invalid_token'
         };
-        const failPacket = Packet.create('AuthenticateRequest', failRequest);
+        const payload = serializeAuthenticateRequest(failRequest);
+        const failPacket = Packet.fromBytes('AuthenticateRequest', payload);
 
         try {
             await testContext['connector']!.authenticate(failPacket);
@@ -146,7 +152,8 @@ describe('C-09: Authentication Failure', () => {
         };
 
         // When: Authentication fails
-        const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+        const payload = serializeAuthenticateRequest(authRequest);
+        const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
 
         // Then: Exception should contain error information
         let caughtError: Error | null = null;
@@ -172,7 +179,8 @@ describe('C-09: Authentication Failure', () => {
             content: 'Test',
             sequence: 1
         };
-        const requestPacket = Packet.create('EchoRequest', echoRequest);
+        const payload = serializeEchoRequest(echoRequest);
+        const requestPacket = Packet.fromBytes('EchoRequest', payload);
 
         // Then: Should fail or return error
         const error = await testContext['connector']!.request(requestPacket).catch(e => e);
@@ -201,7 +209,8 @@ describe('C-09: Authentication Failure', () => {
                 token: 'invalid_token'
             };
 
-            const requestPacket = Packet.create('AuthenticateRequest', authRequest);
+            const payload = serializeAuthenticateRequest(authRequest);
+            const requestPacket = Packet.fromBytes('AuthenticateRequest', payload);
             try {
                 await testContext['connector']!.authenticate(requestPacket);
                 expect(true).toBe(false); // Should not reach here

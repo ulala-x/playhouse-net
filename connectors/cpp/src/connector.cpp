@@ -36,8 +36,14 @@ void Connector::Init(const ConnectorConfig& config) {
 
     // Set up callbacks forwarding
     impl_->network_->SetOnConnect([this](bool success) {
-        if (OnConnect) {
-            OnConnect();
+        if (success) {
+            if (OnConnect) {
+                OnConnect();
+            }
+        } else {
+            if (OnError) {
+                OnError(error_code::CONNECTION_FAILED, "Failed to connect to server");
+            }
         }
     });
 

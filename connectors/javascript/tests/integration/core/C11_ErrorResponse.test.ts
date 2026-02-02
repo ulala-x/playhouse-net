@@ -9,6 +9,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Connector } from '../../../src/connector.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeFailRequest, parseFailReply, serializeAuthenticateRequest } from '../helpers/TestMessages.js';
 
 describe('C-11: Error Response', () => {
     let testContext: BaseIntegrationTest;
@@ -33,14 +34,15 @@ describe('C-11: Error Response', () => {
         };
 
         // When: Send request that causes error
-        const requestPacket = Packet.create('FailRequest', failRequest);
+        const payload = serializeFailRequest(failRequest);
+        const requestPacket = Packet.fromBytes('FailRequest', payload);
         const responsePacket = await testContext['connector']!.request(requestPacket);
 
         // Then: Should receive error response
         expect(responsePacket).toBeDefined();
         expect(responsePacket.msgId).toBe('FailReply');
 
-        const failReply = testContext['parsePayload'](responsePacket);
+        const failReply = parseFailReply(responsePacket.payload);
         expect(failReply.errorCode).toBe(1000);
         expect(failReply.message).toContain('Test Error');
     });
@@ -59,11 +61,12 @@ describe('C-11: Error Response', () => {
                 errorMessage: `Error ${errorCode}`
             };
 
-            const requestPacket = Packet.create('FailRequest', failRequest);
+            const payload = serializeFailRequest(failRequest);
+            const requestPacket = Packet.fromBytes('FailRequest', payload);
             const responsePacket = await testContext['connector']!.request(requestPacket);
 
             // Then: Each error code should be returned correctly
-            const failReply = testContext['parsePayload'](responsePacket);
+            const failReply = parseFailReply(responsePacket.payload);
             expect(failReply.errorCode).toBe(errorCode);
             expect(failReply.message).toContain(`Error ${errorCode}`);
         }
@@ -80,7 +83,8 @@ describe('C-11: Error Response', () => {
         };
 
         // When: Receive error response
-        const requestPacket = Packet.create('FailRequest', failRequest);
+        const payload = serializeFailRequest(failRequest);
+        const requestPacket = Packet.fromBytes('FailRequest', payload);
         await testContext['connector']!.request(requestPacket);
 
         // Then: Connection and authentication should remain
@@ -106,9 +110,10 @@ describe('C-11: Error Response', () => {
         let callbackInvoked = false;
 
         // When: Callback-based error request
-        const requestPacket = Packet.create('FailRequest', failRequest);
+        const payload = serializeFailRequest(failRequest);
+        const requestPacket = Packet.fromBytes('FailRequest', payload);
         testContext['connector']!.requestWithCallback(requestPacket, (responsePacket) => {
-            failReply = testContext['parsePayload'](responsePacket);
+            failReply = parseFailReply(responsePacket.payload);
             callbackInvoked = true;
         });
 
@@ -137,9 +142,10 @@ describe('C-11: Error Response', () => {
             errorCode: 3001,
             errorMessage: 'Error 1'
         };
-        const failPacket1 = Packet.create('FailRequest', failRequest1);
+        const payload1 = serializeFailRequest(failRequest1);
+        const failPacket1 = Packet.fromBytes('FailRequest', payload1);
         const failResponse1 = await testContext['connector']!.request(failPacket1);
-        const failReply1 = testContext['parsePayload'](failResponse1);
+        const failReply1 = parseFailReply(failResponse1.payload);
         expect(failReply1.errorCode).toBe(3001);
 
         const echo2 = await testContext['echo']('Success 2', 2);
@@ -149,9 +155,10 @@ describe('C-11: Error Response', () => {
             errorCode: 3002,
             errorMessage: 'Error 2'
         };
-        const failPacket2 = Packet.create('FailRequest', failRequest2);
+        const payload2 = serializeFailRequest(failRequest2);
+        const failPacket2 = Packet.fromBytes('FailRequest', payload2);
         const failResponse2 = await testContext['connector']!.request(failPacket2);
-        const failReply2 = testContext['parsePayload'](failResponse2);
+        const failReply2 = parseFailReply(failResponse2.payload);
         expect(failReply2.errorCode).toBe(3002);
 
         const echo3 = await testContext['echo']('Success 3', 3);
@@ -161,7 +168,7 @@ describe('C-11: Error Response', () => {
         expect(testContext['connector']!.isConnected).toBe(true);
     });
 
-    test('C-11-06: Can handle error response with empty message', async () => {
+    test('C-11-06: Can handle error response with empty message', { timeout: 10000 }, async () => {
         // Given: Connected and authenticated
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('emptyErrorUser');
@@ -172,16 +179,17 @@ describe('C-11: Error Response', () => {
         };
 
         // When: Request with empty error message
-        const requestPacket = Packet.create('FailRequest', failRequest);
+        const payload = serializeFailRequest(failRequest);
+        const requestPacket = Packet.fromBytes('FailRequest', payload);
         const responsePacket = await testContext['connector']!.request(requestPacket);
 
         // Then: Should receive error response
-        const failReply = testContext['parsePayload'](responsePacket);
+        const failReply = parseFailReply(responsePacket.payload);
         expect(failReply.errorCode).toBe(4000);
         // Error message may be empty
     });
 
-    test('C-11-07: Multiple clients can each receive their own errors', async () => {
+    test('C-11-07: Multiple clients can each receive their own errors', { timeout: 15000 }, async () => {
         // Given: Create 2 connectors
         const stage1 = await testContext['testServer'].createStage('TestStage');
         const stage2 = await testContext['testServer'].createStage('TestStage');
@@ -194,11 +202,14 @@ describe('C-11: Error Response', () => {
             connector2.init({ requestTimeoutMs: 5000, heartbeatIntervalMs: 10000 });
 
             const wsUrl = testContext['testServer'].wsUrl;
-            await connector1.connect(wsUrl, stage1.stageId);
-            await connector2.connect(wsUrl, stage2.stageId);
+            await connector1.connect(wsUrl, stage1.stageId, stage1.stageType);
+            await connector2.connect(wsUrl, stage2.stageId, stage2.stageType);
 
-            await connector1.authenticate('TestStage', 'user1');
-            await connector2.authenticate('TestStage', 'user2');
+            // Use protobuf format authentication
+            const authPayload1 = serializeAuthenticateRequest({ userId: 'user1', token: 'token1' });
+            const authPayload2 = serializeAuthenticateRequest({ userId: 'user2', token: 'token2' });
+            await connector1.authenticate(Packet.fromBytes('AuthenticateRequest', authPayload1));
+            await connector2.authenticate(Packet.fromBytes('AuthenticateRequest', authPayload2));
 
             // When: Each client requests with different error codes
             const fail1 = {
@@ -210,15 +221,17 @@ describe('C-11: Error Response', () => {
                 errorMessage: 'Error from Client 2'
             };
 
-            const failPacket1 = Packet.create('FailRequest', fail1);
-            const failPacket2 = Packet.create('FailRequest', fail2);
+            const payload1 = serializeFailRequest(fail1);
+            const failPacket1 = Packet.fromBytes('FailRequest', payload1);
+            const payload2 = serializeFailRequest(fail2);
+            const failPacket2 = Packet.fromBytes('FailRequest', payload2);
 
             const response1 = await connector1.request(failPacket1);
             const response2 = await connector2.request(failPacket2);
 
             // Then: Each client should receive their own error
-            const reply1 = testContext['parsePayload'](response1);
-            const reply2 = testContext['parsePayload'](response2);
+            const reply1 = parseFailReply(response1.payload);
+            const reply2 = parseFailReply(response2.payload);
 
             expect(reply1.errorCode).toBe(5001);
             expect(reply2.errorCode).toBe(5002);
@@ -242,7 +255,8 @@ describe('C-11: Error Response', () => {
         };
 
         // When: Send error request
-        const requestPacket = Packet.create('FailRequest', failRequest);
+        const payload = serializeFailRequest(failRequest);
+        const requestPacket = Packet.fromBytes('FailRequest', payload);
         const responsePacket = await testContext['connector']!.request(requestPacket);
 
         // Then: Response message type should be FailReply

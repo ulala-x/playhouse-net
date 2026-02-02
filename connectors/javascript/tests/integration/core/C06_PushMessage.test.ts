@@ -7,6 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { BaseIntegrationTest } from '../helpers/BaseIntegrationTest.js';
 import { Packet } from '../../../src/packet.js';
+import { serializeBroadcastRequest, parseBroadcastNotify } from '../helpers/TestMessages.js';
 
 describe('C-06: Push Message', () => {
     let testContext: BaseIntegrationTest;
@@ -16,7 +17,7 @@ describe('C-06: Push Message', () => {
         await testContext['beforeEach']();
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('pushUser');
-    });
+    }, 15000);
 
     afterEach(async () => {
         await testContext['afterEach']();
@@ -29,14 +30,15 @@ describe('C-06: Push Message', () => {
 
         testContext['connector']!.onReceive = (packet) => {
             if (packet.msgId === 'BroadcastNotify') {
-                receivedMessages.push(testContext['parsePayload'](packet));
+                receivedMessages.push(parseBroadcastNotify(packet.payload));
                 pushReceived = true;
             }
         };
 
         // When: Send broadcast request (server will push message back)
         const broadcastRequest = { content: 'Test Broadcast' };
-        const requestPacket = Packet.create('BroadcastRequest', broadcastRequest);
+        const payload = serializeBroadcastRequest(broadcastRequest);
+        const requestPacket = Packet.fromBytes('BroadcastRequest', payload);
         testContext['connector']!.send(requestPacket);
 
         // Wait for push message
@@ -64,7 +66,8 @@ describe('C-06: Push Message', () => {
 
         // When: Send broadcast request
         const broadcastRequest = { content: 'Param Test' };
-        const requestPacket = Packet.create('BroadcastRequest', broadcastRequest);
+        const payload = serializeBroadcastRequest(broadcastRequest);
+        const requestPacket = Packet.fromBytes('BroadcastRequest', payload);
         testContext['connector']!.send(requestPacket);
 
         // Wait for push
@@ -85,14 +88,15 @@ describe('C-06: Push Message', () => {
 
         testContext['connector']!.onReceive = (packet) => {
             if (packet.msgId === 'BroadcastNotify') {
-                receivedMessages.push(testContext['parsePayload'](packet));
+                receivedMessages.push(parseBroadcastNotify(packet.payload));
             }
         };
 
         // When: Send 3 broadcast requests
         for (let i = 1; i <= expectedCount; i++) {
             const request = { content: `Message ${i}` };
-            const packet = Packet.create('BroadcastRequest', request);
+            const payload = serializeBroadcastRequest(request);
+            const packet = Packet.fromBytes('BroadcastRequest', payload);
             testContext['connector']!.send(packet);
 
             // Brief delay with mainThreadAction
@@ -125,7 +129,8 @@ describe('C-06: Push Message', () => {
         const echoTask = testContext['echo']('Echo Test', 1);
 
         const broadcastRequest = { content: 'Broadcast Test' };
-        const broadcastPacket = Packet.create('BroadcastRequest', broadcastRequest);
+        const payload = serializeBroadcastRequest(broadcastRequest);
+        const broadcastPacket = Packet.fromBytes('BroadcastRequest', payload);
         testContext['connector']!.send(broadcastPacket);
 
         // Wait for both
@@ -147,14 +152,15 @@ describe('C-06: Push Message', () => {
 
         testContext['connector']!.onReceive = (packet) => {
             if (packet.msgId === 'BroadcastNotify') {
-                receivedNotify = testContext['parsePayload'](packet);
+                receivedNotify = parseBroadcastNotify(packet.payload);
                 pushReceived = true;
             }
         };
 
         // When: Send broadcast request
         const broadcastRequest = { content: 'Sender Info Test' };
-        const requestPacket = Packet.create('BroadcastRequest', broadcastRequest);
+        const payload = serializeBroadcastRequest(broadcastRequest);
+        const requestPacket = Packet.fromBytes('BroadcastRequest', payload);
         testContext['connector']!.send(requestPacket);
 
         // Wait for push
@@ -173,7 +179,8 @@ describe('C-06: Push Message', () => {
 
         // When: Send broadcast request
         const broadcastRequest = { content: 'No Handler Test' };
-        const requestPacket = Packet.create('BroadcastRequest', broadcastRequest);
+        const payload = serializeBroadcastRequest(broadcastRequest);
+        const requestPacket = Packet.fromBytes('BroadcastRequest', payload);
 
         const action = () => testContext['connector']!.send(requestPacket);
 
