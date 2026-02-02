@@ -1,0 +1,42 @@
+services:
+  test-server:
+    build:
+      context: ../../
+      dockerfile: connectors/test-server/Dockerfile
+    container_name: playhouse-test-server
+    ports:
+      - "8080:8080"    # HTTP + WebSocket
+      - "34001:34001"  # TCP Play Server
+      - "15000:15000"  # ZMQ Play Port (optional)
+      - "15300:15300"  # ZMQ API Port (optional)
+    environment:
+      # ASP.NET Core Configuration (HTTP only)
+      - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_ENVIRONMENT=Development
+
+      # Transport Configuration
+      - ENABLE_WEBSOCKET=true
+      - TCP_PORT=34001
+      - HTTP_PORT=8080
+
+      # ZMQ Configuration
+      - ZMQ_PLAY_PORT=15000
+      - ZMQ_API_PORT=15300
+
+      # Logging Configuration
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+    networks:
+      - playhouse-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  playhouse-network:
+    driver: bridge
+    name: playhouse-network

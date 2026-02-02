@@ -1,0 +1,101 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using PlayHouse.Abstractions.System;
+
+namespace PlayHouse.Core.Api.Bootstrap;
+
+/// <summary>
+/// API Server 부트스트랩 빌더.
+/// </summary>
+/// <remarks>
+/// 사용 예시:
+/// <code>
+/// var apiServer = new ApiServerBootstrap()
+///     .Configure(options =>
+///     {
+///         options.ServiceId = 2;
+///         options.ServerId = 1;
+///         options.BindEndpoint = "tcp://0.0.0.0:5100";
+///     })
+///     .UseSystemController&lt;MySystemController&gt;()
+///     .UseServiceProvider(serviceProvider)
+///     .UseLoggerFactory(loggerFactory)
+///     .Build();
+///
+/// await apiServer.StartAsync();
+/// </code>
+/// </remarks>
+public sealed class ApiServerBootstrap
+{
+    private readonly ApiServerOption _options = new();
+    private Type _systemControllerType = null!;
+    private ILoggerFactory _loggerFactory = null!;
+    private IServiceProvider _serviceProvider = null!;
+
+    /// <summary>
+    /// 서버 옵션을 설정합니다.
+    /// </summary>
+    /// <param name="configure">설정 액션.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap Configure(Action<ApiServerOption> configure)
+    {
+        configure(_options);
+        return this;
+    }
+
+    /// <summary>
+    /// System Controller를 등록합니다.
+    /// </summary>
+    /// <typeparam name="TSystemController">ISystemController 구현 타입.</typeparam>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap UseSystemController<TSystemController>() where TSystemController : class, ISystemController
+    {
+        _systemControllerType = typeof(TSystemController);
+        return this;
+    }
+
+    /// <summary>
+    /// LoggerFactory를 설정합니다.
+    /// </summary>
+    /// <param name="loggerFactory">ILoggerFactory 인스턴스.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap UseLoggerFactory(ILoggerFactory loggerFactory)
+    {
+        _loggerFactory = loggerFactory;
+        return this;
+    }
+
+    /// <summary>
+    /// ServiceProvider를 설정합니다.
+    /// </summary>
+    /// <param name="serviceProvider">IServiceProvider 인스턴스.</param>
+    /// <returns>빌더 인스턴스.</returns>
+    public ApiServerBootstrap UseServiceProvider(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+        return this;
+    }
+
+    /// <summary>
+    /// API Server 인스턴스를 생성합니다.
+    /// </summary>
+    /// <returns>ApiServer 인스턴스.</returns>
+    public ApiServer Build()
+    {
+        _options.Validate();
+
+        // 필수 필드 검증
+        var systemControllerType = _systemControllerType
+            ?? throw new InvalidOperationException("SystemController is required. Use UseSystemController<T>() to register.");
+        var loggerFactory = _loggerFactory
+            ?? throw new InvalidOperationException("LoggerFactory is required. Use UseLoggerFactory() to register.");
+        var serviceProvider = _serviceProvider
+            ?? throw new InvalidOperationException("ServiceProvider is required. Use UseServiceProvider() to register.");
+    
+        // SystemController 인스턴스 생성 (DI를 통해 의존성 주입)
+        var systemController = ActivatorUtilities.CreateInstance(serviceProvider, systemControllerType) as ISystemController
+            ?? throw new InvalidOperationException($"Failed to create SystemController instance: {systemControllerType.Name}");
+
+        return new ApiServer(_options, systemController, serviceProvider, loggerFactory);
+    }
+}

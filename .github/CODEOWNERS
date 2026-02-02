@@ -1,0 +1,22 @@
+# Default owners for everything
+* @ulala-x
+
+# Server implementations
+/servers/dotnet/ @ulala-x
+/servers/java/ @ulala-x
+/servers/cpp/ @ulala-x
+/servers/nodejs/ @ulala-x
+
+# Connectors
+/connectors/csharp/ @ulala-x
+/connectors/cpp/ @ulala-x
+/connectors/java/ @ulala-x
+/connectors/javascript/ @ulala-x
+/connectors/unity/ @ulala-x
+/connectors/unreal/ @ulala-x
+
+# Protocol definitions
+/protocol/ @ulala-x
+
+# Documentation
+/docs/ @ulala-x

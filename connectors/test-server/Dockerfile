@@ -1,0 +1,51 @@
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy Directory.Build.props for shared build configuration
+COPY servers/dotnet/Directory.Build.props servers/dotnet/
+
+# Copy solution files
+COPY servers/dotnet/*.sln servers/dotnet/
+
+# Copy all server project files for dependency resolution
+COPY servers/dotnet/src/ servers/dotnet/src/
+COPY servers/dotnet/tests/ servers/dotnet/tests/
+COPY servers/dotnet/extensions/ servers/dotnet/extensions/
+
+# Copy test-server project files
+COPY connectors/test-server/proto/ connectors/test-server/proto/
+COPY connectors/test-server/src/ connectors/test-server/src/
+
+# Restore dependencies
+WORKDIR /src/connectors/test-server/src/PlayHouse.TestServer
+RUN dotnet restore
+
+# Build and publish the application
+RUN dotnet publish -c Release -o /app --no-restore
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# Copy published application
+COPY --from=build /app .
+
+# Expose ports
+# 8080: HTTP + WebSocket
+# 34001: TCP Play Server
+EXPOSE 8080 34001
+
+# Set default environment variables
+ENV ASPNETCORE_URLS=http://+:8080 \
+    ENABLE_WEBSOCKET=true \
+    TCP_PORT=34001 \
+    HTTP_PORT=8080 \
+    ZMQ_PLAY_PORT=15000 \
+    ZMQ_API_PORT=15300
+
+# Health check endpoint
+HEALTHCHECK --interval=5s --timeout=3s --retries=5 --start-period=10s \
+  CMD curl -f http://localhost:8080/api/health || exit 1
+
+ENTRYPOINT ["dotnet", "PlayHouse.TestServer.dll"]

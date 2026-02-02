@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  test-server:
+    build:
+      context: ../test-server
+      dockerfile: Dockerfile
+    ports:
+      - "38080:8080"    # HTTP API + WebSocket (/ws)
+      - "38001:34001"   # TCP
+    environment:
+      - LOG_LEVEL=INFO
+      - ENABLE_WEBSOCKET=true
+      - WEBSOCKET_PATH=/ws
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

@@ -1,0 +1,83 @@
+/**
+ * PlayHouse Connector - Configuration
+ */
+
+/**
+ * Connector configuration options
+ */
+export interface ConnectorConfig {
+    /**
+     * Heartbeat interval in milliseconds
+     * @default 10000 (10 seconds)
+     */
+    heartbeatIntervalMs?: number;
+
+    /**
+     * Heartbeat timeout in milliseconds
+     * If no message is received within this time, connection is considered lost.
+     * Set to 0 to disable.
+     * @default 30000 (30 seconds)
+     */
+    heartbeatTimeoutMs?: number;
+
+    /**
+     * Request timeout in milliseconds
+     * @default 30000 (30 seconds)
+     */
+    requestTimeoutMs?: number;
+
+    /**
+     * Connection idle timeout in milliseconds
+     * @default 30000 (30 seconds)
+     */
+    connectionIdleTimeoutMs?: number;
+
+    /**
+     * Enable automatic reconnection
+     * @default false
+     */
+    enableReconnect?: boolean;
+
+    /**
+     * Reconnection interval in milliseconds
+     * @default 5000 (5 seconds)
+     */
+    reconnectIntervalMs?: number;
+
+    /**
+     * Use SSL/TLS for secure connections
+     * Automatically set to true when using wss:// URLs
+     * @default false
+     */
+    useSsl?: boolean;
+
+    /**
+     * Enable debug logging
+     * @default false
+     */
+    debugMode?: boolean;
+}
+
+/**
+ * Default configuration values
+ */
+export const DefaultConfig: Required<ConnectorConfig> = {
+    heartbeatIntervalMs: 10000,
+    heartbeatTimeoutMs: 30000,
+    requestTimeoutMs: 30000,
+    connectionIdleTimeoutMs: 30000,
+    enableReconnect: false,
+    reconnectIntervalMs: 5000,
+    useSsl: false,
+    debugMode: false,
+};
+
+/**
+ * Merges user config with default values
+ */
+export function mergeConfig(config?: ConnectorConfig): Required<ConnectorConfig> {
+    return {
+        ...DefaultConfig,
+        ...config,
+    };
+}

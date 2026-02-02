@@ -1,0 +1,23 @@
+{
+    "name": "playhouse-connector",
+    "version": "0.1.0",
+    "description": "C++ connector for PlayHouse real-time game server framework",
+    "license": "Apache-2.0 WITH Commons-Clause",
+    "dependencies": [
+        "asio"
+    ],
+    "features": {
+        "tests": {
+            "description": "Build with tests",
+            "dependencies": [
+                "gtest"
+            ]
+        },
+        "compression": {
+            "description": "LZ4 compression support",
+            "dependencies": [
+                "lz4"
+            ]
+        }
+    }
+}

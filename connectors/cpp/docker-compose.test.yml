@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  test-server:
+    build:
+      context: ../../
+      dockerfile: connectors/test-server/Dockerfile
+    container_name: playhouse-test-cpp
+    ports:
+      - "48080:8080"    # HTTP + WebSocket
+      - "48443:8443"    # HTTPS + WSS
+      - "48001:34001"   # TCP Play Server
+      - "48002:34002"   # TCP TLS Play Server
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ENABLE_TLS=true
+      - ENABLE_WEBSOCKET=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - playhouse-cpp
+
+networks:
+  playhouse-cpp:
+    driver: bridge

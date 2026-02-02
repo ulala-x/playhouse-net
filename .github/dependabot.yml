@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # .NET dependencies
+  - package-ecosystem: "nuget"
+    directory: "/servers/dotnet"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "nuget"
+    directory: "/connectors/csharp"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # npm dependencies (when added)
+  # - package-ecosystem: "npm"
+  #   directory: "/connectors/javascript"
+  #   schedule:
+  #     interval: "weekly"
+
+  # Maven dependencies (when added)
+  # - package-ecosystem: "maven"
+  #   directory: "/connectors/java"
+  #   schedule:
+  #     interval: "weekly"

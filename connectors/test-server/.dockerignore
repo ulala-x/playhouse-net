@@ -1,0 +1,79 @@
+# Docker build context optimization for PlayHouse Test Server
+# This file reduces build context size and speeds up Docker builds
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Docker files
+**/Dockerfile
+**/docker-compose.yml
+**/.dockerignore
+
+# Documentation
+**/*.md
+**/docs/
+
+# IDE and Editor files
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+**/dist/
+**/build/
+**/target/
+
+# Test results
+**/TestResults/
+**/*.trx
+**/*.coverage
+**/*.coveragexml
+
+# NuGet packages (will be restored during build)
+**/packages/
+**/*.nupkg
+
+# User-specific files
+**/*.suo
+**/*.user
+**/*.userosscache
+**/*.sln.docstates
+
+# Logs
+**/logs/
+**/*.log
+
+# TLS certificates (mounted as volume, not copied)
+**/certs/*.key
+**/certs/*.crt
+**/certs/*.pfx
+**/certs/*.pem
+
+# Node modules (if any JavaScript tools are used)
+**/node_modules/
+
+# Python cache (if any Python tools are used)
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Temporary files
+**/tmp/
+**/temp/
+**/*.tmp
+
+# OS generated files
+**/Thumbs.db
+**/.DS_Store
+
+# Keep necessary files (use ! to negate ignore)
+# Example: !path/to/required/file
