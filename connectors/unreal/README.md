@@ -334,7 +334,7 @@ void UMyGameInstance::OnMessageReceived(UPlayHousePacket* Packet)
 }
 ```
 
-### Request-Response
+### Request-Response (Callback)
 
 ```cpp
 void UMyGameInstance::SendEchoRequest(const FString& Message)
@@ -346,8 +346,8 @@ void UMyGameInstance::SendEchoRequest(const FString& Message)
         Request.set_content(TCHAR_TO_UTF8(*Message));
         Request.set_sequence(1);
 
-        // Send and handle response
-        Subsystem->RequestAsync(
+        // Send request with callback (client only supports callback pattern)
+        Subsystem->Request(
             TEXT("EchoRequest"),
             Request.SerializeAsString(),
             [this](UPlayHousePacket* Response)
@@ -360,6 +360,11 @@ void UMyGameInstance::SendEchoRequest(const FString& Message)
                         Response->GetPayload().Num());
                     UE_LOG(LogTemp, Log, TEXT("Echo reply: %s"),
                         UTF8_TO_TCHAR(Reply.content().c_str()));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Request failed: %d"),
+                        Response->GetErrorCode());
                 }
             });
     }
@@ -382,14 +387,14 @@ On Connected (Event)
     → Authenticate (ServiceId: "game", AccountId: "player1")
 ```
 
-### Send Request
+### Send Request (Callback)
 
 ```
 Custom Event: SendChatMessage
     Input: Message (String)
     → Create PlayHouse Packet (MsgId: "ChatMessage")
     → Set String Field (Key: "content", Value: Message)
-    → Request Async
+    → Request (with Callback)
     → On Response: Print String (Response.MsgId)
 ```
 
@@ -543,7 +548,9 @@ Request.set_content("Hello");
 Request.set_sequence(1);
 
 UPlayHousePacket* Packet = CreatePacketFromProto(this, Request);
-Subsystem->RequestAsync(Packet, ResponseCallback);
+Subsystem->Request(Packet, [](UPlayHousePacket* Response) {
+    // Handle response
+});
 ```
 
 ### Parsing Proto from Response

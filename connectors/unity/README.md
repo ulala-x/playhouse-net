@@ -123,9 +123,9 @@ public class GameNetwork : MonoBehaviour
         _connector?.Disconnect();
     }
 
-    public async void Connect(string host, int port)
+    public void Connect(string host, int port)
     {
-        await _connector.ConnectAsync(host, port);
+        _connector.Connect(host, port);  // OnConnect callback will fire on success
     }
 
     private void OnConnected()
@@ -153,32 +153,42 @@ public class GameNetwork : MonoBehaviour
 ### Authentication
 
 ```csharp
-public async void Authenticate(string serviceId, string accountId, byte[] token)
+public void Authenticate(string serviceId, string accountId, byte[] token)
 {
-    bool success = await _connector.AuthenticateAsync(serviceId, accountId, token);
-    if (success)
+    _connector.Authenticate(serviceId, accountId, token, success =>
     {
-        Debug.Log("Authentication successful!");
-    }
-    else
-    {
-        Debug.LogError("Authentication failed!");
-    }
+        if (success)
+        {
+            Debug.Log("Authentication successful!");
+        }
+        else
+        {
+            Debug.LogError("Authentication failed!");
+        }
+    });
 }
 ```
 
-### Request-Response Pattern
+### Request-Response Pattern (Callback)
 
 ```csharp
-public async void SendEchoRequest(string message)
+public void SendEchoRequest(string message)
 {
     var request = new EchoRequest { Content = message, Sequence = 1 };
     using var packet = new Packet(request);
 
-    var response = await _connector.RequestAsync(packet);
-
-    var echoReply = EchoReply.Parser.ParseFrom(response.Payload);
-    Debug.Log($"Echo reply: {echoReply.Content}");
+    _connector.Request(packet, response =>
+    {
+        if (response.ErrorCode == 0)
+        {
+            var echoReply = EchoReply.Parser.ParseFrom(response.Payload);
+            Debug.Log($"Echo reply: {echoReply.Content}");
+        }
+        else
+        {
+            Debug.LogError($"Request failed: {response.ErrorCode}");
+        }
+    });
 }
 ```
 
@@ -236,14 +246,14 @@ private void OnMessageReceived(IPacket packet)
 
 WebGL does not support raw TCP sockets. For WebGL:
 
-1. Server must expose a WebSocket gateway
+1. Server must expose a WebSocket endpoint
 2. Use WebSocket connection instead:
 
 ```csharp
 #if UNITY_WEBGL && !UNITY_EDITOR
-    await _connector.ConnectWebSocketAsync("wss://game.example.com/ws");
+    _connector.ConnectWebSocket("wss://game.example.com/ws");
 #else
-    await _connector.ConnectAsync("game.example.com", 34001);
+    _connector.Connect("game.example.com", 34001);
 #endif
 ```
 
@@ -315,11 +325,11 @@ public abstract class NetworkBehaviour : MonoBehaviour
         Connector.OnError += OnNetworkError;
     }
 
-    protected virtual async void OnEnable()
+    protected virtual void OnEnable()
     {
         if (_autoConnect && !Connector.IsConnected)
         {
-            await Connector.ConnectAsync(_host, _port);
+            Connector.Connect(_host, _port);
         }
     }
 
@@ -358,7 +368,7 @@ public class GameNetworkManager : NetworkBehaviour
     protected override void OnNetworkConnected()
     {
         Debug.Log("Connected! Starting authentication...");
-        AuthenticateAsync();
+        Authenticate();
     }
 
     protected override void OnNetworkMessage(IPacket packet)
@@ -371,10 +381,14 @@ public class GameNetworkManager : NetworkBehaviour
         }
     }
 
-    private async void AuthenticateAsync()
+    private void Authenticate()
     {
         var token = GetAuthToken();
-        await Connector.AuthenticateAsync("game", PlayerId, token);
+        Connector.Authenticate("game", PlayerId, token, success =>
+        {
+            if (success) Debug.Log("Authenticated!");
+            else Debug.LogError("Authentication failed!");
+        });
     }
 }
 ```
@@ -391,40 +405,26 @@ void Update()
 }
 ```
 
-### 2. Use async/await Carefully
+### 2. Use Callback Pattern for Requests
 
 ```csharp
-// GOOD: Using async void for Unity event handlers
-public async void OnLoginButtonClicked()
+// Request with callback - responses handled on main thread via MainThreadAction()
+public void SendMessage(string content)
 {
-    try
-    {
-        await _connector.ConnectAsync(host, port);
-        await _connector.AuthenticateAsync(serviceId, accountId, token);
-    }
-    catch (Exception e)
-    {
-        Debug.LogError($"Connection failed: {e.Message}");
-    }
-}
+    var request = new ChatMessage { Content = content };
+    using var packet = new Packet(request);
 
-// GOOD: Fire-and-forget with error handling
-public void SendMessage()
-{
-    _ = SendMessageAsync();
-}
-
-private async Task SendMessageAsync()
-{
-    try
+    _connector.Request(packet, response =>
     {
-        var response = await _connector.RequestAsync(packet);
-        // Handle response
-    }
-    catch (TimeoutException)
-    {
-        Debug.LogWarning("Request timed out");
-    }
+        if (response.ErrorCode == 0)
+        {
+            Debug.Log("Message sent successfully");
+        }
+        else
+        {
+            Debug.LogWarning($"Request failed: {response.ErrorCode}");
+        }
+    });
 }
 ```
 
@@ -432,31 +432,39 @@ private async Task SendMessageAsync()
 
 ```csharp
 // Using statement ensures disposal
-using var packet = new Packet(request);
-var response = await _connector.RequestAsync(packet);
+public void SendRequest()
+{
+    using var packet = new Packet(request);
+    _connector.Request(packet, OnResponse);
+}
 
 // Or manually dispose
-var packet = new Packet(request);
-try
+public void SendRequestManual()
 {
-    var response = await _connector.RequestAsync(packet);
-}
-finally
-{
-    packet.Dispose();
+    var packet = new Packet(request);
+    _connector.Request(packet, response =>
+    {
+        // Handle response
+        packet.Dispose();
+    });
 }
 ```
 
 ### 4. Handle Reconnection
 
 ```csharp
-private async void OnDisconnected()
+private void OnDisconnected()
 {
     if (_shouldReconnect)
     {
-        await Task.Delay(5000);  // Wait 5 seconds
-        await _connector.ConnectAsync(_host, _port);
+        StartCoroutine(ReconnectAfterDelay(5f));
     }
+}
+
+private IEnumerator ReconnectAfterDelay(float seconds)
+{
+    yield return new WaitForSeconds(seconds);
+    _connector.Connect(_host, _port);
 }
 ```
 
