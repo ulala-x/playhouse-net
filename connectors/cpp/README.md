@@ -4,9 +4,9 @@ C++ Connector for PlayHouse real-time game server framework.
 
 ## Overview
 
-- **Purpose**: Unreal Engine plugin + Native C++ E2E testing
+- **Purpose**: C++ server E2E testing
 - **Status**: Planned
-- **C++ Standard**: C++17 (UE5 compatible)
+- **C++ Standard**: C++17
 
 ## Directory Structure
 
@@ -34,7 +34,7 @@ connectors/cpp/
 | Component | Technology |
 |-----------|------------|
 | Language | C++17 |
-| Build System | CMake 3.20+ / UE5 Build.cs |
+| Build System | CMake 3.20+ |
 | Networking | asio (standalone, no Boost) |
 | Testing | Google Test + Google Mock |
 | Package | vcpkg, Conan |
@@ -71,8 +71,8 @@ public:
                                         const std::string& account_id,
                                         const std::vector<uint8_t>& payload);
 
-    // Game thread integration
-    void MainThreadAction();  // Call from UE5 GameThread
+    // Thread integration
+    void MainThreadAction();  // Call from main thread
 
     // Callbacks
     std::function<void()> OnConnect;
@@ -236,10 +236,6 @@ class MyGameClient(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
 ```
 
-### Unreal Engine 5
-
-See [connectors/unreal/README.md](../unreal/README.md) for UE5 plugin integration.
-
 ## LZ4 Compression
 
 When `OriginalSize > 0` in response packets, the payload is LZ4 compressed:
@@ -293,7 +289,7 @@ asio::awaitable<void> ConnectAndAuthenticate(Connector& connector) {
 | Network | TCP connection, async I/O (asio), request-response correlation |
 | Reliability | Heartbeat, reconnection logic, error handling |
 | Testing | Unit tests, E2E tests with C++ server |
-| Integration | UE5 plugin wrapper, documentation |
+| Release | vcpkg/Conan packaging, documentation |
 
 ## Distribution Channels
 
@@ -301,7 +297,6 @@ asio::awaitable<void> ConnectAndAuthenticate(Connector& connector) {
 |---------|--------|
 | vcpkg | Native C++ developers |
 | Conan | CMake projects |
-| UE Marketplace | Unreal developers |
 | GitHub Releases | Source + prebuilt binaries |
 
 ## Memory Management
@@ -356,9 +351,10 @@ config.request_timeout_ms = 60000;  // 60 seconds
 Ensure `MainThreadAction()` is called regularly:
 
 ```cpp
-// In game loop or UE5 Tick
-void Tick(float DeltaTime) {
+// In main loop
+while (running) {
     connector.MainThreadAction();
+    // ... other work
 }
 ```
 
@@ -389,9 +385,7 @@ target_compile_definitions(myapp PRIVATE ASIO_STANDALONE)
 ## References
 
 - [C# Connector](../csharp/) - Reference implementation
-- [Unreal Plugin](../unreal/) - UE5 wrapper
 - [Protocol Spec](../../docs/architecture/protocol-spec.md)
-- [CHANGELOG](./CHANGELOG.md)
 
 ## License
 
