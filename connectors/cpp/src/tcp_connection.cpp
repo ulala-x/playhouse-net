@@ -148,24 +148,31 @@ bool TcpConnection::IsConnected() const {
 }
 
 void TcpConnection::Send(const uint8_t* data, size_t size) {
-    if (!IsConnected()) {
-        throw std::runtime_error("Not connected");
-    }
-
     // Copy data to shared buffer to ensure it lives until async_write completes
     auto buffer = std::make_shared<std::vector<uint8_t>>(data, data + size);
 
-    // Async write with shared buffer ownership
-    asio::async_write(
-        impl_->socket_,
-        asio::buffer(*buffer),
-        [buffer](const asio::error_code& error, size_t) {
-            // buffer is captured by value to extend its lifetime
-            if (error) {
-                std::cerr << "Send error: " << error.message() << std::endl;
-            }
+    // Hold lock while checking connection status and initiating async_write
+    // to prevent race condition where connection closes between check and write
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        if (!impl_->is_connected_) {
+            throw std::runtime_error("Not connected");
         }
-    );
+
+        // Async write with shared buffer ownership
+        // Note: async_write itself is thread-safe and doesn't require lock held
+        // but we need lock to ensure socket is valid when we initiate the operation
+        asio::async_write(
+            impl_->socket_,
+            asio::buffer(*buffer),
+            [buffer](const asio::error_code& error, size_t) {
+                // buffer is captured by value to extend its lifetime
+                if (error) {
+                    std::cerr << "Send error: " << error.message() << std::endl;
+                }
+            }
+        );
+    }
 }
 
 void TcpConnection::SetReceiveCallback(std::function<void(const uint8_t*, size_t)> callback) {

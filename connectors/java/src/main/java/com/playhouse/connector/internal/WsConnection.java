@@ -352,6 +352,7 @@ public final class WsConnection implements IConnection {
                 }
 
                 synchronized (receiveBuffer) {
+                    boolean bufferFlipped = false;
                     try {
                         // ByteBuf를 ByteBuffer로 변환하여 기존 버퍼에 추가
                         ensureBufferCapacity(receiveBuffer.position() + readableBytes);
@@ -363,20 +364,20 @@ public final class WsConnection implements IConnection {
 
                         // 버퍼를 읽기 모드로 전환
                         receiveBuffer.flip();
+                        bufferFlipped = true;
 
                         // 패킷 처리
-                        try {
-                            onReceive.accept(receiveBuffer);
-                        } catch (Exception e) {
-                            logger.error("Error processing received data", e);
-                        } finally {
-                            // 버퍼 정리 (finally에서 처리하여 예외 발생 시에도 안전)
-                            receiveBuffer.compact();
-                        }
+                        onReceive.accept(receiveBuffer);
                     } catch (Exception e) {
-                        logger.error("Error reading WebSocket frame", e);
-                        // 버퍼 상태 복구
-                        receiveBuffer.clear();
+                        logger.error("Error processing WebSocket frame", e);
+                    } finally {
+                        // 버퍼 정리 (예외 발생 여부와 관계없이 항상 실행)
+                        if (bufferFlipped) {
+                            receiveBuffer.compact();
+                        } else {
+                            // flip 전에 예외가 발생한 경우 버퍼 상태 복구
+                            receiveBuffer.clear();
+                        }
                     }
                 }
             } else if (frame instanceof TextWebSocketFrame) {

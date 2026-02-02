@@ -6,7 +6,7 @@
 
 bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
 {
-    if (bConnected)
+    if (bConnected.Load())
     {
         return true;
     }
@@ -19,7 +19,7 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
 
     Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
     Socket->OnConnected().AddLambda([this]() {
-        bConnected = true;
+        bConnected.Store(true);
     });
     Socket->OnConnectionError().AddLambda([this](const FString& Error) {
         if (OnTransportError)
@@ -28,7 +28,7 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         }
     });
     Socket->OnClosed().AddLambda([this](int32, const FString&, bool) {
-        bConnected = false;
+        bConnected.Store(false);
         if (OnDisconnected)
         {
             OnDisconnected();
@@ -52,17 +52,17 @@ void FPlayHouseWssTransport::Disconnect()
         Socket->Close();
         Socket.Reset();
     }
-    bConnected = false;
+    bConnected.Store(false);
 }
 
 bool FPlayHouseWssTransport::IsConnected() const
 {
-    return bConnected;
+    return bConnected.Load();
 }
 
 bool FPlayHouseWssTransport::SendBytes(const uint8* Data, int32 Size)
 {
-    if (!Socket.IsValid() || !bConnected)
+    if (!Socket.IsValid() || !bConnected.Load())
     {
         if (OnTransportError)
         {

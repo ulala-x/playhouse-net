@@ -130,7 +130,7 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
     }
     return false;
 #else
-    if (bConnected)
+    if (bConnected.Load())
     {
         return true;
     }
@@ -186,8 +186,8 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
     SSL_library_init();
     SSL_load_error_strings();
 
-    SSL_CTX* Ctx = SSL_CTX_new(TLS_client_method());
-    if (!Ctx)
+    SslCtx = SSL_CTX_new(TLS_client_method());
+    if (!SslCtx)
     {
         SocketSubsystem->DestroySocket(Socket);
         Socket = nullptr;
@@ -198,10 +198,11 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
         return false;
     }
 
-    SSL* Ssl = SSL_new(Ctx);
+    Ssl = SSL_new(SslCtx);
     if (!Ssl)
     {
-        SSL_CTX_free(Ctx);
+        SSL_CTX_free(SslCtx);
+        SslCtx = nullptr;
         SocketSubsystem->DestroySocket(Socket);
         Socket = nullptr;
         if (OnTransportError)
@@ -218,7 +219,9 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
     if (Result <= 0)
     {
         SSL_free(Ssl);
-        SSL_CTX_free(Ctx);
+        Ssl = nullptr;
+        SSL_CTX_free(SslCtx);
+        SslCtx = nullptr;
         SocketSubsystem->DestroySocket(Socket);
         Socket = nullptr;
         if (OnTransportError)
@@ -244,14 +247,14 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
 
     Thread = FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTlsWorker"));
 
-    bConnected = true;
+    bConnected.Store(true);
     return true;
 #endif
 }
 
 void FPlayHouseTlsTransport::Disconnect()
 {
-    bConnected = false;
+    bConnected.Store(false);
 
 #if WITH_SSL
     if (Worker)
@@ -261,8 +264,21 @@ void FPlayHouseTlsTransport::Disconnect()
 
     if (Thread)
     {
-        Thread->Kill(true);
+        Thread->WaitForCompletion();
         Thread.Reset();
+    }
+
+    if (Ssl)
+    {
+        SSL_shutdown(Ssl);
+        SSL_free(Ssl);
+        Ssl = nullptr;
+    }
+
+    if (SslCtx)
+    {
+        SSL_CTX_free(SslCtx);
+        SslCtx = nullptr;
     }
 #endif
 
@@ -281,7 +297,7 @@ void FPlayHouseTlsTransport::Disconnect()
 
 bool FPlayHouseTlsTransport::IsConnected() const
 {
-    return bConnected && Socket != nullptr;
+    return bConnected.Load() && Socket != nullptr;
 }
 
 bool FPlayHouseTlsTransport::SendBytes(const uint8* Data, int32 Size)

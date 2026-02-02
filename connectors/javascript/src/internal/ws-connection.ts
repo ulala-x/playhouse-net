@@ -147,6 +147,7 @@ export class WsConnection {
 
         if (this._ws) {
             // Remove handlers to avoid disconnect callback
+            this._ws.onopen = null;
             this._ws.onclose = null;
             this._ws.onerror = null;
             this._ws.onmessage = null;

@@ -140,12 +140,24 @@ public sealed class Connector : IConnectorCallback, IAsyncDisposable
     }
 
     /// <summary>
-    /// 서버 연결 끊기
+    /// 서버 연결 끊기 (비동기)
+    /// </summary>
+    public async Task DisconnectAsync()
+    {
+        _disconnectFromClient = true;
+        if (_clientNetwork != null)
+        {
+            await _clientNetwork.DisconnectAsync();
+        }
+    }
+
+    /// <summary>
+    /// 서버 연결 끊기 (동기)
     /// </summary>
     public void Disconnect()
     {
         _disconnectFromClient = true;
-        _ = _clientNetwork?.DisconnectAsync();
+        _clientNetwork?.DisconnectAsync().GetAwaiter().GetResult();
     }
 
     /// <summary>

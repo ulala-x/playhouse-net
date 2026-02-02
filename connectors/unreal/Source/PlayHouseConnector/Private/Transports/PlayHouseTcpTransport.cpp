@@ -91,7 +91,7 @@ namespace
 
 bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
 {
-    if (bConnected)
+    if (bConnected.Load())
     {
         return true;
     }
@@ -160,13 +160,13 @@ bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
 
     Thread = FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTcpWorker"));
 
-    bConnected = true;
+    bConnected.Store(true);
     return true;
 }
 
 void FPlayHouseTcpTransport::Disconnect()
 {
-    bConnected = false;
+    bConnected.Store(false);
 
     if (Worker)
     {
@@ -175,7 +175,7 @@ void FPlayHouseTcpTransport::Disconnect()
 
     if (Thread)
     {
-        Thread->Kill(true);
+        Thread->WaitForCompletion();
         Thread.Reset();
     }
 
@@ -194,7 +194,7 @@ void FPlayHouseTcpTransport::Disconnect()
 
 bool FPlayHouseTcpTransport::IsConnected() const
 {
-    return bConnected && Socket != nullptr;
+    return bConnected.Load() && Socket != nullptr;
 }
 
 bool FPlayHouseTcpTransport::SendBytes(const uint8* Data, int32 Size)

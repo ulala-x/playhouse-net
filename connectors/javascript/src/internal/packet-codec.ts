@@ -126,10 +126,9 @@ export function decodePacket(data: Uint8Array): ParsedPacket {
     // For now, we return the raw (possibly compressed) payload
     // Users can decompress manually if needed
     if (originalSize > 0) {
-        // TODO: Add LZ4 decompression support (lz4js peer dependency)
-        // For now, payload remains compressed - application must handle
-        console.warn(
-            `Received compressed payload (originalSize=${originalSize}). LZ4 decompression not implemented.`
+        throw new Error(
+            `Received compressed payload (originalSize=${originalSize}). LZ4 decompression is not implemented. ` +
+            `Either disable compression on the server or implement LZ4 decompression.`
         );
     }
 

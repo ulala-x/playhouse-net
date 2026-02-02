@@ -54,6 +54,8 @@ type QueuedAction = () => void;
  * ```
  */
 export class Connector {
+    private static readonly MAX_ACTION_QUEUE_SIZE = 10000;
+
     private _config: Required<ConnectorConfig> = { ...DefaultConfig };
     private _connection: WsConnection | null = null;
     private _pendingRequests: Map<number, PendingRequest> = new Map();
@@ -708,6 +710,10 @@ export class Connector {
      * Queues an action to be executed in mainThreadAction
      */
     private queueAction(action: QueuedAction): void {
+        if (this._actionQueue.length >= Connector.MAX_ACTION_QUEUE_SIZE) {
+            console.error('[PlayHouse] Action queue is full! Dropping oldest actions.');
+            this._actionQueue.splice(0, 1000); // Drop oldest 1000 actions
+        }
         this._actionQueue.push(action);
     }
 }

@@ -19,6 +19,8 @@ import java.util.function.Consumer;
 public final class ClientNetwork {
 
     private static final Logger logger = LoggerFactory.getLogger(ClientNetwork.class);
+    private static final int MAX_CALLBACK_QUEUE_SIZE = 10000;
+    private static final int QUEUE_WARNING_THRESHOLD = 8000;
 
     private final ConnectorConfig config;
     private final IConnection connection;
@@ -51,7 +53,7 @@ public final class ClientNetwork {
         }
 
         this.requestCache = new RequestCache(config.getRequestTimeoutMs());
-        this.callbackQueue = new LinkedBlockingQueue<>();
+        this.callbackQueue = new LinkedBlockingQueue<>(MAX_CALLBACK_QUEUE_SIZE);
         this.authenticated = false;
     }
 
@@ -316,9 +318,14 @@ public final class ClientNetwork {
             return;
         }
 
+        int currentSize = callbackQueue.size();
+        if (currentSize > QUEUE_WARNING_THRESHOLD) {
+            logger.warn("Callback queue is near capacity: {}/{}", currentSize, MAX_CALLBACK_QUEUE_SIZE);
+        }
+
         if (!callbackQueue.offer(callback)) {
-            logger.error("Callback queue full (size: {}), dropping callback. Consider increasing queue size or processing callbacks more frequently.",
-                callbackQueue.size());
+            logger.error("Callback queue is full! Dropping callback. Current size: {}/{}. Consider increasing queue size or calling mainThreadAction() more frequently.",
+                MAX_CALLBACK_QUEUE_SIZE, MAX_CALLBACK_QUEUE_SIZE);
             // 큐가 가득 찬 경우 즉시 실행하는 것은 위험할 수 있음 (스택 오버플로우 가능성)
             // 대신 에러 로그만 남기고 드롭
         }
