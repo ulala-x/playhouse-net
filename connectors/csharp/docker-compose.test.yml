@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  test-server:
+    build:
+      context: ../../
+      dockerfile: connectors/test-server/Dockerfile
+    container_name: playhouse-test-csharp
+    ports:
+      - "18080:8080"    # HTTP + WebSocket
+      - "18001:34001"   # TCP Play Server
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - playhouse-csharp
+
+networks:
+  playhouse-csharp:
+    driver: bridge
