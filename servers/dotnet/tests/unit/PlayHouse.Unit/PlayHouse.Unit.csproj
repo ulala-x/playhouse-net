@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PlayHouse.Unit</RootNamespace>
+    <AssemblyName>PlayHouse.Unit</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\PlayHouse\PlayHouse.csproj" />
+    <ProjectReference Include="..\..\..\connector\PlayHouse.Connector\PlayHouse.Connector.csproj" />
+    <ProjectReference Include="..\..\..\extensions\PlayHouse.Extensions.Proto\PlayHouse.Extensions.Proto.csproj" />
+    <ProjectReference Include="..\..\..\extensions\PlayHouse.Extensions.Json\PlayHouse.Extensions.Json.csproj" />
+    <ProjectReference Include="..\..\..\extensions\PlayHouse.Extensions.MessagePack\PlayHouse.Extensions.MessagePack.csproj" />
+    <ProjectReference Include="..\..\e2e\PlayHouse.E2E.Shared\PlayHouse.E2E.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

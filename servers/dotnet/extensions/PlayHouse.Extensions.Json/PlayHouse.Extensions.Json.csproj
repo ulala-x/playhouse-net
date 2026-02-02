@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PlayHouse.Extensions.Json</RootNamespace>
+    <AssemblyName>PlayHouse.Extensions.Json</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>CS1591;CS1574</NoWarn>
+    <PackageId>PlayHouse.Extensions.Json</PackageId>
+    <PackageTags>playhouse;json;extensions</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PlayHouse\PlayHouse.csproj" />
+  </ItemGroup>
+
+</Project>
