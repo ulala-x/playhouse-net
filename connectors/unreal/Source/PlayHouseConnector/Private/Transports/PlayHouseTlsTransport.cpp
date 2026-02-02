@@ -340,6 +340,31 @@ bool FPlayHouseTlsTransport::SendBytes(const uint8* Data, int32 Size)
         return false;
     }
 
+    // Validate input parameters
+    if (Data == nullptr && Size > 0)
+    {
+        if (OnTransportError)
+        {
+            OnTransportError(PlayHouse::ErrorCode::InvalidResponse, TEXT("Invalid send data"));
+        }
+        return false;
+    }
+
+    if (Size <= 0)
+    {
+        return true; // Empty send is no-op
+    }
+
+    // Validate size is within bounds
+    if (Size > static_cast<int32>(PlayHouse::Protocol::MaxBodySize))
+    {
+        if (OnTransportError)
+        {
+            OnTransportError(PlayHouse::ErrorCode::InvalidResponse, TEXT("Send data exceeds maximum size"));
+        }
+        return false;
+    }
+
     Worker->EnqueueSend(Data, Size);
     return true;
 #endif

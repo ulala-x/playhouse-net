@@ -33,25 +33,6 @@ export interface ConnectorConfig {
     connectionIdleTimeoutMs?: number;
 
     /**
-     * Enable automatic reconnection
-     * @default false
-     */
-    enableReconnect?: boolean;
-
-    /**
-     * Reconnection interval in milliseconds
-     * @default 5000 (5 seconds)
-     */
-    reconnectIntervalMs?: number;
-
-    /**
-     * Use SSL/TLS for secure connections
-     * Automatically set to true when using wss:// URLs
-     * @default false
-     */
-    useSsl?: boolean;
-
-    /**
      * Enable debug logging
      * @default false
      */
@@ -66,9 +47,6 @@ export const DefaultConfig: Required<ConnectorConfig> = {
     heartbeatTimeoutMs: 30000,
     requestTimeoutMs: 30000,
     connectionIdleTimeoutMs: 30000,
-    enableReconnect: false,
-    reconnectIntervalMs: 5000,
-    useSsl: false,
     debugMode: false,
 };
 

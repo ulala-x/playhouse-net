@@ -21,11 +21,17 @@ int32 FPlayHouseRingBuffer::GetFreeSpace() const
     return Capacity_ - Count_;
 }
 
-void FPlayHouseRingBuffer::Write(const uint8* Data, int32 Size)
+bool FPlayHouseRingBuffer::Write(const uint8* Data, int32 Size)
 {
+    // Validate input parameters
+    if (Data == nullptr && Size > 0)
+    {
+        return false;
+    }
+
     if (Size <= 0)
     {
-        return;
+        return true; // Writing zero bytes is a no-op success
     }
 
     if (Size > GetFreeSpace())
@@ -38,7 +44,7 @@ void FPlayHouseRingBuffer::Write(const uint8* Data, int32 Size)
         {
             OnOverflow(Size, Capacity_, FreeSpace);
         }
-        return;
+        return false;
     }
 
     int32 Contiguous = Capacity_ - Head_;
@@ -55,18 +61,26 @@ void FPlayHouseRingBuffer::Write(const uint8* Data, int32 Size)
         Head_ = (Head_ + SecondChunk) % Capacity_;
         Count_ += SecondChunk;
     }
+
+    return true;
 }
 
-void FPlayHouseRingBuffer::Read(uint8* Dest, int32 Size)
+bool FPlayHouseRingBuffer::Read(uint8* Dest, int32 Size)
 {
+    // Validate input parameters
+    if (Dest == nullptr && Size > 0)
+    {
+        return false;
+    }
+
     if (Size <= 0)
     {
-        return;
+        return true; // Reading zero bytes is a no-op success
     }
 
     if (Size > Count_)
     {
-        return;
+        return false; // Insufficient data
     }
 
     int32 Contiguous = Capacity_ - Tail_;
@@ -83,18 +97,32 @@ void FPlayHouseRingBuffer::Read(uint8* Dest, int32 Size)
         Tail_ = (Tail_ + SecondChunk) % Capacity_;
         Count_ -= SecondChunk;
     }
+
+    return true;
 }
 
-void FPlayHouseRingBuffer::Peek(uint8* Dest, int32 Size, int32 Offset) const
+bool FPlayHouseRingBuffer::Peek(uint8* Dest, int32 Size, int32 Offset) const
 {
+    // Validate input parameters
+    if (Dest == nullptr && Size > 0)
+    {
+        return false;
+    }
+
     if (Size <= 0)
     {
-        return;
+        return true; // Peeking zero bytes is a no-op success
+    }
+
+    // Validate offset is non-negative
+    if (Offset < 0)
+    {
+        return false;
     }
 
     if (Offset + Size > Count_)
     {
-        return;
+        return false; // Insufficient data
     }
 
     int32 ReadPos = (Tail_ + Offset) % Capacity_;
@@ -108,22 +136,25 @@ void FPlayHouseRingBuffer::Peek(uint8* Dest, int32 Size, int32 Offset) const
         int32 SecondChunk = Size - FirstChunk;
         FMemory::Memcpy(Dest + FirstChunk, Buffer_.GetData(), SecondChunk);
     }
+
+    return true;
 }
 
-void FPlayHouseRingBuffer::Consume(int32 Size)
+bool FPlayHouseRingBuffer::Consume(int32 Size)
 {
     if (Size <= 0)
     {
-        return;
+        return true; // Consuming zero bytes is a no-op success
     }
 
     if (Size > Count_)
     {
-        return;
+        return false; // Insufficient data
     }
 
     Tail_ = (Tail_ + Size) % Capacity_;
     Count_ -= Size;
+    return true;
 }
 
 void FPlayHouseRingBuffer::Clear()

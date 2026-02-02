@@ -9,7 +9,7 @@ import { ConnectorConfig, DefaultConfig, mergeConfig } from './config.js';
 import { encodePacket } from './internal/packet-codec.js';
 import { WsConnection } from './internal/ws-connection.js';
 import { Packet, ParsedPacket } from './packet.js';
-import { ErrorCode, PacketConst } from './types.js';
+import { ErrorCode, PacketConst, getErrorMessage } from './types.js';
 
 /**
  * Pending request tracking
@@ -163,12 +163,18 @@ export class Connector {
      * Disconnects from the server
      */
     disconnect(): void {
+        const wasConnected = this._connection?.isConnected ?? false;
         this._isAuthenticated = false;
         this.clearPendingRequests();
 
         if (this._connection) {
             this._connection.disconnect();
             this._connection = null;
+        }
+
+        // Notify client of disconnection for client-initiated disconnects
+        if (wasConnected) {
+            this.queueAction(() => this.onDisconnect?.());
         }
     }
 
@@ -189,7 +195,7 @@ export class Connector {
             this._connection!.send(data);
         } catch (error) {
             this.queueAction(() =>
-                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, (error as Error).message, packet)
+                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, getErrorMessage(error), packet)
             );
         }
     }
@@ -291,7 +297,7 @@ export class Connector {
             clearTimeout(timeoutId);
             this._pendingRequests.delete(msgSeq);
             this.queueAction(() =>
-                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, (error as Error).message, packet)
+                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, getErrorMessage(error), packet)
             );
         }
     }
@@ -446,7 +452,7 @@ export class Connector {
             clearTimeout(timeoutId);
             this._pendingRequests.delete(msgSeq);
             this.queueAction(() => {
-                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, (error as Error).message, authPacket);
+                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, getErrorMessage(error), authPacket);
                 callback(false);
             });
         }
@@ -623,8 +629,7 @@ export class Connector {
 
         const now = Date.now();
         if (now - this._lastReceivedTime > this._config.heartbeatTimeoutMs) {
-            // Connection timeout - disconnect() already triggers onDisconnect via the connection callback,
-            // so we don't queue another onDisconnect here to avoid double callback
+            // Connection timeout - disconnect() will call onDisconnect
             this.disconnect();
         }
     }

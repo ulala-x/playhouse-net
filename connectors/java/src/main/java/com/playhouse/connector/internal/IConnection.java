@@ -2,6 +2,7 @@ package com.playhouse.connector.internal;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -56,4 +57,14 @@ public interface IConnection {
      * 리소스 정리 (EventLoopGroup 등)
      */
     void shutdown();
+
+    /**
+     * EventLoopGroup 종료 대기
+     *
+     * @param timeout  대기 시간
+     * @param timeUnit 시간 단위
+     * @return 정상 종료되면 true, 타임아웃이면 false
+     * @throws InterruptedException 대기 중 인터럽트 발생
+     */
+    boolean awaitTermination(long timeout, TimeUnit timeUnit) throws InterruptedException;
 }

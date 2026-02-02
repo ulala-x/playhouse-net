@@ -193,8 +193,20 @@ public final class TcpConnection implements IConnection {
      */
     @Override
     public void startReceive(Consumer<ByteBuffer> onReceive, Runnable onClosed) {
+        if (onReceive == null) {
+            throw new IllegalArgumentException("onReceive callback cannot be null");
+        }
+        if (onClosed == null) {
+            throw new IllegalArgumentException("onClosed callback cannot be null");
+        }
+
         if (!isConnected()) {
             logger.warn("Cannot start receive: not connected");
+            return;
+        }
+
+        if (channel == null) {
+            logger.error("Cannot start receive: channel is null");
             return;
         }
 
@@ -256,6 +268,22 @@ public final class TcpConnection implements IConnection {
             logger.info("Shutting down EventLoopGroup");
             workerGroup.shutdownGracefully();
         }
+    }
+
+    /**
+     * EventLoopGroup 종료 대기
+     *
+     * @param timeout  대기 시간
+     * @param timeUnit 시간 단위
+     * @return 정상 종료되면 true, 타임아웃이면 false
+     * @throws InterruptedException 대기 중 인터럽트 발생
+     */
+    @Override
+    public boolean awaitTermination(long timeout, java.util.concurrent.TimeUnit timeUnit) throws InterruptedException {
+        if (workerGroup != null && !workerGroup.isTerminated()) {
+            return workerGroup.awaitTermination(timeout, timeUnit);
+        }
+        return true;
     }
 
     /**

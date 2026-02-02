@@ -5,6 +5,35 @@
 
 class IWebSocket;
 
+/**
+ * WebSocket Secure (WSS) Transport Implementation
+ *
+ * Thread Model:
+ * - Game Thread: All public API calls (Connect, Disconnect, SendBytes, IsConnected, IsConnecting)
+ * - WebSocket Module Thread: IWebSocket internally manages its own threading
+ *   - Callbacks (OnConnected, OnConnectionError, OnClosed, OnRawMessage) are invoked
+ *     on an internal WebSocket thread, NOT the Game Thread
+ *
+ * Thread Safety:
+ * - bConnected: Atomic variable, thread-safe read/write
+ * - Socket: TSharedPtr, thread-safe reference counting
+ * - IWebSocket callbacks: Invoked on WebSocket module's thread
+ *   WARNING: Callbacks may NOT be on Game Thread. Use AsyncTask to marshal to Game Thread if needed.
+ *
+ * Connection States:
+ * - Not Connected: Socket is null or bConnected is false
+ * - Connecting: Socket is valid but bConnected is false (IsConnecting() returns true)
+ * - Connected: Socket is valid and bConnected is true
+ *
+ * Resource Cleanup Order (in Disconnect()):
+ * 1. Close WebSocket connection (Socket->Close())
+ * 2. Reset Socket shared pointer
+ * 3. Set bConnected to false
+ *
+ * Note: Connection is asynchronous. Connect() returns immediately.
+ *       Wait for OnConnected callback before assuming connection is ready.
+ *       Uses WSS (TLS/SSL) protocol for secure communication.
+ */
 class FPlayHouseWssTransport : public IPlayHouseTransport
 {
 public:

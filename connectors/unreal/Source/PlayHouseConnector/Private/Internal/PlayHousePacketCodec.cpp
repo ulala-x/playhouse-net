@@ -96,15 +96,47 @@ bool FPlayHousePacketCodec::EncodeRequest(const FPlayHousePacket& Packet, TArray
 
 bool FPlayHousePacketCodec::DecodeResponse(const uint8* Data, int32 Size, FPlayHousePacket& OutPacket)
 {
+    // Validate minimum size for header
     if (Size < static_cast<int32>(PlayHouse::Protocol::MinHeaderSize))
     {
         return false;
     }
 
+    // Validate that Data pointer is not null
+    if (Data == nullptr)
+    {
+        return false;
+    }
+
+    // Read and validate content size from the first 4 bytes
+    uint32 ContentSize = ReadUInt32LE(Data);
+
+    // Validate content size is reasonable (prevent integer overflow)
+    if (ContentSize > PlayHouse::Protocol::MaxBodySize)
+    {
+        return false;
+    }
+
+    // Validate that the declared content size matches the actual data
+    // Size should be at least 4 (size prefix) + ContentSize
+    if (Size < static_cast<int32>(4 + ContentSize))
+    {
+        return false;
+    }
+
     int32 Offset = 4;
+    int32 ContentEnd = static_cast<int32>(4 + ContentSize);
 
     uint8 MsgIdLen = Data[Offset++];
+
+    // Validate MsgIdLen: must be > 0 and within bounds
     if (MsgIdLen == 0 || MsgIdLen > PlayHouse::Protocol::MaxMsgIdLength)
+    {
+        return false;
+    }
+
+    // Validate MsgId length doesn't exceed content bounds
+    if (Offset + static_cast<int32>(MsgIdLen) > ContentEnd)
     {
         return false;
     }
@@ -120,38 +152,57 @@ bool FPlayHousePacketCodec::DecodeResponse(const uint8* Data, int32 Size, FPlayH
     }
     Offset += MsgIdLen;
 
-    if (Offset + 2 > Size)
+    // Validate MsgSeq field (2 bytes)
+    if (Offset + 2 > ContentEnd || Offset + 2 > Size)
     {
         return false;
     }
     OutPacket.MsgSeq = ReadUInt16LE(Data + Offset);
     Offset += 2;
 
-    if (Offset + 8 > Size)
+    // Validate StageId field (8 bytes)
+    if (Offset + 8 > ContentEnd || Offset + 8 > Size)
     {
         return false;
     }
     OutPacket.StageId = ReadInt64LE(Data + Offset);
     Offset += 8;
 
-    if (Offset + 2 > Size)
+    // Validate ErrorCode field (2 bytes)
+    if (Offset + 2 > ContentEnd || Offset + 2 > Size)
     {
         return false;
     }
     OutPacket.ErrorCode = ReadInt16LE(Data + Offset);
     Offset += 2;
 
-    if (Offset + 4 > Size)
+    // Validate OriginalSize field (4 bytes)
+    if (Offset + 4 > ContentEnd || Offset + 4 > Size)
     {
         return false;
     }
     OutPacket.OriginalSize = ReadUInt32LE(Data + Offset);
     Offset += 4;
 
+    // Calculate and validate payload size
     OutPacket.Payload.Reset();
-    if (Offset < Size)
+    if (Offset < ContentEnd)
     {
-        OutPacket.Payload.Append(Data + Offset, Size - Offset);
+        int32 PayloadSize = ContentEnd - Offset;
+
+        // Validate payload size is non-negative and within bounds
+        if (PayloadSize < 0 || Offset + PayloadSize > Size)
+        {
+            return false;
+        }
+
+        // Additional safety check for payload size
+        if (PayloadSize > static_cast<int32>(PlayHouse::Protocol::MaxBodySize))
+        {
+            return false;
+        }
+
+        OutPacket.Payload.Append(Data + Offset, PayloadSize);
     }
 
     return true;

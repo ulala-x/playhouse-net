@@ -14,6 +14,7 @@ namespace internal {
 class TcpConnection::Impl {
 public:
     asio::io_context io_context_;
+    asio::executor_work_guard<asio::io_context::executor_type> work_guard_;
     asio::ip::tcp::socket socket_;
     asio::ip::tcp::resolver resolver_;
     bool is_connected_;
@@ -22,9 +23,11 @@ public:
     std::vector<uint8_t> receive_buffer_;
     std::thread io_thread_;
     std::mutex mutex_;
+    std::thread::id io_thread_id_;
 
     Impl()
         : io_context_()
+        , work_guard_(asio::make_work_guard(io_context_))
         , socket_(io_context_)
         , resolver_(io_context_)
         , is_connected_(false)
@@ -37,6 +40,7 @@ public:
 
     void StartIoThread() {
         io_thread_ = std::thread([this]() {
+            io_thread_id_ = std::this_thread::get_id();
             try {
                 io_context_.run();
             } catch (const std::exception& e) {
@@ -46,8 +50,12 @@ public:
     }
 
     void StopIoThread() {
+        // Release work guard to allow io_context to exit
+        work_guard_.reset();
         io_context_.stop();
-        if (io_thread_.joinable()) {
+
+        // Prevent self-join: don't join if called from IO thread
+        if (io_thread_.joinable() && std::this_thread::get_id() != io_thread_id_) {
             io_thread_.join();
         }
     }
@@ -110,6 +118,9 @@ TcpConnection::~TcpConnection() = default;
 std::future<bool> TcpConnection::ConnectAsync(const std::string& host, uint16_t port) {
     auto promise = std::make_shared<std::promise<bool>>();
     auto future = promise->get_future();
+
+    // Restart io_context if it was previously stopped (for reconnect)
+    impl_->io_context_.restart();
 
     // Start IO thread
     impl_->StartIoThread();

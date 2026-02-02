@@ -116,10 +116,15 @@ public sealed class Connector : IConnectorCallback, IAsyncDisposable
     /// <param name="debugMode">디버그 모드</param>
     public void Connect(string host, int port, long stageId, string stageType, bool debugMode = false)
     {
+        if (_clientNetwork == null)
+        {
+            throw new InvalidOperationException("Connector not initialized. Call Init() before Connect().");
+        }
+
         _disconnectFromClient = false;
         _stageId = stageId;
         _stageType = stageType;
-        _clientNetwork!.Connect(host, port, debugMode);
+        _clientNetwork.Connect(host, port, debugMode);
     }
 
     /// <summary>
@@ -133,10 +138,15 @@ public sealed class Connector : IConnectorCallback, IAsyncDisposable
     /// <returns>연결 성공 여부</returns>
     public async Task<bool> ConnectAsync(string host, int port, long stageId, string stageType, bool debugMode = false)
     {
+        if (_clientNetwork == null)
+        {
+            throw new InvalidOperationException("Connector not initialized. Call Init() before ConnectAsync().");
+        }
+
         _disconnectFromClient = false;
         _stageId = stageId;
         _stageType = stageType;
-        return await _clientNetwork!.ConnectAsync(host, port, debugMode);
+        return await _clientNetwork.ConnectAsync(host, port, debugMode);
     }
 
     /// <summary>

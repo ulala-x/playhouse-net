@@ -28,6 +28,12 @@ public final class RequestCache {
     private final int requestTimeoutMs;
     private final ScheduledExecutorService timeoutExecutor;
 
+    // 통계 카운터
+    private final AtomicInteger totalRequests = new AtomicInteger(0);
+    private final AtomicInteger timeoutCount = new AtomicInteger(0);
+    private final AtomicInteger successCount = new AtomicInteger(0);
+    private final AtomicInteger errorCount = new AtomicInteger(0);
+
     /**
      * RequestCache 생성자
      *
@@ -68,12 +74,20 @@ public final class RequestCache {
         RequestEntry entry = new RequestEntry(packet, future, System.currentTimeMillis());
 
         requests.put(msgSeq, entry);
+        totalRequests.incrementAndGet();
 
         // 타임아웃 스케줄링
         timeoutExecutor.schedule(() -> {
             RequestEntry timeoutEntry = requests.remove(msgSeq);
             if (timeoutEntry != null && !timeoutEntry.future.isDone()) {
-                logger.warn("Request timeout: msgId={}, msgSeq={}", packet.getMsgId(), msgSeq);
+                int currentTimeouts = timeoutCount.incrementAndGet();
+                long elapsed = System.currentTimeMillis() - timeoutEntry.timestamp;
+
+                logger.warn("Request timeout: msgId={}, msgSeq={}, elapsed={}ms, timeoutThreshold={}ms, " +
+                    "totalTimeouts={}, pendingRequests={}",
+                    packet.getMsgId(), msgSeq, elapsed, requestTimeoutMs,
+                    currentTimeouts, requests.size());
+
                 timeoutEntry.future.completeExceptionally(
                     new ConnectorException(
                         ConnectorErrorCode.REQUEST_TIMEOUT.getCode(),
@@ -86,7 +100,8 @@ public final class RequestCache {
         }, requestTimeoutMs, TimeUnit.MILLISECONDS);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("Registered request: msgId={}, msgSeq={}", packet.getMsgId(), msgSeq);
+            logger.debug("Registered request: msgId={}, msgSeq={}, totalRequests={}",
+                packet.getMsgId(), msgSeq, totalRequests.get());
         }
 
         return new RegisterResult(msgSeq, future);
@@ -109,7 +124,7 @@ public final class RequestCache {
      * 응답 처리
      *
      * @param response 응답 패킷
-     * @return 처리 성공 여부
+     * @return 처리 성공 여부 (true: 요청에 매칭됨, false: push 메시지이거나 late response)
      */
     public boolean complete(Packet response) {
         short msgSeq = response.getMsgSeq();
@@ -122,14 +137,26 @@ public final class RequestCache {
 
         RequestEntry entry = requests.remove(msgSeq);
         if (entry == null) {
-            logger.warn("No matching request found for response: msgId={}, msgSeq={}",
+            // Late response: arrived after timeout or request was already completed/cancelled
+            // This is not a push message, so we should NOT route it to push handlers
+            logger.warn("Late response or no matching request: msgId={}, msgSeq={} - dropping response",
+                response.getMsgId(), msgSeq);
+            return false;
+        }
+
+        // Check if the future is already completed (e.g., due to timeout)
+        if (entry.future.isDone()) {
+            // Late response: the future was already completed (likely by timeout)
+            // Drop this response instead of trying to complete it again
+            logger.warn("Late response after future completion: msgId={}, msgSeq={} - dropping response",
                 response.getMsgId(), msgSeq);
             return false;
         }
 
         if (response.hasError()) {
-            logger.warn("Response has error: msgId={}, msgSeq={}, errorCode={}",
-                response.getMsgId(), msgSeq, response.getErrorCode());
+            errorCount.incrementAndGet();
+            logger.warn("Response has error: msgId={}, msgSeq={}, errorCode={}, totalErrors={}",
+                response.getMsgId(), msgSeq, response.getErrorCode(), errorCount.get());
             // 에러 응답은 예외로 처리
             entry.future.completeExceptionally(
                 new ConnectorException(response.getErrorCode(),
@@ -138,13 +165,14 @@ public final class RequestCache {
                     response)
             );
         } else {
+            successCount.incrementAndGet();
             entry.future.complete(response);
         }
 
         if (logger.isDebugEnabled()) {
             long elapsed = System.currentTimeMillis() - entry.timestamp;
-            logger.debug("Completed request: msgId={}, msgSeq={}, elapsed={}ms",
-                response.getMsgId(), msgSeq, elapsed);
+            logger.debug("Completed request: msgId={}, msgSeq={}, elapsed={}ms, totalSuccess={}",
+                response.getMsgId(), msgSeq, elapsed, successCount.get());
         }
 
         return true;
@@ -199,7 +227,7 @@ public final class RequestCache {
      * 리소스 정리
      */
     public void shutdown() {
-        logger.info("Shutting down RequestCache");
+        logger.info("Shutting down RequestCache - {}", getStatistics());
         cancelAll();
 
         if (timeoutExecutor == null || timeoutExecutor.isShutdown()) {
@@ -241,6 +269,44 @@ public final class RequestCache {
      */
     public int pendingCount() {
         return requests.size();
+    }
+
+    /**
+     * 통계 정보 조회
+     *
+     * @return 통계 문자열
+     */
+    public String getStatistics() {
+        return String.format("RequestCache Stats - Total: %d, Success: %d, Error: %d, Timeout: %d, Pending: %d",
+            totalRequests.get(), successCount.get(), errorCount.get(), timeoutCount.get(), requests.size());
+    }
+
+    /**
+     * 총 요청 수
+     */
+    public int getTotalRequests() {
+        return totalRequests.get();
+    }
+
+    /**
+     * 타임아웃 발생 수
+     */
+    public int getTimeoutCount() {
+        return timeoutCount.get();
+    }
+
+    /**
+     * 성공 응답 수
+     */
+    public int getSuccessCount() {
+        return successCount.get();
+    }
+
+    /**
+     * 에러 응답 수
+     */
+    public int getErrorCount() {
+        return errorCount.get();
     }
 
     /**

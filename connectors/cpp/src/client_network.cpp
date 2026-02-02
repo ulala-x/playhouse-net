@@ -36,10 +36,17 @@ public:
     // Coroutine support: store promises for awaitable requests
     std::map<uint16_t, std::shared_ptr<std::promise<Packet>>> pending_promises_;
 
+    // Timeout tracking: map msg_seq to start time
+    std::map<uint16_t, std::chrono::steady_clock::time_point> request_timestamps_;
+
     std::mutex pending_mutex_;
     std::mutex callback_mutex_;
     std::queue<std::function<void()>> callback_queue_;
     bool is_authenticated_;
+
+    // Timeout checker thread and control
+    std::thread timeout_thread_;
+    std::atomic<bool> stop_timeout_checker_;
 
     std::function<void(bool)> on_connect_;
     std::function<void(Packet)> on_receive_;
@@ -51,6 +58,7 @@ public:
         , receive_buffer_(config.receive_buffer_size)
         , msg_seq_counter_(1)
         , is_authenticated_(false)
+        , stop_timeout_checker_(false)
     {
         connection_.SetReceiveCallback([this](const uint8_t* data, size_t size) {
             OnDataReceived(data, size);
@@ -59,6 +67,32 @@ public:
         connection_.SetDisconnectCallback([this]() {
             OnDisconnected();
         });
+
+        // Start timeout checker thread
+        StartTimeoutChecker();
+    }
+
+    ~Impl() {
+        StopTimeoutChecker();
+    }
+
+    void StartTimeoutChecker() {
+        stop_timeout_checker_ = false;
+        timeout_thread_ = std::thread([this]() {
+            using namespace std::chrono_literals;
+            while (!stop_timeout_checker_) {
+                CheckRequestTimeouts();
+                // Check every 100ms for timeouts
+                std::this_thread::sleep_for(100ms);
+            }
+        });
+    }
+
+    void StopTimeoutChecker() {
+        stop_timeout_checker_ = true;
+        if (timeout_thread_.joinable()) {
+            timeout_thread_.join();
+        }
     }
 
     uint16_t GetNextMsgSeq() {
@@ -70,6 +104,11 @@ public:
         return seq;
     }
 
+    // Thread Safety: This method is called exclusively from the TcpConnection's
+    // IO thread (ASIO's async_read_some callback). The receive_buffer_ is only
+    // accessed from this single IO thread context, ensuring thread-safe access
+    // without additional synchronization. If this invariant changes (e.g., multiple
+    // IO threads), receive_buffer_ access must be protected with a mutex.
     void OnDataReceived(const uint8_t* data, size_t size) {
         try {
             // Write to ring buffer
@@ -79,6 +118,16 @@ public:
             ProcessPackets();
         } catch (const std::exception& e) {
             std::cerr << "Error processing received data: " << e.what() << std::endl;
+
+            // Notify error through callback
+            if (on_error_) {
+                QueueCallback([this, error_msg = std::string(e.what())]() {
+                    on_error_(error_code::PROTOCOL_VIOLATION, error_msg);
+                });
+            }
+
+            // Clear buffer and consider disconnecting on protocol violation
+            receive_buffer_.Clear();
         }
     }
 
@@ -101,6 +150,15 @@ public:
             // Check if content size is valid
             if (content_size > protocol::MAX_BODY_SIZE) {
                 std::cerr << "Invalid content size: " << content_size << std::endl;
+
+                // Notify error through callback
+                if (on_error_) {
+                    QueueCallback([this, content_size]() {
+                        on_error_(error_code::PROTOCOL_VIOLATION,
+                                  "Invalid content size: " + std::to_string(content_size));
+                    });
+                }
+
                 receive_buffer_.Clear();
                 break;
             }
@@ -121,6 +179,13 @@ public:
                 HandlePacket(std::move(packet));
             } catch (const std::exception& e) {
                 std::cerr << "Error decoding packet: " << e.what() << std::endl;
+
+                // Notify error through callback
+                if (on_error_) {
+                    QueueCallback([this, error_msg = std::string(e.what())]() {
+                        on_error_(error_code::INVALID_RESPONSE, error_msg);
+                    });
+                }
             }
         }
     }
@@ -131,6 +196,9 @@ public:
         // Check if this is a response to a pending request
         if (msg_seq > 0) {
             std::lock_guard<std::mutex> lock(pending_mutex_);
+
+            // Remove timeout tracking
+            request_timestamps_.erase(msg_seq);
 
             // Check for awaitable promise first
             auto promise_it = pending_promises_.find(msg_seq);
@@ -183,6 +251,64 @@ public:
         });
     }
 
+    void CheckRequestTimeouts() {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+
+        auto now = std::chrono::steady_clock::now();
+        auto timeout_ms = std::chrono::milliseconds(config_.request_timeout_ms);
+
+        // Collect timed out requests
+        std::vector<uint16_t> timed_out_requests;
+
+        for (const auto& [msg_seq, start_time] : request_timestamps_) {
+            if (now - start_time >= timeout_ms) {
+                timed_out_requests.push_back(msg_seq);
+            }
+        }
+
+        // Process timed out requests
+        for (uint16_t msg_seq : timed_out_requests) {
+            request_timestamps_.erase(msg_seq);
+
+            // Check for awaitable promise
+            auto promise_it = pending_promises_.find(msg_seq);
+            if (promise_it != pending_promises_.end()) {
+                auto promise = promise_it->second;
+                pending_promises_.erase(promise_it);
+
+                try {
+                    promise->set_exception(std::make_exception_ptr(
+                        std::runtime_error("Request timeout")));
+                } catch (...) {
+                    // Promise may have already been set, ignore
+                }
+
+                // Notify error callback
+                if (on_error_) {
+                    QueueCallback([this, msg_seq]() {
+                        on_error_(error_code::REQUEST_TIMEOUT,
+                                  "Request timeout for msg_seq: " + std::to_string(msg_seq));
+                    });
+                }
+                continue;
+            }
+
+            // Check for callback-based request
+            auto callback_it = pending_requests_.find(msg_seq);
+            if (callback_it != pending_requests_.end()) {
+                pending_requests_.erase(callback_it);
+
+                // Notify error callback
+                if (on_error_) {
+                    QueueCallback([this, msg_seq]() {
+                        on_error_(error_code::REQUEST_TIMEOUT,
+                                  "Request timeout for msg_seq: " + std::to_string(msg_seq));
+                    });
+                }
+            }
+        }
+    }
+
     void ClearPendingRequests() {
         std::lock_guard<std::mutex> lock(pending_mutex_);
 
@@ -198,6 +324,7 @@ public:
         pending_promises_.clear();
 
         pending_requests_.clear();
+        request_timestamps_.clear();
     }
 };
 
@@ -310,10 +437,11 @@ asio::awaitable<Packet> ClientNetwork::Request(Packet packet, int64_t stage_id) 
     auto promise = std::make_shared<std::promise<Packet>>();
     auto future = promise->get_future();
 
-    // Register promise
+    // Register promise and timestamp
     {
         std::lock_guard<std::mutex> lock(impl_->pending_mutex_);
         impl_->pending_promises_[msg_seq] = promise;
+        impl_->request_timestamps_[msg_seq] = std::chrono::steady_clock::now();
     }
 
     // Send request
@@ -368,10 +496,11 @@ void ClientNetwork::Request(Packet packet, std::function<void(Packet)> callback,
     packet.SetStageId(stage_id);
     packet.SetMsgSeq(msg_seq);
 
-    // Register callback
+    // Register callback and timestamp
     {
         std::lock_guard<std::mutex> lock(impl_->pending_mutex_);
         impl_->pending_requests_[msg_seq] = std::move(callback);
+        impl_->request_timestamps_[msg_seq] = std::chrono::steady_clock::now();
     }
 
     // Send request

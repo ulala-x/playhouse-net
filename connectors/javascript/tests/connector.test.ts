@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Connector, Packet, ConnectorConfig, DefaultConfig, ErrorCode, PacketConst } from '../src/index.js';
+import { Connector, Packet, ConnectorConfig, DefaultConfig, ErrorCode, PacketConst, ConnectorError, isError, getErrorMessage } from '../src/index.js';
 
 describe('Packet', () => {
     describe('empty', () => {
@@ -55,8 +55,6 @@ describe('ConnectorConfig', () => {
         expect(DefaultConfig.heartbeatTimeoutMs).toBe(30000);
         expect(DefaultConfig.requestTimeoutMs).toBe(30000);
         expect(DefaultConfig.connectionIdleTimeoutMs).toBe(30000);
-        expect(DefaultConfig.enableReconnect).toBe(false);
-        expect(DefaultConfig.reconnectIntervalMs).toBe(5000);
         expect(DefaultConfig.debugMode).toBe(false);
     });
 });
@@ -64,13 +62,19 @@ describe('ConnectorConfig', () => {
 describe('ErrorCode', () => {
     it('defines all expected error codes', () => {
         expect(ErrorCode.Success).toBe(0);
+        // Connection errors (1xxx)
         expect(ErrorCode.ConnectionFailed).toBe(1001);
         expect(ErrorCode.ConnectionTimeout).toBe(1002);
         expect(ErrorCode.ConnectionClosed).toBe(1003);
+        expect(ErrorCode.HeartbeatTimeout).toBe(1004);
+        // Request errors (2xxx)
         expect(ErrorCode.RequestTimeout).toBe(2001);
         expect(ErrorCode.InvalidResponse).toBe(2002);
+        expect(ErrorCode.InvalidRequest).toBe(2003);
+        // Authentication errors (3xxx)
         expect(ErrorCode.AuthenticationFailed).toBe(3001);
-        // C# compatible error codes
+        expect(ErrorCode.AuthenticationRequired).toBe(3002);
+        // C# compatible error codes (60xxx)
         expect(ErrorCode.Disconnected).toBe(60201);
         expect(ErrorCode.RequestTimeoutLegacy).toBe(60202);
         expect(ErrorCode.Unauthenticated).toBe(60203);

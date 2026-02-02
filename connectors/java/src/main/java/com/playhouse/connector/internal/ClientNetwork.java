@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -33,7 +34,8 @@ public final class ClientNetwork {
     private volatile BiConsumer<Integer, String> onError;
     private volatile Runnable onDisconnect;
 
-    private volatile boolean authenticated;
+    // Use AtomicBoolean for thread-safe authentication state
+    private final AtomicBoolean authenticated = new AtomicBoolean(false);
 
     /**
      * ClientNetwork 생성자
@@ -54,7 +56,6 @@ public final class ClientNetwork {
 
         this.requestCache = new RequestCache(config.getRequestTimeoutMs());
         this.callbackQueue = new LinkedBlockingQueue<>(MAX_CALLBACK_QUEUE_SIZE);
-        this.authenticated = false;
     }
 
     /**
@@ -130,14 +131,14 @@ public final class ClientNetwork {
      * 인증 상태 확인
      */
     public boolean isAuthenticated() {
-        return authenticated;
+        return authenticated.get();
     }
 
     /**
      * 인증 상태 설정
      */
     public void setAuthenticated(boolean authenticated) {
-        this.authenticated = authenticated;
+        this.authenticated.set(authenticated);
     }
 
     /**
@@ -196,6 +197,15 @@ public final class ClientNetwork {
                         new ConnectorException(1000, "Send failed", packet)
                     );
                 }
+            })
+            .exceptionally(ex -> {
+                // Handle exceptions during send operation
+                logger.error("Exception during send request: {}", packet.getMsgId(), ex);
+                requestCache.remove(msgSeq);
+                responseFuture.completeExceptionally(
+                    new ConnectorException(1000, "Send failed: " + ex.getMessage(), packet)
+                );
+                return null;
             });
 
         return responseFuture;
@@ -206,7 +216,7 @@ public final class ClientNetwork {
      */
     public CompletableFuture<Void> disconnectAsync() {
         logger.info("Disconnecting...");
-        authenticated = false;
+        authenticated.set(false);
         requestCache.cancelAll();
         return connection.disconnectAsync();
     }
@@ -300,7 +310,7 @@ public final class ClientNetwork {
      */
     private void handleDisconnect() {
         logger.info("Connection closed");
-        authenticated = false;
+        authenticated.set(false);
         requestCache.cancelAll();
         enqueueCallback(() -> {
             if (onDisconnect != null) {
@@ -320,15 +330,47 @@ public final class ClientNetwork {
 
         int currentSize = callbackQueue.size();
         if (currentSize > QUEUE_WARNING_THRESHOLD) {
-            logger.warn("Callback queue is near capacity: {}/{}", currentSize, MAX_CALLBACK_QUEUE_SIZE);
+            logger.warn("Callback queue is near capacity: {}/{} ({}% full)",
+                currentSize, MAX_CALLBACK_QUEUE_SIZE,
+                (currentSize * 100) / MAX_CALLBACK_QUEUE_SIZE);
         }
 
         if (!callbackQueue.offer(callback)) {
-            logger.error("Callback queue is full! Dropping callback. Current size: {}/{}. Consider increasing queue size or calling mainThreadAction() more frequently.",
-                MAX_CALLBACK_QUEUE_SIZE, MAX_CALLBACK_QUEUE_SIZE);
+            // 드롭된 콜백 타입 파악
+            String callbackType = getCallbackType(callback);
+            logger.error("Callback queue is full! Dropping callback. Type: {}, Current size: {}/{}. " +
+                "Consider increasing queue size or calling mainThreadAction() more frequently.",
+                callbackType, MAX_CALLBACK_QUEUE_SIZE, MAX_CALLBACK_QUEUE_SIZE);
+
             // 큐가 가득 찬 경우 즉시 실행하는 것은 위험할 수 있음 (스택 오버플로우 가능성)
             // 대신 에러 로그만 남기고 드롭
         }
+    }
+
+    /**
+     * 콜백 타입 식별 (로깅용)
+     */
+    private String getCallbackType(Runnable callback) {
+        // Lambda 표현식이나 익명 클래스의 경우 스택 트레이스를 통해 호출 위치 파악
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+        for (int i = 0; i < Math.min(5, stackTrace.length); i++) {
+            StackTraceElement element = stackTrace[i];
+            String methodName = element.getMethodName();
+
+            // 콜백을 생성한 메서드 이름으로 타입 추론
+            if (methodName.contains("handleReceive")) {
+                return "RECEIVE";
+            } else if (methodName.contains("handleDisconnect")) {
+                return "DISCONNECT";
+            } else if (methodName.contains("connectAsync")) {
+                return "CONNECT";
+            } else if (methodName.contains("send") || methodName.contains("request")) {
+                return "SEND_ERROR";
+            } else if (methodName.contains("triggerError")) {
+                return "ERROR";
+            }
+        }
+        return "UNKNOWN";
     }
 
     /**
@@ -336,8 +378,38 @@ public final class ClientNetwork {
      */
     public void shutdown() {
         logger.info("Shutting down ClientNetwork");
+
+        // Clear authentication state
+        authenticated.set(false);
+
+        // Shutdown request cache (this will cancel all pending requests)
         requestCache.shutdown();
-        connection.disconnectAsync().join();
-        connection.shutdown(); // Netty EventLoopGroup graceful shutdown
+
+        // Disconnect if still connected
+        if (connection != null) {
+            try {
+                connection.disconnectAsync().join();
+            } catch (Exception e) {
+                logger.warn("Error during disconnect in shutdown", e);
+            }
+
+            // Netty EventLoopGroup graceful shutdown
+            connection.shutdown();
+
+            // EventLoopGroup 종료 대기 (타임아웃: 5초)
+            try {
+                if (!connection.awaitTermination(5, TimeUnit.SECONDS)) {
+                    logger.warn("EventLoopGroup did not terminate within 5 seconds");
+                }
+            } catch (InterruptedException e) {
+                logger.warn("Interrupted while waiting for EventLoopGroup termination");
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        // Clear callback queue to prevent memory leaks
+        callbackQueue.clear();
+
+        logger.info("ClientNetwork shutdown complete");
     }
 }

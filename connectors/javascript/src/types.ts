@@ -9,25 +9,31 @@ export const ErrorCode = {
     /** Success - no error */
     Success: 0,
 
-    // Connection errors
+    // Connection errors (1xxx)
     /** Connection failed */
     ConnectionFailed: 1001,
-    /** Connection timeout */
+    /** Connection timeout during initial connection */
     ConnectionTimeout: 1002,
     /** Connection closed unexpectedly */
     ConnectionClosed: 1003,
+    /** Heartbeat timeout - no response from server */
+    HeartbeatTimeout: 1004,
 
-    // Request errors
+    // Request errors (2xxx)
     /** Request timeout */
     RequestTimeout: 2001,
     /** Invalid response received */
     InvalidResponse: 2002,
+    /** Invalid request format */
+    InvalidRequest: 2003,
 
-    // Authentication errors
+    // Authentication errors (3xxx)
     /** Authentication failed */
     AuthenticationFailed: 3001,
+    /** Authentication required but not performed */
+    AuthenticationRequired: 3002,
 
-    // C# compatible error codes (PlayHouse standard)
+    // C# compatible error codes (PlayHouse standard - 60xxx)
     /** Disconnected before operation - matches C# ConnectorErrorCode.Disconnected */
     Disconnected: 60201,
     /** Request timeout - matches C# ConnectorErrorCode.RequestTimeout */
@@ -78,4 +84,40 @@ export interface IProtoDecoder<T> {
  */
 export interface IDisposable {
     dispose(): void;
+}
+
+/**
+ * Connector error class with error code
+ */
+export class ConnectorError extends Error {
+    constructor(
+        message: string,
+        public readonly code: ErrorCodeType,
+        public readonly request?: unknown
+    ) {
+        super(message);
+        this.name = 'ConnectorError';
+        // Restore prototype chain
+        Object.setPrototypeOf(this, ConnectorError.prototype);
+    }
+}
+
+/**
+ * Type guard to check if a value is an Error
+ */
+export function isError(value: unknown): value is Error {
+    return value instanceof Error;
+}
+
+/**
+ * Safely extracts error message from unknown catch value
+ */
+export function getErrorMessage(error: unknown): string {
+    if (isError(error)) {
+        return error.message;
+    }
+    if (typeof error === 'string') {
+        return error;
+    }
+    return String(error);
 }

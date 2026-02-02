@@ -27,6 +27,13 @@ public final class PacketCodec {
     public static final int MAX_PACKET_SIZE = 16 * 1024 * 1024;
 
     /**
+     * Maximum decompression ratio to prevent decompression bombs.
+     * If originalSize > compressed size * MAX_DECOMPRESSION_RATIO, reject the packet.
+     * A ratio of 100 means we allow up to 100x expansion during decompression.
+     */
+    public static final int MAX_DECOMPRESSION_RATIO = 100;
+
+    /**
      * Minimum header size: ContentSize(4) + MsgIdLen(1) + MsgId(1) + MsgSeq(2) + StageId(8)
      */
     private static final int MIN_HEADER_SIZE = 16;
@@ -76,20 +83,70 @@ public final class PacketCodec {
      *
      * @param buffer 수신된 데이터 버퍼
      * @return 디코딩된 패킷
+     * @throws IllegalArgumentException if packet structure is invalid
      */
     public static Packet decodeResponse(ByteBuffer buffer) {
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
+        // Validate minimum buffer size (ContentSize + MsgIdLen + at least 1 byte for MsgId + rest of header)
+        if (buffer.remaining() < MIN_HEADER_SIZE + 6) { // +6 for ErrorCode(2) + OriginalSize(4)
+            throw new IllegalArgumentException("Buffer too small for response packet: " + buffer.remaining());
+        }
+
+        int startPosition = buffer.position();
+
         // Read ContentSize
         int contentSize = buffer.getInt();
 
+        // Validate contentSize against buffer remaining
+        if (contentSize < MIN_HEADER_SIZE - 4 || contentSize > buffer.remaining()) {
+            throw new IllegalArgumentException(
+                String.format("Invalid contentSize: %d (buffer remaining: %d, min: %d)",
+                    contentSize, buffer.remaining(), MIN_HEADER_SIZE - 4));
+        }
+
+        // Calculate expected total size including the already-read ContentSize field
+        int headerTotalSize = 4 + contentSize;
+        int bufferTotal = buffer.position() - startPosition + buffer.remaining();
+
+        if (bufferTotal < headerTotalSize) {
+            throw new IllegalArgumentException(
+                String.format("Buffer size mismatch: expected %d, got %d", headerTotalSize, bufferTotal));
+        }
+
         // Read MsgIdLen
         int msgIdLen = buffer.get() & 0xFF;
+
+        // Validate msgIdLen - it must fit within contentSize along with other fields
+        // Response header after ContentSize: MsgIdLen(1) + MsgId(N) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4)
+        // Minimum overhead = 1 + 2 + 8 + 2 + 4 = 17 bytes
+        int minContentSizeForMsgId = 17 + msgIdLen;
+        if (msgIdLen == 0 || msgIdLen > 255) {
+            throw new IllegalArgumentException("Invalid msgIdLen: " + msgIdLen);
+        }
+
+        if (minContentSizeForMsgId > contentSize) {
+            throw new IllegalArgumentException(
+                String.format("msgIdLen %d too large for contentSize %d", msgIdLen, contentSize));
+        }
+
+        // Validate buffer has enough data for msgId
+        if (buffer.remaining() < msgIdLen) {
+            throw new IllegalArgumentException(
+                String.format("Not enough data for msgId: need %d, have %d", msgIdLen, buffer.remaining()));
+        }
 
         // Read MsgId
         byte[] msgIdBytes = new byte[msgIdLen];
         buffer.get(msgIdBytes);
         String msgId = new String(msgIdBytes, StandardCharsets.UTF_8);
+
+        // Validate remaining fields can be read
+        // Need: MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) = 16 bytes minimum
+        if (buffer.remaining() < 16) {
+            throw new IllegalArgumentException(
+                String.format("Not enough data for remaining header fields: need 16, have %d", buffer.remaining()));
+        }
 
         // Read MsgSeq
         short msgSeq = buffer.getShort();
@@ -103,8 +160,34 @@ public final class PacketCodec {
         // Read OriginalSize
         int originalSize = buffer.getInt();
 
+        // Validate originalSize is reasonable (not negative, not exceeding MAX_PACKET_SIZE)
+        if (originalSize < 0) {
+            throw new IllegalArgumentException("Invalid originalSize: " + originalSize + " (negative)");
+        }
+
+        if (originalSize > MAX_PACKET_SIZE) {
+            throw new IllegalArgumentException(
+                String.format("originalSize %d exceeds maximum allowed size %d", originalSize, MAX_PACKET_SIZE));
+        }
+
+        // Validate decompression ratio to prevent decompression bombs
+        // originalSize represents the decompressed size, payloadSize will be the compressed size
+        // We'll check this after reading the payload
+        int compressedSize = buffer.remaining();
+        if (originalSize > 0 && compressedSize > 0 && originalSize > compressedSize * MAX_DECOMPRESSION_RATIO) {
+            throw new IllegalArgumentException(
+                String.format("Decompression ratio too high: originalSize=%d, compressedSize=%d, ratio=%.2f (max: %d)",
+                    originalSize, compressedSize, (double) originalSize / compressedSize, MAX_DECOMPRESSION_RATIO));
+        }
+
         // Read Payload
         int payloadSize = buffer.remaining();
+
+        // Validate payload size is non-negative
+        if (payloadSize < 0) {
+            throw new IllegalArgumentException("Invalid payload size: " + payloadSize);
+        }
+
         byte[] payload = new byte[payloadSize];
         buffer.get(payload);
 

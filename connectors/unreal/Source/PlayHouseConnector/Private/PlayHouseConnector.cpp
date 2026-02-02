@@ -20,7 +20,7 @@ namespace
         FPlayHouseRingBuffer ReceiveBuffer;
         FPlayHouseRequestMap RequestMap;
         FCriticalSection CallbackMutex;
-        uint16 MsgSeqCounter = 1;
+        TAtomic<uint16> MsgSeqCounter{1};
         int64 StageId = 0;
 
         explicit FPlayHouseConnectorState(int32 BufferSize)
@@ -29,10 +29,12 @@ namespace
 
         uint16 NextMsgSeq()
         {
-            uint16 Seq = MsgSeqCounter++;
+            // Thread-safe increment using atomic operations
+            uint16 Seq = MsgSeqCounter.fetch_add(1);
+            // Handle wrap-around: skip 0 as it indicates fire-and-forget messages
             if (Seq == 0)
             {
-                Seq = MsgSeqCounter++;
+                Seq = MsgSeqCounter.fetch_add(1);
             }
             return Seq;
         }
@@ -216,11 +218,31 @@ void FPlayHouseConnector::Request(FPlayHousePacket&& Packet, TFunction<void(FPla
 {
     if (!Impl_ || !Impl_->Transport)
     {
+        // Call response callback with error if provided
+        if (OnResponse)
+        {
+            FPlayHousePacket ErrorPacket;
+            ErrorPacket.MsgId = PlayHouse::MsgId::Timeout;
+            ErrorPacket.ErrorCode = PlayHouse::ErrorCode::ConnectionFailed;
+            DispatchGameThread([Callback = MoveTemp(OnResponse), Packet = MoveTemp(ErrorPacket)]() mutable {
+                Callback(MoveTemp(Packet));
+            });
+        }
         return;
     }
 
     if (!IsConnected())
     {
+        // Call response callback with error
+        if (OnResponse)
+        {
+            FPlayHousePacket ErrorPacket;
+            ErrorPacket.MsgId = PlayHouse::MsgId::Timeout;
+            ErrorPacket.ErrorCode = PlayHouse::ErrorCode::ConnectionClosed;
+            DispatchGameThread([Callback = MoveTemp(OnResponse), Packet = MoveTemp(ErrorPacket)]() mutable {
+                Callback(MoveTemp(Packet));
+            });
+        }
         if (OnError)
         {
             DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::ConnectionClosed, TEXT("Not connected")); });
@@ -228,26 +250,52 @@ void FPlayHouseConnector::Request(FPlayHousePacket&& Packet, TFunction<void(FPla
         return;
     }
 
-    Packet.MsgSeq = Impl_->State->NextMsgSeq();
+    uint16 MsgSeq = Impl_->State->NextMsgSeq();
+    Packet.MsgSeq = MsgSeq;
     Packet.StageId = Impl_->State->StageId;
 
     double NowSeconds = FPlatformTime::Seconds();
     double Deadline = NowSeconds + (Impl_->Config.RequestTimeoutMs / 1000.0);
 
-    Impl_->State->RequestMap.Add(Packet.MsgSeq, Deadline, MoveTemp(OnResponse));
+    // Store MsgSeq before adding to map for cleanup on failure
+    Impl_->State->RequestMap.Add(MsgSeq, Deadline, MoveTemp(OnResponse));
 
     TArray<uint8> Encoded;
     if (!FPlayHousePacketCodec::EncodeRequest(Packet, Encoded))
     {
+        // Remove from pending requests and call callback with error
+        TFunction<void(FPlayHousePacket&&)> Callback;
+        if (Impl_->State->RequestMap.Resolve(MsgSeq, Callback))
+        {
+            FPlayHousePacket ErrorPacket;
+            ErrorPacket.MsgId = PlayHouse::MsgId::Timeout;
+            ErrorPacket.MsgSeq = MsgSeq;
+            ErrorPacket.ErrorCode = PlayHouse::ErrorCode::EncodeFailed;
+            DispatchGameThread([Callback = MoveTemp(Callback), Packet = MoveTemp(ErrorPacket)]() mutable {
+                Callback(MoveTemp(Packet));
+            });
+        }
         if (OnError)
         {
-            DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Encode failed")); });
+            DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::EncodeFailed, TEXT("Encode failed")); });
         }
         return;
     }
 
     if (!Impl_->Transport->SendBytes(Encoded.GetData(), Encoded.Num()))
     {
+        // Remove from pending requests and call callback with error
+        TFunction<void(FPlayHousePacket&&)> Callback;
+        if (Impl_->State->RequestMap.Resolve(MsgSeq, Callback))
+        {
+            FPlayHousePacket ErrorPacket;
+            ErrorPacket.MsgId = PlayHouse::MsgId::Timeout;
+            ErrorPacket.MsgSeq = MsgSeq;
+            ErrorPacket.ErrorCode = PlayHouse::ErrorCode::ConnectionClosed;
+            DispatchGameThread([Callback = MoveTemp(Callback), Packet = MoveTemp(ErrorPacket)]() mutable {
+                Callback(MoveTemp(Packet));
+            });
+        }
         if (OnError)
         {
             DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::ConnectionClosed, TEXT("Send failed")); });
@@ -295,12 +343,36 @@ bool FPlayHouseConnector::TickInternal(float DeltaSeconds)
 
 void FPlayHouseConnector::HandleBytes(const uint8* Data, int32 Size)
 {
-    if (!Impl_ || !Impl_->State || Size <= 0)
+    if (!Impl_ || !Impl_->State)
     {
         return;
     }
 
-    Impl_->State->ReceiveBuffer.Write(Data, Size);
+    // Validate input parameters
+    if (Data == nullptr || Size <= 0)
+    {
+        return;
+    }
+
+    // Validate size is reasonable to prevent integer overflow
+    if (Size > static_cast<int32>(PlayHouse::Protocol::MaxBodySize))
+    {
+        if (OnError)
+        {
+            DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Data size exceeds maximum")); });
+        }
+        return;
+    }
+
+    // Write to buffer and check for overflow
+    if (!Impl_->State->ReceiveBuffer.Write(Data, Size))
+    {
+        if (OnError)
+        {
+            DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Receive buffer overflow")); });
+        }
+        return;
+    }
 
     while (true)
     {
@@ -310,13 +382,19 @@ void FPlayHouseConnector::HandleBytes(const uint8* Data, int32 Size)
         }
 
         uint8 SizeBytes[4] = {0, 0, 0, 0};
-        Impl_->State->ReceiveBuffer.Peek(SizeBytes, 4, 0);
+        if (!Impl_->State->ReceiveBuffer.Peek(SizeBytes, 4, 0))
+        {
+            // Should not happen if GetCount() >= 4, but handle gracefully
+            break;
+        }
+
         uint32 ContentSize =
             static_cast<uint32>(SizeBytes[0]) |
             (static_cast<uint32>(SizeBytes[1]) << 8) |
             (static_cast<uint32>(SizeBytes[2]) << 16) |
             (static_cast<uint32>(SizeBytes[3]) << 24);
 
+        // Validate content size is within protocol limits
         if (ContentSize > PlayHouse::Protocol::MaxBodySize)
         {
             Impl_->State->ReceiveBuffer.Clear();
@@ -327,7 +405,32 @@ void FPlayHouseConnector::HandleBytes(const uint8* Data, int32 Size)
             break;
         }
 
+        // Validate content size includes at least minimum header
+        // MinHeaderSize is 21, which includes: 4 (size) + 1 (msgIdLen) + ... + payload
+        // ContentSize should be at least (MinHeaderSize - 4) for the content portion
+        if (ContentSize < PlayHouse::Protocol::MinHeaderSize - 4)
+        {
+            Impl_->State->ReceiveBuffer.Clear();
+            if (OnError)
+            {
+                DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Content size too small for header")); });
+            }
+            break;
+        }
+
         uint32 TotalSize = 4 + ContentSize;
+
+        // Check for potential integer overflow
+        if (TotalSize < ContentSize)
+        {
+            Impl_->State->ReceiveBuffer.Clear();
+            if (OnError)
+            {
+                DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Content size overflow")); });
+            }
+            break;
+        }
+
         if (Impl_->State->ReceiveBuffer.GetCount() < static_cast<int32>(TotalSize))
         {
             break;
@@ -335,14 +438,22 @@ void FPlayHouseConnector::HandleBytes(const uint8* Data, int32 Size)
 
         TArray<uint8> PacketBytes;
         PacketBytes.SetNumUninitialized(TotalSize);
-        Impl_->State->ReceiveBuffer.Read(PacketBytes.GetData(), TotalSize);
+        if (!Impl_->State->ReceiveBuffer.Read(PacketBytes.GetData(), TotalSize))
+        {
+            // Should not happen if GetCount() check passed, but handle gracefully
+            if (OnError)
+            {
+                DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Failed to read packet from buffer")); });
+            }
+            break;
+        }
 
         FPlayHousePacket Packet;
         if (!FPlayHousePacketCodec::DecodeResponse(PacketBytes.GetData(), PacketBytes.Num(), Packet))
         {
             if (OnError)
             {
-                DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::InvalidResponse, TEXT("Decode failed")); });
+                DispatchGameThread([Callback = OnError]() { Callback(PlayHouse::ErrorCode::DecodeFailed, TEXT("Decode failed")); });
             }
             continue;
         }

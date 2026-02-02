@@ -27,8 +27,10 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private readonly ConcurrentDictionary<ushort, PendingRequest> _pendingRequests = new();
     private readonly ConcurrentQueue<ParsedPacket> _packetQueue = new();
     private int _msgSeqCounter;
-    private bool _isAuthenticated;
-    private bool _debugMode;
+    // Fix #9: Mark as volatile for thread-safe access (written on network thread, read on main thread)
+    private volatile bool _isAuthenticated;
+    // Fix #10: Mark as volatile for thread-safe access (written on main thread, read on network thread)
+    private volatile bool _debugMode;
 
     // HeartBeat & IdleTimeout
     private readonly Stopwatch _lastReceivedTime = new();
@@ -207,7 +209,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // Fix #13: Clear buffer to avoid leaking sensitive data
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
         }
     }
 
@@ -235,8 +238,15 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
         var (buffer, length) = EncodePacket(request, msgSeq, stageId);
 
-        // SendAsync와 타임아웃을 fire-and-forget으로 실행
-        _ = SendRequestAsync(msgSeq, buffer, length, timeoutCts.Token);
+        // Fix #14: SendAsync와 타임아웃을 fire-and-forget으로 실행하되, unhandled exceptions를 로깅
+        _ = SendRequestAsync(msgSeq, buffer, length, timeoutCts.Token).ContinueWith(t =>
+        {
+            if (t.IsFaulted && t.Exception != null)
+            {
+                // 예상치 못한 에러를 로깅 (send failure와 timeout은 이미 SendRequestAsync 내부에서 처리됨)
+                Console.WriteLine($"[ClientNetwork] Unhandled error in SendRequestAsync - msgSeq={msgSeq}, error={t.Exception.GetBaseException().Message}");
+            }
+        }, TaskScheduler.Default);
     }
 
     private async Task SendRequestAsync(ushort msgSeq, byte[] buffer, int length, CancellationToken timeoutToken)
@@ -245,11 +255,14 @@ internal sealed class ClientNetwork : IAsyncDisposable
         {
             await _connection!.SendAsync(buffer.AsMemory(0, length));
         }
-        catch
+        catch (Exception ex)
         {
             // 전송 실패 시 pending request 제거하고 에러 콜백
             if (_pendingRequests.TryRemove(msgSeq, out var req))
             {
+                // Log synchronous send error (fire-and-forget pattern)
+                Console.WriteLine($"[ClientNetwork] Request send failed - msgSeq={msgSeq}, msgId={req.Request.MsgId}, stageId={req.StageId}, error={ex.Message}");
+
                 req.Dispose();
                 _asyncManager.AddJob(() =>
                 {
@@ -260,7 +273,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // Fix #13: Clear buffer to avoid leaking sensitive data
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
         }
 
         // 타임아웃 설정 - 응답 도착 시 취소됨
@@ -314,7 +328,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // Fix #13: Clear buffer to avoid leaking sensitive data
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
         }
 
         // 타임아웃 설정
@@ -432,8 +447,16 @@ internal sealed class ClientNetwork : IAsyncDisposable
     private void ProcessPacket(ParsedPacket parsed)
     {
         // Response 처리 (MsgSeq > 0)
-        if (parsed.MsgSeq > 0 && _pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
+        if (parsed.MsgSeq > 0)
         {
+            // Fix #6: Race condition - if TryRemove fails, timeout already handled it.
+            // Dispose packet and return to prevent routing to push handler.
+            if (!_pendingRequests.TryRemove(parsed.MsgSeq, out var pending))
+            {
+                parsed.Dispose();
+                return;
+            }
+
             // 타임아웃 타이머 취소
             pending.Dispose();
 
@@ -529,10 +552,8 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_connection != null)
-        {
-            await _connection.DisposeAsync();
-        }
+        // Fix #11: Detach event handlers and cleanup connection
+        await CleanupConnectionAsync();
     }
 
     private sealed class PendingRequest : IDisposable

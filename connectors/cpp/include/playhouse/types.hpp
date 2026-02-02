@@ -21,6 +21,8 @@ namespace error_code {
     constexpr int CONNECTION_CLOSED = 1003;
     constexpr int REQUEST_TIMEOUT = 2001;
     constexpr int INVALID_RESPONSE = 2002;
+    constexpr int PROTOCOL_VIOLATION = 2003;
+    constexpr int BUFFER_OVERFLOW = 2004;
     constexpr int AUTHENTICATION_FAILED = 3001;
 }
 

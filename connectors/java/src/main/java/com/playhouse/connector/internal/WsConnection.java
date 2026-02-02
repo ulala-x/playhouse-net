@@ -243,8 +243,20 @@ public final class WsConnection implements IConnection {
      */
     @Override
     public void startReceive(Consumer<ByteBuffer> onReceive, Runnable onClosed) {
+        if (onReceive == null) {
+            throw new IllegalArgumentException("onReceive callback cannot be null");
+        }
+        if (onClosed == null) {
+            throw new IllegalArgumentException("onClosed callback cannot be null");
+        }
+
         if (!isConnected()) {
             logger.warn("Cannot start receive: not connected");
+            return;
+        }
+
+        if (channel == null) {
+            logger.error("Cannot start receive: channel is null");
             return;
         }
 
@@ -274,12 +286,39 @@ public final class WsConnection implements IConnection {
 
                 ChannelFuture closeFuture = channel.writeAndFlush(closeFrame);
                 closeFuture.addListener((ChannelFutureListener) channelFuture -> {
-                    // 채널 닫기
-                    channel.close().addListener(cf -> {
-                        connected = false;
+                    if (channelFuture.isSuccess()) {
+                        // Close frame 전송 성공, 응답 대기 (타임아웃: 3초)
+                        channel.eventLoop().schedule(() -> {
+                            if (channel.isActive()) {
+                                logger.warn("Close frame response timeout, forcing channel close");
+                                channel.close().addListener(cf -> {
+                                    connected = false;
+                                    logger.info("WebSocket disconnected (forced)");
+                                    future.complete(null);
+                                });
+                            }
+                        }, 3, java.util.concurrent.TimeUnit.SECONDS);
+
+                        // 정상적인 close 응답을 받으면 channelInactive에서 처리됨
+                        // future는 CloseWebSocketFrame을 받았을 때 완료되도록 수정
+                    } else {
+                        // Close frame 전송 실패, 즉시 채널 닫기
+                        logger.warn("Failed to send close frame, forcing channel close");
+                        channel.close().addListener(cf -> {
+                            connected = false;
+                            logger.info("WebSocket disconnected (forced)");
+                            future.complete(null);
+                        });
+                    }
+                });
+
+                // 채널이 비활성화되면 future 완료
+                channel.closeFuture().addListener((ChannelFutureListener) cf -> {
+                    connected = false;
+                    if (!future.isDone()) {
                         logger.info("WebSocket disconnected");
                         future.complete(null);
-                    });
+                    }
                 });
             } else {
                 connected = false;
@@ -316,6 +355,22 @@ public final class WsConnection implements IConnection {
             logger.info("Shutting down EventLoopGroup");
             workerGroup.shutdownGracefully();
         }
+    }
+
+    /**
+     * EventLoopGroup 종료 대기
+     *
+     * @param timeout  대기 시간
+     * @param timeUnit 시간 단위
+     * @return 정상 종료되면 true, 타임아웃이면 false
+     * @throws InterruptedException 대기 중 인터럽트 발생
+     */
+    @Override
+    public boolean awaitTermination(long timeout, java.util.concurrent.TimeUnit timeUnit) throws InterruptedException {
+        if (workerGroup != null && !workerGroup.isTerminated()) {
+            return workerGroup.awaitTermination(timeout, timeUnit);
+        }
+        return true;
     }
 
     /**

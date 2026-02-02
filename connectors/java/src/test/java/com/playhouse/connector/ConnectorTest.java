@@ -76,15 +76,13 @@ class ConnectorTest {
     }
 
     @Test
-    void testSendWithoutConnectionThrows() {
+    void testSendWithoutConnectionNoThrow() {
         // Given
         connector.init();
         Packet packet = Packet.empty("TestMessage");
 
-        // When/Then
-        assertThatThrownBy(() -> connector.send(packet))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Not connected");
+        // When/Then - send() should not throw when disconnected (logs warning instead)
+        assertThatCode(() -> connector.send(packet)).doesNotThrowAnyException();
     }
 
     @Test
@@ -164,10 +162,11 @@ class ConnectorTest {
         connector.init();
         Packet request = Packet.fromBytes("TestRequest", new byte[]{1, 2, 3});
 
-        // When/Then
-        assertThatThrownBy(() -> connector.requestAsync(request))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Not connected");
+        // When/Then - requestAsync returns a failed future with ConnectorException
+        var future = connector.requestAsync(request);
+        assertThat(future.isCompletedExceptionally()).isTrue();
+        assertThatThrownBy(() -> future.join())
+            .hasCauseInstanceOf(ConnectorException.class);
     }
 
     // ===== 동기 API 테스트 =====
@@ -186,10 +185,9 @@ class ConnectorTest {
         connector.init();
         Packet request = Packet.fromBytes("TestRequest", new byte[]{1, 2, 3});
 
-        // When/Then
+        // When/Then - request() throws ConnectorException when not connected
         assertThatThrownBy(() -> connector.request(request))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Not connected");
+            .isInstanceOf(ConnectorException.class);
     }
 
     @Test
@@ -198,10 +196,9 @@ class ConnectorTest {
         connector.init();
         byte[] payload = new byte[]{1, 2, 3};
 
-        // When/Then
+        // When/Then - authenticate() throws ConnectorException when not connected
         assertThatThrownBy(() -> connector.authenticate("service", "account", payload))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Not connected");
+            .isInstanceOf(ConnectorException.class);
     }
 
     @Test
@@ -210,10 +207,9 @@ class ConnectorTest {
         connector.init();
         Packet authPacket = Packet.fromBytes("AuthRequest", new byte[]{1, 2, 3});
 
-        // When/Then
+        // When/Then - authenticate() throws ConnectorException when not connected
         assertThatThrownBy(() -> connector.authenticate(authPacket))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Not connected");
+            .isInstanceOf(ConnectorException.class);
     }
 
     // Note: 실제 서버 연결 테스트는 통합 테스트에서 수행

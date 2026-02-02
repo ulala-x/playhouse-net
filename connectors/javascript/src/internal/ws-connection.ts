@@ -6,6 +6,7 @@
 import type { ConnectorConfig } from '../config.js';
 import { ParsedPacket } from '../packet.js';
 import { CONTENT_SIZE_HEADER, decodePacket, readContentSize } from './packet-codec.js';
+import { getErrorMessage } from '../types.js';
 
 /**
  * Connection state
@@ -288,7 +289,7 @@ export class WsConnection {
                 this._expectedPacketSize = -1;
                 // Surface decode errors to onError callback
                 this._callbacks.onError?.(
-                    new Error(`Failed to parse packet: ${error instanceof Error ? error.message : String(error)}`)
+                    new Error(`Failed to parse packet: ${getErrorMessage(error)}`)
                 );
             }
         }

@@ -12,5 +12,5 @@ export { Packet, ParsedPacket } from './packet.js';
 export { ConnectorConfig, DefaultConfig } from './config.js';
 
 // Types
-export { ErrorCode, PacketConst } from './types.js';
+export { ErrorCode, PacketConst, ConnectorError, isError, getErrorMessage } from './types.js';
 export type { ErrorCodeType, IDisposable, IProtoDecoder, IProtoMessage } from './types.js';
