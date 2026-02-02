@@ -30,11 +30,11 @@ namespace
         uint16 NextMsgSeq()
         {
             // Thread-safe increment using atomic operations
-            uint16 Seq = MsgSeqCounter.fetch_add(1);
+            uint16 Seq = MsgSeqCounter.IncrementExchange();
             // Handle wrap-around: skip 0 as it indicates fire-and-forget messages
             if (Seq == 0)
             {
-                Seq = MsgSeqCounter.fetch_add(1);
+                Seq = MsgSeqCounter.IncrementExchange();
             }
             return Seq;
         }

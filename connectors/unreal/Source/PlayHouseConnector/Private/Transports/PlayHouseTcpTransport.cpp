@@ -7,14 +7,12 @@
 #include "HAL/RunnableThread.h"
 #include "Containers/Queue.h"
 
-namespace
+class FPlayHouseTcpTransport::FTcpWorker : public FRunnable
 {
-    class FTcpWorker : public FRunnable
-    {
-    public:
-        explicit FTcpWorker(FSocket* InSocket)
-            : Socket(InSocket)
-        {}
+public:
+    explicit FTcpWorker(FSocket* InSocket)
+        : Socket(InSocket)
+    {}
 
         virtual uint32 Run() override
         {
@@ -53,11 +51,12 @@ namespace
                     {
                         int32 Read = 0;
                         int32 ToRead = FMath::Min(static_cast<int32>(PendingData), BufferSize);
-                        ESocketErrors Error = SE_NO_ERROR;
-                        bool bSuccess = Socket->Recv(Buffer.GetData(), ToRead, Read, Error);
+                        const bool bSuccess = Socket->Recv(Buffer.GetData(), ToRead, Read, ESocketReceiveFlags::None);
 
-                        if (!bSuccess || Error != SE_NO_ERROR)
+                        if (!bSuccess)
                         {
+                            ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+                            const ESocketErrors Error = SocketSubsystem ? SocketSubsystem->GetLastErrorCode() : SE_NO_ERROR;
                             if (Error == SE_EWOULDBLOCK)
                             {
                                 // Non-blocking, try again later
@@ -120,16 +119,15 @@ namespace
             SendQueue.Enqueue(MoveTemp(Copy));
         }
 
-        TFunction<void(const uint8* Data, int32 Size)> OnBytes;
-        TFunction<void(int32 Code, const FString& Message)> OnError;
+    TFunction<void(const uint8* Data, int32 Size)> OnBytes;
+    TFunction<void(int32 Code, const FString& Message)> OnError;
 
-    private:
-        FSocket* Socket = nullptr;
-        TAtomic<bool> bStopping{false};
-        TQueue<TArray<uint8>> SendQueue;
-        FCriticalSection SendQueueLock;
-    };
-}
+private:
+    FSocket* Socket = nullptr;
+    TAtomic<bool> bStopping{false};
+    TQueue<TArray<uint8>> SendQueue;
+    FCriticalSection SendQueueLock;
+};
 
 bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
 {
@@ -200,7 +198,7 @@ bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
         }
     };
 
-    Thread = FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTcpWorker"));
+    Thread.Reset(FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTcpWorker")));
 
     bConnected.Store(true);
     return true;

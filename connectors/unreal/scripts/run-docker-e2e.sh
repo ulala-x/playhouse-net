@@ -18,6 +18,9 @@ fi
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 TEST_SERVER_DIR="$ROOT_DIR/test-server"
+REPORT_DIR="$ROOT_DIR/../_ue/automation-reports"
+
+mkdir -p "$REPORT_DIR"
 
 if [[ ! -f "$TEST_SERVER_DIR/docker-compose.yml" ]]; then
   echo "test-server docker-compose.yml not found at $TEST_SERVER_DIR" >&2
@@ -36,11 +39,14 @@ UPROJECT_BASENAME=$(basename "$UPROJECT_PATH")
 
 docker run --rm \
   -v "$PROJECT_DIR":/project \
+  -v "$REPORT_DIR":/reports \
   -w /project \
   "$UE_DOCKER_IMAGE" \
   /bin/bash -lc \
   "/home/ue4/Engine/Binaries/Linux/UnrealEditor-Cmd /project/$UPROJECT_BASENAME \
-    -ExecCmds='Automation RunTests PlayHouse.*;Quit' \
+    -ExecCmds='Automation RunTests PlayHouse.*' \
+    -TestExit='Automation Test Queue Empty' \
+    -ReportExportPath='/reports' \
     -unattended -nopause -nosplash"
 
 pushd "$TEST_SERVER_DIR" >/dev/null

@@ -8,22 +8,28 @@
 #include "Containers/Queue.h"
 
 #if WITH_SSL
+#include "BSDSockets/SocketsBSD.h"
 THIRD_PARTY_INCLUDES_START
+#ifdef UI
+#undef UI
+#endif
+#define OPENSSL_NO_UI
+#define UI UI_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#undef UI
+#undef OPENSSL_NO_UI
 THIRD_PARTY_INCLUDES_END
 #endif
 
-namespace
-{
 #if WITH_SSL
-    class FTlsWorker : public FRunnable
-    {
-    public:
-        FTlsWorker(FSocket* InSocket, SSL* InSsl)
-            : Socket(InSocket)
-            , Ssl(InSsl)
-        {}
+class FPlayHouseTlsTransport::FTlsWorker : public FRunnable
+{
+public:
+    FTlsWorker(FSocket* InSocket, SSL* InSsl)
+        : Socket(InSocket)
+        , Ssl(InSsl)
+    {}
 
         virtual uint32 Run() override
         {
@@ -130,18 +136,17 @@ namespace
             SendQueue.Enqueue(MoveTemp(Copy));
         }
 
-        TFunction<void(const uint8* Data, int32 Size)> OnBytes;
-        TFunction<void(int32 Code, const FString& Message)> OnError;
+    TFunction<void(const uint8* Data, int32 Size)> OnBytes;
+    TFunction<void(int32 Code, const FString& Message)> OnError;
 
-    private:
-        FSocket* Socket = nullptr;
-        SSL* Ssl = nullptr;
-        TAtomic<bool> bStopping{false};
-        TQueue<TArray<uint8>> SendQueue;
-        FCriticalSection SendQueueLock;
-    };
+private:
+    FSocket* Socket = nullptr;
+    SSL* Ssl = nullptr;
+    TAtomic<bool> bStopping{false};
+    TQueue<TArray<uint8>> SendQueue;
+    FCriticalSection SendQueueLock;
+};
 #endif
-}
 
 bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
 {
@@ -234,7 +239,25 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
         return false;
     }
 
-    int32 NativeSocket = Socket->GetNativeSocket();
+    SOCKET NativeSocket = INVALID_SOCKET;
+    if (FSocketBSD* BsdSocket = static_cast<FSocketBSD*>(Socket))
+    {
+        NativeSocket = BsdSocket->GetNativeSocket();
+    }
+    if (NativeSocket == INVALID_SOCKET)
+    {
+        SSL_free(Ssl);
+        Ssl = nullptr;
+        SSL_CTX_free(SslCtx);
+        SslCtx = nullptr;
+        SocketSubsystem->DestroySocket(Socket);
+        Socket = nullptr;
+        if (OnTransportError)
+        {
+            OnTransportError(PlayHouse::ErrorCode::ConnectionFailed, TEXT("TLS native socket unavailable"));
+        }
+        return false;
+    }
     SSL_set_fd(Ssl, NativeSocket);
 
     int Result = SSL_connect(Ssl);
@@ -267,7 +290,7 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
         }
     };
 
-    Thread = FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTlsWorker"));
+    Thread.Reset(FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTlsWorker")));
 
     bConnected.Store(true);
     return true;

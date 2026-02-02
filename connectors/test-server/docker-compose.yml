@@ -12,13 +12,13 @@ services:
       - "15000:15000"  # ZMQ Play Port (optional)
       - "15300:15300"  # ZMQ API Port (optional)
     environment:
-      # ASP.NET Core Configuration (HTTP only)
-      - ASPNETCORE_URLS=http://+:8080
+      # ASP.NET Core Configuration
+      - ASPNETCORE_URLS=http://+:8080;https://+:8443
       - ASPNETCORE_ENVIRONMENT=Development
 
       # Transport Configuration
       - ENABLE_WEBSOCKET=true
-      - ENABLE_TLS=false
+      - ENABLE_TLS=true
       - TCP_PORT=34001
       - TCP_TLS_PORT=34002
       - HTTP_PORT=8080
@@ -27,12 +27,17 @@ services:
       # ZMQ Configuration
       - ZMQ_PLAY_PORT=15000
       - ZMQ_API_PORT=15300
+      # TLS Certificate
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/server.pfx
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=password
 
       # Logging Configuration
       - Logging__LogLevel__Default=Information
       - Logging__LogLevel__Microsoft.AspNetCore=Warning
     networks:
       - playhouse-network
+    volumes:
+      - ./certs:/app/certs:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 5s

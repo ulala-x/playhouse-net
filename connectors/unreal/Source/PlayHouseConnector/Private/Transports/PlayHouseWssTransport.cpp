@@ -7,7 +7,7 @@
 
 namespace
 {
-    void DispatchToGameThread(TFunction<void()>&& Func)
+    void DispatchToGameThreadWss(TFunction<void()>&& Func)
     {
         if (IsInGameThread())
         {
@@ -67,7 +67,7 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
             return;
         }
         // Marshal to game thread for thread safety
-        DispatchToGameThread([this, Error]() {
+        DispatchToGameThreadWss([this, Error]() {
             if (OnTransportError)
             {
                 OnTransportError(PlayHouse::ErrorCode::ConnectionFailed, Error);
@@ -82,7 +82,7 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         }
         bConnected.Store(false);
         // Marshal to game thread for thread safety
-        DispatchToGameThread([this]() {
+        DispatchToGameThreadWss([this]() {
             if (OnDisconnected)
             {
                 OnDisconnected();
@@ -105,7 +105,7 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         // Validate size is within reasonable bounds
         if (Size > PlayHouse::Protocol::MaxBodySize)
         {
-            DispatchToGameThread([this]() {
+            DispatchToGameThreadWss([this]() {
                 if (OnTransportError)
                 {
                     OnTransportError(PlayHouse::ErrorCode::InvalidResponse, TEXT("Received data exceeds maximum size"));
@@ -118,7 +118,7 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         TArray<uint8> DataCopy;
         DataCopy.Append(reinterpret_cast<const uint8*>(Data), static_cast<int32>(Size));
 
-        DispatchToGameThread([this, DataCopy = MoveTemp(DataCopy)]() {
+        DispatchToGameThreadWss([this, DataCopy = MoveTemp(DataCopy)]() {
             if (OnBytesReceived)
             {
                 OnBytesReceived(DataCopy.GetData(), DataCopy.Num());

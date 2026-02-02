@@ -19,6 +19,7 @@ This document covers the recommended two-path workflow:
 
 ```bash
 cd /home/ulalax/project/ulalax/playhouse/playhouse-net/connectors/test-server
+./certs/generate-certs.sh
 docker compose up -d
 ```
 
@@ -50,6 +51,7 @@ This path is slower but provides a consistent CI-like environment.
 
 ```bash
 cd /home/ulalax/project/ulalax/playhouse/playhouse-net/connectors/test-server
+./certs/generate-certs.sh
 docker compose up -d
 ```
 
@@ -72,6 +74,7 @@ docker compose down
 
 - The UE container image tag varies by Epic release; set `UE_DOCKER_IMAGE` accordingly.
 - If Docker cannot access the project path, check WSL file permissions and Docker Desktop file sharing.
+- Reports are exported to `_ue/automation-reports` by default.
 - For transport-specific tests (TCP/TLS/WS/WSS), add UE automation categories like:
   - `PlayHouse.Tcp`
   - `PlayHouse.Tls`

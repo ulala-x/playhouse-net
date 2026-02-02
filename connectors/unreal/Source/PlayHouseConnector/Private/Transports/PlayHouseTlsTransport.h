@@ -48,9 +48,11 @@ public:
     virtual bool SendBytes(const uint8* Data, int32 Size) override;
 
 private:
+    class FTlsWorker;
+
     TAtomic<bool> bConnected{false};
     FSocket* Socket = nullptr;
-    TUniquePtr<class FTlsWorker> Worker;
+    TUniquePtr<FTlsWorker> Worker;
     TUniquePtr<FRunnableThread> Thread;
 #if WITH_SSL
     SSL_CTX* SslCtx = nullptr;

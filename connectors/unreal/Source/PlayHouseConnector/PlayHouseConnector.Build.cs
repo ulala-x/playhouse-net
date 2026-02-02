@@ -21,5 +21,14 @@ public class PlayHouseConnector : ModuleRules
 
         PrivateDependencyModuleNames.Add("WebSockets");
         PrivateDependencyModuleNames.Add("SSL");
+
+        PrivateDefinitions.Add("WITH_AUTOMATION_TESTS=1");
+        PrivateDefinitions.Add("WITH_DEV_AUTOMATION_TESTS=1");
+
+        if (Target.Platform == UnrealTargetPlatform.Win64)
+        {
+            AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
+            PrivateIncludePaths.Add(System.IO.Path.Combine(EngineDirectory, "Source/Runtime/Sockets/Private"));
+        }
     }
 }

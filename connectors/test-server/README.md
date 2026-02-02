@@ -442,3 +442,21 @@ tail -f ./logs/playhouse-test-server.log
 ## 라이선스
 
 MIT License - 자세한 내용은 [LICENSE](../../LICENSE) 파일을 참고하세요.
+
+## Docker TLS Notes (2026-02-02)
+
+When using `connectors/test-server/docker-compose.yml`, TLS/WSS is enabled by default.
+Make sure certificates exist before starting:
+
+```
+cd connectors/test-server/certs
+./generate-certs.sh
+```
+
+Ports:
+- HTTP/WS: 8080
+- HTTPS/WSS: 8443
+- TCP: 34001
+- TCP+TLS: 34002
+
+If ports conflict on Windows, override the host ports in `docker-compose.yml`.

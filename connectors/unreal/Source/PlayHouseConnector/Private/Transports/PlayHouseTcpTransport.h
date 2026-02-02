@@ -38,8 +38,10 @@ public:
     virtual bool SendBytes(const uint8* Data, int32 Size) override;
 
 private:
+    class FTcpWorker;
+
     TAtomic<bool> bConnected{false};
     FSocket* Socket = nullptr;
-    TUniquePtr<class FTcpWorker> Worker;
+    TUniquePtr<FTcpWorker> Worker;
     TUniquePtr<FRunnableThread> Thread;
 };

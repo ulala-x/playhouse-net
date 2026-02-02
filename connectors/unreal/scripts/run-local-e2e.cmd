@@ -17,14 +17,23 @@ if "%UPROJECT_PATH%"=="" (
 )
 
 set SCRIPT_DIR=%~dp0
-for %%I in ("%SCRIPT_DIR%..\..") do set ROOT_DIR=%%~fI
+for %%I in ("%SCRIPT_DIR%..\..\..") do set ROOT_DIR=%%~fI
 set TEST_SERVER_DIR=%ROOT_DIR%\connectors\test-server
+set REPORT_DIR=%ROOT_DIR%\_ue\automation-reports
+
+if not exist "%REPORT_DIR%" (
+  mkdir "%REPORT_DIR%"
+)
 
 pushd "%TEST_SERVER_DIR%" >nul
   docker compose up -d
 popd >nul
 
-"%UE_EDITOR_CMD%" "%UPROJECT_PATH%" -ExecCmds="Automation RunTests PlayHouse.*;Quit" -unattended -nopause -nosplash
+"%UE_EDITOR_CMD%" "%UPROJECT_PATH%" ^
+  -ExecCmds="Automation RunTests PlayHouse.*" ^
+  -TestExit="Automation Test Queue Empty" ^
+  -ReportExportPath="%REPORT_DIR%" ^
+  -unattended -nopause -nosplash
 set UE_EXIT=%ERRORLEVEL%
 
 pushd "%TEST_SERVER_DIR%" >nul
