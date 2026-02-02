@@ -132,6 +132,13 @@ public final class ClientNetwork {
     }
 
     /**
+     * 인증 상태 설정
+     */
+    public void setAuthenticated(boolean authenticated) {
+        this.authenticated = authenticated;
+    }
+
+    /**
      * 메시지 전송 (응답 없음)
      *
      * @param packet  패킷
@@ -241,12 +248,10 @@ public final class ClientNetwork {
                 return;
             }
 
-            // 패킷 추출
+            // 패킷 추출 (ContentSize 포함하여 전체 패킷을 slice)
             int startPos = buffer.position();
-            buffer.position(startPos + 4); // Skip ContentSize
-
             int endPos = startPos + packetSize;
-            ByteBuffer packetBuffer = buffer.slice().limit(endPos - startPos - 4);
+            ByteBuffer packetBuffer = buffer.slice().limit(packetSize);
             buffer.position(endPos);
 
             // 패킷 디코딩

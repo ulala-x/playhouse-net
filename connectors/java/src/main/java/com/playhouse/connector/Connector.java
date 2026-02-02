@@ -196,6 +196,17 @@ public final class Connector implements AutoCloseable {
     }
 
     /**
+     * 인증 상태 직접 설정 (테스트 또는 특수 상황용)
+     *
+     * @param authenticated 인증 상태
+     */
+    public void setAuthenticated(boolean authenticated) {
+        if (initialized) {
+            clientNetwork.setAuthenticated(authenticated);
+        }
+    }
+
+    /**
      * 인증 요청 (간편 API - 비동기)
      *
      * @param serviceId 서비스 ID
@@ -213,6 +224,7 @@ public final class Connector implements AutoCloseable {
             .thenApply(response -> {
                 boolean success = response.getErrorCode() == 0;
                 if (success) {
+                    clientNetwork.setAuthenticated(true);
                     logger.info("Authentication successful: serviceId={}, accountId={}", serviceId, accountId);
                 } else {
                     logger.warn("Authentication failed: errorCode={}", response.getErrorCode());
@@ -249,6 +261,7 @@ public final class Connector implements AutoCloseable {
             .thenApply(response -> {
                 boolean success = response.getErrorCode() == 0;
                 if (success) {
+                    clientNetwork.setAuthenticated(true);
                     logger.info("Authentication successful");
                 } else {
                     logger.warn("Authentication failed: errorCode={}", response.getErrorCode());

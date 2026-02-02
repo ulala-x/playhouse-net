@@ -83,7 +83,7 @@ public class TestServerClient {
         RequestBody body = RequestBody.create(jsonBody, JSON);
 
         Request request = new Request.Builder()
-                .url(baseUrl + "/api/stages")
+                .url(baseUrl + "/api/stages/get-or-create")
                 .post(body)
                 .build();
 
@@ -127,6 +127,7 @@ public class TestServerClient {
      */
     private static class ApiResponse {
         boolean success;
+        boolean isCreated;
         long stageId;
         String replyPayloadId;
     }

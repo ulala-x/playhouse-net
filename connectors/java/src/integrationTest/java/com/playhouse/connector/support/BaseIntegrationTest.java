@@ -132,7 +132,14 @@ public abstract class BaseIntegrationTest {
         Packet responsePacket = connector.requestAsync(requestPacket)
                 .get(5, TimeUnit.SECONDS);
 
-        return TestMessages.AuthenticateReply.parseFrom(responsePacket.getPayload());
+        TestMessages.AuthenticateReply reply = TestMessages.AuthenticateReply.parseFrom(responsePacket.getPayload());
+
+        // 인증 성공 시 상태 설정
+        if (reply.success) {
+            connector.setAuthenticated(true);
+        }
+
+        return reply;
     }
 
     /**

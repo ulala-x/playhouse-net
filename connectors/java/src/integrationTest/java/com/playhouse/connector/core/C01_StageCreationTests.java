@@ -2,6 +2,8 @@ package com.playhouse.connector.core;
 
 import com.playhouse.connector.support.BaseIntegrationTest;
 import com.playhouse.connector.support.CreateStageResponse;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class C01_StageCreationTests extends BaseIntegrationTest {
 
     @Override
+    @BeforeEach
     public void setUp() throws Exception {
         // 이 테스트는 Connector 초기화가 필요 없음 (HTTP API만 테스트)
         host = System.getenv().getOrDefault("TEST_SERVER_HOST", "localhost");
@@ -27,6 +30,7 @@ public class C01_StageCreationTests extends BaseIntegrationTest {
     }
 
     @Override
+    @AfterEach
     public void tearDown() throws Exception {
         if (testServer != null) {
             testServer.close();
