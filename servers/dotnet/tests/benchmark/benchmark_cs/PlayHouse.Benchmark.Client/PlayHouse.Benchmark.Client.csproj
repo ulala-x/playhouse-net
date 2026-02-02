@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\..\connectors\csharp\PlayHouse.Connector.csproj" />
+    <ProjectReference Include="..\..\..\..\..\..\connectors\csharp\src\PlayHouse.Connector\PlayHouse.Connector.csproj" />
     <ProjectReference Include="..\PlayHouse.Benchmark.Shared\PlayHouse.Benchmark.Shared.csproj" />
   </ItemGroup>
 

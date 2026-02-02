@@ -59,9 +59,6 @@ internal sealed class TcpConnection : IConnection
                 NoDelay = true
             };
 
-            // Configure keep-alive
-            _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-
             // netstandard2.1에서는 TcpClient.ConnectAsync가 CancellationToken을 지원하지 않음
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_config.ConnectionIdleTimeoutMs);
@@ -77,6 +74,9 @@ internal sealed class TcpConnection : IConnection
             }
 
             await connectTask.ConfigureAwait(false);
+
+            // Configure keep-alive AFTER connection is established (Linux requires this)
+            _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
             var networkStream = _client.GetStream();
 

@@ -432,8 +432,8 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                         _logger.LogWarning("Authentication rejected for session {SessionId}", session.SessionId);
                         await actor.Actor.OnDestroy();
                         actor.Dispose();  // Dispose Actor's DI scope
-                        authReply?.Dispose();
-                        return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null, (IPacket?)null);
+                        // Return custom auth reply if provided, so client receives proper failure response
+                        return (false, (ushort)ErrorCode.AuthenticationFailed, (BaseActor?)null, authReply);
                     }
 
                     // AccountId 검증
@@ -461,16 +461,30 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
                 }
             });
 
+            var authReplyMsgId = _options.AuthenticateMessageId.Replace("Request", "Reply");
+
             if (!success || actor == null)
             {
-                await SendAuthReplyAsync(session, msgSeq, targetStageId, errorCode);
+                // Send custom auth reply if provided, otherwise use internal format
+                if (authReplyPacket != null)
+                {
+                    session.SendResponse(
+                        authReplyMsgId,
+                        msgSeq,
+                        targetStageId,
+                        errorCode,
+                        authReplyPacket.Payload.DataSpan);
+                    authReplyPacket.Dispose();
+                }
+                else
+                {
+                    await SendAuthReplyAsync(session, msgSeq, targetStageId, errorCode);
+                }
                 payload.Dispose();
-                authReplyPacket?.Dispose();
                 return;
             }
 
             // Stage Queue에 JoinActorMessage 전달 (즉시 return, Stage에서 응답 send)
-            var authReplyMsgId = _options.AuthenticateMessageId.Replace("Request", "Reply");
             _dispatcher?.OnPost(new JoinActorMessage(targetStageId, actor, session, msgSeq, authReplyMsgId, payload, authReplyPacket));
             // payload와 authReplyPacket은 JoinActorMessage에서 Dispose됨
         }

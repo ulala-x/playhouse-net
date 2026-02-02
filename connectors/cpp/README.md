@@ -5,7 +5,7 @@ C++ Connector for PlayHouse real-time game server framework.
 ## Overview
 
 - **Purpose**: C++ server E2E testing
-- **Status**: Planned
+- **Status**: Initial Implementation Complete
 - **C++ Standard**: C++17
 
 ## Directory Structure
@@ -24,7 +24,7 @@ connectors/cpp/
 │   ├── packet.cpp
 │   └── ring_buffer.cpp
 ├── tests/
-│   └── unit/
+│   └── connector_test.cpp      # Unit tests
 ├── CMakeLists.txt              # Native build
 └── vcpkg.json                  # vcpkg package definition
 ```

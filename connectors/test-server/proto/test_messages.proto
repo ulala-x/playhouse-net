@@ -1,0 +1,258 @@
+syntax = "proto3";
+
+package playhouse.test;
+
+option csharp_namespace = "PlayHouse.TestServer.Proto";
+option java_package = "com.playhouse.test.proto";
+option java_outer_classname = "TestMessagesProto";
+
+// ============================================
+// Connector Test Messages
+// ============================================
+
+// ============================================
+// 인증 관련 메시지
+// ============================================
+
+// 인증 요청 (Connector.Authenticate → IActor.OnAuthenticate)
+message AuthenticateRequest {
+    string user_id = 1;
+    string token = 2;
+    map<string, string> metadata = 3;
+}
+
+// 인증 응답 (IActor.OnAuthenticate reply → Connector)
+message AuthenticateReply {
+    string account_id = 1;
+    bool success = 2;
+    string received_user_id = 3;
+    string received_token = 4;
+}
+
+// ============================================
+// Stage 생성 관련 메시지 (OnCreate 검증용)
+// ============================================
+
+// Stage 생성 시 OnCreate에 전달되는 payload
+message CreateStagePayload {
+    string stage_name = 1;
+    int32 max_players = 2;
+}
+
+// OnCreate에서 반환하는 reply
+message CreateStageReply {
+    string received_stage_name = 1;  // 받은 payload echo
+    int32 received_max_players = 2;  // 받은 payload echo
+    bool created = 3;
+}
+
+// ============================================
+// Echo 테스트 (기본 Request/Reply)
+// ============================================
+
+// 에코 요청
+message EchoRequest {
+    string content = 1;
+    int32 sequence = 2;
+}
+
+// 에코 응답
+message EchoReply {
+    string content = 1;
+    int32 sequence = 2;
+    int64 processed_at = 3;
+}
+
+// ============================================
+// 에러 테스트
+// ============================================
+
+// 에러를 발생시키는 요청
+message FailRequest {
+    int32 error_code = 1;
+    string error_message = 2;
+}
+
+// 에러 응답
+message FailReply {
+    int32 error_code = 1;
+    string message = 2;
+}
+
+// ============================================
+// 타임아웃 테스트
+// ============================================
+
+// 응답을 지연시키는 요청 (타임아웃 테스트용)
+message NoResponseRequest {
+    int32 delay_ms = 1;
+}
+
+// ============================================
+// 큰 페이로드 테스트 (압축 검증)
+// ============================================
+
+// 큰 페이로드 요청
+message LargePayloadRequest {
+    int32 size_bytes = 1;
+}
+
+// 큰 페이로드 응답
+message LargePayloadReply {
+    bytes data = 1;
+    int32 original_size = 2;
+    bool compressed = 3;
+}
+
+// ============================================
+// 브로드캐스트 테스트 (Push 메시지)
+// ============================================
+
+// 브로드캐스트 요청
+message BroadcastRequest {
+    string content = 1;
+}
+
+// 브로드캐스트 알림 (Push 메시지)
+message BroadcastNotify {
+    string event_type = 1;
+    string data = 2;
+    int64 from_account_id = 3;
+    string sender_id = 4;
+}
+
+// ============================================
+// 상태 조회
+// ============================================
+
+// 상태 조회 요청
+message StatusRequest {
+}
+
+// 상태 조회 응답
+message StatusReply {
+    int32 actor_count = 1;
+    int64 uptime_seconds = 2;
+    string stage_type = 3;
+}
+
+// ============================================
+// 채팅 메시지
+// ============================================
+
+// 채팅 메시지
+message ChatMessage {
+    int64 sender_id = 1;
+    string sender_name = 2;
+    string message = 3;
+    int64 timestamp = 4;
+}
+
+// ============================================
+// Stage 관리
+// ============================================
+
+// Stage 종료 요청
+message CloseStageRequest {
+    string reason = 1;
+}
+
+// Stage 종료 응답
+message CloseStageReply {
+    bool success = 1;
+}
+
+// Actor 퇴장 알림
+message ActorLeftNotify {
+    int64 account_id = 1;
+    string nickname = 2;
+    string reason = 3;
+}
+
+// 연결 상태 변경 알림 (Push)
+message ConnectionChangedNotify {
+    string account_id = 1;
+    bool is_connected = 2;
+}
+
+// ============================================
+// API Server 관련 메시지
+// ============================================
+
+// API 에코 요청 (API 서버에서 처리)
+message ApiEchoRequest {
+    string content = 1;
+}
+
+// API 에코 응답
+message ApiEchoReply {
+    string content = 1;
+    string server_id = 2;
+}
+
+// ============================================
+// IActorSender 테스트용 메시지
+// ============================================
+
+// AccountId 조회
+message GetAccountIdRequest {}
+
+message GetAccountIdReply {
+    string account_id = 1;
+}
+
+// LeaveStage 요청
+message LeaveStageRequest {
+    string reason = 1;
+}
+
+message LeaveStageReply {
+    bool success = 1;
+}
+
+// ============================================
+// Timer 테스트용 메시지
+// ============================================
+
+// 반복 타이머 시작 요청
+message StartRepeatTimerRequest {
+    int32 interval_ms = 1;
+    int32 initial_delay_ms = 2;
+}
+
+// 카운트 타이머 시작 요청
+message StartCountTimerRequest {
+    int32 interval_ms = 1;
+    int32 count = 2;
+    int32 initial_delay_ms = 3;
+}
+
+// 타이머 콜백 알림 (Push)
+message TimerTickNotify {
+    int32 tick_number = 1;
+    int64 timestamp = 2;
+    string timer_type = 3;
+}
+
+// 타이머 시작 응답
+message StartTimerReply {
+    int64 timer_id = 1;
+    bool success = 2;
+}
+
+// ============================================
+// Benchmark Messages
+// ============================================
+
+// 벤치마크 요청 (고정 작은 사이즈)
+message BenchmarkRequest {
+    int32 sequence = 1;
+    int32 response_size = 2;  // 응답 페이로드 크기 지정 (bytes)
+}
+
+// 벤치마크 응답 (가변 사이즈)
+message BenchmarkReply {
+    int32 sequence = 1;
+    int64 processed_at = 2;
+    bytes payload = 3;
+}

@@ -13,7 +13,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse", "servers\dotnet
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "connectors", "connectors", "{E5E1EFAE-0C95-402C-87E6-B6E96E9C4265}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Connector", "connectors\csharp\PlayHouse.Connector.csproj", "{921D91A4-C745-4445-A5B6-39D80716FE4E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Connector", "connectors\csharp\src\PlayHouse.Connector\PlayHouse.Connector.csproj", "{921D91A4-C745-4445-A5B6-39D80716FE4E}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "extensions", "extensions", "{E9DA4072-B037-4D0A-88B6-B300A6FE92B3}"
 EndProject
