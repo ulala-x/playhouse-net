@@ -142,7 +142,8 @@ public sealed class ArrayPoolPayload : IPayload
 
         if (_rentedBuffer != null)
         {
-            ArrayPool<byte>.Shared.Return(_rentedBuffer);
+            // Fix #13: Clear buffer to avoid leaking sensitive data
+            ArrayPool<byte>.Shared.Return(_rentedBuffer, clearArray: true);
             _rentedBuffer = null;
         }
     }

@@ -59,6 +59,9 @@ internal sealed class TcpConnection : IConnection
                 NoDelay = true
             };
 
+            // Configure keep-alive
+            _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
             // netstandard2.1에서는 TcpClient.ConnectAsync가 CancellationToken을 지원하지 않음
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_config.ConnectionIdleTimeoutMs);
@@ -74,9 +77,6 @@ internal sealed class TcpConnection : IConnection
             }
 
             await connectTask.ConfigureAwait(false);
-
-            // Configure keep-alive AFTER connection is established (Linux requires this)
-            _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
 
             var networkStream = _client.GetStream();
 
@@ -183,6 +183,7 @@ internal sealed class TcpConnection : IConnection
                     await ReadExactlyAsync(_headerBuffer, 0, 4, cancellationToken).ConfigureAwait(false);
                     var contentSize = BinaryPrimitives.ReadInt32LittleEndian(_headerBuffer);
 
+                    // Fix #7: Validate packet size bounds before reading
                     if (contentSize <= 0 || contentSize > 10 * 1024 * 1024)
                     {
                         throw new InvalidOperationException($"Invalid packet size: {contentSize}");
@@ -192,11 +193,33 @@ internal sealed class TcpConnection : IConnection
                     await ReadExactlyAsync(_headerBuffer, 0, 1, cancellationToken).ConfigureAwait(false);
                     var msgIdLen = _headerBuffer[0];
 
-                    // 3. Read MsgId + fixed fields (msgIdLen + 16 bytes)
+                    // 3. Fix #7: Protocol boundary validation before reading payload
+                    // Minimum header size: MsgIdLen(1) + MsgId(1+) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) = 18 bytes
+                    // Validate msgIdLen is within bounds (1-255) and reasonable (1-128 practical limit)
+                    if (msgIdLen == 0 || msgIdLen > 128)
+                    {
+                        throw new InvalidOperationException($"Invalid MsgIdLen: {msgIdLen}");
+                    }
+
                     var fixedHeaderSize = msgIdLen + 16; // MsgId + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4)
+                    var headerTotalSize = 1 + fixedHeaderSize; // MsgIdLen(1) + fixedHeaderSize
+
+                    if (contentSize < headerTotalSize)
+                    {
+                        throw new InvalidOperationException($"Invalid packet structure: contentSize={contentSize}, msgIdLen={msgIdLen}, headerTotalSize={headerTotalSize}");
+                    }
+
+                    // Validate payload size is non-negative
+                    var payloadSize = contentSize - headerTotalSize;
+                    if (payloadSize < 0)
+                    {
+                        throw new InvalidOperationException($"Invalid payload size: {payloadSize}");
+                    }
+
+                    // 4. Read MsgId + fixed fields
                     await ReadExactlyAsync(_headerBuffer, 0, fixedHeaderSize, cancellationToken).ConfigureAwait(false);
 
-                    // 4. Parse header fields
+                    // 5. Parse header fields
                     var msgId = Encoding.UTF8.GetString(_headerBuffer, 0, msgIdLen);
                     var offset = msgIdLen;
                     var msgSeq = BinaryPrimitives.ReadUInt16LittleEndian(_headerBuffer.AsSpan(offset));
@@ -207,9 +230,7 @@ internal sealed class TcpConnection : IConnection
                     offset += 2;
                     var originalSize = BinaryPrimitives.ReadInt32LittleEndian(_headerBuffer.AsSpan(offset));
 
-                    // 5. Calculate payload size and read payload
-                    var headerTotalSize = 1 + fixedHeaderSize; // MsgIdLen(1) + fixedHeaderSize
-                    var payloadSize = contentSize - headerTotalSize;
+                    // 6. Read payload (payloadSize already calculated and validated above)
 
                     IPayload payload;
                     if (payloadSize > 0)
@@ -221,9 +242,25 @@ internal sealed class TcpConnection : IConnection
 
                             if (originalSize > 0)
                             {
-                                // Decompression path
+                                // Decompression path with size validation
+                                const int MaxDecompressedSize = 10 * 1024 * 1024; // 10MB limit
+                                if (originalSize > MaxDecompressedSize)
+                                {
+                                    // Fix #13: Clear buffer on error path
+                                    ArrayPool<byte>.Shared.Return(payloadBuffer, clearArray: true);
+                                    throw new InvalidOperationException($"Decompressed size exceeds limit: {originalSize} > {MaxDecompressedSize}");
+                                }
+
                                 var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(payloadBuffer.AsSpan(0, payloadSize));
-                                ArrayPool<byte>.Shared.Return(payloadBuffer);
+                                // Fix #13: Clear compressed buffer after decompression
+                                ArrayPool<byte>.Shared.Return(payloadBuffer, clearArray: true);
+
+                                // Verify actual decompressed size matches declared size
+                                if (decompressed.Length != originalSize)
+                                {
+                                    throw new InvalidOperationException($"Decompressed size mismatch: expected={originalSize}, actual={decompressed.Length}");
+                                }
+
                                 payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
                             }
                             else
@@ -234,7 +271,8 @@ internal sealed class TcpConnection : IConnection
                         }
                         catch
                         {
-                            ArrayPool<byte>.Shared.Return(payloadBuffer);
+                            // Fix #13: Clear buffer on exception path
+                            ArrayPool<byte>.Shared.Return(payloadBuffer, clearArray: true);
                             throw;
                         }
                     }
@@ -243,7 +281,7 @@ internal sealed class TcpConnection : IConnection
                         payload = EmptyPayload.Instance;
                     }
 
-                    // 6. Create packet and raise event
+                    // 7. Create packet and raise event
                     var packet = new ParsedPacket(msgId, msgSeq, stageId, errorCode, payload);
                     PacketReceived?.Invoke(this, packet);
                 }

@@ -32,10 +32,9 @@ internal sealed class AsyncManager
             {
                 action.Invoke();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // 개별 콜백 에러는 무시하고 계속 처리
-                System.Diagnostics.Debug.WriteLine($"[PlayHouse] Callback error: {ex}");
             }
         }
     }

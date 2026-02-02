@@ -25,11 +25,4 @@
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Exclude test directories from compilation -->
-    <Compile Remove="tests/**" />
-    <EmbeddedResource Remove="tests/**" />
-    <None Remove="tests/**" />
-  </ItemGroup>
-
 </Project>

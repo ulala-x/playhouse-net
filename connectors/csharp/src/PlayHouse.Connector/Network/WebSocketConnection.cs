@@ -215,7 +215,8 @@ internal sealed class WebSocketConnection : IConnection
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(tempBuffer);
+            // Fix #13: Clear temporary receive buffer
+            ArrayPool<byte>.Shared.Return(tempBuffer, clearArray: true);
         }
     }
 
@@ -293,6 +294,28 @@ internal sealed class WebSocketConnection : IConnection
         // MsgIdLen (1 byte)
         var msgIdLen = buffer.PeekByte(offset++);
 
+        // Fix #7: Protocol boundary validation before reading payload
+        // Minimum packet size: MsgIdLen(1) + MsgId(1+) + MsgSeq(2) + StageId(8) + ErrorCode(2) + OriginalSize(4) = 18 bytes
+        // Validate msgIdLen is within bounds (1-255) and reasonable (1-128 practical limit)
+        if (msgIdLen == 0 || msgIdLen > 128)
+        {
+            throw new InvalidOperationException($"Invalid MsgIdLen: {msgIdLen}");
+        }
+
+        var minimumPacketSize = 1 + msgIdLen + 2 + 8 + 2 + 4;
+        if (packetSize < minimumPacketSize)
+        {
+            throw new InvalidOperationException($"Invalid packet structure: packetSize={packetSize}, msgIdLen={msgIdLen}, minimumPacketSize={minimumPacketSize}");
+        }
+
+        // Validate payload size is non-negative
+        var headerSize = 1 + msgIdLen + 2 + 8 + 2 + 4;
+        var payloadSize = packetSize - headerSize;
+        if (payloadSize < 0)
+        {
+            throw new InvalidOperationException($"Invalid payload size: {payloadSize}");
+        }
+
         // MsgId (N bytes)
         Span<byte> msgIdBytes = stackalloc byte[msgIdLen];
         for (int i = 0; i < msgIdLen; i++)
@@ -329,12 +352,18 @@ internal sealed class WebSocketConnection : IConnection
         }
         var originalSize = BinaryPrimitives.ReadInt32LittleEndian(originalSizeBytes);
 
-        // Payload (with optional decompression)
-        var payloadSize = packetSize - offset;
+        // Payload (with optional decompression) - payloadSize already calculated and validated above
         IPayload payload;
 
         if (originalSize > 0)
         {
+            // Decompression path with size validation
+            const int MaxDecompressedSize = 10 * 1024 * 1024; // 10MB limit
+            if (originalSize > MaxDecompressedSize)
+            {
+                throw new InvalidOperationException($"Decompressed size exceeds limit: {originalSize} > {MaxDecompressedSize}");
+            }
+
             // Decompression path: Use ArrayPool for temporary compressed data
             var compressedBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
             try
@@ -343,29 +372,28 @@ internal sealed class WebSocketConnection : IConnection
                 offset += payloadSize;
 
                 var decompressed = K4os.Compression.LZ4.LZ4Pickler.Unpickle(compressedBuffer.AsSpan(0, payloadSize));
+
+                // Verify actual decompressed size matches declared size
+                if (decompressed.Length != originalSize)
+                {
+                    throw new InvalidOperationException($"Decompressed size mismatch: expected={originalSize}, actual={decompressed.Length}");
+                }
+
                 payload = new MemoryPayload(new ReadOnlyMemory<byte>(decompressed));
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(compressedBuffer);
+                // Fix #13: Clear compressed buffer after decompression
+                ArrayPool<byte>.Shared.Return(compressedBuffer, clearArray: true);
             }
         }
         else
         {
             // Non-compressed path: Use ArrayPool
             var payloadBuffer = ArrayPool<byte>.Shared.Rent(payloadSize);
-            try
-            {
-                buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
-                offset += payloadSize;
-                payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
-            }
-            catch
-            {
-                // Return buffer on parse error to prevent leak
-                ArrayPool<byte>.Shared.Return(payloadBuffer);
-                throw;
-            }
+            buffer.PeekBytes(offset, payloadBuffer.AsSpan(0, payloadSize));
+            offset += payloadSize;
+            payload = new ArrayPoolPayload(payloadBuffer, payloadSize);
         }
 
         // Create ParsedPacket wrapper to pass metadata
