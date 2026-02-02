@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse", "src\PlayHouse\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "connector", "connector", "{B50FFE52-722A-EC7E-6412-8DBEAD04E11F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Connector", "connector\PlayHouse.Connector\PlayHouse.Connector.csproj", "{E4635BC6-7643-4A49-9CF3-8D13EFB10287}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayHouse.Connector", "..\..\connectors\csharp\PlayHouse.Connector.csproj", "{E4635BC6-7643-4A49-9CF3-8D13EFB10287}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
