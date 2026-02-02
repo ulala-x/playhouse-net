@@ -79,13 +79,26 @@ namespace
                         int Err = SSL_get_error(Ssl, Read);
                         if (Err == SSL_ERROR_WANT_READ || Err == SSL_ERROR_WANT_WRITE)
                         {
-                            // no-op
+                            // Non-blocking, try again later
+                        }
+                        else if (Err == SSL_ERROR_ZERO_RETURN)
+                        {
+                            // Clean SSL shutdown by remote
+                            UE_LOG(LogTemp, Log, TEXT("[PlayHouse] TLS remote disconnected"));
+                            if (OnError)
+                            {
+                                OnError(PlayHouse::ErrorCode::ConnectionClosed, TEXT("TLS remote disconnected"));
+                            }
+                            bStopping = true;
+                            break;
                         }
                         else
                         {
+                            // SSL error
+                            UE_LOG(LogTemp, Warning, TEXT("[PlayHouse] TLS read error: %d"), Err);
                             if (OnError)
                             {
-                                OnError(PlayHouse::ErrorCode::ConnectionClosed, TEXT("TLS read failed"));
+                                OnError(PlayHouse::ErrorCode::ConnectionClosed, FString::Printf(TEXT("TLS read error: %d"), Err));
                             }
                             bStopping = true;
                             break;
@@ -109,6 +122,14 @@ namespace
             SendQueue.Enqueue(MoveTemp(Data));
         }
 
+        void EnqueueSend(const uint8* Data, int32 Size)
+        {
+            TArray<uint8> Copy;
+            Copy.Append(Data, Size);
+            FScopeLock Lock(&SendQueueLock);
+            SendQueue.Enqueue(MoveTemp(Copy));
+        }
+
         TFunction<void(const uint8* Data, int32 Size)> OnBytes;
         TFunction<void(int32 Code, const FString& Message)> OnError;
 
@@ -117,6 +138,7 @@ namespace
         SSL* Ssl = nullptr;
         TAtomic<bool> bStopping{false};
         TQueue<TArray<uint8>> SendQueue;
+        FCriticalSection SendQueueLock;
     };
 #endif
 }
@@ -318,9 +340,7 @@ bool FPlayHouseTlsTransport::SendBytes(const uint8* Data, int32 Size)
         return false;
     }
 
-    TArray<uint8> Copy;
-    Copy.Append(Data, Size);
-    Worker->EnqueueSend(MoveTemp(Copy));
+    Worker->EnqueueSend(Data, Size);
     return true;
 #endif
 }

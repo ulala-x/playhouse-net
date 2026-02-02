@@ -374,7 +374,12 @@ public final class Connector implements AutoCloseable {
                 if (cause instanceof ConnectorException ce) {
                     clientNetwork.triggerError(ce.getErrorCode(), ce.getMessage());
                 } else {
+                    // Always trigger error callback, not just log
                     logger.error("Request failed: {}", packet.getMsgId(), e);
+                    clientNetwork.triggerError(
+                        ConnectorErrorCode.UNKNOWN_ERROR.getCode(),
+                        "Request failed: " + cause.getMessage()
+                    );
                 }
                 return null;
             });

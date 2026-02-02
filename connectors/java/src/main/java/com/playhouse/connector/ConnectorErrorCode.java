@@ -20,7 +20,12 @@ public enum ConnectorErrorCode {
     /**
      * 인증되지 않음
      */
-    UNAUTHENTICATED(60203, "Not authenticated");
+    UNAUTHENTICATED(60203, "Not authenticated"),
+
+    /**
+     * 알 수 없는 에러
+     */
+    UNKNOWN_ERROR(9999, "Unknown error");
 
     private final int code;
     private final String message;

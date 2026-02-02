@@ -149,6 +149,11 @@ public final class TcpConnection implements IConnection {
      */
     @Override
     public CompletableFuture<Boolean> sendAsync(ByteBuffer data) {
+        if (data == null || !data.hasRemaining()) {
+            logger.warn("Attempted to send null or empty data");
+            return CompletableFuture.completedFuture(false);
+        }
+
         if (!isConnected()) {
             return CompletableFuture.completedFuture(false);
         }

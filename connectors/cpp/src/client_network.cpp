@@ -146,21 +146,22 @@ public:
             // Check for callback-based request
             auto callback_it = pending_requests_.find(msg_seq);
             if (callback_it != pending_requests_.end()) {
-                // Use shared_ptr to allow copy-construction for std::function
-                auto callback_ptr = std::make_shared<std::function<void(Packet)>>(std::move(callback_it->second));
-                auto packet_ptr = std::make_shared<Packet>(std::move(packet));
+                // Move callback and packet into shared_ptr for efficient sharing
+                // This uses one allocation instead of two separate shared_ptrs
+                auto state = std::make_shared<std::pair<std::function<void(Packet)>, Packet>>(
+                    std::move(callback_it->second), std::move(packet));
                 pending_requests_.erase(callback_it);
 
-                // Queue callback for main thread
-                QueueCallback([callback_ptr, packet_ptr]() {
-                    (*callback_ptr)(std::move(*packet_ptr));
+                // Queue callback with shared state - copyable lambda
+                QueueCallback([state]() {
+                    state->first(std::move(state->second));
                 });
                 return;
             }
         }
 
         // Handle push message or unmatched response
-        // Use shared_ptr to allow copy-construction for std::function
+        // Use shared_ptr to make lambda copyable (required by std::function)
         auto packet_ptr = std::make_shared<Packet>(std::move(packet));
         QueueCallback([this, packet_ptr]() {
             if (on_receive_) {

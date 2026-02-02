@@ -29,7 +29,8 @@ export interface ConnectionCallbacks {
 export class WsConnection {
     private _ws: WebSocket | null = null;
     private _state: ConnectionState = 'disconnected';
-    private _receiveBuffer: Uint8Array = new Uint8Array(0);
+    private _receiveChunks: Uint8Array[] = [];
+    private _totalReceiveSize = 0;
     private _expectedPacketSize = -1;
     private _callbacks: ConnectionCallbacks = {};
     private _connectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -188,17 +189,49 @@ export class WsConnection {
     }
 
     /**
-     * Appends data to the receive buffer
+     * Appends data to the receive buffer (chunked approach for O(1) amortized)
      */
     private appendToReceiveBuffer(data: Uint8Array): void {
-        if (this._receiveBuffer.length === 0) {
-            this._receiveBuffer = data;
-        } else {
-            const newBuffer = new Uint8Array(this._receiveBuffer.length + data.length);
-            newBuffer.set(this._receiveBuffer, 0);
-            newBuffer.set(data, this._receiveBuffer.length);
-            this._receiveBuffer = newBuffer;
+        this._receiveChunks.push(data);
+        this._totalReceiveSize += data.length;
+    }
+
+    /**
+     * Gets the merged receive buffer (merges chunks only when needed)
+     */
+    private getReceiveBuffer(): Uint8Array {
+        if (this._receiveChunks.length === 0) {
+            return new Uint8Array(0);
         }
+        if (this._receiveChunks.length === 1) {
+            return this._receiveChunks[0];
+        }
+        // Merge chunks
+        const merged = new Uint8Array(this._totalReceiveSize);
+        let offset = 0;
+        for (const chunk of this._receiveChunks) {
+            merged.set(chunk, offset);
+            offset += chunk.length;
+        }
+        // Store merged result to avoid re-merging
+        this._receiveChunks = [merged];
+        return merged;
+    }
+
+    /**
+     * Consumes bytes from the receive buffer
+     */
+    private consumeReceiveBuffer(bytes: number): void {
+        if (bytes >= this._totalReceiveSize) {
+            this._receiveChunks = [];
+            this._totalReceiveSize = 0;
+            return;
+        }
+
+        // Rebuild remaining data
+        const remaining = this.getReceiveBuffer().subarray(bytes);
+        this._receiveChunks = [remaining];
+        this._totalReceiveSize = remaining.length;
     }
 
     /**
@@ -208,11 +241,12 @@ export class WsConnection {
         while (true) {
             // Read packet size header if not yet known
             if (this._expectedPacketSize === -1) {
-                if (this._receiveBuffer.length < CONTENT_SIZE_HEADER) {
+                if (this._totalReceiveSize < CONTENT_SIZE_HEADER) {
                     break; // Need more data
                 }
 
-                this._expectedPacketSize = readContentSize(this._receiveBuffer);
+                const buffer = this.getReceiveBuffer();
+                this._expectedPacketSize = readContentSize(buffer);
 
                 if (
                     this._expectedPacketSize <= 0 ||
@@ -227,21 +261,22 @@ export class WsConnection {
                 }
 
                 // Consume the size header
-                this._receiveBuffer = this._receiveBuffer.subarray(CONTENT_SIZE_HEADER);
+                this.consumeReceiveBuffer(CONTENT_SIZE_HEADER);
             }
 
             // Check if we have the complete packet
-            if (this._receiveBuffer.length < this._expectedPacketSize) {
+            if (this._totalReceiveSize < this._expectedPacketSize) {
                 break; // Need more data
             }
 
             // Extract and parse the packet
             try {
-                const packetData = this._receiveBuffer.subarray(0, this._expectedPacketSize);
+                const buffer = this.getReceiveBuffer();
+                const packetData = buffer.subarray(0, this._expectedPacketSize);
                 const packet = decodePacket(packetData);
 
                 // Consume the packet from buffer
-                this._receiveBuffer = this._receiveBuffer.subarray(this._expectedPacketSize);
+                this.consumeReceiveBuffer(this._expectedPacketSize);
                 this._expectedPacketSize = -1;
 
                 // Emit packet event
@@ -249,7 +284,7 @@ export class WsConnection {
             } catch (error) {
                 console.error('Failed to parse packet:', error);
                 // Skip this packet and continue
-                this._receiveBuffer = this._receiveBuffer.subarray(this._expectedPacketSize);
+                this.consumeReceiveBuffer(this._expectedPacketSize);
                 this._expectedPacketSize = -1;
                 // Surface decode errors to onError callback
                 this._callbacks.onError?.(
@@ -263,7 +298,8 @@ export class WsConnection {
      * Resets the receive buffer state
      */
     private resetReceiveBuffer(): void {
-        this._receiveBuffer = new Uint8Array(0);
+        this._receiveChunks = [];
+        this._totalReceiveSize = 0;
         this._expectedPacketSize = -1;
     }
 }

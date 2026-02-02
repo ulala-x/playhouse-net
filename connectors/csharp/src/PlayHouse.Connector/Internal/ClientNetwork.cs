@@ -512,14 +512,10 @@ internal sealed class ClientNetwork : IAsyncDisposable
 
     private ushort GetNextMsgSeq()
     {
-        int msgSeq;
-        do
-        {
-            msgSeq = Interlocked.Increment(ref _msgSeqCounter);
-        }
-        while ((msgSeq & 0xFFFF) == 0);
-
-        return (ushort)(msgSeq & 0xFFFF);
+        int newSeq = Interlocked.Increment(ref _msgSeqCounter);
+        // Wrap to 1 when reaching 0 (skip 0 as it's reserved)
+        ushort result = (ushort)(newSeq & 0xFFFF);
+        return result == 0 ? (ushort)1 : result;
     }
 
     private void ClearPendingRequests()

@@ -4,11 +4,13 @@ using System.Buffers;
 namespace PlayHouse.Connector.Infrastructure.Buffers;
 
 /// <summary>
-/// Pure ring buffer implementation for TCP receive buffering
-/// - Head/Tail pointer management
-/// - Zero-copy read/write with Span
-/// - ArrayPool for memory management
+/// Pure ring buffer implementation for TCP receive buffering.
 /// </summary>
+/// <remarks>
+/// ⚠️ WARNING: This class is NOT thread-safe.
+/// It must be used from a single thread only, or external synchronization must be provided.
+/// In this connector, it is used exclusively from the receive loop thread.
+/// </remarks>
 public sealed class RingBuffer : IDisposable
 {
     private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Shared;

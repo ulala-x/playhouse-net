@@ -97,9 +97,27 @@ public final class Packet implements AutoCloseable {
         return originalSize;
     }
 
+    /**
+     * 페이로드 반환 (방어적 복사)
+     *
+     * @return 페이로드의 복사본
+     */
     public byte[] getPayload() {
         // 방어적 복사: 외부에서 배열을 수정할 수 없도록 복사본 반환
         return payload.clone();
+    }
+
+    /**
+     * 페이로드 반환 (복사 없음 - 성능 최적화용)
+     * <p>
+     * ⚠️ 주의: 반환된 배열을 수정하면 패킷 데이터가 손상됩니다.
+     * 읽기 전용으로만 사용하세요. 성능이 중요한 경우에만 사용하세요.
+     * </p>
+     *
+     * @return 원본 페이로드 배열 (수정 금지)
+     */
+    public byte[] getPayloadUnsafe() {
+        return payload;
     }
 
     /**

@@ -1,71 +1,11 @@
 #include "packet_codec.hpp"
+#include "endian_utils.hpp"
 #include "playhouse/types.hpp"
 #include <cstring>
 #include <stdexcept>
 
 namespace playhouse {
 namespace internal {
-
-// Little-endian helper functions
-namespace {
-    void WriteUInt8(Bytes& buffer, uint8_t value) {
-        buffer.push_back(value);
-    }
-
-    void WriteUInt16LE(Bytes& buffer, uint16_t value) {
-        buffer.push_back(static_cast<uint8_t>(value & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-    }
-
-    void WriteUInt32LE(Bytes& buffer, uint32_t value) {
-        buffer.push_back(static_cast<uint8_t>(value & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-    }
-
-    void WriteInt64LE(Bytes& buffer, int64_t value) {
-        uint64_t uvalue = static_cast<uint64_t>(value);
-        buffer.push_back(static_cast<uint8_t>(uvalue & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 8) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 16) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 24) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 32) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 40) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 48) & 0xFF));
-        buffer.push_back(static_cast<uint8_t>((uvalue >> 56) & 0xFF));
-    }
-
-    uint32_t ReadUInt32LE(const uint8_t* data) {
-        return static_cast<uint32_t>(data[0]) |
-               (static_cast<uint32_t>(data[1]) << 8) |
-               (static_cast<uint32_t>(data[2]) << 16) |
-               (static_cast<uint32_t>(data[3]) << 24);
-    }
-
-    uint16_t ReadUInt16LE(const uint8_t* data) {
-        return static_cast<uint16_t>(data[0]) |
-               (static_cast<uint16_t>(data[1]) << 8);
-    }
-
-    int16_t ReadInt16LE(const uint8_t* data) {
-        uint16_t uvalue = ReadUInt16LE(data);
-        return static_cast<int16_t>(uvalue);
-    }
-
-    int64_t ReadInt64LE(const uint8_t* data) {
-        uint64_t uvalue =
-            static_cast<uint64_t>(data[0]) |
-            (static_cast<uint64_t>(data[1]) << 8) |
-            (static_cast<uint64_t>(data[2]) << 16) |
-            (static_cast<uint64_t>(data[3]) << 24) |
-            (static_cast<uint64_t>(data[4]) << 32) |
-            (static_cast<uint64_t>(data[5]) << 40) |
-            (static_cast<uint64_t>(data[6]) << 48) |
-            (static_cast<uint64_t>(data[7]) << 56);
-        return static_cast<int64_t>(uvalue);
-    }
-}
 
 Bytes PacketCodec::EncodeRequest(const Packet& packet) {
     Bytes buffer;

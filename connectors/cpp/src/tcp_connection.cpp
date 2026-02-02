@@ -82,12 +82,21 @@ public:
         std::function<void()> callback;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            if (!is_connected_) {
+                return;  // Already disconnected, avoid double callback
+            }
             is_connected_ = false;
-            callback = disconnect_callback_;
+            callback = std::move(disconnect_callback_);  // Move to avoid use-after-free
+            disconnect_callback_ = nullptr;  // Clear to prevent double-invocation
         }
-        // Invoke callback outside the lock to prevent potential deadlock
+
+        // Safe to call outside lock - callback is now local
         if (callback) {
-            callback();
+            try {
+                callback();
+            } catch (const std::exception& e) {
+                std::cerr << "Disconnect callback error: " << e.what() << std::endl;
+            }
         }
     }
 };

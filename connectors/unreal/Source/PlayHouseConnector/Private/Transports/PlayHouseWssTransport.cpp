@@ -74,3 +74,8 @@ bool FPlayHouseWssTransport::SendBytes(const uint8* Data, int32 Size)
     Socket->Send(Data, Size, true);
     return true;
 }
+
+bool FPlayHouseWssTransport::IsConnecting() const
+{
+    return Socket.IsValid() && !bConnected.Load();
+}

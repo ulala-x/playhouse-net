@@ -53,8 +53,41 @@ namespace
                     {
                         int32 Read = 0;
                         int32 ToRead = FMath::Min(static_cast<int32>(PendingData), BufferSize);
-                        if (Socket->Recv(Buffer.GetData(), ToRead, Read) && Read > 0)
+                        ESocketErrors Error = SE_NO_ERROR;
+                        bool bSuccess = Socket->Recv(Buffer.GetData(), ToRead, Read, Error);
+
+                        if (!bSuccess || Error != SE_NO_ERROR)
                         {
+                            if (Error == SE_EWOULDBLOCK)
+                            {
+                                // Non-blocking, try again later
+                                continue;
+                            }
+                            // Connection error
+                            UE_LOG(LogTemp, Warning, TEXT("[PlayHouse] Socket recv error: %d"), (int32)Error);
+                            if (OnError)
+                            {
+                                OnError(PlayHouse::ErrorCode::ConnectionClosed, TEXT("Socket recv error"));
+                            }
+                            bStopping = true;
+                            break;
+                        }
+
+                        if (Read == 0)
+                        {
+                            // Clean disconnection by remote
+                            UE_LOG(LogTemp, Log, TEXT("[PlayHouse] Remote disconnected"));
+                            if (OnError)
+                            {
+                                OnError(PlayHouse::ErrorCode::ConnectionClosed, TEXT("Remote disconnected"));
+                            }
+                            bStopping = true;
+                            break;
+                        }
+
+                        if (Read > 0)
+                        {
+                            // Process data
                             if (OnBytes)
                             {
                                 OnBytes(Buffer.GetData(), Read);
@@ -79,6 +112,14 @@ namespace
             SendQueue.Enqueue(MoveTemp(Data));
         }
 
+        void EnqueueSend(const uint8* Data, int32 Size)
+        {
+            TArray<uint8> Copy;
+            Copy.Append(Data, Size);
+            FScopeLock Lock(&SendQueueLock);
+            SendQueue.Enqueue(MoveTemp(Copy));
+        }
+
         TFunction<void(const uint8* Data, int32 Size)> OnBytes;
         TFunction<void(int32 Code, const FString& Message)> OnError;
 
@@ -86,6 +127,7 @@ namespace
         FSocket* Socket = nullptr;
         TAtomic<bool> bStopping{false};
         TQueue<TArray<uint8>> SendQueue;
+        FCriticalSection SendQueueLock;
     };
 }
 
@@ -208,8 +250,6 @@ bool FPlayHouseTcpTransport::SendBytes(const uint8* Data, int32 Size)
         return false;
     }
 
-    TArray<uint8> Copy;
-    Copy.Append(Data, Size);
-    Worker->EnqueueSend(MoveTemp(Copy));
+    Worker->EnqueueSend(Data, Size);
     return true;
 }

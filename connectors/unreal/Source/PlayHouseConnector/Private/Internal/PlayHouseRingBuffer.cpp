@@ -30,6 +30,14 @@ void FPlayHouseRingBuffer::Write(const uint8* Data, int32 Size)
 
     if (Size > GetFreeSpace())
     {
+        int32 FreeSpace = GetFreeSpace();
+        UE_LOG(LogTemp, Error, TEXT("[PlayHouse] RingBuffer overflow! Dropping %d bytes. Buffer capacity: %d, Free: %d"),
+               Size, Capacity_, FreeSpace);
+
+        if (OnOverflow)
+        {
+            OnOverflow(Size, Capacity_, FreeSpace);
+        }
         return;
     }
 

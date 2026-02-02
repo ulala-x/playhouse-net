@@ -234,7 +234,11 @@ public sealed class Connector : IConnectorCallback, IAsyncDisposable
     /// 요청 전송 (콜백 방식)
     /// </summary>
     /// <param name="request">요청 패킷</param>
-    /// <param name="callback">응답 콜백</param>
+    /// <param name="callback">응답 콜백 - 패킷은 콜백 종료 후 자동으로 dispose됨</param>
+    /// <remarks>
+    /// 콜백으로 전달된 IPacket은 콜백 실행이 끝나면 자동으로 dispose됩니다.
+    /// 콜백 외부에서 사용하려면 데이터를 복사해야 합니다.
+    /// </remarks>
     public void Request(IPacket request, Action<IPacket> callback)
     {
         if (!IsConnected())
@@ -250,7 +254,11 @@ public sealed class Connector : IConnectorCallback, IAsyncDisposable
     /// 요청 전송 (async/await 방식)
     /// </summary>
     /// <param name="request">요청 패킷</param>
-    /// <returns>응답 패킷</returns>
+    /// <returns>응답 패킷 - 호출자가 반드시 Dispose() 해야 함</returns>
+    /// <remarks>
+    /// 반환된 IPacket은 호출자가 소유하며, 사용 후 반드시 Dispose()를 호출하거나
+    /// using 문을 사용해야 합니다.
+    /// </remarks>
     public async Task<IPacket> RequestAsync(IPacket request)
     {
         if (!IsConnected())

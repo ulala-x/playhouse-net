@@ -17,6 +17,9 @@ public:
     void Consume(int32 Size);
     void Clear();
 
+    /** Called when buffer overflows. Parameters: (BytesDropped, BufferCapacity, FreeSpace) */
+    TFunction<void(int32, int32, int32)> OnOverflow;
+
 private:
     TArray<uint8> Buffer_;
     int32 Capacity_ = 0;

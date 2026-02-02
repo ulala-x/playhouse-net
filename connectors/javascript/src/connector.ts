@@ -55,6 +55,7 @@ type QueuedAction = () => void;
  */
 export class Connector {
     private static readonly MAX_ACTION_QUEUE_SIZE = 10000;
+    private static readonly textEncoder = new TextEncoder();
 
     private _config: Required<ConnectorConfig> = { ...DefaultConfig };
     private _connection: WsConnection | null = null;
@@ -327,38 +328,8 @@ export class Connector {
             throw new Error('Not connected');
         }
 
-        // Create authentication packet
-        // The server expects a specific message format for authentication
-        // Typically: AuthenticateReq with serviceId, accountId, payload fields
-        // For now, we'll encode it as a simple packet with combined data
-        const textEncoder = new TextEncoder();
-        const serviceIdBytes = textEncoder.encode(serviceId);
-        const accountIdBytes = textEncoder.encode(accountId);
-        const payloadBytes = payload ?? new Uint8Array(0);
-
-        // Simple format: serviceIdLen(2) + serviceId + accountIdLen(2) + accountId + payload
-        const totalLen =
-            2 +
-            serviceIdBytes.length +
-            2 +
-            accountIdBytes.length +
-            payloadBytes.length;
-        const authPayload = new Uint8Array(totalLen);
-        const view = new DataView(authPayload.buffer);
-        let offset = 0;
-
-        view.setUint16(offset, serviceIdBytes.length, true);
-        offset += 2;
-        authPayload.set(serviceIdBytes, offset);
-        offset += serviceIdBytes.length;
-
-        view.setUint16(offset, accountIdBytes.length, true);
-        offset += 2;
-        authPayload.set(accountIdBytes, offset);
-        offset += accountIdBytes.length;
-
-        authPayload.set(payloadBytes, offset);
-
+        // Create authentication packet using the helper method
+        const authPayload = this.buildAuthPayload(serviceId, accountId!, payload);
         const authPacket = Packet.fromBytes('AuthenticateReq', authPayload);
         const msgSeq = this.getNextMsgSeq();
 
@@ -425,35 +396,8 @@ export class Connector {
             return;
         }
 
-        // Create authentication packet
-        const textEncoder = new TextEncoder();
-        const serviceIdBytes = textEncoder.encode(serviceId);
-        const accountIdBytes = textEncoder.encode(accountId);
-        const payloadBytes = payload ?? new Uint8Array(0);
-
-        // Simple format: serviceIdLen(2) + serviceId + accountIdLen(2) + accountId + payload
-        const totalLen =
-            2 +
-            serviceIdBytes.length +
-            2 +
-            accountIdBytes.length +
-            payloadBytes.length;
-        const authPayload = new Uint8Array(totalLen);
-        const view = new DataView(authPayload.buffer);
-        let offset = 0;
-
-        view.setUint16(offset, serviceIdBytes.length, true);
-        offset += 2;
-        authPayload.set(serviceIdBytes, offset);
-        offset += serviceIdBytes.length;
-
-        view.setUint16(offset, accountIdBytes.length, true);
-        offset += 2;
-        authPayload.set(accountIdBytes, offset);
-        offset += accountIdBytes.length;
-
-        authPayload.set(payloadBytes, offset);
-
+        // Create authentication packet using the helper method
+        const authPayload = this.buildAuthPayload(serviceId, accountId, payload);
         const authPacket = Packet.fromBytes('AuthenticateReq', authPayload);
         const msgSeq = this.getNextMsgSeq();
 
@@ -715,5 +659,45 @@ export class Connector {
             this._actionQueue.splice(0, 1000); // Drop oldest 1000 actions
         }
         this._actionQueue.push(action);
+    }
+
+    /**
+     * Build authentication packet payload
+     */
+    private buildAuthPayload(
+        serviceId: string,
+        accountId: string,
+        payload?: Uint8Array
+    ): Uint8Array {
+        const serviceIdBytes = Connector.textEncoder.encode(serviceId);
+        const accountIdBytes = Connector.textEncoder.encode(accountId);
+        const userPayload = payload ?? new Uint8Array(0);
+
+        // Simple format: serviceIdLen(2) + serviceId + accountIdLen(2) + accountId + payload
+        const totalSize =
+            2 + serviceIdBytes.length +    // serviceId length (2 bytes) + data
+            2 + accountIdBytes.length +    // accountId length (2 bytes) + data
+            userPayload.length;            // payload data
+
+        const buffer = new Uint8Array(totalSize);
+        const view = new DataView(buffer.buffer);
+        let offset = 0;
+
+        // serviceId
+        view.setUint16(offset, serviceIdBytes.length, true);
+        offset += 2;
+        buffer.set(serviceIdBytes, offset);
+        offset += serviceIdBytes.length;
+
+        // accountId
+        view.setUint16(offset, accountIdBytes.length, true);
+        offset += 2;
+        buffer.set(accountIdBytes, offset);
+        offset += accountIdBytes.length;
+
+        // payload
+        buffer.set(userPayload, offset);
+
+        return buffer;
     }
 }
