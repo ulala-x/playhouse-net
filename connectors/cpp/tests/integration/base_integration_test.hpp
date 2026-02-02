@@ -9,7 +9,6 @@
 #include <memory>
 #include <functional>
 #include <chrono>
-#include <future>
 
 namespace playhouse::test {
 
@@ -38,27 +37,14 @@ protected:
         int timeout_ms = 5000
     );
 
-    /// Wait for a promise/future while calling MainThreadAction
-    /// @tparam T Type of the future
-    /// @param future Future to wait for
-    /// @param timeout_ms Timeout in milliseconds
-    /// @return The value from the future
-    /// @throws std::runtime_error if timeout occurs
-    template<typename T>
-    T WaitWithMainThreadAction(std::future<T>& future, int timeout_ms = 5000) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    /// Connect to server and wait for OnConnect callback
+    bool ConnectAndWait(int timeout_ms = 5000);
 
-        while (future.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-            if (std::chrono::steady_clock::now() >= deadline) {
-                throw std::runtime_error("Operation timed out after " + std::to_string(timeout_ms) + "ms");
-            }
-            if (connector_) {
-                connector_->MainThreadAction();
-            }
-        }
+    /// Send request and wait for response callback
+    bool RequestAndWait(Packet packet, Packet& out_response, int timeout_ms = 5000);
 
-        return future.get();
-    }
+    /// Authenticate and wait for callback
+    bool AuthenticateAndWait(Packet packet, bool& out_success, int timeout_ms = 5000);
 
     /// Get the test server fixture (singleton)
     static TestServerFixture& GetTestServer();

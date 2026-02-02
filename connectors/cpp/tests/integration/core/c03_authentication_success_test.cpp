@@ -17,16 +17,12 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_WithValidCredentials_Succeeds
     Bytes payload(auth_data.begin(), auth_data.end());
 
     // When: Authenticate with valid credentials
-    auto future = connector_->AuthenticateAsync("TestService", "test_account", payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
 
     // Then: Authentication should succeed
     bool auth_success = false;
-    try {
-        auth_success = WaitWithMainThreadAction(future, 5000);
-    } catch (const std::exception& e) {
-        FAIL() << "Authentication threw exception: " << e.what();
-    }
-
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_success, 5000);
+    ASSERT_TRUE(completed) << "Authentication should complete";
     EXPECT_TRUE(auth_success) << "Authentication should succeed";
 }
 
@@ -40,18 +36,11 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_CallbackVersion_SuccessCallba
 
     // When: Authenticate with callback
     bool callback_fired = false;
-    Packet auth_packet("Authenticate", payload);
-
-    // Note: The C++ API uses AuthenticateAsync, so we'll test the async version
-    auto future = connector_->AuthenticateAsync("TestService", "test_account2", payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
 
     bool auth_result = false;
-    try {
-        auth_result = WaitWithMainThreadAction(future, 5000);
-        callback_fired = true;
-    } catch (...) {
-        // Exception means callback didn't fire properly
-    }
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_result, 5000);
+    callback_fired = completed;
 
     // Then: Callback should fire with success
     EXPECT_TRUE(callback_fired) << "Authentication callback should fire";
@@ -64,17 +53,13 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_WithEmptyPayload_HandledGrace
 
     // When: Authenticate with empty payload
     Bytes empty_payload;
-    auto future = connector_->AuthenticateAsync("TestService", "empty_account", empty_payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(empty_payload));
 
     // Then: Should complete without crashing (result depends on server implementation)
-    try {
-        bool result = WaitWithMainThreadAction(future, 5000);
-        // Authentication might succeed or fail depending on server, but shouldn't crash
-        SUCCEED() << "Authentication completed without crash, result: " << result;
-    } catch (const std::exception& e) {
-        // Timeout or other exception is acceptable
-        SUCCEED() << "Authentication failed gracefully: " << e.what();
-    }
+    bool result = false;
+    bool completed = AuthenticateAndWait(std::move(auth_packet), result, 5000);
+    EXPECT_TRUE(completed) << "Authentication should complete";
+    SUCCEED() << "Authentication completed, result: " << result;
 }
 
 TEST_F(C03_AuthenticationSuccessTest, Authenticate_MultipleUsers_EachSucceeds) {
@@ -88,14 +73,10 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_MultipleUsers_EachSucceeds) {
         std::string user_data = "{\"userId\":\"user" + std::to_string(i) + "\",\"token\":\"valid_token\"}";
         Bytes payload(user_data.begin(), user_data.end());
 
-        auto future = connector_->AuthenticateAsync("TestService", "account" + std::to_string(i), payload);
-
-        try {
-            bool result = WaitWithMainThreadAction(future, 5000);
-            results.push_back(result);
-        } catch (...) {
-            results.push_back(false);
-        }
+        Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+        bool result = false;
+        bool completed = AuthenticateAndWait(std::move(auth_packet), result, 5000);
+        results.push_back(completed && result);
     }
 
     // Then: At least some authentications should succeed

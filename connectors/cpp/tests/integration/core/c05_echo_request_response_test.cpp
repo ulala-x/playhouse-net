@@ -18,18 +18,14 @@ TEST_F(C05_EchoRequestResponseTest, Echo_SimpleMessage_ResponseReceived) {
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send echo request
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Response should be received
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-
-        EXPECT_EQ(response.GetMsgId(), "EchoReply");
-        EXPECT_EQ(response.GetErrorCode(), 0) << "Response should not have error code";
-        EXPECT_FALSE(response.GetPayload().empty()) << "Response should have payload";
-    } catch (const std::exception& e) {
-        FAIL() << "Echo request failed: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "Echo request should complete";
+    EXPECT_EQ(response.GetMsgId(), "EchoReply");
+    EXPECT_EQ(response.GetErrorCode(), 0) << "Response should not have error code";
+    EXPECT_FALSE(response.GetPayload().empty()) << "Response should have payload";
 }
 
 TEST_F(C05_EchoRequestResponseTest, Echo_RequestWithCallback_CallbackFires) {
@@ -71,13 +67,11 @@ TEST_F(C05_EchoRequestResponseTest, Echo_MultipleSequential_AllSucceed) {
         Bytes payload(echo_data.begin(), echo_data.end());
         auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-        auto future = connector_->RequestAsync(std::move(packet));
-
-        try {
-            auto response = WaitWithMainThreadAction(future, 5000);
+        Packet response = Packet::Empty("Empty");
+        bool completed = RequestAndWait(std::move(packet), response, 5000);
+        EXPECT_TRUE(completed) << "Echo request " << i << " should complete";
+        if (completed) {
             EXPECT_EQ(response.GetErrorCode(), 0) << "Echo " << i << " should succeed";
-        } catch (const std::exception& e) {
-            FAIL() << "Echo request " << i << " failed: " << e.what();
         }
     }
 
@@ -96,16 +90,13 @@ TEST_F(C05_EchoRequestResponseTest, Echo_WithLargeContent_ResponseReceived) {
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send large echo request
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Response should be received
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        EXPECT_EQ(response.GetErrorCode(), 0);
-        EXPECT_FALSE(response.GetPayload().empty());
-    } catch (const std::exception& e) {
-        FAIL() << "Large echo request failed: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "Large echo request should complete";
+    EXPECT_EQ(response.GetErrorCode(), 0);
+    EXPECT_FALSE(response.GetPayload().empty());
 }
 
 TEST_F(C05_EchoRequestResponseTest, Echo_WithSpecialCharacters_HandledCorrectly) {
@@ -118,13 +109,10 @@ TEST_F(C05_EchoRequestResponseTest, Echo_WithSpecialCharacters_HandledCorrectly)
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send echo request
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Response should be received
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        EXPECT_EQ(response.GetErrorCode(), 0);
-    } catch (const std::exception& e) {
-        FAIL() << "Echo with special characters failed: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "Echo with special characters should complete";
+    EXPECT_EQ(response.GetErrorCode(), 0);
 }

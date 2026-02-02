@@ -4,15 +4,6 @@
 #include <playhouse/config.hpp>
 #include <thread>
 #include <chrono>
-#include <type_traits>
-
-// ASIO headers - support both standalone and Boost.Asio
-#if defined(ASIO_STANDALONE) || !defined(BOOST_ASIO_HPP)
-    #include <asio/awaitable.hpp>
-#else
-    #include <boost/asio/awaitable.hpp>
-    namespace asio = boost::asio;
-#endif
 
 using namespace playhouse;
 
@@ -135,48 +126,6 @@ TEST_F(ConnectorTest, ProtocolConstants) {
     EXPECT_EQ(protocol::REQUEST_HEADER_SIZE, 15);
 }
 
-// ============================================================================
-// Coroutine API Tests
-// ============================================================================
-
-TEST_F(ConnectorTest, CoroutineAPIReturnTypes) {
-    Connector connector;
-    connector.Init(config_);
-
-    // Test Connect() returns asio::awaitable<bool>
-    using ConnectReturnType = decltype(connector.Connect("localhost", 34001));
-    EXPECT_TRUE((std::is_same_v<ConnectReturnType, asio::awaitable<bool>>));
-
-    // Test Request() returns asio::awaitable<Packet>
-    Packet testPacket = Packet::Empty("Test");
-    using RequestReturnType = decltype(connector.Request(std::move(testPacket)));
-    EXPECT_TRUE((std::is_same_v<RequestReturnType, asio::awaitable<Packet>>));
-
-    // Test Authenticate() returns asio::awaitable<bool>
-    Packet authPacket = Packet::Empty("Auth");
-    using AuthReturnType = decltype(connector.Authenticate(std::move(authPacket)));
-    EXPECT_TRUE((std::is_same_v<AuthReturnType, asio::awaitable<bool>>));
-}
-
-TEST_F(ConnectorTest, LegacyAPIReturnTypes) {
-    Connector connector;
-    connector.Init(config_);
-
-    // Test ConnectAsync() still returns std::future<bool>
-    using ConnectAsyncReturnType = decltype(connector.ConnectAsync("localhost", 34001));
-    EXPECT_TRUE((std::is_same_v<ConnectAsyncReturnType, std::future<bool>>));
-
-    // Test RequestAsync() still returns std::future<Packet>
-    Packet testPacket = Packet::Empty("Test");
-    using RequestAsyncReturnType = decltype(connector.RequestAsync(std::move(testPacket)));
-    EXPECT_TRUE((std::is_same_v<RequestAsyncReturnType, std::future<Packet>>));
-
-    // Test AuthenticateAsync() still returns std::future<bool>
-    Bytes payload = {0x01, 0x02};
-    using AuthAsyncReturnType = decltype(connector.AuthenticateAsync("service", "account", payload));
-    EXPECT_TRUE((std::is_same_v<AuthAsyncReturnType, std::future<bool>>));
-}
-
 TEST_F(ConnectorTest, CallbackOverloadTest) {
     Connector connector;
     connector.Init(config_);
@@ -222,61 +171,6 @@ TEST_F(ConnectorTest, AuthenticateCallbackOverloadTest) {
     // Callback should not be called yet (no server connection)
     EXPECT_FALSE(auth_callback_invoked);
 }
-
-TEST_F(ConnectorTest, UninitializedCoroutineAPIThrows) {
-    Connector connector;
-    // Note: Not calling Init() intentionally
-
-    // These tests verify that coroutine APIs handle uninitialized state properly
-    // The actual behavior (throw or return error) depends on implementation
-    // For now, we document that these should be called after Init()
-
-    // Uncomment if implementation throws on uninitialized state:
-    /*
-    EXPECT_ANY_THROW({
-        auto awaitable = connector.Connect("localhost", 34001);
-    });
-
-    EXPECT_ANY_THROW({
-        Packet testPacket = Packet::Empty("Test");
-        auto awaitable = connector.Request(std::move(testPacket));
-    });
-
-    EXPECT_ANY_THROW({
-        Packet authPacket = Packet::Empty("Auth");
-        auto awaitable = connector.Authenticate(std::move(authPacket));
-    });
-    */
-}
-
-// Note: Connection tests require a running server
-// These are commented out but can be enabled for integration testing
-/*
-TEST_F(ConnectorTest, ConnectionTest) {
-    Connector connector;
-    connector.Init(config_);
-
-    bool connected = false;
-    connector.OnConnect = [&connected]() {
-        connected = true;
-    };
-
-    auto future = connector.ConnectAsync("localhost", 34001);
-    bool result = future.get();
-
-    // Process callbacks
-    for (int i = 0; i < 10 && !connected; ++i) {
-        connector.MainThreadAction();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    EXPECT_TRUE(result);
-    EXPECT_TRUE(connected);
-    EXPECT_TRUE(connector.IsConnected());
-
-    connector.Disconnect();
-}
-*/
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

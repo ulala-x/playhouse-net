@@ -10,7 +10,7 @@ public enum ConnectorErrorCode {
     /**
      * 연결이 끊어짐
      */
-    DISCONNECTED(60201, "Connection is disconnected"),
+    DISCONNECTED(60201, "Disconnected"),
 
     /**
      * 요청 타임아웃

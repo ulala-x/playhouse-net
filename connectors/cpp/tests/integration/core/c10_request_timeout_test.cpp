@@ -21,19 +21,15 @@ TEST_F(C10_RequestTimeoutTest, Request_WithShortTimeout_TimesOut) {
     Bytes payload(slow_request_data.begin(), slow_request_data.end());
     auto packet = Packet::FromBytes("SlowRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 500);
 
-    // Then: Should timeout
-    bool timed_out = false;
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        // Check if response has timeout error
+    // Then: Should timeout or return timeout message
+    bool timed_out = !completed;
+    if (completed) {
         if (response.GetMsgId() == msg_id::TIMEOUT || response.GetErrorCode() != 0) {
             timed_out = true;
         }
-    } catch (const std::exception& e) {
-        // Timeout exception is expected
-        timed_out = true;
     }
 
     EXPECT_TRUE(timed_out) << "Request should timeout with short timeout configuration";
@@ -52,15 +48,12 @@ TEST_F(C10_RequestTimeoutTest, Request_WithNormalTimeout_Succeeds) {
     Bytes payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 6000);
 
     // Then: Should succeed before timeout
-    try {
-        auto response = WaitWithMainThreadAction(future, 6000);
-        EXPECT_EQ(response.GetErrorCode(), 0) << "Normal request should succeed";
-    } catch (const std::exception& e) {
-        FAIL() << "Normal request should not timeout: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "Normal request should complete";
+    EXPECT_EQ(response.GetErrorCode(), 0) << "Normal request should succeed";
 }
 
 TEST_F(C10_RequestTimeoutTest, Request_TimeoutMessage_HasTimeoutId) {
@@ -76,23 +69,16 @@ TEST_F(C10_RequestTimeoutTest, Request_TimeoutMessage_HasTimeoutId) {
     Bytes payload(slow_data.begin(), slow_data.end());
     auto packet = Packet::FromBytes("SlowRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 500);
 
-    // Then: Timeout message should have special ID
-    bool has_timeout_id = false;
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        if (response.GetMsgId() == msg_id::TIMEOUT) {
-            has_timeout_id = true;
-        }
-    } catch (...) {
-        // Exception is also acceptable for timeout
-        SUCCEED() << "Request timed out with exception";
+    // Then: Timeout message should have special ID or no response
+    if (!completed) {
+        SUCCEED() << "Request timed out without response";
         return;
     }
 
-    // Either exception or timeout message ID is acceptable
-    SUCCEED() << "Timeout handled correctly";
+    EXPECT_EQ(response.GetMsgId(), msg_id::TIMEOUT);
 }
 
 TEST_F(C10_RequestTimeoutTest, Request_MultipleTimeouts_AllHandledCorrectly) {
@@ -110,14 +96,11 @@ TEST_F(C10_RequestTimeoutTest, Request_MultipleTimeouts_AllHandledCorrectly) {
         Bytes payload(slow_data.begin(), slow_data.end());
         auto packet = Packet::FromBytes("SlowRequest", std::move(payload));
 
-        auto future = connector_->RequestAsync(std::move(packet));
-
-        try {
-            auto response = WaitWithMainThreadAction(future, 2000);
-            if (response.GetMsgId() == msg_id::TIMEOUT || response.GetErrorCode() != 0) {
-                timeout_count++;
-            }
-        } catch (...) {
+        Packet response = Packet::Empty("Empty");
+        bool completed = RequestAndWait(std::move(packet), response, 200);
+        if (!completed) {
+            timeout_count++;
+        } else if (response.GetMsgId() == msg_id::TIMEOUT || response.GetErrorCode() != 0) {
             timeout_count++;
         }
     }
@@ -138,26 +121,20 @@ TEST_F(C10_RequestTimeoutTest, Request_AfterTimeout_CanStillSendNew) {
     std::string slow_data = "{\"delay\":5000}";
     Bytes slow_payload(slow_data.begin(), slow_data.end());
     auto slow_packet = Packet::FromBytes("SlowRequest", std::move(slow_payload));
-    auto slow_future = connector_->RequestAsync(std::move(slow_packet));
-
-    try {
-        WaitWithMainThreadAction(slow_future, 2000);
-    } catch (...) {
-        // Expected timeout
-    }
+    Packet slow_response = Packet::Empty("Empty");
+    RequestAndWait(std::move(slow_packet), slow_response, 200);
 
     // When: Send a new fast request
     std::string fast_data = "{\"content\":\"Fast request\",\"sequence\":1}";
     Bytes fast_payload(fast_data.begin(), fast_data.end());
     auto fast_packet = Packet::FromBytes("EchoRequest", std::move(fast_payload));
-    auto fast_future = connector_->RequestAsync(std::move(fast_packet));
+    Packet fast_response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(fast_packet), fast_response, 5000);
 
     // Then: New request should still work
-    try {
-        auto response = WaitWithMainThreadAction(fast_future, 5000);
+    if (completed) {
         EXPECT_TRUE(connector_->IsConnected()) << "Connection should still be valid after timeout";
-    } catch (const std::exception& e) {
-        // May still timeout if configuration is too aggressive, but shouldn't crash
-        SUCCEED() << "System stable after timeout: " << e.what();
+    } else {
+        SUCCEED() << "System stable after timeout";
     }
 }

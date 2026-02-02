@@ -18,16 +18,13 @@ TEST_F(A02_LargePayloadTest, LargePayload_1KB_SendAndReceive) {
     Bytes payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle successfully
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        EXPECT_EQ(response.GetErrorCode(), 0) << "1KB payload should be handled";
-        EXPECT_FALSE(response.GetPayload().empty());
-    } catch (const std::exception& e) {
-        FAIL() << "1KB payload failed: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "1KB payload should complete";
+    EXPECT_EQ(response.GetErrorCode(), 0) << "1KB payload should be handled";
+    EXPECT_FALSE(response.GetPayload().empty());
 }
 
 TEST_F(A02_LargePayloadTest, LargePayload_10KB_SendAndReceive) {
@@ -40,15 +37,12 @@ TEST_F(A02_LargePayloadTest, LargePayload_10KB_SendAndReceive) {
     Bytes payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 10000);
 
     // Then: Should handle successfully
-    try {
-        auto response = WaitWithMainThreadAction(future, 10000);
-        EXPECT_EQ(response.GetErrorCode(), 0) << "10KB payload should be handled";
-    } catch (const std::exception& e) {
-        FAIL() << "10KB payload failed: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "10KB payload should complete";
+    EXPECT_EQ(response.GetErrorCode(), 0) << "10KB payload should be handled";
 }
 
 TEST_F(A02_LargePayloadTest, LargePayload_100KB_SendAndReceive) {
@@ -61,15 +55,14 @@ TEST_F(A02_LargePayloadTest, LargePayload_100KB_SendAndReceive) {
     Bytes payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 15000);
 
     // Then: Should handle successfully (may take longer)
-    try {
-        auto response = WaitWithMainThreadAction(future, 15000);
+    if (completed) {
         EXPECT_EQ(response.GetErrorCode(), 0) << "100KB payload should be handled";
-    } catch (const std::exception& e) {
-        // 100KB might be rejected by some servers, so this is not a hard failure
-        SUCCEED() << "100KB payload result: " << e.what();
+    } else {
+        SUCCEED() << "100KB payload timed out or was rejected";
     }
 }
 
@@ -81,15 +74,14 @@ TEST_F(A02_LargePayloadTest, LargePayload_1MB_NearMaxSize) {
     std::vector<uint8_t> large_payload(1 * 1024 * 1024, 0xAB);
     auto packet = Packet::FromBytes("LargeDataRequest", std::move(large_payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 20000);
 
     // Then: Should handle or reject gracefully
-    try {
-        auto response = WaitWithMainThreadAction(future, 20000);
+    if (completed) {
         SUCCEED() << "1MB payload handled with error code: " << response.GetErrorCode();
-    } catch (const std::exception& e) {
-        // Large payloads might timeout or be rejected, which is acceptable
-        SUCCEED() << "1MB payload result: " << e.what();
+    } else {
+        SUCCEED() << "1MB payload timed out or was rejected";
     }
 }
 
@@ -104,16 +96,13 @@ TEST_F(A02_LargePayloadTest, LargePayload_BinaryData_HandledCorrectly) {
     }
 
     auto packet = Packet::FromBytes("BinaryEchoRequest", std::move(binary_payload));
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 10000);
 
     // Then: Binary data should be handled
-    try {
-        auto response = WaitWithMainThreadAction(future, 10000);
-        EXPECT_EQ(response.GetErrorCode(), 0);
-        EXPECT_FALSE(response.GetPayload().empty());
-    } catch (const std::exception& e) {
-        FAIL() << "Binary payload failed: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "Binary payload should complete";
+    EXPECT_EQ(response.GetErrorCode(), 0);
+    EXPECT_FALSE(response.GetPayload().empty());
 }
 
 TEST_F(A02_LargePayloadTest, LargePayload_MultipleConsecutive_SystemStable) {
@@ -128,15 +117,10 @@ TEST_F(A02_LargePayloadTest, LargePayload_MultipleConsecutive_SystemStable) {
         Bytes payload(echo_data.begin(), echo_data.end());
         auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-        auto future = connector_->RequestAsync(std::move(packet));
-
-        try {
-            auto response = WaitWithMainThreadAction(future, 10000);
-            if (response.GetErrorCode() == 0) {
-                success_count++;
-            }
-        } catch (...) {
-            // Continue with next
+        Packet response = Packet::Empty("Empty");
+        bool completed = RequestAndWait(std::move(packet), response, 10000);
+        if (completed && response.GetErrorCode() == 0) {
+            success_count++;
         }
     }
 

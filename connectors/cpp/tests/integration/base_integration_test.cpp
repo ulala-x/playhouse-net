@@ -47,19 +47,7 @@ bool BaseIntegrationTest::CreateStageAndConnect(const std::string& stage_type) {
         return false;
     }
 
-    // Connect to the stage
-    auto future = connector_->ConnectAsync(
-        test_server_->GetHost(),
-        test_server_->GetTcpPort(),
-        stage_info_.stage_id,
-        stage_info_.stage_type
-    );
-
-    try {
-        return WaitWithMainThreadAction(future, 5000);
-    } catch (...) {
-        return false;
-    }
+    return ConnectAndWait(5000);
 }
 
 bool BaseIntegrationTest::WaitForConditionWithMainThreadAction(
@@ -81,6 +69,58 @@ bool BaseIntegrationTest::WaitForConditionWithMainThreadAction(
     }
 
     return true;
+}
+
+bool BaseIntegrationTest::ConnectAndWait(int timeout_ms) {
+    if (!connector_) {
+        return false;
+    }
+
+    bool connected = false;
+    bool error = false;
+
+    connector_->OnConnect = [&connected]() { connected = true; };
+    connector_->OnError = [&error](int, std::string) { error = true; };
+
+    auto future = connector_->ConnectAsync(
+        test_server_->GetHost(),
+        test_server_->GetTcpPort()
+    );
+    (void)future;
+
+    bool finished = WaitForConditionWithMainThreadAction([&]() {
+        return connected || error;
+    }, timeout_ms);
+
+    return finished && connected;
+}
+
+bool BaseIntegrationTest::RequestAndWait(Packet packet, Packet& out_response, int timeout_ms) {
+    if (!connector_) {
+        return false;
+    }
+
+    bool done = false;
+    connector_->Request(std::move(packet), [&](Packet response) {
+        out_response = std::move(response);
+        done = true;
+    });
+
+    return WaitForConditionWithMainThreadAction([&]() { return done; }, timeout_ms);
+}
+
+bool BaseIntegrationTest::AuthenticateAndWait(Packet packet, bool& out_success, int timeout_ms) {
+    if (!connector_) {
+        return false;
+    }
+
+    bool done = false;
+    connector_->Authenticate(std::move(packet), [&](bool success) {
+        out_success = success;
+        done = true;
+    });
+
+    return WaitForConditionWithMainThreadAction([&]() { return done; }, timeout_ms);
 }
 
 TestServerFixture& BaseIntegrationTest::GetTestServer() {

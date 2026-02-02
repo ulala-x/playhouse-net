@@ -49,7 +49,10 @@ public class C01_StageCreationTests extends BaseIntegrationTest {
         assertThat(stageInfo.isSuccess()).isTrue();
         assertThat(stageInfo.getStageId()).isGreaterThan(0);
         assertThat(stageInfo.getStageType()).isEqualTo("TestStage");
-        assertThat(stageInfo.getReplyPayloadId()).isNotNull();
+        // replyPayloadId는 새로 생성된 Stage에만 반환됨
+        if (stageInfo.isCreated()) {
+            assertThat(stageInfo.getReplyPayloadId()).isNotNull();
+        }
     }
 
     @Test

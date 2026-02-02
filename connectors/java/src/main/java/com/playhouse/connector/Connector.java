@@ -288,12 +288,24 @@ public final class Connector implements AutoCloseable {
 
     /**
      * 메시지 전송 (응답 없음)
+     * <p>
+     * 연결되지 않은 경우 OnError 콜백이 호출됩니다.
      *
      * @param packet 전송할 패킷
-     * @throws IllegalStateException 초기화되지 않았거나 연결되지 않은 경우
      */
     public void send(Packet packet) {
-        checkConnected();
+        if (!initialized) {
+            logger.warn("Cannot send: Connector not initialized");
+            return;
+        }
+        if (!isConnected()) {
+            logger.warn("Cannot send: Not connected");
+            clientNetwork.triggerError(
+                ConnectorErrorCode.DISCONNECTED.getCode(),
+                ConnectorErrorCode.DISCONNECTED.getMessage()
+            );
+            return;
+        }
         clientNetwork.send(packet, stageId);
     }
 
@@ -302,10 +314,19 @@ public final class Connector implements AutoCloseable {
      *
      * @param packet 요청 패킷
      * @return 응답 패킷 Future
-     * @throws IllegalStateException 초기화되지 않았거나 연결되지 않은 경우
      */
     public CompletableFuture<Packet> requestAsync(Packet packet) {
-        checkConnected();
+        if (!initialized) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("Connector not initialized. Call init() first.")
+            );
+        }
+        if (!isConnected()) {
+            return CompletableFuture.failedFuture(
+                new ConnectorException(ConnectorErrorCode.DISCONNECTED.getCode(),
+                    ConnectorErrorCode.DISCONNECTED.getMessage(), packet)
+            );
+        }
         return clientNetwork.requestAsync(packet, stageId);
     }
 
@@ -327,16 +348,34 @@ public final class Connector implements AutoCloseable {
 
     /**
      * 요청 전송 (콜백 방식)
+     * <p>
+     * 요청 실패 또는 타임아웃 시 OnError 콜백이 호출됩니다.
      *
      * @param packet   요청 패킷
      * @param callback 응답 콜백
-     * @throws IllegalStateException 초기화되지 않았거나 연결되지 않은 경우
      */
     public void request(Packet packet, Consumer<Packet> callback) {
+        if (!initialized) {
+            logger.warn("Cannot request: Connector not initialized");
+            return;
+        }
+        if (!isConnected()) {
+            clientNetwork.triggerError(
+                ConnectorErrorCode.DISCONNECTED.getCode(),
+                ConnectorErrorCode.DISCONNECTED.getMessage()
+            );
+            return;
+        }
+
         requestAsync(packet)
             .thenAccept(callback)
             .exceptionally(e -> {
-                logger.error("Request failed: {}", packet.getMsgId(), e);
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                if (cause instanceof ConnectorException ce) {
+                    clientNetwork.triggerError(ce.getErrorCode(), ce.getMessage());
+                } else {
+                    logger.error("Request failed: {}", packet.getMsgId(), e);
+                }
                 return null;
             });
     }

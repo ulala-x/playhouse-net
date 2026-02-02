@@ -25,7 +25,7 @@ internal sealed class BaseStage(
     IServiceScope serviceScope) : IReplyPacketRegistry
 {
     private readonly IServiceScope _serviceScope = serviceScope;
-    
+
     private readonly Dictionary<string, BaseActor> _actors = new();
     private readonly ConcurrentQueue<StageMessage> _mailbox = new();
     private readonly List<IDisposable> _pendingReplyPackets = new();
@@ -75,9 +75,9 @@ internal sealed class BaseStage(
                     if (task.IsCompleted) task.GetAwaiter().GetResult();
                     else await task;
                 }
-                catch (Exception ex) 
+                catch (Exception ex)
                 {
-                    logger.LogError(ex, "Error executing message in Stage {StageId}", StageId); 
+                    logger.LogError(ex, "Error executing message in Stage {StageId}", StageId);
                 }
                 finally
                 {

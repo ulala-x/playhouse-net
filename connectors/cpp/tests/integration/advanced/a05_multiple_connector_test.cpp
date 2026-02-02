@@ -1,6 +1,9 @@
 #include "../base_integration_test.hpp"
 #include <gtest/gtest.h>
 #include <vector>
+#include <optional>
+#include <thread>
+#include <chrono>
 
 using namespace playhouse;
 using namespace playhouse::test;
@@ -8,6 +11,27 @@ using namespace playhouse::test;
 /// A-05: Multiple Connector Tests
 /// Verifies multiple connector instances can work simultaneously
 class A05_MultipleConnectorTest : public BaseIntegrationTest {};
+
+namespace {
+bool ConnectWithWait(Connector& connector, TestServerFixture& server, int timeout_ms = 5000) {
+    bool connected = false;
+    bool error = false;
+
+    connector.OnConnect = [&connected]() { connected = true; };
+    connector.OnError = [&error](int, std::string) { error = true; };
+
+    auto future = connector.ConnectAsync(server.GetHost(), server.GetTcpPort());
+    (void)future;
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (!connected && !error && std::chrono::steady_clock::now() < deadline) {
+        connector.MainThreadAction();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    return connected;
+}
+} // namespace
 
 TEST_F(A05_MultipleConnectorTest, TwoConnectors_BothConnect_Independently) {
     // Given: Two connector instances
@@ -18,19 +42,8 @@ TEST_F(A05_MultipleConnectorTest, TwoConnectors_BothConnect_Independently) {
     auto stage1 = GetTestServer().CreateTestStage();
     auto stage2 = GetTestServer().CreateTestStage();
 
-    auto future1 = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-    auto future2 = connector2->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-
-    bool connected1 = WaitWithMainThreadAction(future1, 5000);
-    bool connected2 = false;
-
-    // Also call MainThreadAction for connector2
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-    while (future2.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-        if (std::chrono::steady_clock::now() >= deadline) break;
-        connector2->MainThreadAction();
-    }
-    connected2 = future2.get();
+    bool connected1 = ConnectAndWait(5000);
+    bool connected2 = ConnectWithWait(*connector2, GetTestServer(), 5000);
 
     // Then: Both should connect successfully
     EXPECT_TRUE(connected1) << "First connector should connect";
@@ -52,15 +65,7 @@ TEST_F(A05_MultipleConnectorTest, MultipleConnectors_SendMessagesIndependently) 
         conn->Init(config_);
 
         auto stage = GetTestServer().CreateTestStage();
-        auto future = conn->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-        while (future.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-            if (std::chrono::steady_clock::now() >= deadline) break;
-            conn->MainThreadAction();
-        }
-
-        if (future.get()) {
+        if (ConnectWithWait(*conn, GetTestServer(), 5000)) {
             connectors.push_back(std::move(conn));
         }
     }
@@ -68,34 +73,30 @@ TEST_F(A05_MultipleConnectorTest, MultipleConnectors_SendMessagesIndependently) 
     ASSERT_GE(connectors.size(), 2) << "At least 2 connectors should connect";
 
     // When: Each sends a message
-    std::vector<std::future<Packet>> futures;
+    std::vector<bool> completed(connectors.size(), false);
+    std::vector<std::optional<Packet>> responses(connectors.size());
 
     for (size_t i = 0; i < connectors.size(); i++) {
         std::string echo_data = "{\"content\":\"Connector" + std::to_string(i) + "\",\"sequence\":" + std::to_string(i) + "}";
         Bytes payload(echo_data.begin(), echo_data.end());
         auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-        futures.push_back(connectors[i]->RequestAsync(std::move(packet)));
+        connectors[i]->Request(std::move(packet), [&, i](Packet response) {
+            responses[i] = std::move(response);
+            completed[i] = true;
+        });
     }
 
     // Then: All should receive responses
     int success_count = 0;
-    for (size_t i = 0; i < futures.size(); i++) {
-        try {
-            auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-            while (futures[i].wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-                if (std::chrono::steady_clock::now() >= deadline) break;
-                connectors[i]->MainThreadAction();
-            }
-
-            if (futures[i].wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-                auto response = futures[i].get();
-                if (response.GetErrorCode() == 0) {
-                    success_count++;
-                }
-            }
-        } catch (...) {
-            // Some might fail, but shouldn't crash
+    for (size_t i = 0; i < connectors.size(); i++) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
+        while (!completed[i] && std::chrono::steady_clock::now() < deadline) {
+            connectors[i]->MainThreadAction();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (completed[i] && responses[i].has_value() && responses[i]->GetErrorCode() == 0) {
+            success_count++;
         }
     }
 
@@ -115,14 +116,8 @@ TEST_F(A05_MultipleConnectorTest, Connectors_IndependentLifecycles) {
     ASSERT_TRUE(CreateStageAndConnect());
 
     auto stage2 = GetTestServer().CreateTestStage();
-    auto future2 = connector2->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-    while (future2.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-        if (std::chrono::steady_clock::now() >= deadline) break;
-        connector2->MainThreadAction();
-    }
-    bool connected2 = future2.get();
+    (void)stage2;
+    bool connected2 = ConnectWithWait(*connector2, GetTestServer(), 5000);
 
     ASSERT_TRUE(connected2);
 
@@ -158,14 +153,8 @@ TEST_F(A05_MultipleConnectorTest, Connectors_SeparateCallbackHandlers) {
     ASSERT_TRUE(CreateStageAndConnect());
 
     auto stage2 = GetTestServer().CreateTestStage();
-    auto future2 = connector2->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-    while (future2.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-        if (std::chrono::steady_clock::now() >= deadline) break;
-        connector2->MainThreadAction();
-    }
-    ASSERT_TRUE(future2.get());
+    (void)stage2;
+    ASSERT_TRUE(ConnectWithWait(*connector2, GetTestServer(), 5000));
 
     // When: Trigger messages for both
     std::string broadcast1 = "{\"target\":\"connector1\"}";
@@ -199,20 +188,8 @@ TEST_F(A05_MultipleConnectorTest, Connectors_SequentialCreationAndDestruction) {
         conn->Init(config_);
 
         auto stage = GetTestServer().CreateTestStage();
-        auto future = conn->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-        while (future.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
-            if (std::chrono::steady_clock::now() >= deadline) break;
-            conn->MainThreadAction();
-        }
-
-        bool connected = false;
-        try {
-            connected = future.get();
-        } catch (...) {
-            connected = false;
-        }
+        (void)stage;
+        bool connected = ConnectWithWait(*conn, GetTestServer(), 5000);
 
         if (connected) {
             conn->Disconnect();

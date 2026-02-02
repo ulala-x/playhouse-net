@@ -5,6 +5,7 @@ package com.playhouse.connector.support;
  */
 public class CreateStageResponse {
     private boolean success;
+    private boolean isCreated;
     private long stageId;
     private String stageType;
     private String replyPayloadId;
@@ -12,8 +13,9 @@ public class CreateStageResponse {
     public CreateStageResponse() {
     }
 
-    public CreateStageResponse(boolean success, long stageId, String stageType, String replyPayloadId) {
+    public CreateStageResponse(boolean success, boolean isCreated, long stageId, String stageType, String replyPayloadId) {
         this.success = success;
+        this.isCreated = isCreated;
         this.stageId = stageId;
         this.stageType = stageType;
         this.replyPayloadId = replyPayloadId;
@@ -25,6 +27,14 @@ public class CreateStageResponse {
 
     public void setSuccess(boolean success) {
         this.success = success;
+    }
+
+    public boolean isCreated() {
+        return isCreated;
+    }
+
+    public void setCreated(boolean created) {
+        isCreated = created;
     }
 
     public long getStageId() {

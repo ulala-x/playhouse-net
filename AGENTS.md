@@ -1,5 +1,9 @@
 # PlayHouse Project Guidelines
 
+## Communication
+
+- Address the user as "팀장님" in all responses.
+
 ## Project Overview
 
 PlayHouse is a multi-language real-time game server framework designed for simplicity, performance, and scalability. The framework supports multiple server implementations (.NET, Java, C++, Node.js) and client connectors (Unity, Unreal, JavaScript).

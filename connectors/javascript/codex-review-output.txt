@@ -1,0 +1,54 @@
+# Codex Code Review - JavaScript Connector
+
+## Review Date: 2026-02-02
+
+## Findings (ordered by severity)
+
+### HIGH SEVERITY
+
+1. **Auth state flips true even on failed auth responses**
+   - Location: `src/connector.ts:616`
+   - Issue: In `handlePacket`, `_isAuthenticated = true` is set before checking `errorCode`, so failed auth still marks the client authenticated and affects `authenticate*` flows.
+   - Fix: Only set `_isAuthenticated = true` when `errorCode === 0`, and keep it false otherwise.
+
+2. **Client-initiated disconnect never triggers onDisconnect**
+   - Location: `src/connector.ts:162`, `src/connector.ts:674`, `src/internal/ws-connection.ts:141`
+   - Issue: `Connector.disconnect()` calls `WsConnection.disconnect()` which nulls handlers without invoking `onDisconnect`; `Connector.disconnect()` doesn't call it either. This also breaks the heartbeat-timeout path that expects a disconnect callback.
+   - Fix: Ensure `onDisconnect` is invoked on client-initiated disconnect and heartbeat timeout, and consider passing a reason.
+
+### MEDIUM SEVERITY
+
+3. **Reconnect config exists but is unused**
+   - Location: `src/config.ts:36`, `src/config.ts:42`, `src/config.ts:48`
+   - Issue: `enableReconnect`, `reconnectIntervalMs`, and `useSsl` config fields are defined but not used. This is misleading and suggests features that don't exist.
+   - Fix: Either implement reconnect (with max attempts/backoff) or remove the fields from config + docs.
+
+4. **Receive buffer concatenation copies on every fragment append**
+   - Location: `src/internal/ws-connection.ts:192`
+   - Issue: O(n^2) copying and memory churn with fragmented/large messages.
+   - Fix: Accumulate chunks in an array and only concat once per full frame or use a growable ring buffer.
+
+5. **Packet decode failures only log and drop data**
+   - Location: `src/internal/ws-connection.ts:248`
+   - Issue: `onError` isn't notified when decode fails. This hides protocol drift/corruption from users.
+   - Fix: Surface decode errors via `onError` with an error code and details.
+
+### LOW SEVERITY
+
+6. **Connector.send() can throw without firing onError**
+   - Location: `src/connector.ts:176`
+   - Issue: If `encodePacket` fails (e.g., payload too large), an exception is thrown but `onError` is not called.
+   - Fix: Wrap encode+send in try/catch and route errors to `onError`.
+
+## Questions / Assumptions
+
+- Is `onDisconnect` expected to fire for client-initiated disconnects and heartbeat timeouts? The timeout path implies "yes," but current behavior implies "no."
+- Should reconnect support be implemented or removed? If implemented, do you want backoff/max attempts and an `onReconnectAttempt` hook?
+
+## Suggestions (actionable)
+
+1. Fix auth state: set `_isAuthenticated` only on success, and consider storing the last auth error for debugging.
+2. Standardize lifecycle: ensure all disconnect paths call `onDisconnect` once, with a reason enum.
+3. Improve buffer strategy: replace repeated buffer concat with chunk queue + single concat per frame.
+4. Surface decode errors: call `onError` with a typed error object; include `msgId` if available.
+5. Enforce type safety: tighten error types, avoid `any`, prefer explicit union types.

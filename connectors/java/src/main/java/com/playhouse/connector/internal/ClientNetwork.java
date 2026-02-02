@@ -210,6 +210,20 @@ public final class ClientNetwork {
     }
 
     /**
+     * 에러 콜백 트리거 (외부에서 호출 가능)
+     *
+     * @param errorCode    에러 코드
+     * @param errorMessage 에러 메시지
+     */
+    public void triggerError(int errorCode, String errorMessage) {
+        enqueueCallback(() -> {
+            if (onError != null) {
+                onError.accept(errorCode, errorMessage);
+            }
+        });
+    }
+
+    /**
      * 메인 스레드에서 콜백 실행
      */
     public void mainThreadAction() {

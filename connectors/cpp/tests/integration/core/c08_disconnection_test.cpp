@@ -113,14 +113,8 @@ TEST_F(C08_DisconnectionTest, Reconnect_AfterDisconnection_Succeeds) {
 
     // When: Reconnect
     auto new_stage = GetTestServer().CreateTestStage();
-    auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-    bool reconnected = false;
-
-    try {
-        reconnected = WaitWithMainThreadAction(future, 5000);
-    } catch (...) {
-        reconnected = false;
-    }
+    (void)new_stage;
+    bool reconnected = ConnectAndWait(5000);
 
     // Then: Reconnection should succeed
     EXPECT_TRUE(reconnected) << "Reconnection should succeed";

@@ -60,15 +60,12 @@ TEST_F(C07_HeartbeatTest, Heartbeat_DoesNotInterfereWithNormalMessages) {
     Bytes payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Normal messages should work fine
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        EXPECT_EQ(response.GetErrorCode(), 0) << "Normal message should succeed during heartbeat";
-    } catch (const std::exception& e) {
-        FAIL() << "Message failed during heartbeat: " << e.what();
-    }
+    ASSERT_TRUE(completed) << "Message should complete during heartbeat";
+    EXPECT_EQ(response.GetErrorCode(), 0) << "Normal message should succeed during heartbeat";
 }
 
 TEST_F(C07_HeartbeatTest, Heartbeat_ConfiguredInterval_RespectedByConnector) {

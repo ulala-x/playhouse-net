@@ -135,7 +135,8 @@ public final class WsConnection implements IConnection {
                         // WebSocket 핸들러 (handshake만 담당)
                         pipeline.addLast(new WebSocketClientProtocolHandler(handshaker));
 
-                        // 커스텀 핸들러는 startReceive에서 추가됨
+                        // 핸드셰이크 완료 이벤트 핸들러 (연결 시점에 추가)
+                        pipeline.addLast(new HandshakeEventHandler());
                     }
                 });
 
@@ -332,13 +333,7 @@ public final class WsConnection implements IConnection {
 
         @Override
         public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-            if (evt == WebSocketClientProtocolHandler.ClientHandshakeStateEvent.HANDSHAKE_COMPLETE) {
-                // Handshake 완료
-                handshakeFuture.complete(true);
-            } else if (evt == WebSocketClientProtocolHandler.ClientHandshakeStateEvent.HANDSHAKE_TIMEOUT) {
-                // Handshake 타임아웃
-                handshakeFuture.complete(false);
-            }
+            // 핸드셰이크 이벤트는 HandshakeEventHandler에서 처리
             super.userEventTriggered(ctx, evt);
         }
 
@@ -417,6 +412,46 @@ public final class WsConnection implements IConnection {
             }
             onClosed.run();
             ctx.close();
+        }
+    }
+
+    /**
+     * 핸드셰이크 이벤트만 처리하는 핸들러
+     * 연결 시점에 파이프라인에 추가되어 핸드셰이크 완료를 감지
+     */
+    private class HandshakeEventHandler extends ChannelInboundHandlerAdapter {
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+            if (evt == WebSocketClientProtocolHandler.ClientHandshakeStateEvent.HANDSHAKE_COMPLETE) {
+                // Handshake 완료
+                logger.info("WebSocket handshake completed");
+                handshakeFuture.complete(true);
+            } else if (evt == WebSocketClientProtocolHandler.ClientHandshakeStateEvent.HANDSHAKE_TIMEOUT) {
+                // Handshake 타임아웃
+                logger.error("WebSocket handshake timeout");
+                handshakeFuture.complete(false);
+            }
+            super.userEventTriggered(ctx, evt);
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            logger.error("Exception during WebSocket handshake", cause);
+            if (handshakeFuture != null && !handshakeFuture.isDone()) {
+                handshakeFuture.complete(false);
+            }
+            super.exceptionCaught(ctx, cause);
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            // 핸드셰이크 완료 전에 연결이 끊긴 경우
+            if (handshakeFuture != null && !handshakeFuture.isDone()) {
+                logger.error("Connection closed before handshake completed");
+                handshakeFuture.complete(false);
+            }
+            super.channelInactive(ctx);
         }
     }
 }

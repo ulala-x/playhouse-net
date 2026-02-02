@@ -7,6 +7,7 @@ C++ Connector for PlayHouse real-time game server framework.
 - **Purpose**: C++ server E2E testing
 - **Status**: Initial Implementation Complete
 - **C++ Standard**: C++17
+- **E2E Guide**: `doc/docker-e2e.md`
 
 ## Directory Structure
 

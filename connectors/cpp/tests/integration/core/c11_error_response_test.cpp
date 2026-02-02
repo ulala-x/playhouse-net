@@ -18,16 +18,14 @@ TEST_F(C11_ErrorResponseTest, Request_WithError_ErrorCodeSet) {
     Bytes payload(error_data.begin(), error_data.end());
     auto packet = Packet::FromBytes("ErrorRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
-    // Then: Response should have error code or trigger OnError
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        // Server might return error code in response
-        // Error code of 0 means success, non-zero means error
+    // Then: Response should have error code or be handled gracefully
+    if (completed) {
         SUCCEED() << "Error request completed with error code: " << response.GetErrorCode();
-    } catch (const std::exception& e) {
-        SUCCEED() << "Error request handled with exception: " << e.what();
+    } else {
+        SUCCEED() << "Error request timed out as expected";
     }
 }
 
@@ -73,14 +71,14 @@ TEST_F(C11_ErrorResponseTest, Request_ToInvalidEndpoint_HandledGracefully) {
     Bytes payload(invalid_data.begin(), invalid_data.end());
     auto packet = Packet::FromBytes("NonExistentRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle gracefully without crashing
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
+    if (completed) {
         SUCCEED() << "Invalid endpoint handled gracefully with error code: " << response.GetErrorCode();
-    } catch (const std::exception& e) {
-        SUCCEED() << "Invalid endpoint handled with exception: " << e.what();
+    } else {
+        SUCCEED() << "Invalid endpoint timed out as expected";
     }
 }
 
@@ -93,15 +91,14 @@ TEST_F(C11_ErrorResponseTest, ErrorResponse_WithPayload_PayloadAccessible) {
     Bytes payload(error_data.begin(), error_data.end());
     auto packet = Packet::FromBytes("CustomErrorRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Error response payload should be accessible
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        // Even error responses might have payload
+    if (completed) {
         SUCCEED() << "Error response received, payload size: " << response.GetPayload().size();
-    } catch (const std::exception& e) {
-        SUCCEED() << "Error handled: " << e.what();
+    } else {
+        SUCCEED() << "Error handled via timeout";
     }
 }
 
@@ -121,13 +118,8 @@ TEST_F(C11_ErrorResponseTest, MultipleErrors_AllHandledIndependently) {
         Bytes payload(error_data.begin(), error_data.end());
         auto packet = Packet::FromBytes("ErrorRequest", std::move(payload));
 
-        auto future = connector_->RequestAsync(std::move(packet));
-
-        try {
-            WaitWithMainThreadAction(future, 3000);
-        } catch (...) {
-            // Errors are expected
-        }
+        Packet response = Packet::Empty("Empty");
+        RequestAndWait(std::move(packet), response, 3000);
 
         // Process callbacks
         for (int j = 0; j < 5; j++) {

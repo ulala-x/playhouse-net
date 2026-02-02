@@ -34,7 +34,8 @@ public class TestMessages {
             // Simplified: protobuf wire format
             // Field 1 (userId): tag=10 (field 1, type 2=string)
             // Field 2 (token): tag=18 (field 2, type 2=string)
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            int estimatedSize = 32 + (userId != null ? userId.length() * 3 : 0) + (token != null ? token.length() * 3 : 0);
+            ByteBuffer buffer = ByteBuffer.allocate(Math.max(1024, estimatedSize));
             writeString(buffer, 1, userId);
             writeString(buffer, 2, token);
 
@@ -49,18 +50,37 @@ public class TestMessages {
      * AuthenticateReply 메시지
      */
     public static class AuthenticateReply {
-        public String accountId;
+        public String accountId = "";
         public boolean success;
-        public String receivedUserId;
-        public String receivedToken;
+        public String receivedUserId = "";
+        public String receivedToken = "";
 
         public static AuthenticateReply parseFrom(byte[] data) throws InvalidProtocolBufferException {
             AuthenticateReply reply = new AuthenticateReply();
-            // Simplified parsing - in real implementation, use protoc generated code
-            reply.accountId = "test_account_" + System.currentTimeMillis();
-            reply.success = true;
-            reply.receivedUserId = "test_user";
-            reply.receivedToken = "valid_token";
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+
+            while (buffer.hasRemaining()) {
+                int tag = readVarint(buffer);
+                int fieldNumber = tag >>> 3;
+                int wireType = tag & 0x7;
+
+                switch (fieldNumber) {
+                    case 1: // account_id
+                        reply.accountId = readString(buffer);
+                        break;
+                    case 2: // success
+                        reply.success = readVarint(buffer) != 0;
+                        break;
+                    case 3: // received_user_id
+                        reply.receivedUserId = readString(buffer);
+                        break;
+                    case 4: // received_token
+                        reply.receivedToken = readString(buffer);
+                        break;
+                    default:
+                        skipField(buffer, wireType);
+                }
+            }
             return reply;
         }
     }
@@ -78,7 +98,8 @@ public class TestMessages {
         }
 
         public byte[] toByteArray() {
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            int estimatedSize = 32 + (content != null ? content.length() * 3 : 0);
+            ByteBuffer buffer = ByteBuffer.allocate(Math.max(1024, estimatedSize));
             writeString(buffer, 1, content);
             writeVarint(buffer, 2, sequence);
 
@@ -93,16 +114,33 @@ public class TestMessages {
      * EchoReply 메시지
      */
     public static class EchoReply {
-        public String content;
+        public String content = "";
         public int sequence;
         public long processedAt;
 
         public static EchoReply parseFrom(byte[] data) throws InvalidProtocolBufferException {
             EchoReply reply = new EchoReply();
-            // Simplified parsing
-            reply.content = "Echo response";
-            reply.sequence = 1;
-            reply.processedAt = System.currentTimeMillis();
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+
+            while (buffer.hasRemaining()) {
+                int tag = readVarint(buffer);
+                int fieldNumber = tag >>> 3;
+                int wireType = tag & 0x7;
+
+                switch (fieldNumber) {
+                    case 1: // content
+                        reply.content = readString(buffer);
+                        break;
+                    case 2: // sequence
+                        reply.sequence = readVarint(buffer);
+                        break;
+                    case 3: // processed_at
+                        reply.processedAt = readVarint64(buffer);
+                        break;
+                    default:
+                        skipField(buffer, wireType);
+                }
+            }
             return reply;
         }
     }
@@ -118,7 +156,8 @@ public class TestMessages {
         }
 
         public byte[] toByteArray() {
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            int estimatedSize = 32 + (content != null ? content.length() * 3 : 0);
+            ByteBuffer buffer = ByteBuffer.allocate(Math.max(1024, estimatedSize));
             writeString(buffer, 1, content);
 
             byte[] result = new byte[buffer.position()];
@@ -132,17 +171,37 @@ public class TestMessages {
      * BroadcastNotify 메시지
      */
     public static class BroadcastNotify {
-        public String eventType;
-        public String data;
+        public String eventType = "";
+        public String data = "";
         public long fromAccountId;
-        public String senderId;
+        public String senderId = "";
 
-        public static BroadcastNotify parseFrom(byte[] data) throws InvalidProtocolBufferException {
+        public static BroadcastNotify parseFrom(byte[] rawData) throws InvalidProtocolBufferException {
             BroadcastNotify notify = new BroadcastNotify();
-            notify.eventType = "broadcast";
-            notify.data = "Test broadcast data";
-            notify.fromAccountId = 0;
-            notify.senderId = "test_sender";
+            ByteBuffer buffer = ByteBuffer.wrap(rawData);
+
+            while (buffer.hasRemaining()) {
+                int tag = readVarint(buffer);
+                int fieldNumber = tag >>> 3;
+                int wireType = tag & 0x7;
+
+                switch (fieldNumber) {
+                    case 1: // event_type
+                        notify.eventType = readString(buffer);
+                        break;
+                    case 2: // data
+                        notify.data = readString(buffer);
+                        break;
+                    case 3: // from_account_id
+                        notify.fromAccountId = readVarint64(buffer);
+                        break;
+                    case 4: // sender_id
+                        notify.senderId = readString(buffer);
+                        break;
+                    default:
+                        skipField(buffer, wireType);
+                }
+            }
             return notify;
         }
     }
@@ -160,7 +219,8 @@ public class TestMessages {
         }
 
         public byte[] toByteArray() {
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            int estimatedSize = 32 + (errorMessage != null ? errorMessage.length() * 3 : 0);
+            ByteBuffer buffer = ByteBuffer.allocate(Math.max(1024, estimatedSize));
             writeVarint(buffer, 1, errorCode);
             writeString(buffer, 2, errorMessage);
 
@@ -176,13 +236,28 @@ public class TestMessages {
      */
     public static class FailReply {
         public int errorCode;
-        public String message;
+        public String message = "";
 
         public static FailReply parseFrom(byte[] data) throws InvalidProtocolBufferException {
             FailReply reply = new FailReply();
-            // Simplified parsing
-            reply.errorCode = 1000;
-            reply.message = "Test error message";
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+
+            while (buffer.hasRemaining()) {
+                int tag = readVarint(buffer);
+                int fieldNumber = tag >>> 3;
+                int wireType = tag & 0x7;
+
+                switch (fieldNumber) {
+                    case 1: // error_code
+                        reply.errorCode = readVarint(buffer);
+                        break;
+                    case 2: // message
+                        reply.message = readString(buffer);
+                        break;
+                    default:
+                        skipField(buffer, wireType);
+                }
+            }
             return reply;
         }
     }
@@ -231,20 +306,48 @@ public class TestMessages {
 
     /**
      * BenchmarkReply 메시지
+     * Proto field numbers:
+     * - sequence: 1 (int32)
+     * - processed_at: 2 (int64)
+     * - payload: 3 (bytes)
      */
     public static class BenchmarkReply {
+        public int sequence;
+        public long processedAt;
         public byte[] payload;
 
         public static BenchmarkReply parseFrom(byte[] data) throws InvalidProtocolBufferException {
             BenchmarkReply reply = new BenchmarkReply();
-            // Simplified parsing - extract payload field
-            // In real implementation, parse protobuf properly
-            if (data.length > 2) {
-                // Skip tag and length bytes (simplified)
-                reply.payload = new byte[data.length - 2];
-                System.arraycopy(data, 2, reply.payload, 0, reply.payload.length);
-            } else {
-                reply.payload = new byte[0];
+            reply.payload = new byte[0];
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+
+            while (buffer.hasRemaining()) {
+                int tag = readVarint(buffer);
+                int fieldNumber = tag >>> 3;
+                int wireType = tag & 0x7;
+
+                switch (fieldNumber) {
+                    case 1: // sequence (int32)
+                        reply.sequence = readVarint(buffer);
+                        break;
+                    case 2: // processed_at (int64)
+                        reply.processedAt = readVarint64(buffer);
+                        break;
+                    case 3: // payload (bytes)
+                        if (wireType == 2) {
+                            int length = readVarint(buffer);
+                            if (length < 0 || length > buffer.remaining()) {
+                                throw new IllegalArgumentException("Invalid payload length: " + length);
+                            }
+                            reply.payload = new byte[length];
+                            buffer.get(reply.payload);
+                        } else {
+                            skipField(buffer, wireType);
+                        }
+                        break;
+                    default:
+                        skipField(buffer, wireType);
+                }
             }
             return reply;
         }
@@ -277,5 +380,80 @@ public class TestMessages {
             value >>>= 7;
         }
         buffer.put((byte) value);
+    }
+
+    // ===== Protobuf Read Helpers =====
+
+    private static int readVarint(ByteBuffer buffer) {
+        int result = 0;
+        int shift = 0;
+        while (buffer.hasRemaining()) {
+            byte b = buffer.get();
+            result |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) {
+                return result;
+            }
+            shift += 7;
+            if (shift >= 32) {
+                throw new IllegalArgumentException("Varint too long");
+            }
+        }
+        throw new IllegalArgumentException("Truncated varint");
+    }
+
+    private static long readVarint64(ByteBuffer buffer) {
+        long result = 0;
+        int shift = 0;
+        while (buffer.hasRemaining()) {
+            byte b = buffer.get();
+            result |= (long) (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) {
+                return result;
+            }
+            shift += 7;
+            if (shift >= 64) {
+                throw new IllegalArgumentException("Varint64 too long");
+            }
+        }
+        throw new IllegalArgumentException("Truncated varint64");
+    }
+
+    private static String readString(ByteBuffer buffer) {
+        int length = readVarint(buffer);
+        if (length < 0 || length > buffer.remaining()) {
+            throw new IllegalArgumentException("Invalid string length: " + length);
+        }
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    private static void skipField(ByteBuffer buffer, int wireType) {
+        switch (wireType) {
+            case 0: // Varint
+                readVarint64(buffer);
+                break;
+            case 1: // 64-bit
+                if (buffer.remaining() < 8) {
+                    throw new IllegalArgumentException("Truncated 64-bit field");
+                }
+                buffer.position(buffer.position() + 8);
+                break;
+            case 2: // Length-delimited
+                int length = readVarint(buffer);
+                if (length < 0 || length > buffer.remaining()) {
+                    throw new IllegalArgumentException("Invalid length-delimited field");
+                }
+                buffer.position(buffer.position() + length);
+                break;
+            case 5: // 32-bit
+                if (buffer.remaining() < 4) {
+                    throw new IllegalArgumentException("Truncated 32-bit field");
+                }
+                buffer.position(buffer.position() + 4);
+                break;
+            default:
+                throw new IllegalArgumentException("Unknown wire type: " + wireType);
+        }
     }
 }

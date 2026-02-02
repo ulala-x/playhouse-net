@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import okhttp3.*;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,6 +42,9 @@ public class TestServerClient {
      */
     public TestServerClient(String host, int httpPort) {
         this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .readTimeout(Duration.ofSeconds(30))
+                .writeTimeout(Duration.ofSeconds(30))
                 .build();
 
         this.gson = new GsonBuilder()
@@ -97,6 +101,7 @@ public class TestServerClient {
 
             return new CreateStageResponse(
                     apiResponse.success,
+                    apiResponse.isCreated,
                     apiResponse.stageId,
                     stageType,
                     apiResponse.replyPayloadId

@@ -13,8 +13,7 @@ TEST_F(C02_TcpConnectionTest, Connect_AfterStageCreation_Succeeds) {
     stage_info_ = GetTestServer().CreateTestStage();
 
     // When: Attempt TCP connection
-    auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-    bool connected = WaitWithMainThreadAction(future, 5000);
+    bool connected = ConnectAndWait(5000);
 
     // Then: Connection should succeed
     EXPECT_TRUE(connected) << "TCP connection should succeed";
@@ -44,6 +43,7 @@ TEST_F(C02_TcpConnectionTest, OnConnect_Event_TriggersWithSuccess) {
 
     // When: Connect asynchronously
     auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
+    (void)future;
 
     // Wait for event with MainThreadAction
     bool condition_met = WaitForConditionWithMainThreadAction([&event_triggered]() {
@@ -57,8 +57,7 @@ TEST_F(C02_TcpConnectionTest, OnConnect_Event_TriggersWithSuccess) {
 
 TEST_F(C02_TcpConnectionTest, Connect_ToValidServer_TcpConnectionSucceeds) {
     // When: Connect to valid server
-    auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-    bool connected = WaitWithMainThreadAction(future, 5000);
+    bool connected = ConnectAndWait(5000);
 
     // Then: TCP connection itself should succeed
     // Note: Stage validation happens at a higher level
@@ -76,8 +75,8 @@ TEST_F(C02_TcpConnectionTest, Connect_MultipleTimes_Succeeds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     auto new_stage_info = GetTestServer().CreateTestStage();
-    auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-    bool reconnected = WaitWithMainThreadAction(future, 5000);
+    (void)new_stage_info;
+    bool reconnected = ConnectAndWait(5000);
 
     // Then: Reconnection should succeed
     EXPECT_TRUE(reconnected) << "Reconnection should succeed";

@@ -71,12 +71,12 @@ class A06_EdgeCaseTests {
         connector = new Connector();
         // Init을 호출하지 않음
 
-        // Act & Assert
+        // Act & Assert - Java connector throws IllegalStateException from checkInitialized()
         connector.setStageId(stageInfo.getStageId());
         assertThatThrownBy(() -> {
             CompletableFuture<Void> connectFuture = connector.connectAsync(host, tcpPort);
             connectFuture.get(5, TimeUnit.SECONDS);
-        }).hasCauseInstanceOf(NullPointerException.class);
+        }).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -254,12 +254,12 @@ class A06_EdgeCaseTests {
 
         connector.close();
 
-        // Act & Assert
+        // Act & Assert - Java connector throws IllegalStateException from checkInitialized()
         connector.setStageId(stageInfo.getStageId());
         assertThatThrownBy(() -> {
             CompletableFuture<Void> connectFuture = connector.connectAsync(host, tcpPort);
             connectFuture.get(5, TimeUnit.SECONDS);
-        }).hasCauseInstanceOf(NullPointerException.class);
+        }).isInstanceOf(IllegalStateException.class);
 
         connector = null;  // tearDown에서 다시 처리하지 않도록
     }

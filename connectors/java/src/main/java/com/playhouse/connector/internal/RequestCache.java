@@ -1,5 +1,7 @@
 package com.playhouse.connector.internal;
 
+import com.playhouse.connector.ConnectorErrorCode;
+import com.playhouse.connector.ConnectorException;
 import com.playhouse.connector.Packet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,9 +75,11 @@ public final class RequestCache {
             if (timeoutEntry != null && !timeoutEntry.future.isDone()) {
                 logger.warn("Request timeout: msgId={}, msgSeq={}", packet.getMsgId(), msgSeq);
                 timeoutEntry.future.completeExceptionally(
-                    new java.util.concurrent.TimeoutException(
+                    new ConnectorException(
+                        ConnectorErrorCode.REQUEST_TIMEOUT.getCode(),
                         String.format("Request timeout after %dms: msgId=%s, msgSeq=%d",
-                            requestTimeoutMs, packet.getMsgId(), msgSeq)
+                            requestTimeoutMs, packet.getMsgId(), msgSeq),
+                        timeoutEntry.packet
                     )
                 );
             }
@@ -126,9 +130,16 @@ public final class RequestCache {
         if (response.hasError()) {
             logger.warn("Response has error: msgId={}, msgSeq={}, errorCode={}",
                 response.getMsgId(), msgSeq, response.getErrorCode());
+            // 에러 응답은 예외로 처리
+            entry.future.completeExceptionally(
+                new ConnectorException(response.getErrorCode(),
+                    String.format("Server error: msgId=%s, errorCode=%d",
+                        response.getMsgId(), response.getErrorCode()),
+                    response)
+            );
+        } else {
+            entry.future.complete(response);
         }
-
-        entry.future.complete(response);
 
         if (logger.isDebugEnabled()) {
             long elapsed = System.currentTimeMillis() - entry.timestamp;

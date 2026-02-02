@@ -17,18 +17,13 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_WithInvalidToken_Fails) {
     Bytes payload(auth_data.begin(), auth_data.end());
 
     // When: Authenticate with invalid credentials
-    auto future = connector_->AuthenticateAsync("TestService", "test_account", payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
 
     // Then: Authentication should fail or complete
-    try {
-        bool auth_success = WaitWithMainThreadAction(future, 5000);
-        // Depending on server implementation, this might return false
-        // or the server might still return true for TCP connection
-        SUCCEED() << "Authentication completed with result: " << auth_success;
-    } catch (const std::exception& e) {
-        // Exception is acceptable for authentication failure
-        SUCCEED() << "Authentication failed as expected: " << e.what();
-    }
+    bool auth_success = false;
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_success, 5000);
+    EXPECT_TRUE(completed) << "Authentication should complete";
+    SUCCEED() << "Authentication completed with result: " << auth_success;
 }
 
 TEST_F(C09_AuthenticationFailureTest, Authenticate_WithEmptyCredentials_HandledGracefully) {
@@ -37,15 +32,13 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_WithEmptyCredentials_HandledG
 
     // When: Authenticate with empty credentials
     Bytes empty_payload;
-    auto future = connector_->AuthenticateAsync("", "", empty_payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(empty_payload));
 
     // Then: Should handle gracefully
-    try {
-        WaitWithMainThreadAction(future, 5000);
-        SUCCEED() << "Empty credentials handled gracefully";
-    } catch (const std::exception& e) {
-        SUCCEED() << "Empty credentials rejected as expected: " << e.what();
-    }
+    bool auth_success = false;
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_success, 5000);
+    EXPECT_TRUE(completed) << "Empty credentials should be handled";
+    SUCCEED() << "Empty credentials handled gracefully";
 }
 
 TEST_F(C09_AuthenticationFailureTest, Authenticate_BeforeConnection_ThrowsOrFails) {
@@ -55,18 +48,12 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_BeforeConnection_ThrowsOrFail
     // When: Try to authenticate before connection
     std::string auth_data = "{\"userId\":\"test\",\"token\":\"token\"}";
     Bytes payload(auth_data.begin(), auth_data.end());
-    auto future = connector_->AuthenticateAsync("TestService", "test_account", payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
 
-    // Then: Should throw or fail
-    bool threw_exception = false;
-    try {
-        WaitWithMainThreadAction(future, 5000);
-    } catch (const std::exception& e) {
-        threw_exception = true;
-        // Expected behavior
-    }
-
-    EXPECT_TRUE(threw_exception) << "Authentication before connection should throw or fail";
+    // Then: Should fail to complete
+    bool auth_success = false;
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_success, 500);
+    EXPECT_FALSE(completed) << "Authentication before connection should not complete";
 }
 
 TEST_F(C09_AuthenticationFailureTest, Authenticate_WithMalformedPayload_HandledGracefully) {
@@ -78,15 +65,13 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_WithMalformedPayload_HandledG
     Bytes payload(malformed_data.begin(), malformed_data.end());
 
     // When: Authenticate with malformed payload
-    auto future = connector_->AuthenticateAsync("TestService", "test_account", payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
 
     // Then: Should handle gracefully without crashing
-    try {
-        WaitWithMainThreadAction(future, 5000);
-        SUCCEED() << "Malformed payload handled gracefully";
-    } catch (const std::exception& e) {
-        SUCCEED() << "Malformed payload rejected as expected: " << e.what();
-    }
+    bool auth_success = false;
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_success, 5000);
+    EXPECT_TRUE(completed) << "Malformed payload should be handled";
+    SUCCEED() << "Malformed payload handled gracefully";
 }
 
 TEST_F(C09_AuthenticationFailureTest, Authenticate_OnErrorEvent_MayTrigger) {
@@ -104,13 +89,10 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_OnErrorEvent_MayTrigger) {
     // When: Authenticate with invalid data
     std::string auth_data = "{\"userId\":\"bad_user\",\"token\":\"bad_token\"}";
     Bytes payload(auth_data.begin(), auth_data.end());
-    auto future = connector_->AuthenticateAsync("TestService", "bad_account", payload);
+    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
 
-    try {
-        WaitWithMainThreadAction(future, 5000);
-    } catch (...) {
-        // Exception is fine
-    }
+    bool auth_success = false;
+    AuthenticateAndWait(std::move(auth_packet), auth_success, 5000);
 
     // Process callbacks
     for (int i = 0; i < 10; i++) {

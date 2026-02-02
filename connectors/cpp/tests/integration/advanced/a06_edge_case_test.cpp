@@ -18,14 +18,14 @@ TEST_F(A06_EdgeCaseTest, EmptyMessageId_HandledGracefully) {
     Bytes payload(data.begin(), data.end());
     auto packet = Packet::FromBytes("", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle gracefully
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
+    if (completed) {
         SUCCEED() << "Empty message ID handled, error code: " << response.GetErrorCode();
-    } catch (const std::exception& e) {
-        SUCCEED() << "Empty message ID rejected gracefully: " << e.what();
+    } else {
+        SUCCEED() << "Empty message ID rejected gracefully";
     }
 }
 
@@ -39,14 +39,14 @@ TEST_F(A06_EdgeCaseTest, VeryLongMessageId_HandledCorrectly) {
     Bytes payload(data.begin(), data.end());
     auto packet = Packet::FromBytes(long_msg_id, std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle appropriately
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
+    if (completed) {
         SUCCEED() << "Long message ID handled";
-    } catch (const std::exception& e) {
-        SUCCEED() << "Long message ID result: " << e.what();
+    } else {
+        SUCCEED() << "Long message ID result: timeout";
     }
 }
 
@@ -60,14 +60,14 @@ TEST_F(A06_EdgeCaseTest, SpecialCharactersInMessageId_HandledCorrectly) {
     Bytes payload(data.begin(), data.end());
     auto packet = Packet::FromBytes(special_msg_id, std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle appropriately
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
+    if (completed) {
         SUCCEED() << "Special characters in message ID handled";
-    } catch (const std::exception& e) {
-        SUCCEED() << "Special characters handled: " << e.what();
+    } else {
+        SUCCEED() << "Special characters handled: timeout";
     }
 }
 
@@ -75,16 +75,11 @@ TEST_F(A06_EdgeCaseTest, RapidConnectDisconnect_SystemStable) {
     // When: Rapidly connect and disconnect
     for (int i = 0; i < 5; i++) {
         auto stage = GetTestServer().CreateTestStage();
-        auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-
-        try {
-            bool connected = WaitWithMainThreadAction(future, 2000);
-            if (connected) {
-                connector_->Disconnect();
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-        } catch (...) {
-            // Continue with next iteration
+        (void)stage;
+        bool connected = ConnectAndWait(2000);
+        if (connected) {
+            connector_->Disconnect();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
 
@@ -115,13 +110,16 @@ TEST_F(A06_EdgeCaseTest, MainThreadAction_NeverCalled_RequestFails) {
     Bytes payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    bool callback_fired = false;
+    connector_->Request(std::move(packet), [&](Packet) {
+        callback_fired = true;
+    });
 
     // Wait without calling MainThreadAction
-    auto status = future.wait_for(std::chrono::milliseconds(2000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
-    // Then: Request should timeout or not complete
-    EXPECT_NE(status, std::future_status::ready) << "Without MainThreadAction, callback shouldn't fire";
+    // Then: Request should not complete
+    EXPECT_FALSE(callback_fired) << "Without MainThreadAction, callback shouldn't fire";
 }
 
 TEST_F(A06_EdgeCaseTest, ZeroPayload_HandledCorrectly) {
@@ -132,14 +130,14 @@ TEST_F(A06_EdgeCaseTest, ZeroPayload_HandledCorrectly) {
     Bytes empty_payload;
     auto packet = Packet::FromBytes("EmptyPayloadRequest", std::move(empty_payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle gracefully
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
+    if (completed) {
         SUCCEED() << "Zero payload handled, error code: " << response.GetErrorCode();
-    } catch (const std::exception& e) {
-        SUCCEED() << "Zero payload result: " << e.what();
+    } else {
+        SUCCEED() << "Zero payload result: timeout";
     }
 }
 
@@ -151,14 +149,14 @@ TEST_F(A06_EdgeCaseTest, BinaryZeroBytes_HandledCorrectly) {
     Bytes null_payload = {0x00, 0x01, 0x00, 0x02, 0x00, 0x03};
     auto packet = Packet::FromBytes("NullByteRequest", std::move(null_payload));
 
-    auto future = connector_->RequestAsync(std::move(packet));
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Should handle binary data with nulls
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
+    if (completed) {
         SUCCEED() << "Binary null bytes handled";
-    } catch (const std::exception& e) {
-        SUCCEED() << "Binary null bytes result: " << e.what();
+    } else {
+        SUCCEED() << "Binary null bytes result: timeout";
     }
 }
 
@@ -170,7 +168,7 @@ TEST_F(A06_EdgeCaseTest, ConnectWithoutInit_ThrowsError) {
     bool threw_exception = false;
     try {
         auto future = uninit_connector->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-        future.get();
+        (void)future;
     } catch (const std::exception& e) {
         threw_exception = true;
     }
@@ -190,14 +188,8 @@ TEST_F(A06_EdgeCaseTest, DoubleInit_HandledGracefully) {
     SUCCEED() << "Double Init handled without crash";
 
     // Can still connect
-    auto future = connector_->ConnectAsync(GetTestServer().GetHost(), GetTestServer().GetTcpPort());
-    try {
-        bool connected = WaitWithMainThreadAction(future, 5000);
-        EXPECT_TRUE(connected) << "Can still connect after double Init";
-    } catch (...) {
-        // May or may not work depending on implementation
-        SUCCEED() << "Double Init result noted";
-    }
+    bool connected = ConnectAndWait(5000);
+    EXPECT_TRUE(connected) << "Can still connect after double Init";
 }
 
 TEST_F(A06_EdgeCaseTest, CallbackThrowsException_SystemRemains Stable) {

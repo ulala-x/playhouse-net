@@ -65,16 +65,13 @@ TEST_F(A03_SendMethodTest, Send_VsRequest_BothWork) {
     std::string echo_data = "{\"content\":\"Echo test\",\"sequence\":1}";
     Bytes echo_payload(echo_data.begin(), echo_data.end());
     auto packet = Packet::FromBytes("EchoRequest", std::move(echo_payload));
-    auto future = connector_->RequestAsync(std::move(packet));
 
     // Then: Request should still work after Send
-    try {
-        auto response = WaitWithMainThreadAction(future, 5000);
-        EXPECT_EQ(response.GetErrorCode(), 0);
-        SUCCEED() << "Send and Request both work together";
-    } catch (const std::exception& e) {
-        FAIL() << "Request failed after Send: " << e.what();
-    }
+    Packet response = Packet::Empty("Empty");
+    bool completed = RequestAndWait(std::move(packet), response, 5000);
+    ASSERT_TRUE(completed) << "Request should complete after Send";
+    EXPECT_EQ(response.GetErrorCode(), 0);
+    SUCCEED() << "Send and Request both work together";
 }
 
 TEST_F(A03_SendMethodTest, Send_BeforeDisconnect_HandledGracefully) {
