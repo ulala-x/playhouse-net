@@ -37,4 +37,8 @@
     <Protobuf Include="../../../test-server/proto/test_messages.proto" GrpcServices="None" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
