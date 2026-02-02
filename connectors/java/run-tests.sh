@@ -19,6 +19,7 @@ echo -e "${YELLOW}[Java Connector Test]${NC} Starting..."
 
 cleanup() {
     echo -e "${YELLOW}[Java Connector Test]${NC} Cleaning up..."
+    curl -sf -X POST "http://localhost:$HTTP_PORT/api/shutdown" > /dev/null 2>&1 || true
     docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" down -v 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -48,13 +49,29 @@ done
 
 # Run unit tests
 echo -e "${YELLOW}[Java Connector Test]${NC} Running unit tests..."
+set +e
 "$SCRIPT_DIR/gradlew" -p "$SCRIPT_DIR" test --info
+UNIT_STATUS=$?
+set -e
+if [ $UNIT_STATUS -ne 0 ]; then
+    echo -e "${RED}[Java Connector Test]${NC} Unit tests failed. Dumping server logs..."
+    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" logs
+    exit $UNIT_STATUS
+fi
 
 # Run integration tests
 echo -e "${YELLOW}[Java Connector Test]${NC} Running integration tests..."
-TEST_SERVER_HOST=localhost \
+TEST_SERVER_HOST=127.0.0.1 \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
+set +e
 "$SCRIPT_DIR/gradlew" -p "$SCRIPT_DIR" integrationTest --info
+INTEGRATION_STATUS=$?
+set -e
+if [ $INTEGRATION_STATUS -ne 0 ]; then
+    echo -e "${RED}[Java Connector Test]${NC} Integration tests failed. Dumping server logs..."
+    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" logs
+    exit $INTEGRATION_STATUS
+fi
 
 echo -e "${GREEN}[Java Connector Test]${NC} All tests completed successfully!"

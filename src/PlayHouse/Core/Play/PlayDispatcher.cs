@@ -493,7 +493,6 @@ internal sealed class PlayDispatcher : IPlayDispatcher, IDisposable
 
         var replyPacket = packet.CreateErrorReply(errorCode);
         _communicator.Send(packet.From, replyPacket);
-        replyPacket.Dispose();
     }
 
     #endregion

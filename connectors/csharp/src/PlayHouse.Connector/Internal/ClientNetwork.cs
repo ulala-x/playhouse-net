@@ -88,8 +88,9 @@ internal sealed class ClientNetwork : IAsyncDisposable
             _asyncManager.AddJob(() => _callback.ConnectCallback(true));
             return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[Connector] Connect failed: {ex.GetType().Name} {ex.Message}");
             _asyncManager.AddJob(() => _callback.ConnectCallback(false));
             return false;
         }
@@ -516,6 +517,12 @@ internal sealed class ClientNetwork : IAsyncDisposable
     {
         _isAuthenticated = false;
         ClearPendingRequests();
+
+        if (exception != null)
+        {
+            Console.Error.WriteLine(
+                $"[Connector] Disconnected with error: {exception.GetType().Name} {exception.Message}");
+        }
 
         _asyncManager.AddJob(() => _callback.DisconnectCallback());
     }

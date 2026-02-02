@@ -29,17 +29,18 @@ export class TestServerClient {
     public readonly httpPort: number;
     public readonly wsPort: number;
     public readonly wsPath: string;
-    // stageId must fit in UInt16 (0-65535)
-    // Use random offset to avoid conflicts with other test runs
-    private stageIdCounter: number;
+    // stageId must fit in UInt16 (1-65535)
+    private static _stageIdCounter: number = 0;
 
     constructor() {
         this.host = process.env.TEST_SERVER_HOST || 'localhost';
         this.httpPort = parseInt(process.env.TEST_SERVER_HTTP_PORT || '8080', 10);
         this.wsPort = parseInt(process.env.TEST_SERVER_WS_PORT || '8080', 10);
         this.wsPath = process.env.TEST_SERVER_WS_PATH || '/ws';
-        // Start with random offset within valid UInt16 range (1000-60000) to avoid conflicts
-        this.stageIdCounter = 1000 + Math.floor(Math.random() * 59000);
+        if (TestServerClient._stageIdCounter == 0) {
+            // Start with random offset within valid UInt16 range (1000-60000) to avoid conflicts
+            TestServerClient._stageIdCounter = 1000 + Math.floor(Math.random() * 59000);
+        }
     }
 
     /**
@@ -63,35 +64,57 @@ export class TestServerClient {
      * @returns Stage information
      */
     async createStage(stageType: string = 'TestStage', maxPlayers?: number): Promise<CreateStageResponse> {
-        const stageId = this.stageIdCounter++;
+        const maxAttempts = 5;
+        let lastError: string | null = null;
 
-        const requestBody = {
-            stageType,
-            stageId,
-            ...(maxPlayers !== undefined && { maxPlayers })
-        };
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            const stageId = TestServerClient.nextStageId();
+            const requestBody = {
+                stageType,
+                stageId,
+                ...(maxPlayers !== undefined && { maxPlayers })
+            };
 
-        const response = await fetch(`${this.httpBaseUrl}/api/stages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-        });
+            let response: Response;
+            try {
+                response = await fetch(`${this.httpBaseUrl}/api/stages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+            } catch (error) {
+                lastError = `Failed to create stage: ${error}`;
+                continue;
+            }
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create stage: ${response.status} ${response.statusText}: ${errorText}`);
+            if (!response.ok) {
+                lastError = `Failed to create stage: ${response.status} ${response.statusText}: ${await response.text()}`;
+                continue;
+            }
+
+            const data = await response.json() as { success: boolean; stageId: number; replyPayloadId?: string };
+            if (data.success) {
+                return {
+                    success: data.success,
+                    stageId: data.stageId,
+                    stageType,
+                    replyPayloadId: data.replyPayloadId
+                };
+            }
+
+            lastError = `Stage already exists (stageId=${data.stageId}). Retrying...`;
         }
 
-        const data = await response.json() as { success: boolean; stageId: number; replyPayloadId?: string };
+        throw new Error(lastError ?? 'Failed to create stage after retries');
+    }
 
-        return {
-            success: data.success,
-            stageId: data.stageId,
-            stageType,
-            replyPayloadId: data.replyPayloadId
-        };
+    private static nextStageId(): number {
+        // Ensure stageId stays within UInt16 range and avoids 0
+        const next = (TestServerClient._stageIdCounter % 65000) + 1;
+        TestServerClient._stageIdCounter = next;
+        return next;
     }
 
     /**

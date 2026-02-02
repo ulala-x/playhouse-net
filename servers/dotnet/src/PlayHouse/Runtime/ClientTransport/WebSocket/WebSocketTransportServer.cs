@@ -119,7 +119,7 @@ public sealed class WebSocketTransportServer : ITransportServer
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
         var sessionId = Interlocked.Increment(ref _nextSessionId);
 
-        _logger.LogDebug("WebSocket connection accepted: session {SessionId} from {RemoteIp}",
+        _logger.LogInformation("WebSocket connection accepted: session {SessionId} from {RemoteIp}",
             sessionId, context.Connection.RemoteIpAddress);
 
         var session = new WebSocketTransportSession(
@@ -129,7 +129,8 @@ public sealed class WebSocketTransportServer : ITransportServer
             _onMessage,
             OnSessionDisconnected,
             _logger,
-            _cts.Token);
+            _cts.Token,
+            context.Connection.RemoteIpAddress?.ToString());
 
         if (_sessions.TryAdd(sessionId, session))
         {

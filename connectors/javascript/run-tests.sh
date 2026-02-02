@@ -3,6 +3,8 @@
 # PlayHouse JavaScript Connector Integration Tests Runner
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,16 +30,20 @@ fi
 cleanup() {
     echo ""
     echo -e "${YELLOW}Cleaning up...${NC}"
-    docker-compose -f docker-compose.test.yml down -v
+    curl -sf -X POST "http://localhost:38080/api/shutdown" > /dev/null 2>&1 || true
+    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" down -v
     echo -e "${GREEN}Cleanup complete${NC}"
 }
 
 # Trap EXIT to ensure cleanup runs
 trap cleanup EXIT
 
+# Ensure we run from the connector directory
+cd "$SCRIPT_DIR"
+
 # Start test server
 echo -e "${YELLOW}Starting test server...${NC}"
-docker-compose -f docker-compose.test.yml up -d
+docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" up -d
 
 # Wait for test server to be healthy
 echo -e "${YELLOW}Waiting for test server to be healthy...${NC}"
@@ -53,7 +59,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
         echo -e "${RED}Test server failed to become healthy${NC}"
-        docker-compose -f docker-compose.test.yml logs
+        docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" logs
         exit 1
     fi
 
@@ -66,9 +72,9 @@ echo -e "${YELLOW}Running integration tests...${NC}"
 echo ""
 
 # Set environment variables for test server
-export TEST_SERVER_HOST=localhost
+export TEST_SERVER_HOST=127.0.0.1
 export TEST_SERVER_HTTP_PORT=38080
-export TEST_SERVER_WS_PORT=38001
+export TEST_SERVER_WS_PORT=38080
 
 # Run tests
 if npm run test:integration; then
@@ -80,6 +86,6 @@ else
     echo -e "${RED}=== Tests failed ===${NC}"
     echo ""
     echo -e "${YELLOW}Test server logs:${NC}"
-    docker-compose -f docker-compose.test.yml logs
+    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" logs
     exit 1
 fi

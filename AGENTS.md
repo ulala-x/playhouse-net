@@ -43,3 +43,6 @@
 ## Configuration & Docs
 - Solution file: `playhouse-net.sln`.
 - Key references: `tests/README.md`, `doc/` specs, and `docs/specifications/`.
+
+## Communication
+- Address the user as "팀장님" in responses.

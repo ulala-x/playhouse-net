@@ -3,8 +3,8 @@ version: '3.8'
 services:
   test-server:
     build:
-      context: ../test-server
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: connectors/test-server/Dockerfile
     ports:
       - "38080:8080"    # HTTP API + WebSocket (/ws)
       - "38001:34001"   # TCP

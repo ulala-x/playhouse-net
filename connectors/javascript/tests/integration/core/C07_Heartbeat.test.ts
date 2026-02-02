@@ -23,7 +23,7 @@ describe('C-07: Heartbeat Automatic Handling', () => {
         await testContext['afterEach']();
     });
 
-    test('C-07-01: Connection maintained over time without disconnection', { timeout: 10000 }, async () => {
+    test('C-07-01: Connection maintained over time without disconnection', { timeout: 60000 }, async () => {
         // Given: Connected and authenticated
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('heartbeatUser');

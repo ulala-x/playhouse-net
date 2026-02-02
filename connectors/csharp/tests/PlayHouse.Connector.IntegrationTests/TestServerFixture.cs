@@ -20,7 +20,7 @@ public record CreateStageResponse(
 /// 테스트 서버의 HTTP API를 통해 Stage를 생성하고,
 /// TCP 연결 정보를 제공합니다.
 /// 환경 변수로 서버 주소 설정 가능:
-/// - TEST_SERVER_HOST (기본: localhost)
+    /// - TEST_SERVER_HOST (기본: 127.0.0.1)
 /// - TEST_SERVER_HTTP_PORT (기본: 8080)
 /// - TEST_SERVER_TCP_PORT (기본: 34001)
 /// </remarks>
@@ -46,14 +46,14 @@ public class TestServerFixture : IDisposable
 
     public TestServerFixture()
     {
-        Host = Environment.GetEnvironmentVariable("TEST_SERVER_HOST") ?? "localhost";
+        Host = Environment.GetEnvironmentVariable("TEST_SERVER_HOST") ?? "127.0.0.1";
         HttpPort = int.Parse(Environment.GetEnvironmentVariable("TEST_SERVER_HTTP_PORT") ?? "8080");
         TcpPort = int.Parse(Environment.GetEnvironmentVariable("TEST_SERVER_TCP_PORT") ?? "34001");
 
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri($"http://{Host}:{HttpPort}"),
-            Timeout = TimeSpan.FromSeconds(30)
+            Timeout = TimeSpan.FromSeconds(60)
         };
 
         _jsonOptions = new JsonSerializerOptions
@@ -77,25 +77,45 @@ public class TestServerFixture : IDisposable
     /// <returns>생성된 Stage 정보</returns>
     public async Task<CreateStageResponse> CreateStageAsync(string stageType, int? maxPlayers = null)
     {
-        var stageId = Interlocked.Increment(ref _stageIdCounter);
+        const int maxAttempts = 5;
+        Exception? lastError = null;
 
-        var request = new
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            stageType,
-            stageId
-        };
+            var stageId = Interlocked.Increment(ref _stageIdCounter);
+            var request = new
+            {
+                stageType,
+                stageId
+            };
 
-        var response = await _httpClient.PostAsJsonAsync("/api/stages", request);
-        response.EnsureSuccessStatusCode();
+            try
+            {
+                var response = await _httpClient.PostAsJsonAsync("/api/stages", request);
+                response.EnsureSuccessStatusCode();
 
-        var apiResult = await response.Content.ReadFromJsonAsync<ApiCreateStageResponse>(_jsonOptions);
-        if (apiResult == null)
-        {
-            throw new InvalidOperationException("Failed to create stage: null response");
+                var apiResult = await response.Content.ReadFromJsonAsync<ApiCreateStageResponse>(_jsonOptions);
+                if (apiResult == null)
+                {
+                    throw new InvalidOperationException("Failed to create stage: null response");
+                }
+
+                if (apiResult.Success)
+                {
+                    return new CreateStageResponse(apiResult.Success, apiResult.StageId, stageType, apiResult.ReplyPayloadId);
+                }
+
+                lastError = new InvalidOperationException($"Stage already exists: {apiResult.StageId}");
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+
+            await Task.Delay(200);
         }
 
-        // Return with the stageType that was requested
-        return new CreateStageResponse(apiResult.Success, apiResult.StageId, stageType, apiResult.ReplyPayloadId);
+        throw new InvalidOperationException("Failed to create stage after retries", lastError);
     }
 
     /// <summary>

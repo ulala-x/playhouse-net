@@ -548,11 +548,24 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
     {
         if (ex != null)
         {
-            _logger.LogWarning(ex, "Session {SessionId} disconnected with error", session.SessionId);
+            _logger.LogWarning(
+                ex,
+                "Session {SessionId} disconnected with error (Connected={IsConnected}, Auth={IsAuthenticated}, StageId={StageId}, AccountId={AccountId})",
+                session.SessionId,
+                session.IsConnected,
+                session.IsAuthenticated,
+                session.StageId,
+                session.AccountId);
         }
         else
         {
-            _logger.LogDebug("Session {SessionId} disconnected", session.SessionId);
+            _logger.LogInformation(
+                "Session {SessionId} disconnected (Connected={IsConnected}, Auth={IsAuthenticated}, StageId={StageId}, AccountId={AccountId})",
+                session.SessionId,
+                session.IsConnected,
+                session.IsAuthenticated,
+                session.StageId,
+                session.AccountId);
         }
 
         // Clear routing context

@@ -19,6 +19,7 @@ echo -e "${YELLOW}[C# Connector Test]${NC} Starting..."
 
 cleanup() {
     echo -e "${YELLOW}[C# Connector Test]${NC} Cleaning up..."
+    curl -sf -X POST "http://localhost:$HTTP_PORT/api/shutdown" > /dev/null 2>&1 || true
     docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" down -v 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -48,9 +49,17 @@ done
 
 # Run tests
 echo -e "${YELLOW}[C# Connector Test]${NC} Running tests..."
-TEST_SERVER_HOST=localhost \
+set +e
+TEST_SERVER_HOST=127.0.0.1 \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
 dotnet test "$SCRIPT_DIR/tests/PlayHouse.Connector.IntegrationTests" --logger "console;verbosity=normal"
+TEST_STATUS=$?
+set -e
+if [ $TEST_STATUS -ne 0 ]; then
+    echo -e "${RED}[C# Connector Test]${NC} Tests failed. Dumping server logs..."
+    docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" logs
+    exit $TEST_STATUS
+fi
 
 echo -e "${GREEN}[C# Connector Test]${NC} Tests completed successfully!"

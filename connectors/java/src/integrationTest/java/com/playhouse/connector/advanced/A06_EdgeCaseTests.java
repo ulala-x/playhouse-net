@@ -35,7 +35,7 @@ class A06_EdgeCaseTests {
 
     @BeforeEach
     void setUp() throws Exception {
-        host = System.getenv().getOrDefault("TEST_SERVER_HOST", "localhost");
+        host = System.getenv().getOrDefault("TEST_SERVER_HOST", "127.0.0.1");
         httpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_HTTP_PORT", "28080"));
         tcpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_TCP_PORT", "28001"));
 

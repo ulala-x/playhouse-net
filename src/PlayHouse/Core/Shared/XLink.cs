@@ -381,10 +381,11 @@ public abstract class XLink : ILink
 
     private void SendInternal(string targetServerId, RouteHeader header, IPayload payload)
     {
-        // Note: ProtoPayload now serializes eagerly in constructor (no lazy serialization).
-        // Packet ownership is transferred to the queue.
+        // Transfer payload ownership to the send pipeline to avoid use-after-dispose
+        // when callers dispose their IPacket immediately after sending.
+        var ownedPayload = payload.Move();
         // ZmqPlaySocket.Send() will dispose the packet after sending.
-        var packet = RoutePacket.Of(header, payload);
+        var packet = RoutePacket.Create(header, ownedPayload, ownsPayload: true);
         _communicator.Send(targetServerId, packet);
     }
 

@@ -22,6 +22,8 @@ internal sealed class TcpTransportSession : ITransportSession
     private readonly SessionDisconnectedCallback _onDisconnect;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts;
+    private readonly string _remoteEndpoint;
+    private Exception? _disconnectException;
 
     // Buffer for receiving data
     private readonly byte[] _receiveBuffer;
@@ -58,6 +60,7 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         SessionId = sessionId;
         _socket = socket;
+        _remoteEndpoint = socket.RemoteEndPoint?.ToString() ?? "unknown";
         _stream = stream is NetworkStream ? null : stream; // NetworkStream이면 Socket 직접 사용, 그 외(SslStream)는 Stream 사용
         _options = options;
         _onMessage = onMessage;
@@ -110,6 +113,7 @@ internal sealed class TcpTransportSession : ITransportSession
                 if (bytesRead == 0)
                 {
                     // Connection closed
+                    _disconnectException ??= new IOException("Remote closed the connection.");
                     await DisconnectAsync();
                     return;
                 }
@@ -124,8 +128,9 @@ internal sealed class TcpTransportSession : ITransportSession
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            _disconnectException ??= ex;
             if (!_disposed)
-                _logger.LogError(ex, "Error in TLS receive loop for session {SessionId}", SessionId);
+                _logger.LogError(ex, "Error in TLS receive loop for session {SessionId} ({Remote})", SessionId, _remoteEndpoint);
             await DisconnectAsync();
         }
     }
@@ -159,6 +164,14 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         if (e.SocketError != SocketError.Success || e.BytesTransferred == 0)
         {
+            if (e.SocketError != SocketError.Success)
+            {
+                _disconnectException ??= new SocketException((int)e.SocketError);
+            }
+            else
+            {
+                _disconnectException ??= new IOException("Remote closed the connection.");
+            }
             _ = DisconnectAsync();
             return;
         }
@@ -320,7 +333,8 @@ internal sealed class TcpTransportSession : ITransportSession
     {
         if (!_disposed)
         {
-            _logger.LogError(ex, "Error in session {SessionId}", SessionId);
+            _disconnectException ??= ex;
+            _logger.LogError(ex, "Error in session {SessionId} ({Remote})", SessionId, _remoteEndpoint);
             _ = DisconnectAsync();
         }
     }
@@ -363,7 +377,19 @@ internal sealed class TcpTransportSession : ITransportSession
         finally
         {
             _cts.Dispose();
-            _onDisconnect(this, null);
+            if (_disconnectException != null)
+            {
+                _logger.LogDebug("TCP session {SessionId} ({Remote}) disconnected with error: {ErrorType} {Message}",
+                    SessionId,
+                    _remoteEndpoint,
+                    _disconnectException.GetType().Name,
+                    _disconnectException.Message);
+            }
+            else
+            {
+                _logger.LogDebug("TCP session {SessionId} ({Remote}) disconnected", SessionId, _remoteEndpoint);
+            }
+            _onDisconnect(this, _disconnectException);
         }
 
         await Task.CompletedTask;

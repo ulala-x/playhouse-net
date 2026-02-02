@@ -27,19 +27,19 @@ class Program
         try
         {
             // Start servers
-            var serverContext = await StartServersAsync(config);
+            var shutdownSignal = new ShutdownSignal();
+            var serverContext = await StartServersAsync(config, shutdownSignal);
 
             Console.WriteLine("\nTest Server is running. Press Ctrl+C to stop.");
 
             // Wait for termination signal
-            var tcs = new TaskCompletionSource<bool>();
             Console.CancelKeyPress += (sender, e) =>
             {
                 e.Cancel = true;
-                tcs.TrySetResult(true);
+                shutdownSignal.TrySignal();
             };
 
-            await tcs.Task;
+            await shutdownSignal.WaitAsync();
 
             // Cleanup
             await StopServersAsync(serverContext);
@@ -84,7 +84,9 @@ class Program
         };
     }
 
-    static async Task<ServerContext> StartServersAsync(ServerConfiguration config)
+    static async Task<ServerContext> StartServersAsync(
+        ServerConfiguration config,
+        ShutdownSignal shutdownSignal)
     {
         Console.WriteLine("\n[서버 시작 중...]");
 
@@ -97,7 +99,10 @@ class Program
         }
 
         // 2. ApiServer + HTTP Server 생성 (WebSocket 핸들러 포함)
-        var (apiServer, httpApp, actualHttpPort) = await CreateApiServerWithHttpAsync(config, wsServer);
+        var (apiServer, httpApp, actualHttpPort) = await CreateApiServerWithHttpAsync(
+            config,
+            wsServer,
+            shutdownSignal);
         Console.WriteLine($"✓ ApiServer started on ZMQ:{config.ZmqApiPort}");
         Console.WriteLine($"✓ HTTP API Server started on HTTP:{actualHttpPort}");
         if (wsServer != null)
@@ -184,7 +189,10 @@ class Program
     }
 
     static async Task<(PlayHouse.Core.Api.Bootstrap.ApiServer, WebApplication, int)>
-        CreateApiServerWithHttpAsync(ServerConfiguration config, WebSocketTransportServer? wsServer)
+        CreateApiServerWithHttpAsync(
+            ServerConfiguration config,
+            WebSocketTransportServer? wsServer,
+            ShutdownSignal shutdownSignal)
     {
         var loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -194,6 +202,7 @@ class Program
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddSingleton<PlayHouse.Abstractions.System.ISystemController, TestSystemController>();
+        services.AddSingleton(shutdownSignal);
 
         var serviceProvider = services.BuildServiceProvider();
 
@@ -225,6 +234,7 @@ class Program
 
         // Controllers
         builder.Services.AddControllers();
+        builder.Services.AddSingleton(shutdownSignal);
 
         // ApiLink를 싱글톤으로 등록
         var apiLink = apiServer.ApiLink

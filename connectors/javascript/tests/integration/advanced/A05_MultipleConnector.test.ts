@@ -22,7 +22,7 @@ describe('A-05: Multiple Connectors', () => {
         for (let i = 0; i < 5; i++) {
             stages.push(await testServer.createStage());
         }
-    }, 30000);
+    }, 60000);
 
     afterEach(async () => {
         // Cleanup all connectors

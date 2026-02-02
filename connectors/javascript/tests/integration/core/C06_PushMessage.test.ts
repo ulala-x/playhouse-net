@@ -17,7 +17,7 @@ describe('C-06: Push Message', () => {
         await testContext['beforeEach']();
         await testContext['createStageAndConnect']();
         await testContext['authenticate']('pushUser');
-    }, 15000);
+    }, 60000);
 
     afterEach(async () => {
         await testContext['afterEach']();

@@ -56,7 +56,7 @@ public class A06_EdgeCaseTests : IClassFixture<TestServerFixture>, IAsyncLifetim
         // Init을 호출하지 않음
 
         // Act & Assert
-        await Assert.ThrowsAsync<NullReferenceException>(async () =>
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
             await _connector.ConnectAsync(
                 _testServer.Host,
@@ -244,7 +244,7 @@ public class A06_EdgeCaseTests : IClassFixture<TestServerFixture>, IAsyncLifetim
         await _connector!.DisposeAsync();
 
         // Act & Assert
-        await Assert.ThrowsAsync<NullReferenceException>(async () =>
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
             await _connector.ConnectAsync(
                 _testServer.Host,

@@ -22,14 +22,15 @@ public class TestServerClient {
     private final OkHttpClient httpClient;
     private final Gson gson;
     private final String baseUrl;
-    private final AtomicLong stageIdCounter = new AtomicLong(1);
+    private static final AtomicLong stageIdCounter =
+            new AtomicLong((System.currentTimeMillis() % 60000) + 1);
 
     /**
      * 환경 변수에서 설정을 읽어 초기화
      */
     public TestServerClient() {
         this(
-                System.getenv().getOrDefault("TEST_SERVER_HOST", "localhost"),
+                System.getenv().getOrDefault("TEST_SERVER_HOST", "127.0.0.1"),
                 Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_HTTP_PORT", "28080"))
         );
     }
@@ -87,7 +88,7 @@ public class TestServerClient {
         RequestBody body = RequestBody.create(jsonBody, JSON);
 
         Request request = new Request.Builder()
-                .url(baseUrl + "/api/stages/get-or-create")
+                .url(baseUrl + "/api/stages")
                 .post(body)
                 .build();
 

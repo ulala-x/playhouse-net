@@ -120,7 +120,11 @@ public sealed class RoutePacket : IDisposable
             ServiceId = Header.ServiceId,
             MsgId = Header.MsgId,
             From = Header.From,
-            ErrorCode = errorCode
+            ErrorCode = errorCode,
+            IsReply = true,
+            StageId = Header.StageId,
+            AccountId = Header.AccountId,
+            Sid = Header.Sid
         };
         return Create(replyHeader, EmptyPayload.Instance);
     }

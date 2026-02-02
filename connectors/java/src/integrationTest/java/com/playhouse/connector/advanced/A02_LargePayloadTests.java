@@ -30,7 +30,7 @@ class A02_LargePayloadTests extends BaseIntegrationTest {
     @BeforeEach
     public void setUp() throws Exception {
         // 환경 변수에서 테스트 서버 설정 읽기
-        host = System.getenv().getOrDefault("TEST_SERVER_HOST", "localhost");
+        host = System.getenv().getOrDefault("TEST_SERVER_HOST", "127.0.0.1");
         httpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_HTTP_PORT", "28080"));
         tcpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_TCP_PORT", "28001"));
 

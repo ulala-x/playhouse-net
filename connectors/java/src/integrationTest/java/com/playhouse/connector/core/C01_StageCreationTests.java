@@ -22,7 +22,7 @@ public class C01_StageCreationTests extends BaseIntegrationTest {
     @BeforeEach
     public void setUp() throws Exception {
         // 이 테스트는 Connector 초기화가 필요 없음 (HTTP API만 테스트)
-        host = System.getenv().getOrDefault("TEST_SERVER_HOST", "localhost");
+        host = System.getenv().getOrDefault("TEST_SERVER_HOST", "127.0.0.1");
         httpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_HTTP_PORT", "28080"));
         tcpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_TCP_PORT", "28001"));
 

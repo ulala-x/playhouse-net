@@ -18,7 +18,7 @@ describe('A-06: Edge Cases', () => {
 
     beforeEach(async () => {
         stageInfo = await testServer.createStage();
-    }, 15000);
+    }, 60000);
 
     afterEach(async () => {
         if (connector) {

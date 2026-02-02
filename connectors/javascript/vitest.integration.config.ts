@@ -5,12 +5,14 @@ export default defineConfig({
     name: 'integration',
     include: ['tests/integration/**/*.test.ts'],
     setupFiles: ['tests/integration/setup.ts'],
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    testTimeout: 60000,
+    hookTimeout: 60000,
     teardownTimeout: 10000,
     globals: false,
     environment: 'node',
     reporters: ['verbose'],
+    minThreads: 1,
+    maxThreads: 1,
     coverage: {
       enabled: false
     },

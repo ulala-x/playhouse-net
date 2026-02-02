@@ -81,6 +81,8 @@ internal sealed class WebSocketTransportSession : ITransportSession
     private readonly Task _sendTask;
 
     private bool _disposed;
+    private readonly string _remoteEndpoint;
+    private Exception? _disconnectException;
 
     private readonly record struct SendItem(byte[] Buffer, int Size);
 
@@ -98,7 +100,8 @@ internal sealed class WebSocketTransportSession : ITransportSession
         MessageReceivedCallback onMessage,
         SessionDisconnectedCallback onDisconnect,
         ILogger logger,
-        CancellationToken externalCt)
+        CancellationToken externalCt,
+        string? remoteEndpoint = null)
     {
         SessionId = sessionId;
         _webSocket = webSocket;
@@ -107,6 +110,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
         _onDisconnect = onDisconnect;
         _logger = logger;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
+        _remoteEndpoint = string.IsNullOrWhiteSpace(remoteEndpoint) ? "unknown" : remoteEndpoint;
 
         _sendChannel = Channel.CreateUnbounded<SendItem>(new UnboundedChannelOptions
         {
@@ -129,6 +133,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
         }
         catch (Exception ex)
         {
+            _disconnectException ??= ex;
             _logger.LogError(ex, "Error sending data on WebSocket session {SessionId}", SessionId);
             await DisconnectAsync();
         }
@@ -161,6 +166,7 @@ internal sealed class WebSocketTransportSession : ITransportSession
                     }
                     catch (Exception ex)
                     {
+                        _disconnectException ??= ex;
                         _logger.LogError(ex, "Error sending WebSocket data on session {SessionId}", SessionId);
                         break;
                     }
@@ -169,7 +175,11 @@ internal sealed class WebSocketTransportSession : ITransportSession
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { _logger?.LogError(ex, "Error in send loop for WebSocket session {SessionId}", SessionId); }
+        catch (Exception ex)
+        {
+            _disconnectException ??= ex;
+            _logger?.LogError(ex, "Error in send loop for WebSocket session {SessionId}", SessionId);
+        }
     }
 
     public async ValueTask DisconnectAsync()
@@ -200,7 +210,19 @@ internal sealed class WebSocketTransportSession : ITransportSession
         {
             _webSocket.Dispose();
             _cts.Dispose();
-            _onDisconnect(this, null);
+            if (_disconnectException != null)
+            {
+                _logger.LogDebug("WebSocket session {SessionId} ({Remote}) disconnected with error: {ErrorType} {Message}",
+                    SessionId,
+                    _remoteEndpoint,
+                    _disconnectException.GetType().Name,
+                    _disconnectException.Message);
+            }
+            else
+            {
+                _logger.LogDebug("WebSocket session {SessionId} ({Remote}) disconnected", SessionId, _remoteEndpoint);
+            }
+            _onDisconnect(this, _disconnectException);
         }
     }
 
@@ -218,12 +240,14 @@ internal sealed class WebSocketTransportSession : ITransportSession
                     result = await _webSocket.ReceiveAsync(new Memory<byte>(buffer), ct);
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
+                        _disconnectException ??= new WebSocketException(WebSocketError.ConnectionClosedPrematurely);
                         await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
                         return;
                     }
                     pooledBuffer.Write(buffer.AsSpan(0, result.Count));
                     if (pooledBuffer.Length > _options.MaxPacketSize)
                     {
+                        _disconnectException ??= new InvalidDataException("Message too large.");
                         await _webSocket.CloseAsync(WebSocketCloseStatus.MessageTooBig, "Message too large", CancellationToken.None);
                         return;
                     }
@@ -233,12 +257,20 @@ internal sealed class WebSocketTransportSession : ITransportSession
                 if (pooledBuffer.Length > 0)
                 {
                     try { ParseAndDispatch(pooledBuffer.GetMemory()); }
-                    catch (Exception ex) { _logger.LogError(ex, "Error parsing WebSocket message on session {SessionId}", SessionId); }
+                    catch (Exception ex)
+                    {
+                        _disconnectException ??= ex;
+                        _logger.LogError(ex, "Error parsing WebSocket message on session {SessionId}", SessionId);
+                    }
                 }
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (!_disposed) _logger.LogError(ex, "Error in receive loop for WebSocket session {SessionId}", SessionId); }
+        catch (Exception ex)
+        {
+            _disconnectException ??= ex;
+            if (!_disposed) _logger.LogError(ex, "Error in receive loop for WebSocket session {SessionId}", SessionId);
+        }
         finally { MessagePool.Return(buffer); await DisconnectAsync(); }
     }
 
