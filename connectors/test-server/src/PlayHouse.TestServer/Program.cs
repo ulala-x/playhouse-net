@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using PlayHouse.Core.Api.Bootstrap;
 using PlayHouse.Core.Play.Bootstrap;
+using PlayHouse.Runtime.ClientTransport.WebSocket;
 using PlayHouse.TestServer.Play;
 using PlayHouse.TestServer.Shared;
 
@@ -20,6 +21,7 @@ class Program
         Console.WriteLine($"API Server ID: {config.ApiServerId}");
         Console.WriteLine($"TCP Port: {config.TcpPort}");
         Console.WriteLine($"HTTP Port: {config.HttpPort}");
+        Console.WriteLine($"WebSocket: {(config.EnableWebSocket ? $"Enabled (path: {config.WebSocketPath})" : "Disabled")}");
         Console.WriteLine("========================================");
 
         try
@@ -65,6 +67,10 @@ class Program
         var tcpPort = int.TryParse(tcpPortStr, out var tp) ? tp : 34001;
         var httpPort = int.TryParse(httpPortStr, out var hp) ? hp : 8080;
 
+        // WebSocket 설정
+        var enableWebSocket = Environment.GetEnvironmentVariable("ENABLE_WEBSOCKET")?.ToLower() != "false";
+        var webSocketPath = Environment.GetEnvironmentVariable("WEBSOCKET_PATH") ?? "/ws";
+
         return new ServerConfiguration
         {
             PlayServerId = playServerId,
@@ -72,7 +78,9 @@ class Program
             TcpPort = tcpPort,
             HttpPort = httpPort,
             ZmqPlayPort = 15000,
-            ZmqApiPort = 15300
+            ZmqApiPort = 15300,
+            EnableWebSocket = enableWebSocket,
+            WebSocketPath = webSocketPath
         };
     }
 
@@ -80,14 +88,22 @@ class Program
     {
         Console.WriteLine("\n[서버 시작 중...]");
 
-        // 1. PlayServer 생성
-        var playServer = await CreatePlayServerAsync(config);
+        // 1. PlayServer 생성 (WebSocket 서버 포함)
+        var (playServer, wsServer) = await CreatePlayServerAsync(config);
         Console.WriteLine($"✓ PlayServer started on TCP:{config.TcpPort}, ZMQ:{config.ZmqPlayPort}");
+        if (wsServer != null)
+        {
+            Console.WriteLine($"✓ WebSocket server initialized (path: {config.WebSocketPath})");
+        }
 
-        // 2. ApiServer + HTTP Server 생성
-        var (apiServer, httpApp, actualHttpPort) = await CreateApiServerWithHttpAsync(config);
+        // 2. ApiServer + HTTP Server 생성 (WebSocket 핸들러 포함)
+        var (apiServer, httpApp, actualHttpPort) = await CreateApiServerWithHttpAsync(config, wsServer);
         Console.WriteLine($"✓ ApiServer started on ZMQ:{config.ZmqApiPort}");
         Console.WriteLine($"✓ HTTP API Server started on HTTP:{actualHttpPort}");
+        if (wsServer != null)
+        {
+            Console.WriteLine($"✓ WebSocket endpoint: ws://0.0.0.0:{actualHttpPort}{config.WebSocketPath}");
+        }
 
         // 서버 간 연결 안정화 대기
         await Task.Delay(2000);
@@ -103,7 +119,7 @@ class Program
         };
     }
 
-    static async Task<PlayHouse.Core.Play.Bootstrap.PlayServer> CreatePlayServerAsync(
+    static async Task<(PlayHouse.Core.Play.Bootstrap.PlayServer Server, WebSocketTransportServer? WsServer)> CreatePlayServerAsync(
         ServerConfiguration config)
     {
         var loggerFactory = LoggerFactory.Create(builder =>
@@ -132,7 +148,7 @@ class Program
 
         var serviceProvider = services.BuildServiceProvider();
 
-        var playServer = new PlayServerBootstrap()
+        var bootstrap = new PlayServerBootstrap()
             .Configure(options =>
             {
                 options.ServerId = config.PlayServerId;
@@ -145,15 +161,30 @@ class Program
             .UseLoggerFactory(loggerFactory)
             .UseServiceProvider(serviceProvider)
             .UseStage<TestStageActor, TestActor>("TestStage")
-            .UseSystemController<TestSystemController>()
-            .Build();
+            .UseSystemController<TestSystemController>();
 
+        // WebSocket 활성화
+        if (config.EnableWebSocket)
+        {
+            bootstrap.ConfigureWebSocket(config.WebSocketPath);
+        }
+
+        var playServer = bootstrap.Build();
         await playServer.StartAsync();
-        return playServer;
+
+        // WebSocket 서버 추출
+        WebSocketTransportServer? wsServer = null;
+        if (config.EnableWebSocket)
+        {
+            var wsServers = playServer.GetWebSocketServers();
+            wsServer = wsServers.FirstOrDefault();
+        }
+
+        return (playServer, wsServer);
     }
 
     static async Task<(PlayHouse.Core.Api.Bootstrap.ApiServer, WebApplication, int)>
-        CreateApiServerWithHttpAsync(ServerConfiguration config)
+        CreateApiServerWithHttpAsync(ServerConfiguration config, WebSocketTransportServer? wsServer)
     {
         var loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -202,6 +233,16 @@ class Program
 
         var app = builder.Build();
 
+        // WebSocket 미들웨어 설정
+        if (wsServer != null && config.EnableWebSocket)
+        {
+            app.UseWebSockets();
+            app.Map(config.WebSocketPath, async context =>
+            {
+                await wsServer.HandleAsync(context);
+            });
+        }
+
         // Routing
         app.MapControllers();
 
@@ -246,6 +287,8 @@ record ServerConfiguration
     public required int HttpPort { get; init; }
     public required int ZmqPlayPort { get; init; }
     public required int ZmqApiPort { get; init; }
+    public bool EnableWebSocket { get; init; } = true;
+    public string WebSocketPath { get; init; } = "/ws";
 }
 
 record ServerContext

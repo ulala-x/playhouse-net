@@ -10,11 +10,9 @@ namespace PlayHouse.Connector.IntegrationTests.AdvancedTests;
 /// <remarks>
 /// WebSocket 전송 계층을 통한 연결, 인증, 메시지 송수신 테스트.
 /// UseWebsocket = true 설정으로 TCP 대신 WebSocket 사용.
-/// 현재 테스트 서버가 WebSocket을 지원하지 않아 Skip 처리.
 /// </remarks>
 [Trait("Category", "Advanced")]
 [Trait("Transport", "WebSocket")]
-[Trait("Skip", "WebSocket not supported by test server")]
 public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IAsyncLifetime
 {
     private readonly TestServerFixture _testServer;
@@ -53,7 +51,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         }
     }
 
-    [Fact(DisplayName = "A-01-01: WebSocket으로 서버에 연결할 수 있다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-01: WebSocket으로 서버에 연결할 수 있다")]
     public async Task WebSocket_Connection_Success()
     {
         // Act
@@ -69,7 +67,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         Assert.True(_connector.IsConnected());
     }
 
-    [Fact(DisplayName = "A-01-02: WebSocket 연결 후 인증이 성공한다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-02: WebSocket 연결 후 인증이 성공한다")]
     public async Task WebSocket_Authentication_Success()
     {
         // Arrange
@@ -96,7 +94,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         Assert.True(_connector.IsAuthenticated());
     }
 
-    [Fact(DisplayName = "A-01-03: WebSocket으로 Echo Request-Response가 동작한다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-03: WebSocket으로 Echo Request-Response가 동작한다")]
     public async Task WebSocket_Echo_Request_Response()
     {
         // Arrange
@@ -127,7 +125,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         Assert.Equal(42, echoReply.Sequence);
     }
 
-    [Fact(DisplayName = "A-01-04: WebSocket으로 Push 메시지를 수신할 수 있다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-04: WebSocket으로 Push 메시지를 수신할 수 있다")]
     public async Task WebSocket_Push_Message_Received()
     {
         // Arrange
@@ -166,7 +164,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         Assert.NotEmpty(receivedMessages);
     }
 
-    [Fact(DisplayName = "A-01-05: WebSocket 연결 해제 후 재연결이 가능하다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-05: WebSocket 연결 해제 후 재연결이 가능하다")]
     public async Task WebSocket_Reconnection()
     {
         // Arrange
@@ -197,7 +195,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         Assert.True(_connector.IsConnected());
     }
 
-    [Fact(DisplayName = "A-01-06: WebSocket으로 병렬 요청을 처리할 수 있다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-06: WebSocket으로 병렬 요청을 처리할 수 있다")]
     public async Task WebSocket_Parallel_Requests()
     {
         // Arrange
@@ -232,7 +230,7 @@ public class A01_WebSocketConnectionTests : IClassFixture<TestServerFixture>, IA
         }
     }
 
-    [Fact(DisplayName = "A-01-07: OnConnect 이벤트가 WebSocket 연결 시 발생한다", Skip = "테스트 서버가 WebSocket을 지원하지 않음")]
+    [Fact(DisplayName = "A-01-07: OnConnect 이벤트가 WebSocket 연결 시 발생한다")]
     public async Task WebSocket_OnConnect_Event_Fired()
     {
         // Arrange
