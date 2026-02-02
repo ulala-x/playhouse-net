@@ -170,5 +170,51 @@ class ConnectorTest {
             .hasMessageContaining("Not connected");
     }
 
+    // ===== 동기 API 테스트 =====
+
+    @Test
+    void testConnectSyncWithoutInitThrows() {
+        // When/Then
+        assertThatThrownBy(() -> connector.connect("localhost", 34001))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("not initialized");
+    }
+
+    @Test
+    void testRequestSyncWithoutConnection() {
+        // Given
+        connector.init();
+        Packet request = Packet.fromBytes("TestRequest", new byte[]{1, 2, 3});
+
+        // When/Then
+        assertThatThrownBy(() -> connector.request(request))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Not connected");
+    }
+
+    @Test
+    void testAuthenticateSyncWithPayloadWithoutConnection() {
+        // Given
+        connector.init();
+        byte[] payload = new byte[]{1, 2, 3};
+
+        // When/Then
+        assertThatThrownBy(() -> connector.authenticate("service", "account", payload))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Not connected");
+    }
+
+    @Test
+    void testAuthenticateSyncWithPacketWithoutConnection() {
+        // Given
+        connector.init();
+        Packet authPacket = Packet.fromBytes("AuthRequest", new byte[]{1, 2, 3});
+
+        // When/Then
+        assertThatThrownBy(() -> connector.authenticate(authPacket))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Not connected");
+    }
+
     // Note: 실제 서버 연결 테스트는 통합 테스트에서 수행
 }

@@ -12,6 +12,14 @@
 #include <queue>
 #include <string>
 
+// ASIO headers - support both standalone and Boost.Asio
+#if defined(ASIO_STANDALONE) || !defined(BOOST_ASIO_HPP)
+    #include <asio/awaitable.hpp>
+#else
+    #include <boost/asio/awaitable.hpp>
+    namespace asio = boost::asio;
+#endif
+
 namespace playhouse {
 namespace internal {
 
@@ -25,8 +33,8 @@ public:
     ClientNetwork(const ClientNetwork&) = delete;
     ClientNetwork& operator=(const ClientNetwork&) = delete;
 
-    /// Connect to server
-    std::future<bool> ConnectAsync(const std::string& host, uint16_t port);
+    /// Connect to server using C++20 coroutine
+    asio::awaitable<bool> Connect(const std::string& host, uint16_t port);
 
     /// Disconnect from server
     void Disconnect();
@@ -40,16 +48,26 @@ public:
     /// Send a packet (no response expected)
     void Send(Packet packet, int64_t stage_id);
 
-    /// Send a request with callback
+    /// Send a request using C++20 coroutine
+    asio::awaitable<Packet> Request(Packet packet, int64_t stage_id);
+
+    /// Send a request with callback (callback overload)
     void Request(Packet packet, std::function<void(Packet)> callback, int64_t stage_id);
 
-    /// Send a request asynchronously
-    std::future<Packet> RequestAsync(Packet packet, int64_t stage_id);
+    /// Authenticate using C++20 coroutine
+    asio::awaitable<Packet> Authenticate(Packet packet, int64_t stage_id);
 
-    /// Authenticate with callback
+    /// Authenticate with callback (callback overload)
     void Authenticate(Packet packet, std::function<void(Packet)> callback, int64_t stage_id);
 
-    /// Authenticate asynchronously
+    // Legacy std::future-based APIs (deprecated but kept for compatibility)
+    /// @deprecated Use Connect() coroutine version instead
+    std::future<bool> ConnectAsync(const std::string& host, uint16_t port);
+
+    /// @deprecated Use Request() coroutine version instead
+    std::future<Packet> RequestAsync(Packet packet, int64_t stage_id);
+
+    /// @deprecated Use Authenticate() coroutine version instead
     std::future<Packet> AuthenticateAsync(Packet packet, int64_t stage_id);
 
     /// Process callbacks on main thread

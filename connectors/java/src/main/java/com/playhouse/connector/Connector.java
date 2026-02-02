@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -12,9 +13,16 @@ import java.util.function.Consumer;
  * PlayHouse Connector
  * <p>
  * PlayHouse 실시간 게임 서버에 연결하여 메시지 송수신을 처리합니다.
- * Java NIO 기반 비동기 I/O를 사용하며, CompletableFuture로 비동기 작업을 지원합니다.
+ * Java NIO 기반 비동기 I/O를 사용하며, 동기/비동기/콜백 세 가지 API 스타일을 지원합니다.
  * <p>
- * 사용 예제:
+ * <h2>API 스타일</h2>
+ * <ul>
+ *   <li><b>동기 API</b>: Virtual Thread에서 효율적으로 동작 (Java 21+)</li>
+ *   <li><b>비동기 API</b>: CompletableFuture 반환 (*Async 접미사)</li>
+ *   <li><b>콜백 API</b>: Consumer/Runnable 콜백 파라미터</li>
+ * </ul>
+ * <p>
+ * <h2>동기 API 사용 예제 (권장 - Virtual Thread)</h2>
  * <pre>
  * ConnectorConfig config = ConnectorConfig.builder()
  *     .requestTimeoutMs(10000)
@@ -22,18 +30,61 @@ import java.util.function.Consumer;
  *
  * try (Connector connector = new Connector()) {
  *     connector.init(config);
- *     connector.setOnConnect(success -> System.out.println("Connected: " + success));
  *     connector.setOnReceive(packet -> System.out.println("Received: " + packet.getMsgId()));
  *
- *     connector.connectAsync("localhost", 34001).join();
+ *     // Virtual Thread에서 실행
+ *     Thread.startVirtualThread(() -> {
+ *         try {
+ *             // 동기 연결
+ *             connector.connect("localhost", 34001);
  *
- *     // 인증
- *     Packet authPacket = Packet.fromBytes("AuthRequest", authData);
- *     boolean authenticated = connector.authenticateAsync("game", "user123", authPacket).join();
+ *             // 동기 인증
+ *             Packet authPacket = Packet.fromBytes("AuthRequest", authData);
+ *             boolean authenticated = connector.authenticate(authPacket);
  *
- *     // 요청-응답
+ *             // 동기 요청-응답
+ *             Packet request = Packet.fromBytes("EchoRequest", "Hello".getBytes());
+ *             Packet response = connector.request(request);
+ *             System.out.println("Response: " + response.getMsgId());
+ *         } catch (ConnectorException e) {
+ *             System.err.println("Error: " + e.getMessage());
+ *         }
+ *     });
+ * }
+ * </pre>
+ * <p>
+ * <h2>비동기 API 사용 예제</h2>
+ * <pre>
+ * try (Connector connector = new Connector()) {
+ *     connector.init();
+ *     connector.setOnConnect(() -> System.out.println("Connected"));
+ *     connector.setOnReceive(packet -> System.out.println("Received: " + packet.getMsgId()));
+ *
+ *     connector.connectAsync("localhost", 34001)
+ *         .thenCompose(v -> {
+ *             Packet authPacket = Packet.fromBytes("AuthRequest", authData);
+ *             return connector.authenticateAsync(authPacket);
+ *         })
+ *         .thenCompose(authenticated -> {
+ *             Packet request = Packet.fromBytes("EchoRequest", "Hello".getBytes());
+ *             return connector.requestAsync(request);
+ *         })
+ *         .thenAccept(response -> System.out.println("Response: " + response.getMsgId()))
+ *         .join();
+ * }
+ * </pre>
+ * <p>
+ * <h2>콜백 API 사용 예제 (게임 엔진용)</h2>
+ * <pre>
+ * try (Connector connector = new Connector()) {
+ *     connector.init();
+ *     connector.setOnConnect(() -> System.out.println("Connected"));
+ *
+ *     // 콜백 방식 요청
  *     Packet request = Packet.fromBytes("EchoRequest", "Hello".getBytes());
- *     Packet response = connector.requestAsync(request).join();
+ *     connector.request(request, response -> {
+ *         System.out.println("Response: " + response.getMsgId());
+ *     });
  * }
  * </pre>
  */
@@ -99,6 +150,22 @@ public final class Connector implements AutoCloseable {
     }
 
     /**
+     * 서버에 동기 연결 (Virtual Thread에서 효율적으로 동작)
+     *
+     * @param host 서버 호스트
+     * @param port 서버 포트
+     * @throws ConnectorException    연결 실패 시
+     * @throws IllegalStateException 초기화되지 않은 경우
+     */
+    public void connect(String host, int port) {
+        try {
+            connectAsync(host, port).join();
+        } catch (CompletionException e) {
+            throw unwrapException(e);
+        }
+    }
+
+    /**
      * 연결 해제
      */
     public void disconnect() {
@@ -129,7 +196,7 @@ public final class Connector implements AutoCloseable {
     }
 
     /**
-     * 인증 요청 (간편 API)
+     * 인증 요청 (간편 API - 비동기)
      *
      * @param serviceId 서비스 ID
      * @param accountId 계정 ID
@@ -155,23 +222,56 @@ public final class Connector implements AutoCloseable {
     }
 
     /**
-     * 인증 요청 (콜백 방식)
+     * 인증 요청 (동기 방식 - Virtual Thread에서 효율적으로 동작)
      *
      * @param serviceId 서비스 ID
      * @param accountId 계정 ID
      * @param payload   인증 페이로드
-     * @param callback  인증 결과 콜백
-     * @throws IllegalStateException 초기화되지 않았거나 연결되지 않은 경우
+     * @return 인증 성공 여부
+     * @throws ConnectorException 인증 실패 시
      */
-    public void authenticate(String serviceId, String accountId, byte[] payload, Consumer<Boolean> callback) {
-        authenticateAsync(serviceId, accountId, payload)
-            .thenAccept(callback)
-            .exceptionally(e -> {
-                logger.error("Authentication failed: serviceId={}, accountId={}", serviceId, accountId, e);
-                callback.accept(false);
-                return null;
+    public boolean authenticate(String serviceId, String accountId, byte[] payload) {
+        try {
+            return authenticateAsync(serviceId, accountId, payload).join();
+        } catch (CompletionException e) {
+            throw unwrapException(e);
+        }
+    }
+
+    /**
+     * Packet을 사용한 인증 요청 (비동기)
+     *
+     * @param authPacket 인증 패킷
+     * @return 인증 성공 여부 Future
+     */
+    public CompletableFuture<Boolean> authenticateAsync(Packet authPacket) {
+        return requestAsync(authPacket)
+            .thenApply(response -> {
+                boolean success = response.getErrorCode() == 0;
+                if (success) {
+                    logger.info("Authentication successful");
+                } else {
+                    logger.warn("Authentication failed: errorCode={}", response.getErrorCode());
+                }
+                return success;
             });
     }
+
+    /**
+     * Packet을 사용한 인증 요청 (동기 방식 - Virtual Thread에서 효율적으로 동작)
+     *
+     * @param authPacket 인증 패킷
+     * @return 인증 성공 여부
+     * @throws ConnectorException 인증 실패 시
+     */
+    public boolean authenticate(Packet authPacket) {
+        try {
+            return authenticateAsync(authPacket).join();
+        } catch (CompletionException e) {
+            throw unwrapException(e);
+        }
+    }
+
 
     /**
      * 메시지 전송 (응답 없음)
@@ -194,6 +294,22 @@ public final class Connector implements AutoCloseable {
     public CompletableFuture<Packet> requestAsync(Packet packet) {
         checkConnected();
         return clientNetwork.requestAsync(packet, stageId);
+    }
+
+    /**
+     * 요청 전송 (동기 방식 - Virtual Thread에서 효율적으로 동작)
+     *
+     * @param packet 요청 패킷
+     * @return 응답 패킷
+     * @throws ConnectorException    요청 실패 시
+     * @throws IllegalStateException 초기화되지 않았거나 연결되지 않은 경우
+     */
+    public Packet request(Packet packet) {
+        try {
+            return requestAsync(packet).join();
+        } catch (CompletionException e) {
+            throw unwrapException(e);
+        }
     }
 
     /**
@@ -312,6 +428,34 @@ public final class Connector implements AutoCloseable {
         if (!isConnected()) {
             throw new IllegalStateException("Not connected to server");
         }
+    }
+
+    /**
+     * CompletionException을 unwrap하여 원본 예외로 변환
+     * ConnectorException이 아닌 경우 새로운 ConnectorException으로 감싼다.
+     *
+     * @param e CompletionException
+     * @return 원본 RuntimeException 또는 ConnectorException
+     */
+    private RuntimeException unwrapException(CompletionException e) {
+        Throwable cause = e.getCause();
+
+        // ConnectorException인 경우 그대로 반환
+        if (cause instanceof ConnectorException connectorEx) {
+            return connectorEx;
+        }
+
+        // RuntimeException인 경우 그대로 반환
+        if (cause instanceof RuntimeException runtimeEx) {
+            return runtimeEx;
+        }
+
+        // 그 외의 경우 ConnectorException으로 감싸서 반환
+        return new ConnectorException(
+            5000,
+            "Unexpected error: " + cause.getMessage(),
+            cause
+        );
     }
 
     /**
