@@ -1,13 +1,13 @@
 @echo off
-REM Verification 테스트 실행 스크립트 (Windows)
+REM E2E 테스트 실행 스크립트 (Windows)
 
 setlocal enabledelayedexpansion
 
 set SCRIPT_DIR=%~dp0
-set PROJECT_DIR=%SCRIPT_DIR%PlayHouse.Verification
+set PROJECT_DIR=%SCRIPT_DIR%PlayHouse.E2E
 
 echo ==========================================
-echo PlayHouse Verification Tests
+echo PlayHouse E2E Tests
 echo ==========================================
 
 cd /d "%SCRIPT_DIR%..\.."
@@ -19,7 +19,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [2/2] Running verification tests...
+echo [2/2] Running E2E tests...
 dotnet run --project "%PROJECT_DIR%" --configuration Release --no-build
 
 echo ==========================================
