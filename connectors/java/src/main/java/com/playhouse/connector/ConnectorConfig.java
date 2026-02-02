@@ -11,6 +11,12 @@ public final class ConnectorConfig {
     private final int requestTimeoutMs;
     private final boolean enableReconnect;
     private final int reconnectIntervalMs;
+    private final boolean useWebsocket;
+    private final boolean useSsl;
+    private final String webSocketPath;
+    private final boolean skipServerCertificateValidation;
+    private final int heartbeatTimeoutMs;
+    private final int connectionIdleTimeoutMs;
 
     private ConnectorConfig(Builder builder) {
         this.sendBufferSize = builder.sendBufferSize;
@@ -19,6 +25,12 @@ public final class ConnectorConfig {
         this.requestTimeoutMs = builder.requestTimeoutMs;
         this.enableReconnect = builder.enableReconnect;
         this.reconnectIntervalMs = builder.reconnectIntervalMs;
+        this.useWebsocket = builder.useWebsocket;
+        this.useSsl = builder.useSsl;
+        this.webSocketPath = builder.webSocketPath;
+        this.skipServerCertificateValidation = builder.skipServerCertificateValidation;
+        this.heartbeatTimeoutMs = builder.heartbeatTimeoutMs;
+        this.connectionIdleTimeoutMs = builder.connectionIdleTimeoutMs;
     }
 
     /**
@@ -64,13 +76,41 @@ public final class ConnectorConfig {
         return reconnectIntervalMs;
     }
 
+    public boolean isUseWebsocket() {
+        return useWebsocket;
+    }
+
+    public boolean isUseSsl() {
+        return useSsl;
+    }
+
+    public String getWebSocketPath() {
+        return webSocketPath;
+    }
+
+    public boolean isSkipServerCertificateValidation() {
+        return skipServerCertificateValidation;
+    }
+
+    public int getHeartbeatTimeoutMs() {
+        return heartbeatTimeoutMs;
+    }
+
+    public int getConnectionIdleTimeoutMs() {
+        return connectionIdleTimeoutMs;
+    }
+
     @Override
     public String toString() {
         return String.format(
             "ConnectorConfig{sendBufferSize=%d, receiveBufferSize=%d, heartbeatIntervalMs=%d, " +
-            "requestTimeoutMs=%d, enableReconnect=%s, reconnectIntervalMs=%d}",
+            "requestTimeoutMs=%d, enableReconnect=%s, reconnectIntervalMs=%d, useWebsocket=%s, " +
+            "useSsl=%s, webSocketPath='%s', skipServerCertificateValidation=%s, " +
+            "heartbeatTimeoutMs=%d, connectionIdleTimeoutMs=%d}",
             sendBufferSize, receiveBufferSize, heartbeatIntervalMs,
-            requestTimeoutMs, enableReconnect, reconnectIntervalMs
+            requestTimeoutMs, enableReconnect, reconnectIntervalMs, useWebsocket,
+            useSsl, webSocketPath, skipServerCertificateValidation,
+            heartbeatTimeoutMs, connectionIdleTimeoutMs
         );
     }
 
@@ -84,6 +124,12 @@ public final class ConnectorConfig {
         private int requestTimeoutMs = 30000;       // 30s
         private boolean enableReconnect = false;
         private int reconnectIntervalMs = 5000;     // 5s
+        private boolean useWebsocket = false;
+        private boolean useSsl = false;
+        private String webSocketPath = "/ws";
+        private boolean skipServerCertificateValidation = false;
+        private int heartbeatTimeoutMs = 30000;     // 30s
+        private int connectionIdleTimeoutMs = 30000; // 30s
 
         private Builder() {
         }
@@ -130,6 +176,45 @@ public final class ConnectorConfig {
                 throw new IllegalArgumentException("reconnectIntervalMs must be positive");
             }
             this.reconnectIntervalMs = reconnectIntervalMs;
+            return this;
+        }
+
+        public Builder useWebsocket(boolean useWebsocket) {
+            this.useWebsocket = useWebsocket;
+            return this;
+        }
+
+        public Builder useSsl(boolean useSsl) {
+            this.useSsl = useSsl;
+            return this;
+        }
+
+        public Builder webSocketPath(String webSocketPath) {
+            if (webSocketPath == null || webSocketPath.isEmpty()) {
+                throw new IllegalArgumentException("webSocketPath cannot be null or empty");
+            }
+            this.webSocketPath = webSocketPath;
+            return this;
+        }
+
+        public Builder skipServerCertificateValidation(boolean skipServerCertificateValidation) {
+            this.skipServerCertificateValidation = skipServerCertificateValidation;
+            return this;
+        }
+
+        public Builder heartbeatTimeoutMs(int heartbeatTimeoutMs) {
+            if (heartbeatTimeoutMs <= 0) {
+                throw new IllegalArgumentException("heartbeatTimeoutMs must be positive");
+            }
+            this.heartbeatTimeoutMs = heartbeatTimeoutMs;
+            return this;
+        }
+
+        public Builder connectionIdleTimeoutMs(int connectionIdleTimeoutMs) {
+            if (connectionIdleTimeoutMs <= 0) {
+                throw new IllegalArgumentException("connectionIdleTimeoutMs must be positive");
+            }
+            this.connectionIdleTimeoutMs = connectionIdleTimeoutMs;
             return this;
         }
 

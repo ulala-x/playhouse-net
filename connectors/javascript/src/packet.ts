@@ -39,6 +39,17 @@ export class Packet implements IDisposable {
     }
 
     /**
+     * Creates a packet from a plain JavaScript object (serialized as JSON)
+     * @param msgId Message ID
+     * @param data Object to serialize as JSON payload
+     */
+    static create(msgId: string, data: Record<string, unknown> = {}): Packet {
+        const jsonString = JSON.stringify(data);
+        const payload = new TextEncoder().encode(jsonString);
+        return new Packet(msgId, 0, 0n, 0, payload);
+    }
+
+    /**
      * Creates a packet from raw bytes
      * @param msgId Message ID
      * @param bytes Payload bytes

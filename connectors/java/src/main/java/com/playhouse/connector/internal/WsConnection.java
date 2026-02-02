@@ -8,6 +8,10 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http.DefaultHttpHeaders;
+import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.websocketx.*;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
@@ -15,33 +19,36 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLException;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /**
- * Netty 기반 TCP 연결
+ * Netty 기반 WebSocket 연결
  * <p>
- * Netty의 NioEventLoopGroup과 Bootstrap을 사용한 비동기 I/O
- * SSL/TLS 연결 지원
+ * Netty WebSocket 클라이언트를 사용한 비동기 I/O
+ * Binary WebSocket 프레임으로 동일한 패킷 프로토콜 사용
  */
-public final class TcpConnection implements IConnection {
+public final class WsConnection implements IConnection {
 
-    private static final Logger logger = LoggerFactory.getLogger(TcpConnection.class);
+    private static final Logger logger = LoggerFactory.getLogger(WsConnection.class);
 
     private final ConnectorConfig config;
     private EventLoopGroup workerGroup;
     private Channel channel;
+    private WebSocketClientHandshaker handshaker;
     private volatile boolean connected;
     private ByteBuffer receiveBuffer;
+    private CompletableFuture<Boolean> handshakeFuture;
 
     /**
-     * TcpConnection 생성자
+     * WsConnection 생성자
      *
      * @param config Connector 설정
      */
-    public TcpConnection(ConnectorConfig config) {
+    public WsConnection(ConnectorConfig config) {
         this.config = config;
         this.receiveBuffer = ByteBuffer.allocate(config.getReceiveBufferSize()).order(ByteOrder.LITTLE_ENDIAN);
         this.connected = false;
@@ -52,13 +59,14 @@ public final class TcpConnection implements IConnection {
      *
      * @param host      서버 호스트
      * @param port      서버 포트
-     * @param useSsl    SSL/TLS 사용 여부
+     * @param useSsl    SSL/TLS 사용 여부 (wss://)
      * @param timeoutMs 연결 타임아웃 (밀리초)
      * @return CompletableFuture<Boolean>
      */
     @Override
     public CompletableFuture<Boolean> connectAsync(String host, int port, boolean useSsl, int timeoutMs) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
+        handshakeFuture = new CompletableFuture<>();
 
         // EventLoopGroup 생성 (이미 존재하지 않는 경우)
         if (workerGroup == null || workerGroup.isShutdown()) {
@@ -66,6 +74,14 @@ public final class TcpConnection implements IConnection {
         }
 
         try {
+            // WebSocket URI 생성
+            String scheme = useSsl ? "wss" : "ws";
+            String path = config.getWebSocketPath();
+            if (!path.startsWith("/")) {
+                path = "/" + path;
+            }
+            URI uri = new URI(scheme + "://" + host + ":" + port + path);
+
             // SSL 컨텍스트 생성
             final SslContext sslContext;
             if (useSsl) {
@@ -86,6 +102,16 @@ public final class TcpConnection implements IConnection {
                 sslContext = null;
             }
 
+            // WebSocket handshaker 생성
+            handshaker = WebSocketClientHandshakerFactory.newHandshaker(
+                uri,
+                WebSocketVersion.V13,
+                null,
+                true,
+                new DefaultHttpHeaders(),
+                65536 // Max frame payload length
+            );
+
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.group(workerGroup)
                 .channel(NioSocketChannel.class)
@@ -102,29 +128,46 @@ public final class TcpConnection implements IConnection {
                             pipeline.addLast(sslContext.newHandler(ch.alloc(), host, port));
                         }
 
-                        // 핸들러는 startReceive에서 추가됨
+                        // HTTP 핸들러
+                        pipeline.addLast(new HttpClientCodec());
+                        pipeline.addLast(new HttpObjectAggregator(8192));
+
+                        // WebSocket 핸들러 (handshake만 담당)
+                        pipeline.addLast(new WebSocketClientProtocolHandler(handshaker));
+
+                        // 커스텀 핸들러는 startReceive에서 추가됨
                     }
                 });
 
-            logger.info("Connecting to {}:{} (SSL: {})...", host, port, useSsl);
+            logger.info("Connecting to {} (SSL: {})...", uri, useSsl);
 
             // 비동기 연결
             ChannelFuture connectFuture = bootstrap.connect(host, port);
             connectFuture.addListener((ChannelFutureListener) channelFuture -> {
                 if (channelFuture.isSuccess()) {
                     channel = channelFuture.channel();
-                    connected = true;
-                    logger.info("Connected to {}:{}", host, port);
-                    future.complete(true);
+
+                    // WebSocket handshake 완료 대기
+                    handshakeFuture.thenAccept(success -> {
+                        if (success) {
+                            connected = true;
+                            logger.info("WebSocket connected to {}", uri);
+                            future.complete(true);
+                        } else {
+                            connected = false;
+                            logger.error("WebSocket handshake failed");
+                            future.complete(false);
+                        }
+                    });
                 } else {
                     connected = false;
-                    logger.error("Connection failed to {}:{}", host, port, channelFuture.cause());
+                    logger.error("Connection failed to {}", uri, channelFuture.cause());
                     future.complete(false);
                 }
             });
 
         } catch (Exception e) {
-            logger.error("Failed to create bootstrap", e);
+            logger.error("Failed to create WebSocket connection", e);
             future.complete(false);
         }
 
@@ -159,12 +202,15 @@ public final class TcpConnection implements IConnection {
             // ByteBuffer를 Netty ByteBuf로 변환
             ByteBuf byteBuf = Unpooled.wrappedBuffer(data);
 
+            // Binary WebSocket Frame으로 전송
+            BinaryWebSocketFrame frame = new BinaryWebSocketFrame(byteBuf);
+
             // 비동기 전송
-            ChannelFuture writeFuture = channel.writeAndFlush(byteBuf);
+            ChannelFuture writeFuture = channel.writeAndFlush(frame);
             writeFuture.addListener((ChannelFutureListener) channelFuture -> {
                 if (channelFuture.isSuccess()) {
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Sent {} bytes", data.remaining());
+                        logger.debug("Sent {} bytes via WebSocket", data.remaining());
                     }
                     future.complete(true);
                 } else {
@@ -193,9 +239,9 @@ public final class TcpConnection implements IConnection {
             return;
         }
 
-        // 기존 핸들러 제거 후 새 핸들러 추가
+        // WebSocket 수신 핸들러 추가
         ChannelPipeline pipeline = channel.pipeline();
-        pipeline.addLast(new NettyReceiveHandler(onReceive, onClosed));
+        pipeline.addLast(new WebSocketReceiveHandler(onReceive, onClosed));
     }
 
     /**
@@ -209,12 +255,22 @@ public final class TcpConnection implements IConnection {
 
         try {
             if (channel != null && channel.isActive()) {
-                logger.info("Disconnecting...");
-                ChannelFuture closeFuture = channel.close();
+                logger.info("Disconnecting WebSocket...");
+
+                // WebSocket Close Frame 전송
+                CloseWebSocketFrame closeFrame = new CloseWebSocketFrame(
+                    WebSocketCloseStatus.NORMAL_CLOSURE,
+                    "Client disconnect"
+                );
+
+                ChannelFuture closeFuture = channel.writeAndFlush(closeFrame);
                 closeFuture.addListener((ChannelFutureListener) channelFuture -> {
-                    connected = false;
-                    logger.info("Disconnected");
-                    future.complete(null);
+                    // 채널 닫기
+                    channel.close().addListener(cf -> {
+                        connected = false;
+                        logger.info("WebSocket disconnected");
+                        future.complete(null);
+                    });
                 });
             } else {
                 connected = false;
@@ -254,27 +310,39 @@ public final class TcpConnection implements IConnection {
     }
 
     /**
-     * Netty 수신 핸들러
+     * WebSocket 수신 핸들러
      */
-    private class NettyReceiveHandler extends ChannelInboundHandlerAdapter {
+    private class WebSocketReceiveHandler extends SimpleChannelInboundHandler<WebSocketFrame> {
 
         private final Consumer<ByteBuffer> onReceive;
         private final Runnable onClosed;
 
-        NettyReceiveHandler(Consumer<ByteBuffer> onReceive, Runnable onClosed) {
+        WebSocketReceiveHandler(Consumer<ByteBuffer> onReceive, Runnable onClosed) {
             this.onReceive = onReceive;
             this.onClosed = onClosed;
         }
 
         @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            if (msg instanceof ByteBuf) {
-                ByteBuf byteBuf = (ByteBuf) msg;
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+            if (evt == WebSocketClientProtocolHandler.ClientHandshakeStateEvent.HANDSHAKE_COMPLETE) {
+                // Handshake 완료
+                handshakeFuture.complete(true);
+            } else if (evt == WebSocketClientProtocolHandler.ClientHandshakeStateEvent.HANDSHAKE_TIMEOUT) {
+                // Handshake 타임아웃
+                handshakeFuture.complete(false);
+            }
+            super.userEventTriggered(ctx, evt);
+        }
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, WebSocketFrame frame) {
+            if (frame instanceof BinaryWebSocketFrame) {
+                ByteBuf byteBuf = frame.content();
                 try {
                     int readableBytes = byteBuf.readableBytes();
                     if (readableBytes > 0) {
                         if (logger.isDebugEnabled()) {
-                            logger.debug("Received {} bytes", readableBytes);
+                            logger.debug("Received {} bytes via WebSocket", readableBytes);
                         }
 
                         // ByteBuf를 ByteBuffer로 변환하여 기존 버퍼에 추가
@@ -295,22 +363,31 @@ public final class TcpConnection implements IConnection {
                         // 버퍼 정리
                         receiveBuffer.compact();
                     }
-                } finally {
-                    byteBuf.release();
+                } catch (Exception e) {
+                    logger.error("Error reading WebSocket frame", e);
                 }
+            } else if (frame instanceof TextWebSocketFrame) {
+                logger.warn("Received text frame, but expected binary frame");
+            } else if (frame instanceof PongWebSocketFrame) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Received pong frame");
+                }
+            } else if (frame instanceof CloseWebSocketFrame) {
+                logger.info("Received close frame from server");
+                ctx.close();
             }
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            logger.info("Connection closed by server");
+            logger.info("WebSocket connection closed by server");
             connected = false;
             onClosed.run();
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            logger.error("Exception caught in channel", cause);
+            logger.error("Exception caught in WebSocket channel", cause);
             connected = false;
             onClosed.run();
             ctx.close();

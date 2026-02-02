@@ -70,7 +70,7 @@ export class Connector {
     /** Called when a push message is received (not a response to a request) */
     onReceive?: (packet: Packet) => void;
     /** Called when an error occurs */
-    onError?: (code: number, message: string) => void;
+    onError?: (stageId: bigint, errorCode: number, message: string, request?: Packet) => void;
     /** Called when the connection is closed */
     onDisconnect?: () => void;
 
@@ -113,14 +113,16 @@ export class Connector {
     /**
      * Connects to a WebSocket server
      * @param url WebSocket URL (ws:// or wss://)
-     * @param stageId Optional stage ID (default: 0n)
+     * @param stageId Optional stage ID (default: 0n) - can be number or bigint
+     * @param _stageType Optional stage type (ignored, for compatibility)
+     * @returns true if connection succeeded
      */
-    async connect(url: string, stageId: bigint = 0n): Promise<void> {
+    async connect(url: string, stageId: bigint | number = 0n, _stageType?: string): Promise<boolean> {
         if (this._connection?.isConnected) {
             throw new Error('Already connected. Call disconnect() first.');
         }
 
-        this._stageId = stageId;
+        this._stageId = typeof stageId === 'bigint' ? stageId : BigInt(stageId);
         this._isAuthenticated = false;
         this._lastReceivedTime = Date.now();
         this._lastHeartbeatTime = Date.now();
@@ -135,7 +137,7 @@ export class Connector {
             },
             onError: (error) => {
                 this.queueAction(() =>
-                    this.onError?.(ErrorCode.ConnectionFailed, error.message)
+                    this.onError?.(this._stageId, ErrorCode.ConnectionFailed, error.message)
                 );
             },
             onDisconnect: () => {
@@ -147,6 +149,7 @@ export class Connector {
 
         try {
             await this._connection.connect(url);
+            return true;
         } catch (error) {
             this._connection = null;
             throw error;
@@ -173,7 +176,7 @@ export class Connector {
     send(packet: Packet): void {
         if (!this.isConnected) {
             this.queueAction(() =>
-                this.onError?.(ErrorCode.Disconnected, 'Not connected')
+                this.onError?.(this._stageId, ErrorCode.Disconnected, 'Not connected', packet)
             );
             return;
         }
@@ -198,6 +201,9 @@ export class Connector {
             const timeoutId = setTimeout(() => {
                 if (this._pendingRequests.has(msgSeq)) {
                     this._pendingRequests.delete(msgSeq);
+                    this.queueAction(() =>
+                        this.onError?.(this._stageId, ErrorCode.RequestTimeout, `Request timeout: ${packet.msgId}`, packet)
+                    );
                     reject(new Error(`Request timeout: ${packet.msgId}`));
                 }
             }, this._config.requestTimeoutMs);
@@ -227,17 +233,88 @@ export class Connector {
     }
 
     /**
-     * Authenticates with the server
+     * Sends a request with callback-based response handling
+     * @param packet The request packet
+     * @param callback Callback function to handle the response
+     */
+    requestWithCallback(packet: Packet, callback: (response: Packet) => void): void {
+        if (!this.isConnected) {
+            this.queueAction(() =>
+                this.onError?.(this._stageId, ErrorCode.Disconnected, 'Not connected', packet)
+            );
+            return;
+        }
+
+        const msgSeq = this.getNextMsgSeq();
+
+        const timeoutId = setTimeout(() => {
+            if (this._pendingRequests.has(msgSeq)) {
+                this._pendingRequests.delete(msgSeq);
+                this.queueAction(() =>
+                    this.onError?.(this._stageId, ErrorCode.RequestTimeout, `Request timeout: ${packet.msgId}`, packet)
+                );
+            }
+        }, this._config.requestTimeoutMs);
+
+        const pending: PendingRequest = {
+            msgSeq,
+            request: packet,
+            stageId: this._stageId,
+            resolve: (response) => {
+                this.queueAction(() => callback(response));
+            },
+            reject: (error) => {
+                this.queueAction(() =>
+                    this.onError?.(this._stageId, ErrorCode.InvalidResponse, error.message, packet)
+                );
+            },
+            isAuthenticate: false,
+            createdAt: Date.now(),
+            timeoutId,
+        };
+
+        this._pendingRequests.set(msgSeq, pending);
+
+        try {
+            const data = encodePacket(packet, msgSeq, this._stageId);
+            this._connection!.send(data);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            this._pendingRequests.delete(msgSeq);
+            this.queueAction(() =>
+                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, (error as Error).message, packet)
+            );
+        }
+    }
+
+    /**
+     * Authenticates with the server using a packet
+     * @param packet Authentication request packet
+     * @returns Promise that resolves to the response packet
+     */
+    async authenticate(packet: Packet): Promise<Packet>;
+    /**
+     * Authenticates with the server using service/account IDs
      * @param serviceId Service identifier
      * @param accountId Account identifier
      * @param payload Optional additional authentication data
      * @returns Promise that resolves to true if authentication succeeded
      */
+    async authenticate(serviceId: string, accountId: string, payload?: Uint8Array): Promise<boolean>;
+    /**
+     * Authenticates with the server
+     */
     async authenticate(
-        serviceId: string,
-        accountId: string,
+        serviceIdOrPacket: string | Packet,
+        accountId?: string,
         payload?: Uint8Array
-    ): Promise<boolean> {
+    ): Promise<boolean | Packet> {
+        // If first argument is a Packet, use packet-based authentication
+        if (serviceIdOrPacket instanceof Packet) {
+            return this.authenticateAsync(serviceIdOrPacket);
+        }
+
+        const serviceId = serviceIdOrPacket;
         if (!this.isConnected) {
             throw new Error('Not connected');
         }
@@ -281,6 +358,9 @@ export class Connector {
             const timeoutId = setTimeout(() => {
                 if (this._pendingRequests.has(msgSeq)) {
                     this._pendingRequests.delete(msgSeq);
+                    this.queueAction(() =>
+                        this.onError?.(this._stageId, ErrorCode.RequestTimeout, 'Authentication timeout', authPacket)
+                    );
                     reject(new Error('Authentication timeout'));
                 }
             }, this._config.requestTimeoutMs);
@@ -307,6 +387,163 @@ export class Connector {
 
             try {
                 const data = encodePacket(authPacket, msgSeq, this._stageId);
+                this._connection!.send(data);
+            } catch (error) {
+                clearTimeout(timeoutId);
+                this._pendingRequests.delete(msgSeq);
+                reject(error);
+            }
+        });
+    }
+
+    /**
+     * Authenticates with the server using callback-based approach
+     * @param serviceId Service identifier
+     * @param accountId Account identifier
+     * @param payload Optional additional authentication data
+     * @param callback Callback function that receives authentication result (true on success)
+     */
+    authenticateWithCallback(
+        serviceId: string,
+        accountId: string,
+        payload: Uint8Array | undefined,
+        callback: (success: boolean) => void
+    ): void {
+        if (!this.isConnected) {
+            this.queueAction(() => {
+                this.onError?.(this._stageId, ErrorCode.Disconnected, 'Not connected');
+                callback(false);
+            });
+            return;
+        }
+
+        // Create authentication packet
+        const textEncoder = new TextEncoder();
+        const serviceIdBytes = textEncoder.encode(serviceId);
+        const accountIdBytes = textEncoder.encode(accountId);
+        const payloadBytes = payload ?? new Uint8Array(0);
+
+        // Simple format: serviceIdLen(2) + serviceId + accountIdLen(2) + accountId + payload
+        const totalLen =
+            2 +
+            serviceIdBytes.length +
+            2 +
+            accountIdBytes.length +
+            payloadBytes.length;
+        const authPayload = new Uint8Array(totalLen);
+        const view = new DataView(authPayload.buffer);
+        let offset = 0;
+
+        view.setUint16(offset, serviceIdBytes.length, true);
+        offset += 2;
+        authPayload.set(serviceIdBytes, offset);
+        offset += serviceIdBytes.length;
+
+        view.setUint16(offset, accountIdBytes.length, true);
+        offset += 2;
+        authPayload.set(accountIdBytes, offset);
+        offset += accountIdBytes.length;
+
+        authPayload.set(payloadBytes, offset);
+
+        const authPacket = Packet.fromBytes('AuthenticateReq', authPayload);
+        const msgSeq = this.getNextMsgSeq();
+
+        const timeoutId = setTimeout(() => {
+            if (this._pendingRequests.has(msgSeq)) {
+                this._pendingRequests.delete(msgSeq);
+                this.queueAction(() => {
+                    this.onError?.(this._stageId, ErrorCode.RequestTimeout, 'Authentication timeout', authPacket);
+                    callback(false);
+                });
+            }
+        }, this._config.requestTimeoutMs);
+
+        const pending: PendingRequest = {
+            msgSeq,
+            request: authPacket,
+            stageId: this._stageId,
+            resolve: (response) => {
+                if (response.errorCode === 0) {
+                    this._isAuthenticated = true;
+                    this.queueAction(() => callback(true));
+                } else {
+                    this.queueAction(() => {
+                        this.onError?.(this._stageId, ErrorCode.AuthenticationFailed, 'Authentication failed', authPacket);
+                        callback(false);
+                    });
+                }
+            },
+            reject: (error) => {
+                this.queueAction(() => {
+                    this.onError?.(this._stageId, ErrorCode.InvalidResponse, error.message, authPacket);
+                    callback(false);
+                });
+            },
+            isAuthenticate: true,
+            createdAt: Date.now(),
+            timeoutId,
+        };
+
+        this._pendingRequests.set(msgSeq, pending);
+
+        try {
+            const data = encodePacket(authPacket, msgSeq, this._stageId);
+            this._connection!.send(data);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            this._pendingRequests.delete(msgSeq);
+            this.queueAction(() => {
+                this.onError?.(this._stageId, ErrorCode.ConnectionFailed, (error as Error).message, authPacket);
+                callback(false);
+            });
+        }
+    }
+
+    /**
+     * Authenticates using a custom packet (async version)
+     * Use this for custom authentication protocols where you need the full response
+     * @param packet Authentication request packet
+     * @returns Promise that resolves to the authentication response packet
+     */
+    async authenticateAsync(packet: Packet): Promise<Packet> {
+        if (!this.isConnected) {
+            throw new Error('Not connected');
+        }
+
+        const msgSeq = this.getNextMsgSeq();
+
+        return new Promise<Packet>((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                if (this._pendingRequests.has(msgSeq)) {
+                    this._pendingRequests.delete(msgSeq);
+                    this.queueAction(() =>
+                        this.onError?.(this._stageId, ErrorCode.RequestTimeout, 'Authentication timeout', packet)
+                    );
+                    reject(new Error('Authentication timeout'));
+                }
+            }, this._config.requestTimeoutMs);
+
+            const pending: PendingRequest = {
+                msgSeq,
+                request: packet,
+                stageId: this._stageId,
+                resolve: (response) => {
+                    if (response.errorCode === 0) {
+                        this._isAuthenticated = true;
+                    }
+                    resolve(response);
+                },
+                reject,
+                isAuthenticate: true,
+                createdAt: Date.now(),
+                timeoutId,
+            };
+
+            this._pendingRequests.set(msgSeq, pending);
+
+            try {
+                const data = encodePacket(packet, msgSeq, this._stageId);
                 this._connection!.send(data);
             } catch (error) {
                 clearTimeout(timeoutId);

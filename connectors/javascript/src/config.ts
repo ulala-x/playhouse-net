@@ -45,6 +45,13 @@ export interface ConnectorConfig {
     reconnectIntervalMs?: number;
 
     /**
+     * Use SSL/TLS for secure connections
+     * Automatically set to true when using wss:// URLs
+     * @default false
+     */
+    useSsl?: boolean;
+
+    /**
      * Enable debug logging
      * @default false
      */
@@ -61,6 +68,7 @@ export const DefaultConfig: Required<ConnectorConfig> = {
     connectionIdleTimeoutMs: 30000,
     enableReconnect: false,
     reconnectIntervalMs: 5000,
+    useSsl: false,
     debugMode: false,
 };
 

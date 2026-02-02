@@ -155,6 +155,25 @@ public final class Connector implements AutoCloseable {
     }
 
     /**
+     * 인증 요청 (콜백 방식)
+     *
+     * @param serviceId 서비스 ID
+     * @param accountId 계정 ID
+     * @param payload   인증 페이로드
+     * @param callback  인증 결과 콜백
+     * @throws IllegalStateException 초기화되지 않았거나 연결되지 않은 경우
+     */
+    public void authenticate(String serviceId, String accountId, byte[] payload, Consumer<Boolean> callback) {
+        authenticateAsync(serviceId, accountId, payload)
+            .thenAccept(callback)
+            .exceptionally(e -> {
+                logger.error("Authentication failed: serviceId={}, accountId={}", serviceId, accountId, e);
+                callback.accept(false);
+                return null;
+            });
+    }
+
+    /**
      * 메시지 전송 (응답 없음)
      *
      * @param packet 전송할 패킷

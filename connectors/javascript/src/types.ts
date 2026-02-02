@@ -8,20 +8,32 @@
 export const ErrorCode = {
     /** Success - no error */
     Success: 0,
+
+    // Connection errors
     /** Connection failed */
     ConnectionFailed: 1001,
     /** Connection timeout */
     ConnectionTimeout: 1002,
     /** Connection closed unexpectedly */
     ConnectionClosed: 1003,
+
+    // Request errors
     /** Request timeout */
     RequestTimeout: 2001,
     /** Invalid response received */
     InvalidResponse: 2002,
+
+    // Authentication errors
     /** Authentication failed */
     AuthenticationFailed: 3001,
-    /** Disconnected before operation */
-    Disconnected: 4001,
+
+    // C# compatible error codes (PlayHouse standard)
+    /** Disconnected before operation - matches C# ConnectorErrorCode.Disconnected */
+    Disconnected: 60201,
+    /** Request timeout - matches C# ConnectorErrorCode.RequestTimeout */
+    RequestTimeoutLegacy: 60202,
+    /** Unauthenticated state - matches C# ConnectorErrorCode.Unauthenticated */
+    Unauthenticated: 60203,
 } as const;
 
 export type ErrorCodeType = (typeof ErrorCode)[keyof typeof ErrorCode];

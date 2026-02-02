@@ -70,7 +70,10 @@ describe('ErrorCode', () => {
         expect(ErrorCode.RequestTimeout).toBe(2001);
         expect(ErrorCode.InvalidResponse).toBe(2002);
         expect(ErrorCode.AuthenticationFailed).toBe(3001);
-        expect(ErrorCode.Disconnected).toBe(4001);
+        // C# compatible error codes
+        expect(ErrorCode.Disconnected).toBe(60201);
+        expect(ErrorCode.RequestTimeoutLegacy).toBe(60202);
+        expect(ErrorCode.Unauthenticated).toBe(60203);
     });
 });
 
@@ -145,12 +148,15 @@ describe('Connector', () => {
             const errorCallback = vi.fn();
             connector.onError = errorCallback;
 
-            connector.send(Packet.empty('Test'));
+            const packet = Packet.empty('Test');
+            connector.send(packet);
             connector.mainThreadAction(); // Process queued actions
 
             expect(errorCallback).toHaveBeenCalledWith(
+                0n, // stageId
                 ErrorCode.Disconnected,
-                'Not connected'
+                'Not connected',
+                packet
             );
         });
     });

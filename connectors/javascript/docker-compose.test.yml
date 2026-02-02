@@ -1,23 +1,24 @@
 version: '3.8'
+
 services:
   test-server:
     build:
-      context: ../../
-      dockerfile: connectors/test-server/Dockerfile
-    container_name: playhouse-test-js
+      context: ../test-server
+      dockerfile: Dockerfile
     ports:
-      - "38080:8080"    # HTTP + WebSocket
-      - "38001:34001"   # TCP Play Server
+      - "38080:8080"    # HTTP API
+      - "38001:34001"   # WebSocket
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - LOG_LEVEL=INFO
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
-      interval: 2s
+      interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 10
+      start_period: 10s
     networks:
-      - playhouse-js
+      - test-network
 
 networks:
-  playhouse-js:
+  test-network:
     driver: bridge

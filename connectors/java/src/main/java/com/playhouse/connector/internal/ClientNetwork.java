@@ -21,7 +21,7 @@ public final class ClientNetwork {
     private static final Logger logger = LoggerFactory.getLogger(ClientNetwork.class);
 
     private final ConnectorConfig config;
-    private final TcpConnection connection;
+    private final IConnection connection;
     private final RequestCache requestCache;
     private final BlockingQueue<Runnable> callbackQueue;
 
@@ -40,7 +40,16 @@ public final class ClientNetwork {
      */
     public ClientNetwork(ConnectorConfig config) {
         this.config = config;
-        this.connection = new TcpConnection(config.getReceiveBufferSize());
+
+        // TCP 또는 WebSocket 연결 선택
+        if (config.isUseWebsocket()) {
+            logger.info("Using WebSocket connection");
+            this.connection = new WsConnection(config);
+        } else {
+            logger.info("Using TCP connection");
+            this.connection = new TcpConnection(config);
+        }
+
         this.requestCache = new RequestCache(config.getRequestTimeoutMs());
         this.callbackQueue = new LinkedBlockingQueue<>();
         this.authenticated = false;
@@ -82,10 +91,14 @@ public final class ClientNetwork {
      * @return CompletableFuture<Boolean>
      */
     public CompletableFuture<Boolean> connectAsync(String host, int port) {
-        return connection.connectAsync(host, port, 5000)
+        boolean useSsl = config.isUseSsl();
+        int timeoutMs = config.getConnectionIdleTimeoutMs();
+
+        return connection.connectAsync(host, port, useSsl, timeoutMs)
             .thenApply(success -> {
                 if (success) {
-                    logger.info("Connection established");
+                    logger.info("Connection established (SSL: {}, WebSocket: {})",
+                        useSsl, config.isUseWebsocket());
                     connection.startReceive(this::handleReceive, this::handleDisconnect);
                     enqueueCallback(() -> {
                         if (onConnect != null) {

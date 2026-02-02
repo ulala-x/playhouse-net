@@ -60,6 +60,7 @@ export interface ConnectorConfig {
     requestTimeoutMs?: number;    // Default: 30000 (30s)
     enableReconnect?: boolean;    // Default: false
     reconnectIntervalMs?: number; // Default: 5000
+    useSsl?: boolean;             // Default: false (auto-detected for wss://)
 }
 
 export class Connector {
@@ -69,12 +70,23 @@ export class Connector {
     disconnect(): void;
     get isConnected(): boolean;
 
-    // Messaging
+    // Messaging (Promise-based)
     send(packet: Packet): void;
     request(packet: Packet): Promise<Packet>;
 
-    // Authentication
+    // Messaging (Callback-based)
+    requestWithCallback(packet: Packet, callback: (response: Packet) => void): void;
+
+    // Authentication (Promise-based)
     authenticate(serviceId: string, accountId: string, payload?: Uint8Array): Promise<boolean>;
+
+    // Authentication (Callback-based)
+    authenticateWithCallback(
+        serviceId: string,
+        accountId: string,
+        payload: Uint8Array | undefined,
+        callback: (success: boolean) => void
+    ): void;
 
     // Browser integration
     mainThreadAction(): void;  // Use with requestAnimationFrame
@@ -82,7 +94,7 @@ export class Connector {
     // Callbacks
     onConnect?: () => void;
     onReceive?: (packet: Packet) => void;
-    onError?: (code: number, message: string) => void;
+    onError?: (stageId: bigint, errorCode: number, message: string, request?: Packet) => void;
     onDisconnect?: () => void;
 }
 ```
@@ -195,7 +207,10 @@ connector.init({
 
 connector.onConnect = () => console.log('Connected!');
 connector.onReceive = (packet) => console.log('Received:', packet.msgId);
-connector.onError = (code, msg) => console.error(`Error ${code}: ${msg}`);
+connector.onError = (stageId, code, msg, request) => {
+    console.error(`Error ${code} at stage ${stageId}: ${msg}`);
+    if (request) console.error('Failed request:', request.msgId);
+};
 connector.onDisconnect = () => console.log('Disconnected');
 
 // Connect via WebSocket
@@ -211,6 +226,44 @@ console.log('Response:', response.msgId);
 
 // Cleanup
 connector.disconnect();
+```
+
+### Callback-based API (Unity/Unreal Compatible)
+
+For environments like Unity or Unreal where async/await might not be ideal:
+
+```typescript
+import { Connector, Packet } from '@playhouse/connector';
+
+const connector = new Connector();
+connector.init({ requestTimeoutMs: 10000 });
+
+connector.onConnect = () => {
+    console.log('Connected!');
+
+    // Callback-based authentication
+    connector.authenticateWithCallback('game', 'user123', undefined, (success) => {
+        if (success) {
+            console.log('Authenticated!');
+
+            // Callback-based request
+            const request = Packet.fromProto(EchoRequest.create({ content: 'Hello' }));
+            connector.requestWithCallback(request, (response) => {
+                console.log('Response received:', response.msgId);
+                connector.disconnect();
+            });
+        } else {
+            console.error('Authentication failed');
+        }
+    });
+};
+
+connector.onError = (stageId, errorCode, message, request) => {
+    console.error(`Error ${errorCode}: ${message}`);
+};
+
+// Connect via WebSocket
+connector.connect('ws://localhost:8080/ws');
 ```
 
 ### Node.js (CommonJS)
@@ -342,6 +395,7 @@ npm run dev
 
 ## Error Codes
 
+### Client-side Error Codes
 | Code | Description |
 |------|-------------|
 | 0 | Success |
@@ -351,6 +405,13 @@ npm run dev
 | 2001 | Request timeout |
 | 2002 | Invalid response |
 | 3001 | Authentication failed |
+
+### PlayHouse Standard Error Codes (C# Compatible)
+| Code | Description |
+|------|-------------|
+| 60201 | Disconnected (not connected when operation attempted) |
+| 60202 | Request timeout (legacy code for compatibility) |
+| 60203 | Unauthenticated (operation requires authentication) |
 
 ## Browser Compatibility
 

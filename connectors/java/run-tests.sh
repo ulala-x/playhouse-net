@@ -46,11 +46,15 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Run tests
-echo -e "${YELLOW}[Java Connector Test]${NC} Running tests..."
+# Run unit tests
+echo -e "${YELLOW}[Java Connector Test]${NC} Running unit tests..."
+"$SCRIPT_DIR/gradlew" -p "$SCRIPT_DIR" test --info
+
+# Run integration tests
+echo -e "${YELLOW}[Java Connector Test]${NC} Running integration tests..."
 TEST_SERVER_HOST=localhost \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
-"$SCRIPT_DIR/gradlew" -p "$SCRIPT_DIR" test --info
+"$SCRIPT_DIR/gradlew" -p "$SCRIPT_DIR" integrationTest --info
 
-echo -e "${GREEN}[Java Connector Test]${NC} Tests completed successfully!"
+echo -e "${GREEN}[Java Connector Test]${NC} All tests completed successfully!"
