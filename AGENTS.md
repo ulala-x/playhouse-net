@@ -1,45 +1,153 @@
-# Repository Guidelines
+# PlayHouse Project Guidelines
 
-## Project Structure & Module Organization
-- `src/PlayHouse/` contains the core PlayHouse-NET library.
-  - `Abstractions/` public interfaces and contracts.
-  - `Core/` core runtime logic (Play, Api, Messaging).
-  - `Runtime/` transport and server-mesh implementations.
-  - `Extensions/` DI and hosting helpers.
-  - `Infrastructure/` utilities (e.g., memory pools).
-  - `Proto/` protobuf definitions.
-- `tests/` contains all test and benchmark projects.
-  - `PlayHouse.Tests.Unit/`, `PlayHouse.Tests.Integration/`, `PlayHouse.Tests.Performance/`.
-  - `benchmark_cs/` and `benchmark_ss/` hold benchmark clients/servers and scripts.
-- `doc/` and `docs/` hold specifications and architecture notes.
+## Project Overview
 
-## Build, Test, and Development Commands
-- `dotnet build playhouse-net.sln` builds the full solution.
-- `dotnet test` runs all tests.
-- `dotnet test tests/PlayHouse.Tests.Unit` runs unit tests only.
-- `dotnet test --filter "DisplayName~Stage"` runs tests by DisplayName filter.
-- `tests/benchmark_cs/run-single.sh` runs a single C# benchmark scenario.
+PlayHouse is a multi-language real-time game server framework designed for simplicity, performance, and scalability. The framework supports multiple server implementations (.NET, Java, C++, Node.js) and client connectors (Unity, Unreal, JavaScript).
 
-## Coding Style & Naming Conventions
-- C# with nullable reference types enabled and implicit usings enabled (see `Directory.Build.props`).
-- Use file-scoped namespaces and keep public APIs documented with XML comments.
-- Naming: PascalCase for types/methods/properties, camelCase for locals/parameters, `_camelCase` for private fields.
-- Keep warning level at 5 and treat warnings as errors for Release builds.
+## Repository Structure
 
-## Testing Guidelines
-- Frameworks: xUnit, FluentAssertions, NSubstitute.
-- Prefer Given-When-Then structure and state verification over implementation verification.
-- Use fakes over mocks when possible.
-- Naming: `{Target}_{Condition}_{ExpectedResult}` for test methods.
-- DisplayName should be clear and in Korean (per `tests/README.md`).
-- Coverage targets are defined in `tests/README.md`; run coverage with:
-  `dotnet test --collect:"XPlat Code Coverage"`.
+```
+playhouse/
+├── servers/                    # Server implementations
+│   ├── dotnet/                 # .NET server (active)
+│   │   ├── src/PlayHouse/      # Core library
+│   │   ├── extensions/         # Serialization extensions
+│   │   └── tests/              # Unit, E2E, benchmark tests
+│   ├── java/                   # Java server (planned)
+│   ├── cpp/                    # C++ server (planned)
+│   └── nodejs/                 # Node.js server (planned)
+├── connectors/                 # Client connectors
+│   ├── csharp/                 # C# connector (Unity & E2E)
+│   ├── cpp/                    # C++ connector (Unreal & E2E)
+│   ├── java/                   # Java connector (E2E only)
+│   └── javascript/             # JavaScript connector (Web)
+├── protocol/                   # Shared protocol definitions
+├── docs/                       # Documentation
+├── examples/                   # Example projects
+└── tools/                      # Development tools
+```
 
-## Commit & Pull Request Guidelines
-- Commit messages follow Conventional Commits style (e.g., `feat: ...`, `refactor: ...`, `docs: ...`).
-- PRs should include a concise summary, the tests run (or a rationale if skipped), and links to related issues/specs.
-- If you touch benchmarks or performance-critical paths, include updated benchmark results or notes.
+## Build & Test Commands
 
-## Configuration & Docs
-- Solution file: `playhouse-net.sln`.
-- Key references: `tests/README.md`, `doc/` specs, and `docs/specifications/`.
+### .NET Server
+```bash
+# Build (from repository root)
+dotnet build PlayHouse.sln
+
+# Run all tests
+dotnet test PlayHouse.sln
+
+# Run specific test projects
+dotnet test servers/dotnet/tests/unit/PlayHouse.Unit/
+dotnet test servers/dotnet/tests/e2e/PlayHouse.E2E/
+
+# Run E2E tests via script
+./servers/dotnet/tests/e2e/run.sh
+
+# Run benchmarks
+./servers/dotnet/tests/benchmark/benchmark_cs/run-single.sh --mode request-async --size 1024
+./servers/dotnet/tests/benchmark/benchmark_ss/run-single.sh --mode request-async --size 1024
+```
+
+## Coding Conventions
+
+### C# (.NET)
+- Nullable reference types enabled
+- File-scoped namespaces
+- PascalCase for types/methods/properties
+- camelCase for locals/parameters
+- `_camelCase` for private fields
+- XML documentation for public APIs
+
+### Testing
+- Frameworks: xUnit, FluentAssertions, NSubstitute
+- Given-When-Then structure preferred
+- Naming: `{Target}_{Condition}_{ExpectedResult}`
+- DisplayName in Korean (per project convention)
+
+## E2E Test Principles
+
+### No Test Code in Production
+- Never add test-specific handlers, mocks, or stubs to production code (`src/`)
+- E2E tests must validate the complete system flow
+- Bad example: `if (msgId.Contains("Echo"))` in PlayServer
+
+### E2E vs Integration Tests
+- **E2E Tests**: Validate via client public API
+  - Connector → PlayServer → Stage → Actor → Response
+  - Response content, callbacks, state changes
+- **Integration Tests**: Validate internal server state
+  - SessionManager.SessionCount
+  - Internal timer behavior
+  - AsyncBlock internals
+
+### Server Callback E2E Verification
+| Callback | E2E Verification Method |
+|----------|------------------------|
+| IActor.OnAuthenticate | IsAuthenticated() state + response packet |
+| IStage.OnDispatch | Response packet content |
+| IStage.OnJoinStage | Response + subsequent message handling |
+| IStageSender.SendToClient | OnReceive callback (Push) |
+| IActorSender.Reply | RequestAsync response |
+
+### Response + Callback Verification
+```csharp
+// 1. Response verification (client API)
+var response = await _connector.RequestAsync(packet);
+response.MsgId.Should().Be("EchoReply");
+
+// 2. Callback verification (test implementation)
+testStage.ReceivedMsgIds.Should().Contain("EchoRequest");
+testActor.OnAuthenticateCalled.Should().BeTrue();
+```
+
+## Connector Callback Rules
+
+### ImmediateSynchronizationContext (Benchmarks)
+```csharp
+// Use ImmediateSynchronizationContext for benchmarks
+SynchronizationContext.SetSynchronizationContext(
+    new ImmediateSynchronizationContext());
+
+var connector = new ClientConnector();
+connector.Init(new ConnectorConfig());
+// MainThreadAction() not needed - callbacks execute immediately
+```
+
+### MainThreadAction() (Normal Tests)
+```csharp
+// Without SynchronizationContext
+connector.Request(packet, response => { /* callback */ });
+
+// Must call MainThreadAction() periodically
+connector.MainThreadAction();
+```
+
+### Message Patterns
+| Pattern | Response | Description |
+|---------|----------|-------------|
+| Send | None | Fire-and-forget |
+| Request | Reply | Request-response |
+| Push | - | Server→Client notification (SendToClient) |
+
+## Message Definition Rules
+
+### Use Proto Messages
+```csharp
+// Bad
+using var packet = Packet.Empty("EchoRequest");
+
+// Good
+var echoRequest = new EchoRequest { Content = "Hello", Sequence = 1 };
+using var packet = new Packet(echoRequest);
+```
+
+## Commit Guidelines
+
+- Follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
+- Include concise summary and test results
+- For performance changes, include benchmark results
+
+## License
+
+Apache 2.0 with Commons Clause - Free to use, SaaS requires separate license.
