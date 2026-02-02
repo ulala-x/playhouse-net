@@ -19,8 +19,7 @@ connectors/javascript/
 │   ├── config.ts               # Configuration
 │   ├── internal/
 │   │   ├── client-network.ts   # Networking core
-│   │   ├── tcp-connection.ts   # Node.js TCP (net module)
-│   │   ├── ws-connection.ts    # Browser WebSocket
+│   │   ├── ws-connection.ts    # WebSocket connection
 │   │   └── packet-codec.ts     # Encode/decode
 │   └── types.ts
 ├── tests/
@@ -66,7 +65,7 @@ export interface ConnectorConfig {
 export class Connector {
     // Lifecycle
     init(config?: ConnectorConfig): void;
-    connect(host: string, port: number): Promise<void>;
+    connect(url: string): Promise<void>;  // WebSocket URL (ws:// or wss://)
     disconnect(): void;
     get isConnected(): boolean;
 
@@ -134,44 +133,34 @@ export class Packet {
 - **MsgSeq**: 0 = Push, >0 = Request-Response
 - **OriginalSize**: >0 indicates LZ4 compressed
 
-## Platform-Specific Transport
+## Transport
+
+PlayHouse 서버는 WebSocket을 직접 지원합니다.
 
 | Platform | Transport | Notes |
 |----------|-----------|-------|
-| Node.js | net.Socket (TCP) | Full binary protocol support |
-| Browser | WebSocket | Requires server-side WebSocket gateway |
+| Browser | WebSocket (ws/wss) | 서버 직접 연결 |
+| Node.js | WebSocket (ws/wss) | 서버 직접 연결 |
 
-### Browser Limitations
+### Connection
 
-- TCP sockets not available in browsers
-- WebSocket requires server-side gateway that:
-  - Accepts WebSocket connections
-  - Bridges to PlayHouse TCP protocol
-  - Handles binary frame encoding
-
-### WebSocket Gateway Protocol
-
-The gateway converts between WebSocket frames and PlayHouse TCP protocol:
-
-```
-Browser (WebSocket)          Gateway             PlayHouse Server (TCP)
-       |                        |                        |
-       |---[WS Binary Frame]--->|                        |
-       |                        |---[TCP Packet]-------->|
-       |                        |<--[TCP Packet]---------|
-       |<--[WS Binary Frame]----|                        |
+```typescript
+// Browser & Node.js - 동일한 방식
+await connector.connect('ws://localhost:8080/ws');   // WS
+await connector.connect('wss://game.example.com/ws'); // WSS (TLS)
 ```
 
-**Frame Conversion Rules**:
-- Each WebSocket binary message = One complete PlayHouse packet
-- Gateway handles TCP stream reassembly (ContentSize framing)
-- Gateway preserves binary payload without modification
-- WebSocket close = TCP disconnect
+### Server Configuration
 
-**Gateway Implementation Notes**:
-- Use `ws` (Node.js) or native WebSocket API
-- Handle binary message type (`opcode: 0x02`)
-- Implement connection pooling for multiple clients
+서버에서 WebSocket 활성화:
+
+```csharp
+// PlayHouse Server (.NET)
+new TransportServerBuilder(onMessage, onDisconnect, logger)
+    .AddWebSocket("/ws")           // ws://
+    .AddWebSocketWithTls("/ws", cert)  // wss://
+    .Build();
+```
 
 ## Installation
 
@@ -209,8 +198,8 @@ connector.onReceive = (packet) => console.log('Received:', packet.msgId);
 connector.onError = (code, msg) => console.error(`Error ${code}: ${msg}`);
 connector.onDisconnect = () => console.log('Disconnected');
 
-// Connect
-await connector.connect('localhost', 34001);
+// Connect via WebSocket
+await connector.connect('ws://localhost:8080/ws');
 
 // Authenticate
 await connector.authenticate('game', 'user123');
@@ -232,7 +221,7 @@ const { Connector, Packet } = require('@playhouse/connector');
 const connector = new Connector();
 connector.init();
 
-connector.connect('localhost', 34001)
+connector.connect('ws://localhost:8080/ws')
     .then(() => connector.authenticate('game', 'user123'))
     .then(() => {
         const request = Packet.empty('Ping');
@@ -262,8 +251,8 @@ connector.connect('localhost', 34001)
         connector.onConnect = () => console.log('Connected!');
         connector.onReceive = (packet) => console.log('Push:', packet.msgId);
 
-        // Connect via WebSocket gateway
-        connector.connect('ws://localhost:8080', 0)
+        // Connect via WebSocket
+        connector.connect('ws://localhost:8080/ws')
             .then(() => connector.authenticate('game', 'user123'))
             .then(() => {
                 console.log('Authenticated!');
@@ -334,6 +323,7 @@ npm run dev
     "@playwright/test": "^1.40.0"
   },
   "dependencies": {
+    "ws": "^8.16.0",
     "protobufjs": "^7.2.5",
     "lz4js": "^0.2.0"
   }
@@ -345,7 +335,7 @@ npm run dev
 | Phase | Tasks |
 |-------|-------|
 | Core | Project setup, TypeScript structure, packet codec |
-| Transport | Node.js TCP, browser WebSocket transport |
+| Transport | WebSocket connection (ws library for Node.js, native for browser) |
 | Reliability | Request-response, heartbeat, error handling |
 | Testing | Unit tests, E2E tests |
 | Release | npm publish, CDN setup, documentation |
@@ -443,21 +433,16 @@ function decompressPayload(packet: Packet): Uint8Array {
 
 **Dependency**: `lz4js@0.2.0`
 
-## TLS/SSL Support
+## TLS/SSL (WSS)
 
-### Node.js (TLS)
-
-TLS support is planned. Current workaround:
-- Use stunnel or nginx as TLS termination proxy
-
-### Browser (WSS)
-
-WebSocket Secure is natively supported:
+WebSocket Secure는 `wss://` URL로 사용:
 
 ```typescript
-// Use wss:// for secure connection
-await connector.connect('wss://game.example.com', 443);
+// WSS 연결 (TLS 암호화)
+await connector.connect('wss://game.example.com/ws');
 ```
+
+서버에서 WSS 활성화 필요 (`AddWebSocketWithTls`).
 
 ## Troubleshooting
 
@@ -470,10 +455,10 @@ connector.onError = (code, message) => {
 };
 ```
 
-Check network configuration:
-- Verify host and port are correct
-- Ensure CORS is configured for browser connections
-- Check WebSocket gateway is running (browser)
+Check:
+- WebSocket URL 형식 확인 (`ws://host:port/path` 또는 `wss://...`)
+- 서버에서 WebSocket 활성화 여부
+- CORS 설정 (브라우저)
 
 ### Request Timeout
 
@@ -496,20 +481,13 @@ function gameLoop() {
 requestAnimationFrame(gameLoop);
 ```
 
-### WebSocket Connection Issues
+### Reconnection
 
 ```typescript
-// Check WebSocket state
-if (connector.isConnected) {
-    console.log('Connected via WebSocket');
-} else {
-    console.log('Not connected');
-}
-
 // Handle reconnection
 connector.onDisconnect = () => {
     setTimeout(() => {
-        connector.connect(host, port).catch(console.error);
+        connector.connect('ws://localhost:8080/ws').catch(console.error);
     }, 5000);
 };
 ```
