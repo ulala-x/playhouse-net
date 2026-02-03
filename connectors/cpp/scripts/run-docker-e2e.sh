@@ -23,7 +23,13 @@ docker run --rm \
   -v "$ROOT_DIR":/repo \
   -w /repo/connectors/cpp \
   "$CPP_TEST_IMAGE" \
-  /bin/bash -lc "mkdir -p build && cd build && cmake .. -DBUILD_TESTING=ON && cmake --build . --parallel && ctest --output-on-failure"
+  /bin/bash -lc "command -v git >/dev/null || { echo 'git is required in CPP_TEST_IMAGE to init submodules' >&2; exit 1; } \
+  && git -C /repo submodule update --init --recursive \
+  && mkdir -p build \
+  && cd build \
+  && cmake .. -DBUILD_TESTING=ON \
+  && cmake --build . --parallel \
+  && ctest --output-on-failure"
 
 pushd "$CPP_DIR" >/dev/null
   docker compose -f docker-compose.test.yml down -v

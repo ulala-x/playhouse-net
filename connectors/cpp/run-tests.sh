@@ -17,6 +17,18 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}[C++ Connector Test]${NC} Starting..."
 
+if [ -d "$PROJECT_ROOT/.git" ]; then
+    if [ ! -e "$SCRIPT_DIR/third_party/boost/README.md" ]; then
+        if command -v git >/dev/null 2>&1; then
+            git -C "$PROJECT_ROOT" submodule update --init --recursive
+        else
+            echo -e "${RED}[C++ Connector Test]${NC} Boost submodule not initialized and git not found."
+            echo -e "${RED}[C++ Connector Test]${NC} Run: git submodule update --init --recursive"
+            exit 1
+        fi
+    fi
+fi
+
 cleanup() {
     echo -e "${YELLOW}[C++ Connector Test]${NC} Cleaning up..."
     curl -sf -X POST "http://localhost:$HTTP_PORT/api/shutdown" > /dev/null 2>&1 || true
