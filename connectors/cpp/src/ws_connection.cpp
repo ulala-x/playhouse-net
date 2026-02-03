@@ -6,6 +6,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
 
 namespace playhouse {

@@ -8,38 +8,19 @@ using namespace playhouse::test;
 
 /// A-07: TLS/WSS Connection Tests
 /// Verifies TCP+TLS and WSS transport functionality
-class A07_TlsConnectionTest : public ::testing::Test {
+class A07_TlsConnectionTest : public BaseIntegrationTest {
 protected:
     void SetUp() override {
+        stage_info_ = GetTestServer().GetOrCreateTestStage();
         connector_ = std::make_unique<Connector>();
-        stage_info_ = BaseIntegrationTest::GetTestServer().GetOrCreateTestStage();
     }
 
     void TearDown() override {
-        if (connector_) {
-            if (connector_->IsConnected()) {
-                connector_->Disconnect();
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-            connector_.reset();
-        }
+        BaseIntegrationTest::TearDown();
     }
 
-    std::unique_ptr<Connector> connector_;
-    CreateStageResponse stage_info_;
-
     bool WaitForCondition(std::function<bool()> condition, int timeout_ms = 5000) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-        while (!condition()) {
-            if (std::chrono::steady_clock::now() >= deadline) {
-                return false;
-            }
-            if (connector_) {
-                connector_->MainThreadAction();
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        return true;
+        return WaitForConditionWithMainThreadAction(std::move(condition), timeout_ms);
     }
 };
 
@@ -52,8 +33,8 @@ TEST_F(A07_TlsConnectionTest, TcpTls_Connect_Authenticate_Echo_Succeeds) {
     connector_->Init(config);
 
     auto future = connector_->ConnectAsync(
-        BaseIntegrationTest::GetTestServer().GetHost(),
-        BaseIntegrationTest::GetTestServer().GetTcpTlsPort()
+        GetTestServer().GetHost(),
+        GetTestServer().GetTcpTlsPort()
     );
     (void)future;
 
@@ -84,7 +65,7 @@ TEST_F(A07_TlsConnectionTest, TcpTls_Connect_Authenticate_Echo_Succeeds) {
 
     Bytes echo_payload = proto::EncodeEchoRequest("Hello TLS", 1);
     Packet echo_packet = Packet::FromBytes("EchoRequest", std::move(echo_payload));
-    Packet echo_response;
+    Packet echo_response = Packet::Empty("EchoReply");
 
     bool echo_done = false;
     connector_->Request(std::move(echo_packet), [&](Packet response) {
@@ -114,8 +95,8 @@ TEST_F(A07_TlsConnectionTest, Wss_Connect_Authenticate_Echo_Succeeds) {
     connector_->Init(config);
 
     auto future = connector_->ConnectAsync(
-        BaseIntegrationTest::GetTestServer().GetHost(),
-        BaseIntegrationTest::GetTestServer().GetHttpsPort()
+        GetTestServer().GetHost(),
+        GetTestServer().GetHttpsPort()
     );
     (void)future;
 
@@ -146,7 +127,7 @@ TEST_F(A07_TlsConnectionTest, Wss_Connect_Authenticate_Echo_Succeeds) {
 
     Bytes echo_payload = proto::EncodeEchoRequest("Hello WSS", 2);
     Packet echo_packet = Packet::FromBytes("EchoRequest", std::move(echo_payload));
-    Packet echo_response;
+    Packet echo_response = Packet::Empty("EchoReply");
 
     bool echo_done = false;
     connector_->Request(std::move(echo_packet), [&](Packet response) {

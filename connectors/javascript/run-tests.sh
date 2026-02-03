@@ -41,9 +41,12 @@ trap cleanup EXIT
 # Ensure we run from the connector directory
 cd "$SCRIPT_DIR"
 
+# Clean up existing container
+cleanup
+
 # Start test server
 echo -e "${YELLOW}Starting test server...${NC}"
-docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" up -d
+docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" up -d --build
 
 # Wait for test server to be healthy
 echo -e "${YELLOW}Waiting for test server to be healthy...${NC}"
