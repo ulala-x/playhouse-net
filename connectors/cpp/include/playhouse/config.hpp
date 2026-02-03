@@ -32,6 +32,12 @@ struct ConnectorConfig {
     /// Use WebSocket transport instead of TCP (default: false)
     bool use_websocket = false;
 
+    /// Use SSL/TLS encryption (TCP uses TLS, WebSocket uses WSS)
+    bool use_ssl = false;
+
+    /// Skip server certificate validation (self-signed test certs)
+    bool skip_server_certificate_validation = false;
+
     /// WebSocket path for handshake (default: "/ws")
     std::string websocket_path = "/ws";
 };

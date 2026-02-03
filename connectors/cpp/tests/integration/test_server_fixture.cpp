@@ -185,8 +185,11 @@ TestServerFixture::TestServerFixture()
     : impl_(std::make_unique<Impl>())
     , host_(GetEnvOrDefault("TEST_SERVER_HOST", "127.0.0.1"))
     , tcp_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_TCP_PORT", "34001"))))
+    , tcp_tls_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_TCP_TLS_PORT", "34002"))))
     , http_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_HTTP_PORT", "8080"))))
+    , https_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_HTTPS_PORT", "8443"))))
     , ws_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_WS_PORT", "8080"))))
+    , wss_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_WSS_PORT", "8443"))))
 {
 }
 

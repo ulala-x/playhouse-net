@@ -33,14 +33,19 @@ COPY --from=build /app .
 
 # Expose ports
 # 8080: HTTP + WebSocket
+# 8443: HTTPS + WSS
 # 34001: TCP Play Server
-EXPOSE 8080 34001
+# 34002: TCP+TLS Play Server
+EXPOSE 8080 8443 34001 34002
 
 # Set default environment variables
 ENV ASPNETCORE_URLS=http://+:8080 \
     ENABLE_WEBSOCKET=true \
+    ENABLE_TLS=false \
     TCP_PORT=34001 \
+    TCP_TLS_PORT=34002 \
     HTTP_PORT=8080 \
+    HTTPS_PORT=8443 \
     ZMQ_PLAY_PORT=15000 \
     ZMQ_API_PORT=15300
 

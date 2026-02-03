@@ -6,7 +6,9 @@ services:
     container_name: playhouse-test-server
     ports:
       - "8080:8080"    # HTTP + WebSocket
+      - "8443:8443"    # HTTPS + WSS
       - "34001:34001"  # TCP Play Server
+      - "34002:34002"  # TCP TLS Play Server
       - "15000:15000"  # ZMQ Play Port (optional)
       - "15300:15300"  # ZMQ API Port (optional)
     environment:
@@ -16,8 +18,11 @@ services:
 
       # Transport Configuration
       - ENABLE_WEBSOCKET=true
+      - ENABLE_TLS=false
       - TCP_PORT=34001
+      - TCP_TLS_PORT=34002
       - HTTP_PORT=8080
+      - HTTPS_PORT=8443
 
       # ZMQ Configuration
       - ZMQ_PLAY_PORT=15000

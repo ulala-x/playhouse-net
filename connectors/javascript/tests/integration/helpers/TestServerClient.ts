@@ -21,13 +21,17 @@ export interface CreateStageResponse {
  * Environment variables:
  * - TEST_SERVER_HOST: Server hostname (default: localhost)
  * - TEST_SERVER_HTTP_PORT: HTTP port (default: 8080)
+ * - TEST_SERVER_HTTPS_PORT: HTTPS port (default: 8443)
  * - TEST_SERVER_WS_PORT: WebSocket port (default: 8080, same as HTTP)
+ * - TEST_SERVER_WSS_PORT: WebSocket TLS port (default: 8443)
  * - TEST_SERVER_WS_PATH: WebSocket path (default: /ws)
  */
 export class TestServerClient {
     public readonly host: string;
     public readonly httpPort: number;
+    public readonly httpsPort: number;
     public readonly wsPort: number;
+    public readonly wssPort: number;
     public readonly wsPath: string;
     // stageId must fit in UInt16 (1-65535)
     private static _stageIdCounter: number = 0;
@@ -35,7 +39,9 @@ export class TestServerClient {
     constructor() {
         this.host = process.env.TEST_SERVER_HOST || 'localhost';
         this.httpPort = parseInt(process.env.TEST_SERVER_HTTP_PORT || '8080', 10);
+        this.httpsPort = parseInt(process.env.TEST_SERVER_HTTPS_PORT || '8443', 10);
         this.wsPort = parseInt(process.env.TEST_SERVER_WS_PORT || '8080', 10);
+        this.wssPort = parseInt(process.env.TEST_SERVER_WSS_PORT || '8443', 10);
         this.wsPath = process.env.TEST_SERVER_WS_PATH || '/ws';
         if (TestServerClient._stageIdCounter == 0) {
             // Start with random offset within valid UInt16 range (1000-60000) to avoid conflicts
@@ -55,6 +61,13 @@ export class TestServerClient {
      */
     get wsUrl(): string {
         return `ws://${this.host}:${this.wsPort}${this.wsPath}`;
+    }
+
+    /**
+     * Get the WebSocket TLS URL
+     */
+    get wssUrl(): string {
+        return `wss://${this.host}:${this.wssPort}${this.wsPath}`;
     }
 
     /**

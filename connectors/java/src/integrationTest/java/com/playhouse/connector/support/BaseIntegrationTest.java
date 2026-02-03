@@ -29,7 +29,9 @@ public abstract class BaseIntegrationTest {
     // 테스트 서버 설정
     protected String host;
     protected int tcpPort;
+    protected int tcpTlsPort;
     protected int httpPort;
+    protected int httpsPort;
 
     /**
      * 각 테스트 실행 전 초기화
@@ -39,7 +41,9 @@ public abstract class BaseIntegrationTest {
         // 환경 변수에서 테스트 서버 설정 읽기
         host = System.getenv().getOrDefault("TEST_SERVER_HOST", "127.0.0.1");
         httpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_HTTP_PORT", "28080"));
+        httpsPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_HTTPS_PORT", "28443"));
         tcpPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_TCP_PORT", "28001"));
+        tcpTlsPort = Integer.parseInt(System.getenv().getOrDefault("TEST_SERVER_TCP_TLS_PORT", "28002"));
 
         // 테스트 서버 클라이언트 초기화
         testServer = new TestServerClient(host, httpPort);

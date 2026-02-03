@@ -84,6 +84,11 @@ public sealed class PlayServerOption
     public string? TcpBindAddress { get; set; }
 
     /// <summary>
+    /// TCP TLS 포트. null이면 TCP TLS 비활성화.
+    /// </summary>
+    public int? TcpTlsPort { get; set; }
+
+    /// <summary>
     /// TCP TLS 인증서 (null이면 TLS 비활성화).
     /// </summary>
     public X509Certificate2? TcpTlsCertificate { get; set; }
@@ -116,7 +121,9 @@ public sealed class PlayServerOption
     /// <summary>
     /// TCP TLS가 활성화되었는지 여부.
     /// </summary>
-    public bool IsTcpTlsEnabled => TcpTlsCertificate != null;
+    public bool IsTcpTlsEnabled => TcpTlsPort.HasValue && TcpTlsCertificate != null;
+
+    internal bool TcpPortExplicitlySet { get; set; }
 
     #endregion
 
@@ -127,7 +134,7 @@ public sealed class PlayServerOption
     {
         ServerOptionValidator.ValidateIdentity(ServerType, ServerId, BindEndpoint);
 
-        if (!IsTcpEnabled && !IsWebSocketEnabled)
+        if (!IsTcpEnabled && !IsTcpTlsEnabled && !IsWebSocketEnabled)
             throw new InvalidOperationException("At least one transport (TCP or WebSocket) must be enabled");
 
         if (string.IsNullOrEmpty(AuthenticateMessageId))

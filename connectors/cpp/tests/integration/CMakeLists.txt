@@ -187,3 +187,12 @@ target_link_libraries(a06_edge_case_test PRIVATE
     ${_gtest_main_lib}
 )
 add_test(NAME A06_EdgeCase COMMAND a06_edge_case_test)
+
+add_executable(a07_tls_connection_test
+    advanced/a07_tls_connection_test.cpp
+)
+target_link_libraries(a07_tls_connection_test PRIVATE
+    playhouse-test-base
+    ${_gtest_main_lib}
+)
+add_test(NAME A07_TlsConnection COMMAND a07_tls_connection_test)

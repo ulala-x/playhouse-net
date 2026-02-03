@@ -42,7 +42,7 @@ The test server exposes:
 - WS: 8080/ws
 - WSS: 8443/ws
 
-The C++ connector supports TCP and WS. WSS/TLS tests should be enabled when those transports are implemented.
+The C++ connector supports TCP, TCP+TLS, WS, and WSS.
 
 ## CI Integration (Example)
 
@@ -68,7 +68,8 @@ docker compose -f docker-compose.test.yml down -v
 The tests read these environment variables:
 - `TEST_SERVER_HOST` (default: localhost)
 - `TEST_SERVER_HTTP_PORT` (default: 8080)
+- `TEST_SERVER_HTTPS_PORT` (default: 8443)
 - `TEST_SERVER_TCP_PORT` (default: 34001)
+- `TEST_SERVER_TCP_TLS_PORT` (default: 34002)
 - `TEST_SERVER_WS_PORT` (default: 8080)
-
-TLS/WSS ports are currently not used by the C++ connector.
+- `TEST_SERVER_WSS_PORT` (default: 8443)

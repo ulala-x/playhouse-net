@@ -116,7 +116,9 @@
 ### Environment Variables
 - `TEST_SERVER_HOST`: 테스트 서버 호스트 (default: localhost)
 - `TEST_SERVER_HTTP_PORT`: HTTP 포트 (default: 28080)
+- `TEST_SERVER_HTTPS_PORT`: HTTPS/WSS 포트 (default: 28443)
 - `TEST_SERVER_TCP_PORT`: TCP 포트 (default: 28001)
+- `TEST_SERVER_TCP_TLS_PORT`: TCP+TLS 포트 (default: 28002)
 
 ### build.gradle.kts
 - `integrationTest` source set 정의
@@ -144,7 +146,9 @@
 ```bash
 TEST_SERVER_HOST=192.168.1.100 \
 TEST_SERVER_HTTP_PORT=28080 \
+TEST_SERVER_HTTPS_PORT=28443 \
 TEST_SERVER_TCP_PORT=28001 \
+TEST_SERVER_TCP_TLS_PORT=28002 \
 ./gradlew integrationTest
 ```
 

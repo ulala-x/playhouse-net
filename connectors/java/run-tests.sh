@@ -6,7 +6,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Java connector ports
 HTTP_PORT=28080
+HTTPS_PORT=28443
 TCP_PORT=28001
+TCP_TLS_PORT=28002
 CONTAINER_NAME="playhouse-test-java"
 
 # Colors for output
@@ -28,7 +30,7 @@ trap cleanup EXIT
 cleanup
 
 # Start test server
-echo -e "${YELLOW}[Java Connector Test]${NC} Starting test server on HTTP:$HTTP_PORT, TCP:$TCP_PORT..."
+echo -e "${YELLOW}[Java Connector Test]${NC} Starting test server on HTTP:$HTTP_PORT, HTTPS:$HTTPS_PORT, TCP:$TCP_PORT, TCP+TLS:$TCP_TLS_PORT..."
 docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" up -d --build
 
 # Wait for health check
@@ -61,10 +63,12 @@ fi
 
 # Run integration tests
 echo -e "${YELLOW}[Java Connector Test]${NC} Running integration tests..."
+set +e
 TEST_SERVER_HOST=127.0.0.1 \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
+TEST_SERVER_HTTPS_PORT=$HTTPS_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
-set +e
+TEST_SERVER_TCP_TLS_PORT=$TCP_TLS_PORT \
 "$SCRIPT_DIR/gradlew" -p "$SCRIPT_DIR" integrationTest --info
 INTEGRATION_STATUS=$?
 set -e

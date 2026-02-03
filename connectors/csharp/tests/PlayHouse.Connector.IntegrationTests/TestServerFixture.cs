@@ -22,7 +22,9 @@ public record CreateStageResponse(
 /// 환경 변수로 서버 주소 설정 가능:
     /// - TEST_SERVER_HOST (기본: 127.0.0.1)
 /// - TEST_SERVER_HTTP_PORT (기본: 8080)
+/// - TEST_SERVER_HTTPS_PORT (기본: 8443)
 /// - TEST_SERVER_TCP_PORT (기본: 34001)
+/// - TEST_SERVER_TCP_TLS_PORT (기본: 34002)
 /// </remarks>
 public class TestServerFixture : IDisposable
 {
@@ -40,15 +42,27 @@ public class TestServerFixture : IDisposable
     public int TcpPort { get; }
 
     /// <summary>
+    /// 테스트 서버 TCP TLS 포트
+    /// </summary>
+    public int TcpTlsPort { get; }
+
+    /// <summary>
     /// 테스트 서버 HTTP 포트
     /// </summary>
     public int HttpPort { get; }
+
+    /// <summary>
+    /// 테스트 서버 HTTPS 포트
+    /// </summary>
+    public int HttpsPort { get; }
 
     public TestServerFixture()
     {
         Host = Environment.GetEnvironmentVariable("TEST_SERVER_HOST") ?? "127.0.0.1";
         HttpPort = int.Parse(Environment.GetEnvironmentVariable("TEST_SERVER_HTTP_PORT") ?? "8080");
+        HttpsPort = int.Parse(Environment.GetEnvironmentVariable("TEST_SERVER_HTTPS_PORT") ?? "8443");
         TcpPort = int.Parse(Environment.GetEnvironmentVariable("TEST_SERVER_TCP_PORT") ?? "34001");
+        TcpTlsPort = int.Parse(Environment.GetEnvironmentVariable("TEST_SERVER_TCP_TLS_PORT") ?? "34002");
 
         _httpClient = new HttpClient
         {

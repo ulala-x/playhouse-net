@@ -7,11 +7,14 @@ services:
       dockerfile: connectors/test-server/Dockerfile
     ports:
       - "38080:8080"    # HTTP API + WebSocket (/ws)
+      - "38443:8443"    # HTTPS + WSS
       - "38001:34001"   # TCP
+      - "38002:34002"   # TCP TLS
     environment:
       - LOG_LEVEL=INFO
       - ENABLE_WEBSOCKET=true
       - WEBSOCKET_PATH=/ws
+      - ENABLE_TLS=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 5s

@@ -237,10 +237,10 @@ private void OnMessageReceived(IPacket packet)
 
 | Platform | Transport | Notes |
 |----------|-----------|-------|
-| Windows/Mac/Linux | TCP | Full support |
-| Android | TCP | Full support |
-| iOS | TCP | Full support |
-| WebGL | WebSocket | Requires WebSocket gateway |
+| Windows/Mac/Linux | TCP / TLS / WS / WSS | Full support |
+| Android | TCP / TLS / WS / WSS | Full support |
+| iOS | TCP / TLS / WS / WSS | Full support |
+| WebGL | WS / WSS | Requires WebSocket gateway |
 
 ### WebGL Considerations
 

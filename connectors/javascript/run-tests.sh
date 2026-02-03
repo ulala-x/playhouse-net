@@ -75,6 +75,9 @@ echo ""
 export TEST_SERVER_HOST=127.0.0.1
 export TEST_SERVER_HTTP_PORT=38080
 export TEST_SERVER_WS_PORT=38080
+export TEST_SERVER_HTTPS_PORT=38443
+export TEST_SERVER_WSS_PORT=38443
+export NODE_TLS_REJECT_UNAUTHORIZED=0
 
 # Run tests
 if npm run test:integration; then

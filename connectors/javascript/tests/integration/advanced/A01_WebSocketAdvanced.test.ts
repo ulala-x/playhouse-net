@@ -39,6 +39,23 @@ describe('A-01: WebSocket Advanced', () => {
         expect(testContext['connector']!.isConnected).toBe(true);
     });
 
+    test('A-01-01-01: WSS connection succeeds', async () => {
+        // Given: Stage is created
+        const stageInfo = await testContext['testServer'].createStage();
+
+        // When: Attempt WSS connection
+        const wssUrl = testContext['testServer'].wssUrl;
+        const connected = await testContext['connector']!.connect(
+            wssUrl,
+            stageInfo.stageId,
+            stageInfo.stageType
+        );
+
+        // Then: Connection should succeed
+        expect(connected).toBe(true);
+        expect(testContext['connector']!.isConnected).toBe(true);
+    });
+
     test('A-01-02: Authentication succeeds over WebSocket', async () => {
         // Given: Connected via WebSocket
         await testContext['createStageAndConnect']();

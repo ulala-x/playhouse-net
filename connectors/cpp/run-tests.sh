@@ -6,7 +6,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # C++ connector ports
 HTTP_PORT=48080
+HTTPS_PORT=48443
 TCP_PORT=48001
+TCP_TLS_PORT=48002
 CONTAINER_NAME="playhouse-test-cpp"
 
 # Colors for output
@@ -40,7 +42,7 @@ trap cleanup EXIT
 cleanup
 
 # Start test server
-echo -e "${YELLOW}[C++ Connector Test]${NC} Starting test server on HTTP:$HTTP_PORT, TCP:$TCP_PORT..."
+echo -e "${YELLOW}[C++ Connector Test]${NC} Starting test server on HTTP:$HTTP_PORT, HTTPS:$HTTPS_PORT, TCP:$TCP_PORT, TCP+TLS:$TCP_TLS_PORT..."
 docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" up -d --build
 
 # Wait for health check
@@ -70,8 +72,11 @@ echo -e "${YELLOW}[C++ Connector Test]${NC} Running tests..."
 set +e
 TEST_SERVER_HOST=127.0.0.1 \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
+TEST_SERVER_HTTPS_PORT=$HTTPS_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
+TEST_SERVER_TCP_TLS_PORT=$TCP_TLS_PORT \
 TEST_SERVER_WS_PORT=$HTTP_PORT \
+TEST_SERVER_WSS_PORT=$HTTPS_PORT \
 GTEST_COLOR=1 \
 ctest --test-dir "$BUILD_DIR" --output-on-failure -V
 TEST_STATUS=$?

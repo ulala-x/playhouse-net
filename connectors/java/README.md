@@ -614,10 +614,11 @@ public byte[] decompressPayload(Packet packet) {
 
 ## TLS/SSL Support
 
-TLS support is planned. Current workaround:
+The Java connector supports TLS for both TCP and WebSocket transports.
 
-- Use stunnel or nginx as TLS termination proxy
-- Configure proxy to forward decrypted traffic to PlayHouse server
+- TCP+TLS: set `useSsl(true)` and connect to the TCP TLS port.
+- WSS: set `useWebsocket(true)`, `useSsl(true)`, and connect to the HTTPS port.
+- Self-signed certs (tests): set `skipServerCertificateValidation(true)`.
 
 ## JUnit 5 Test Fixtures
 

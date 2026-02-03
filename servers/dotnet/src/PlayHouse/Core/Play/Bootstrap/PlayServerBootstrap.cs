@@ -74,6 +74,7 @@ public sealed class PlayServerBootstrap
     {
         _options.TcpPort = port;
         _options.TcpBindAddress = bindAddress;
+        _options.TcpPortExplicitlySet = true;
         return this;
     }
 
@@ -86,9 +87,13 @@ public sealed class PlayServerBootstrap
     /// <returns>빌더 인스턴스.</returns>
     public PlayServerBootstrap ConfigureTcpWithTls(int port, X509Certificate2 certificate, string? bindAddress = null)
     {
-        _options.TcpPort = port;
+        _options.TcpTlsPort = port;
         _options.TcpBindAddress = bindAddress;
         _options.TcpTlsCertificate = certificate;
+        if (!_options.TcpPortExplicitlySet)
+        {
+            _options.TcpPort = null;
+        }
         return this;
     }
 

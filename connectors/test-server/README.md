@@ -53,10 +53,8 @@ PlayHouse Test Server는 다음을 제공합니다.
 # 테스트 서버 디렉토리로 이동
 cd connectors/test-server
 
-# TLS 인증서 생성 (최초 1회)
-cd certs
-./generate-certs.sh
-cd ..
+# TLS 인증서
+# ENABLE_TLS=true일 때 런타임에 자체 서명 인증서를 자동 생성합니다.
 
 # Docker Compose로 빌드 및 실행
 docker-compose up --build
@@ -121,7 +119,7 @@ curl -k https://localhost:8443/health
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `ASPNETCORE_URLS` | `http://+:8080;https://+:8443` | 수신 대기 URL |
+| `ASPNETCORE_URLS` | `http://+:8080` | 수신 대기 URL (옵션) |
 | `ASPNETCORE_ENVIRONMENT` | `Development` | 환경 설정 (Development/Production) |
 | `Logging__LogLevel__Default` | `Information` | 기본 로그 레벨 |
 
@@ -129,35 +127,24 @@ curl -k https://localhost:8443/health
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `ENABLE_TLS` | `true` | TLS 활성화 여부 |
+| `ENABLE_TLS` | `false` | TLS 활성화 여부 |
 | `ENABLE_WEBSOCKET` | `true` | WebSocket 활성화 여부 |
 | `TCP_PORT` | `34001` | TCP Play Server 포트 |
 | `TCP_TLS_PORT` | `34002` | TCP+TLS Play Server 포트 |
+| `HTTP_PORT` | `8080` | HTTP API 포트 |
+| `HTTPS_PORT` | `8443` | HTTPS/WSS 포트 |
 | `ZMQ_PLAY_PORT` | `15000` | ZMQ Play 내부 포트 |
 | `ZMQ_API_PORT` | `15300` | ZMQ API 내부 포트 |
 
 ### TLS 인증서 설정
 
+테스트 서버는 `ENABLE_TLS=true`일 때 **런타임에 자체 서명 인증서를 자동 생성**합니다.
+커스텀 인증서를 사용하려면 Kestrel 기본 인증서 환경 변수를 지정하세요.
+
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `ASPNETCORE_Kestrel__Certificates__Default__Path` | `/app/certs/server.pfx` | PFX 인증서 경로 |
-| `ASPNETCORE_Kestrel__Certificates__Default__Password` | `password` | PFX 비밀번호 |
-
-## TLS 설정
-
-### 인증서 생성
-
-테스트용 자체 서명 인증서를 생성합니다.
-
-```bash
-cd connectors/test-server/certs
-./generate-certs.sh
-```
-
-생성된 파일:
-- `server.key` - 개인 키
-- `server.crt` - 인증서
-- `server.pfx` - .NET용 PKCS#12 형식 (비밀번호: `password`)
+| `ASPNETCORE_Kestrel__Certificates__Default__Path` | (없음) | PFX 인증서 경로 |
+| `ASPNETCORE_Kestrel__Certificates__Default__Password` | (없음) | PFX 비밀번호 |
 
 ### 인증서 신뢰 설정 (개발 환경)
 

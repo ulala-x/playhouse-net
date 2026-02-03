@@ -57,6 +57,9 @@ else()
     endif()
 endif()
 
+# OpenSSL for TLS support
+find_package(OpenSSL REQUIRED)
+
 # Source files
 set(PLAYHOUSE_SOURCES
     src/connector.cpp
@@ -94,6 +97,7 @@ if(asio_FOUND)
 else()
     target_compile_definitions(playhouse-connector PUBLIC ASIO_STANDALONE)
 endif()
+target_link_libraries(playhouse-connector PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_compile_definitions(playhouse-connector PRIVATE BOOST_ERROR_CODE_HEADER_ONLY)
 
 # Platform-specific libraries

@@ -13,7 +13,7 @@ namespace internal {
 /// TCP connection using asio
 class TcpConnection : public IConnection {
 public:
-    TcpConnection();
+    explicit TcpConnection(bool use_ssl = false, bool skip_server_certificate_validation = false);
     ~TcpConnection();
 
     // Delete copy operations

@@ -19,7 +19,9 @@ This directory contains comprehensive integration tests for the PlayHouse JavaSc
 docker-compose -f docker-compose.test.yml up -d
 export TEST_SERVER_HOST=localhost
 export TEST_SERVER_HTTP_PORT=38080
+export TEST_SERVER_HTTPS_PORT=38443
 export TEST_SERVER_WS_PORT=38001
+export TEST_SERVER_WSS_PORT=38443
 npm run test:integration
 ```
 
@@ -161,7 +163,9 @@ class MyTest extends BaseIntegrationTest {
 |----------|---------|-------------|
 | `TEST_SERVER_HOST` | localhost | Test server hostname |
 | `TEST_SERVER_HTTP_PORT` | 8080 | HTTP API port |
+| `TEST_SERVER_HTTPS_PORT` | 8443 | HTTPS/WSS port |
 | `TEST_SERVER_WS_PORT` | 38001 | WebSocket port |
+| `TEST_SERVER_WSS_PORT` | 8443 | WebSocket TLS port |
 
 ## Test Server Endpoints
 

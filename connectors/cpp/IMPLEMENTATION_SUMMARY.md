@@ -208,7 +208,7 @@ cd connectors/cpp
 ⏳ **Reconnection logic** - Auto-reconnect on disconnect
 ⏳ **Request timeout handling** - Timeout callbacks
 ⏳ **LZ4 compression** - Payload decompression
-⏳ **TLS/SSL support** - Encrypted connections
+✅ **TLS/SSL support** - Encrypted connections
 ⏳ **Connection pooling** - Multiple connections
 ⏳ **Integration tests** - E2E tests with server
 
@@ -298,7 +298,7 @@ int main() {
 4. **LZ4 Compression** - Decompress compressed payloads
 5. **Reconnection Logic** - Auto-reconnect on disconnect
 6. **Performance Optimization** - Profile and optimize hot paths
-7. **TLS Support** - Secure connections
+7. **TLS Support** - Secure connections (TCP+TLS, WSS)
 8. **Logging System** - Structured logging for debugging
 
 ## Conclusion

@@ -167,20 +167,20 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
             opts.HeartbeatTimeout = _options.TransportOptions.HeartbeatTimeout;
         });
 
-        // TCP 추가
+        // TCP (plain) 추가
         if (_options.IsTcpEnabled)
         {
             var tcpPort = _options.TcpPort!.Value;
-            if (_options.IsTcpTlsEnabled)
-            {
-                builder.AddTcpWithTls(tcpPort, _options.TcpTlsCertificate!, _options.TcpBindAddress);
-                _logger.LogInformation("TCP+TLS enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
-            }
-            else
-            {
-                builder.AddTcp(tcpPort, _options.TcpBindAddress);
-                _logger.LogInformation("TCP enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
-            }
+            builder.AddTcp(tcpPort, _options.TcpBindAddress);
+            _logger.LogInformation("TCP enabled on port {Port}", tcpPort == 0 ? "auto" : tcpPort);
+        }
+
+        // TCP+TLS 추가
+        if (_options.IsTcpTlsEnabled)
+        {
+            var tcpTlsPort = _options.TcpTlsPort!.Value;
+            builder.AddTcpWithTls(tcpTlsPort, _options.TcpTlsCertificate!, _options.TcpBindAddress);
+            _logger.LogInformation("TCP+TLS enabled on port {Port}", tcpTlsPort == 0 ? "auto" : tcpTlsPort);
         }
 
         // WebSocket 추가

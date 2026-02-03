@@ -14,7 +14,7 @@ namespace internal {
 /// WebSocket connection using Boost.Beast
 class WsConnection : public IConnection {
 public:
-    explicit WsConnection(std::string websocket_path);
+    WsConnection(std::string websocket_path, bool use_ssl, bool skip_server_certificate_validation);
     ~WsConnection();
 
     // Delete copy operations

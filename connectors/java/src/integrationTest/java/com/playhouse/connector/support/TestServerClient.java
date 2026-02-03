@@ -18,6 +18,10 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class TestServerClient {
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private static final int CREATE_STAGE_MAX_RETRIES = Integer.parseInt(
+            System.getenv().getOrDefault("TEST_SERVER_CREATE_STAGE_RETRIES", "3"));
+    private static final long CREATE_STAGE_RETRY_BACKOFF_MS = Long.parseLong(
+            System.getenv().getOrDefault("TEST_SERVER_CREATE_STAGE_RETRY_BACKOFF_MS", "200"));
 
     private final OkHttpClient httpClient;
     private final Gson gson;
@@ -44,8 +48,9 @@ public class TestServerClient {
     public TestServerClient(String host, int httpPort) {
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))
-                .readTimeout(Duration.ofSeconds(30))
-                .writeTimeout(Duration.ofSeconds(30))
+                .readTimeout(Duration.ofSeconds(60))
+                .writeTimeout(Duration.ofSeconds(60))
+                .callTimeout(Duration.ofSeconds(60))
                 .build();
 
         this.gson = new GsonBuilder()
@@ -88,26 +93,49 @@ public class TestServerClient {
         RequestBody body = RequestBody.create(jsonBody, JSON);
 
         Request request = new Request.Builder()
-                .url(baseUrl + "/api/stages")
-                .post(body)
-                .build();
+            .url(baseUrl + "/api/stages")
+            .post(body)
+            .build();
 
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to create stage: " + response);
+        IOException lastException = null;
+        for (int attempt = 1; attempt <= CREATE_STAGE_MAX_RETRIES; attempt++) {
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    throw new IOException("Failed to create stage: " + response);
+                }
+
+                ResponseBody responseBody = response.body();
+                if (responseBody == null) {
+                    throw new IOException("Failed to create stage: empty response body");
+                }
+
+                String responseJson = responseBody.string();
+                ApiResponse apiResponse = gson.fromJson(responseJson, ApiResponse.class);
+
+                return new CreateStageResponse(
+                        apiResponse.success,
+                        apiResponse.isCreated,
+                        apiResponse.stageId,
+                        stageType,
+                        apiResponse.replyPayloadId
+                );
+            } catch (IOException ex) {
+                lastException = ex;
+                if (attempt >= CREATE_STAGE_MAX_RETRIES) {
+                    break;
+                }
+                try {
+                    Thread.sleep(CREATE_STAGE_RETRY_BACKOFF_MS * attempt);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("CreateStage retry interrupted", interrupted);
+                }
             }
-
-            String responseBody = response.body().string();
-            ApiResponse apiResponse = gson.fromJson(responseBody, ApiResponse.class);
-
-            return new CreateStageResponse(
-                    apiResponse.success,
-                    apiResponse.isCreated,
-                    apiResponse.stageId,
-                    stageType,
-                    apiResponse.replyPayloadId
-            );
         }
+
+        throw lastException != null
+                ? lastException
+                : new IOException("Failed to create stage after retries");
     }
 
     /**

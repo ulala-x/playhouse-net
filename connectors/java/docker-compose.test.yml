@@ -7,9 +7,12 @@ services:
     container_name: playhouse-test-java
     ports:
       - "28080:8080"    # HTTP + WebSocket
+      - "28443:8443"    # HTTPS + WSS
       - "28001:34001"   # TCP Play Server
+      - "28002:34002"   # TCP TLS Play Server
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ENABLE_TLS=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 2s

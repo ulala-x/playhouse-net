@@ -4,6 +4,8 @@ using PlayHouse.Core.Play.Bootstrap;
 using PlayHouse.Runtime.ClientTransport.WebSocket;
 using PlayHouse.TestServer.Play;
 using PlayHouse.TestServer.Shared;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 namespace PlayHouse.TestServer;
 
@@ -20,8 +22,20 @@ class Program
         Console.WriteLine($"Play Server ID: {config.PlayServerId}");
         Console.WriteLine($"API Server ID: {config.ApiServerId}");
         Console.WriteLine($"TCP Port: {config.TcpPort}");
+        if (config.EnableTls)
+        {
+            Console.WriteLine($"TCP TLS Port: {config.TcpTlsPort}");
+        }
         Console.WriteLine($"HTTP Port: {config.HttpPort}");
+        if (config.EnableTls)
+        {
+            Console.WriteLine($"HTTPS Port: {config.HttpsPort}");
+        }
         Console.WriteLine($"WebSocket: {(config.EnableWebSocket ? $"Enabled (path: {config.WebSocketPath})" : "Disabled")}");
+        if (config.EnableTls && config.EnableWebSocket)
+        {
+            Console.WriteLine("WebSocket TLS: Enabled");
+        }
         Console.WriteLine("========================================");
 
         try
@@ -62,25 +76,40 @@ class Program
         var apiServerId = Environment.GetEnvironmentVariable("API_SERVER_ID") ?? "api-1";
 
         var tcpPortStr = Environment.GetEnvironmentVariable("TCP_PORT");
+        var tcpTlsPortStr = Environment.GetEnvironmentVariable("TCP_TLS_PORT");
         var httpPortStr = Environment.GetEnvironmentVariable("HTTP_PORT");
+        var httpsPortStr = Environment.GetEnvironmentVariable("HTTPS_PORT");
 
         var tcpPort = int.TryParse(tcpPortStr, out var tp) ? tp : 34001;
+        var tcpTlsPort = int.TryParse(tcpTlsPortStr, out var ttp) ? ttp : 34002;
         var httpPort = int.TryParse(httpPortStr, out var hp) ? hp : 8080;
+        var httpsPort = int.TryParse(httpsPortStr, out var hsp) ? hsp : 8443;
 
         // WebSocket 설정
         var enableWebSocket = Environment.GetEnvironmentVariable("ENABLE_WEBSOCKET")?.ToLower() != "false";
         var webSocketPath = Environment.GetEnvironmentVariable("WEBSOCKET_PATH") ?? "/ws";
+        var enableTls = Environment.GetEnvironmentVariable("ENABLE_TLS")?.ToLower() == "true";
+
+        X509Certificate2? tlsCertificate = null;
+        if (enableTls)
+        {
+            tlsCertificate = CreateSelfSignedCertificate("CN=playhouse-test-server");
+        }
 
         return new ServerConfiguration
         {
             PlayServerId = playServerId,
             ApiServerId = apiServerId,
             TcpPort = tcpPort,
+            TcpTlsPort = tcpTlsPort,
             HttpPort = httpPort,
+            HttpsPort = httpsPort,
             ZmqPlayPort = 15000,
             ZmqApiPort = 15300,
             EnableWebSocket = enableWebSocket,
-            WebSocketPath = webSocketPath
+            WebSocketPath = webSocketPath,
+            EnableTls = enableTls,
+            TlsCertificate = tlsCertificate
         };
     }
 
@@ -105,9 +134,17 @@ class Program
             shutdownSignal);
         Console.WriteLine($"✓ ApiServer started on ZMQ:{config.ZmqApiPort}");
         Console.WriteLine($"✓ HTTP API Server started on HTTP:{actualHttpPort}");
+        if (config.EnableTls)
+        {
+            Console.WriteLine($"✓ HTTPS API Server started on HTTPS:{config.HttpsPort}");
+        }
         if (wsServer != null)
         {
             Console.WriteLine($"✓ WebSocket endpoint: ws://0.0.0.0:{actualHttpPort}{config.WebSocketPath}");
+            if (config.EnableTls)
+            {
+                Console.WriteLine($"✓ WebSocket TLS endpoint: wss://0.0.0.0:{config.HttpsPort}{config.WebSocketPath}");
+            }
         }
 
         // 서버 간 연결 안정화 대기
@@ -158,7 +195,6 @@ class Program
             {
                 options.ServerId = config.PlayServerId;
                 options.BindEndpoint = $"tcp://127.0.0.1:{config.ZmqPlayPort}";
-                options.TcpPort = config.TcpPort;
                 options.RequestTimeoutMs = 30000;
                 options.AuthenticateMessageId = "AuthenticateRequest";
                 options.DefaultStageType = "TestStage";
@@ -168,10 +204,20 @@ class Program
             .UseStage<TestStageActor, TestActor>("TestStage")
             .UseSystemController<TestSystemController>();
 
+        bootstrap.ConfigureTcp(config.TcpPort);
+
         // WebSocket 활성화
         if (config.EnableWebSocket)
         {
             bootstrap.ConfigureWebSocket(config.WebSocketPath);
+        }
+        if (config.EnableTls && config.TlsCertificate != null)
+        {
+            bootstrap.ConfigureTcpWithTls(config.TcpTlsPort, config.TlsCertificate);
+            if (config.EnableWebSocket)
+            {
+                bootstrap.ConfigureWebSocketWithTls(config.WebSocketPath, config.TlsCertificate);
+            }
         }
 
         var playServer = bootstrap.Build();
@@ -223,7 +269,17 @@ class Program
 
         // 2. ASP.NET Core WebApplication 생성
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls($"http://0.0.0.0:{config.HttpPort}");
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(config.HttpPort);
+            if (config.EnableTls && config.TlsCertificate != null)
+            {
+                options.ListenAnyIP(config.HttpsPort, listenOptions =>
+                {
+                    listenOptions.UseHttps(config.TlsCertificate);
+                });
+            }
+        });
 
         // Logging
         builder.Logging.ClearProviders();
@@ -259,15 +315,45 @@ class Program
         await app.StartAsync();
 
         // Extract actual bound port
-        var httpPort = ExtractHttpPort(app);
+        var httpPort = ExtractHttpPort(app, config.HttpPort);
 
         return (apiServer, app, httpPort);
     }
 
-    static int ExtractHttpPort(WebApplication app)
+    static X509Certificate2 CreateSelfSignedCertificate(string subjectName)
     {
-        var url = app.Urls.FirstOrDefault()
-            ?? throw new InvalidOperationException("No URLs found in WebApplication");
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            subjectName,
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1
+        );
+        request.CertificateExtensions.Add(
+            new X509BasicConstraintsExtension(false, false, 0, false)
+        );
+        request.CertificateExtensions.Add(
+            new X509KeyUsageExtension(
+                X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
+                false
+            )
+        );
+        request.CertificateExtensions.Add(
+            new X509SubjectKeyIdentifierExtension(request.PublicKey, false)
+        );
+        var notBefore = DateTimeOffset.UtcNow.AddDays(-1);
+        var notAfter = DateTimeOffset.UtcNow.AddYears(1);
+        var cert = request.CreateSelfSigned(notBefore, notAfter);
+        return new X509Certificate2(cert.Export(X509ContentType.Pfx));
+    }
+
+    static int ExtractHttpPort(WebApplication app, int fallbackPort)
+    {
+        var url = app.Urls.FirstOrDefault();
+        if (url == null)
+        {
+            return fallbackPort;
+        }
         var uri = new Uri(url);
         return uri.Port;
     }
@@ -294,11 +380,15 @@ record ServerConfiguration
     public required string PlayServerId { get; init; }
     public required string ApiServerId { get; init; }
     public required int TcpPort { get; init; }
+    public required int TcpTlsPort { get; init; }
     public required int HttpPort { get; init; }
+    public required int HttpsPort { get; init; }
     public required int ZmqPlayPort { get; init; }
     public required int ZmqApiPort { get; init; }
     public bool EnableWebSocket { get; init; } = true;
     public string WebSocketPath { get; init; } = "/ws";
+    public bool EnableTls { get; init; }
+    public X509Certificate2? TlsCertificate { get; init; }
 }
 
 record ServerContext

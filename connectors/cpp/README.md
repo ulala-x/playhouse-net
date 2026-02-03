@@ -265,10 +265,11 @@ void DecompressPayload(const Packet& packet) {
 
 ## TLS/SSL Support
 
-TLS support is planned for future releases. Current workaround:
+The C++ connector supports TLS for both TCP and WebSocket transports.
 
-- Use stunnel or nginx as TLS termination proxy
-- Configure proxy to forward decrypted traffic to PlayHouse server
+- TCP+TLS: set `use_ssl=true` and connect to the TCP TLS port.
+- WSS: set `use_websocket=true`, `use_ssl=true`, and connect to the HTTPS port.
+- Self-signed certs (tests): set `skip_server_certificate_validation=true`.
 
 ## Advanced: C++20 Coroutines
 

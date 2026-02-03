@@ -6,7 +6,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # C# connector ports
 HTTP_PORT=18080
+HTTPS_PORT=18443
 TCP_PORT=18001
+TCP_TLS_PORT=18002
 CONTAINER_NAME="playhouse-test-csharp"
 
 # Colors for output
@@ -28,7 +30,7 @@ trap cleanup EXIT
 cleanup
 
 # Start test server
-echo -e "${YELLOW}[C# Connector Test]${NC} Starting test server on HTTP:$HTTP_PORT, TCP:$TCP_PORT..."
+echo -e "${YELLOW}[C# Connector Test]${NC} Starting test server on HTTP:$HTTP_PORT, HTTPS:$HTTPS_PORT, TCP:$TCP_PORT, TCP+TLS:$TCP_TLS_PORT..."
 docker-compose -f "$SCRIPT_DIR/docker-compose.test.yml" up -d --build
 
 # Wait for health check
@@ -52,7 +54,9 @@ echo -e "${YELLOW}[C# Connector Test]${NC} Running tests..."
 set +e
 TEST_SERVER_HOST=127.0.0.1 \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
+TEST_SERVER_HTTPS_PORT=$HTTPS_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
+TEST_SERVER_TCP_TLS_PORT=$TCP_TLS_PORT \
 dotnet test "$SCRIPT_DIR/tests/PlayHouse.Connector.IntegrationTests" --logger "console;verbosity=normal"
 TEST_STATUS=$?
 set -e

@@ -15,7 +15,9 @@ docker compose up -d
 
 테스트 서버는 다음 포트에서 실행됩니다:
 - HTTP API: 8080
+- HTTPS/WSS: 8443
 - TCP Server: 34001
+- TCP TLS: 34002
 - WebSocket: 8080/ws
 
 ## 테스트 실행
@@ -48,7 +50,9 @@ dotnet test --logger "console;verbosity=detailed"
 ```bash
 export TEST_SERVER_HOST=localhost
 export TEST_SERVER_HTTP_PORT=8080
+export TEST_SERVER_HTTPS_PORT=8443
 export TEST_SERVER_TCP_PORT=34001
+export TEST_SERVER_TCP_TLS_PORT=34002
 
 dotnet test
 ```

@@ -76,7 +76,9 @@ val integrationTest = tasks.register<Test>("integrationTest") {
     // Use environment variables for test server configuration
     environment("TEST_SERVER_HOST", System.getenv("TEST_SERVER_HOST") ?: "localhost")
     environment("TEST_SERVER_HTTP_PORT", System.getenv("TEST_SERVER_HTTP_PORT") ?: "28080")
+    environment("TEST_SERVER_HTTPS_PORT", System.getenv("TEST_SERVER_HTTPS_PORT") ?: "28443")
     environment("TEST_SERVER_TCP_PORT", System.getenv("TEST_SERVER_TCP_PORT") ?: "28001")
+    environment("TEST_SERVER_TCP_TLS_PORT", System.getenv("TEST_SERVER_TCP_TLS_PORT") ?: "28002")
 
     shouldRunAfter(tasks.test)
 }

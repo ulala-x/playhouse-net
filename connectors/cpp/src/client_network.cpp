@@ -63,9 +63,16 @@ public:
         , stop_timeout_checker_(false)
     {
         if (config_.use_websocket) {
-            connection_ = std::make_unique<WsConnection>(config_.websocket_path);
+            connection_ = std::make_unique<WsConnection>(
+                config_.websocket_path,
+                config_.use_ssl,
+                config_.skip_server_certificate_validation
+            );
         } else {
-            connection_ = std::make_unique<TcpConnection>();
+            connection_ = std::make_unique<TcpConnection>(
+                config_.use_ssl,
+                config_.skip_server_certificate_validation
+            );
         }
 
         connection_->SetReceiveCallback([this](const uint8_t* data, size_t size) {

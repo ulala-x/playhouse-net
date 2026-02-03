@@ -21,8 +21,11 @@ struct CreateStageResponse {
 /// Environment variables for server configuration:
 /// - TEST_SERVER_HOST (default: localhost)
 /// - TEST_SERVER_HTTP_PORT (default: 8080)
+/// - TEST_SERVER_HTTPS_PORT (default: 8443)
 /// - TEST_SERVER_TCP_PORT (default: 34001)
+/// - TEST_SERVER_TCP_TLS_PORT (default: 34002)
 /// - TEST_SERVER_WS_PORT (default: 8080, WebSocket uses same port as HTTP)
+/// - TEST_SERVER_WSS_PORT (default: 8443)
 class TestServerFixture {
 public:
     /// Constructor
@@ -37,11 +40,20 @@ public:
     /// Get test server TCP port
     uint16_t GetTcpPort() const { return tcp_port_; }
 
+    /// Get test server TCP TLS port
+    uint16_t GetTcpTlsPort() const { return tcp_tls_port_; }
+
     /// Get test server HTTP port
     uint16_t GetHttpPort() const { return http_port_; }
 
+    /// Get test server HTTPS port
+    uint16_t GetHttpsPort() const { return https_port_; }
+
     /// Get test server WebSocket port (typically same as HTTP port)
     uint16_t GetWsPort() const { return ws_port_; }
+
+    /// Get test server WebSocket TLS port
+    uint16_t GetWssPort() const { return wss_port_; }
 
     /// Create a test stage via HTTP API
     /// @param stage_type Stage type to create
@@ -62,8 +74,11 @@ private:
 
     std::string host_;
     uint16_t tcp_port_;
+    uint16_t tcp_tls_port_;
     uint16_t http_port_;
+    uint16_t https_port_;
     uint16_t ws_port_;
+    uint16_t wss_port_;
     std::optional<CreateStageResponse> cached_test_stage_;
 };
 
