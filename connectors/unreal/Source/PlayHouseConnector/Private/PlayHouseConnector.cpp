@@ -12,6 +12,10 @@
 #include "Async/Async.h"
 #include "Containers/Ticker.h"
 
+#if WITH_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
+
 namespace
 {
     class FPlayHouseConnectorState
@@ -42,7 +46,21 @@ namespace
 
     void DispatchGameThread(TFunction<void()>&& Func)
     {
-        AsyncTask(ENamedThreads::GameThread, MoveTemp(Func));
+#if WITH_AUTOMATION_TESTS
+        if (GIsAutomationTesting)
+        {
+            Func();
+            return;
+        }
+#endif
+        if (IsInGameThread())
+        {
+            Func();
+        }
+        else
+        {
+            AsyncTask(ENamedThreads::GameThread, MoveTemp(Func));
+        }
     }
     TUniquePtr<IPlayHouseTransport> CreateTransport(EPlayHouseTransport TransportType)
     {
@@ -100,6 +118,12 @@ void FPlayHouseConnector::Init(const FPlayHouseConfig& Config)
     Impl_->Transport = CreateTransport(Config.Transport);
     if (Impl_->Transport)
     {
+        Impl_->Transport->OnConnected = [this]() {
+            if (OnConnect)
+            {
+                DispatchGameThread([Callback = OnConnect]() { Callback(); });
+            }
+        };
         Impl_->Transport->OnBytesReceived = [this](const uint8* Data, int32 Size) {
             HandleBytes(Data, Size);
         };
@@ -153,11 +177,6 @@ void FPlayHouseConnector::Connect(const FString& Host, int32 Port)
             OnError(PlayHouse::ErrorCode::ConnectionFailed, TEXT("Connect failed"));
         }
         return;
-    }
-
-    if (OnConnect)
-    {
-        DispatchGameThread([Callback = OnConnect]() { Callback(); });
     }
 }
 
@@ -305,8 +324,20 @@ void FPlayHouseConnector::Request(FPlayHousePacket&& Packet, TFunction<void(FPla
 
 void FPlayHouseConnector::Authenticate(FPlayHousePacket&& Packet, TFunction<void(bool)> OnResult)
 {
-    Request(MoveTemp(Packet), [OnResult = MoveTemp(OnResult)](FPlayHousePacket&& Response) {
-        OnResult(Response.ErrorCode == PlayHouse::ErrorCode::Success);
+    Request(MoveTemp(Packet), [this, OnResult = MoveTemp(OnResult)](FPlayHousePacket&& Response) {
+        if (Response.ErrorCode == PlayHouse::ErrorCode::Success)
+        {
+            // Cache stage id from auth response for subsequent requests
+            if (Impl_ && Impl_->State)
+            {
+                Impl_->State->StageId = Response.StageId;
+            }
+            OnResult(true);
+            return;
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[PlayHouse] Authenticate reply failed: MsgId=%s ErrorCode=%d StageId=%lld Payload=%d"),
+            *Response.MsgId, Response.ErrorCode, Response.StageId, Response.Payload.Num());
+        OnResult(false);
     });
 }
 
@@ -347,6 +378,10 @@ void FPlayHouseConnector::HandleBytes(const uint8* Data, int32 Size)
     {
         return;
     }
+
+#if WITH_AUTOMATION_TESTS
+    UE_LOG(LogTemp, Log, TEXT("[PlayHouseTest] Received %d bytes"), Size);
+#endif
 
     // Validate input parameters
     if (Data == nullptr || Size <= 0)

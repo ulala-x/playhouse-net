@@ -119,6 +119,7 @@ connectors/unreal/
 - `connectors/cpp` (core logic reference)
 - `protocol/` (message definitions)
 - `connectors/unreal/doc/docker-e2e.md` (Docker-based test workflow)
+- `connectors/unreal/doc/ws-wss-connector.md` (WS/WSS setup notes)
 - `connectors/unreal/doc/ue-install-wsl-windows.md` (UE install guide)
 
 ## License

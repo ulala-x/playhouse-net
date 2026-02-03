@@ -5,10 +5,21 @@
 #include "WebSocketsModule.h"
 #include "Async/Async.h"
 
+#if WITH_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
+
 namespace
 {
     void DispatchToGameThreadWss(TFunction<void()>&& Func)
     {
+#if WITH_AUTOMATION_TESTS
+        if (GIsAutomationTesting)
+        {
+            Func();
+            return;
+        }
+#endif
         if (IsInGameThread())
         {
             Func();
@@ -22,7 +33,7 @@ namespace
 
 bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
 {
-    if (bConnected.Load())
+    if (State.IsValid() && State->Connected.Load())
     {
         return true;
     }
@@ -49,49 +60,82 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         return false;
     }
 
+    State = MakeShared<FWssTransportState>();
+    State->OnConnected = OnConnected;
+    State->OnDisconnected = OnDisconnected;
+    State->OnBytesReceived = OnBytesReceived;
+    State->OnTransportError = OnTransportError;
+
     // Store weak reference for safe callback access
     TWeakPtr<IWebSocket> WeakSocket = Socket;
+    TWeakPtr<FWssTransportState> WeakState = State;
 
-    Socket->OnConnected().AddLambda([this, WeakSocket]() {
+    Socket->OnConnected().AddLambda([WeakSocket, WeakState]() {
         // Verify socket is still valid (not disconnected during callback)
         if (!WeakSocket.IsValid())
         {
             return;
         }
-        bConnected.Store(true);
-    });
-
-    Socket->OnConnectionError().AddLambda([this, WeakSocket](const FString& Error) {
-        if (!WeakSocket.IsValid())
+        const TSharedPtr<FWssTransportState> PinnedState = WeakState.Pin();
+        if (!PinnedState.IsValid() || !PinnedState->Alive.Load())
         {
             return;
         }
-        // Marshal to game thread for thread safety
-        DispatchToGameThreadWss([this, Error]() {
-            if (OnTransportError)
+        PinnedState->Connected.Store(true);
+        DispatchToGameThreadWss([PinnedState]() {
+            if (PinnedState->OnConnected)
             {
-                OnTransportError(PlayHouse::ErrorCode::ConnectionFailed, Error);
+                PinnedState->OnConnected();
             }
         });
     });
 
-    Socket->OnClosed().AddLambda([this, WeakSocket](int32 StatusCode, const FString& Reason, bool bWasClean) {
+    Socket->OnConnectionError().AddLambda([WeakSocket, WeakState](const FString& Error) {
         if (!WeakSocket.IsValid())
         {
             return;
         }
-        bConnected.Store(false);
+        const TSharedPtr<FWssTransportState> PinnedState = WeakState.Pin();
+        if (!PinnedState.IsValid() || !PinnedState->Alive.Load())
+        {
+            return;
+        }
         // Marshal to game thread for thread safety
-        DispatchToGameThreadWss([this]() {
-            if (OnDisconnected)
+        DispatchToGameThreadWss([PinnedState, Error]() {
+            if (PinnedState->OnTransportError)
             {
-                OnDisconnected();
+                PinnedState->OnTransportError(PlayHouse::ErrorCode::ConnectionFailed, Error);
             }
         });
     });
 
-    Socket->OnRawMessage().AddLambda([this, WeakSocket](const void* Data, SIZE_T Size, SIZE_T BytesRemaining) {
+    Socket->OnClosed().AddLambda([WeakSocket, WeakState](int32 StatusCode, const FString& Reason, bool bWasClean) {
         if (!WeakSocket.IsValid())
+        {
+            return;
+        }
+        const TSharedPtr<FWssTransportState> PinnedState = WeakState.Pin();
+        if (!PinnedState.IsValid() || !PinnedState->Alive.Load())
+        {
+            return;
+        }
+        PinnedState->Connected.Store(false);
+        // Marshal to game thread for thread safety
+        DispatchToGameThreadWss([PinnedState]() {
+            if (PinnedState->OnDisconnected)
+            {
+                PinnedState->OnDisconnected();
+            }
+        });
+    });
+
+    Socket->OnRawMessage().AddLambda([WeakSocket, WeakState](const void* Data, SIZE_T Size, SIZE_T BytesRemaining) {
+        if (!WeakSocket.IsValid())
+        {
+            return;
+        }
+        const TSharedPtr<FWssTransportState> PinnedState = WeakState.Pin();
+        if (!PinnedState.IsValid() || !PinnedState->Alive.Load())
         {
             return;
         }
@@ -105,10 +149,10 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         // Validate size is within reasonable bounds
         if (Size > PlayHouse::Protocol::MaxBodySize)
         {
-            DispatchToGameThreadWss([this]() {
-                if (OnTransportError)
+            DispatchToGameThreadWss([PinnedState]() {
+                if (PinnedState->OnTransportError)
                 {
-                    OnTransportError(PlayHouse::ErrorCode::InvalidResponse, TEXT("Received data exceeds maximum size"));
+                    PinnedState->OnTransportError(PlayHouse::ErrorCode::InvalidResponse, TEXT("Received data exceeds maximum size"));
                 }
             });
             return;
@@ -118,10 +162,10 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
         TArray<uint8> DataCopy;
         DataCopy.Append(reinterpret_cast<const uint8*>(Data), static_cast<int32>(Size));
 
-        DispatchToGameThreadWss([this, DataCopy = MoveTemp(DataCopy)]() {
-            if (OnBytesReceived)
+        DispatchToGameThreadWss([PinnedState, DataCopy = MoveTemp(DataCopy)]() {
+            if (PinnedState->OnBytesReceived)
             {
-                OnBytesReceived(DataCopy.GetData(), DataCopy.Num());
+                PinnedState->OnBytesReceived(DataCopy.GetData(), DataCopy.Num());
             }
         });
     });
@@ -132,8 +176,11 @@ bool FPlayHouseWssTransport::Connect(const FString& Host, int32 Port)
 
 void FPlayHouseWssTransport::Disconnect()
 {
-    // Set connected to false first to prevent new sends
-    bConnected.Store(false);
+    if (State.IsValid())
+    {
+        State->Alive.Store(false);
+        State->Connected.Store(false);
+    }
 
     if (Socket.IsValid())
     {
@@ -144,12 +191,12 @@ void FPlayHouseWssTransport::Disconnect()
 
 bool FPlayHouseWssTransport::IsConnected() const
 {
-    return bConnected.Load() && Socket.IsValid();
+    return State.IsValid() && State->Connected.Load() && Socket.IsValid();
 }
 
 bool FPlayHouseWssTransport::SendBytes(const uint8* Data, int32 Size)
 {
-    if (!Socket.IsValid() || !bConnected.Load())
+    if (!Socket.IsValid() || !State.IsValid() || !State->Connected.Load())
     {
         if (OnTransportError)
         {
@@ -189,5 +236,5 @@ bool FPlayHouseWssTransport::SendBytes(const uint8* Data, int32 Size)
 
 bool FPlayHouseWssTransport::IsConnecting() const
 {
-    return Socket.IsValid() && !bConnected.Load();
+    return Socket.IsValid() && (!State.IsValid() || !State->Connected.Load());
 }

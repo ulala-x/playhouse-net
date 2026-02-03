@@ -29,8 +29,19 @@ pushd "%TEST_SERVER_DIR%" >nul
   docker compose up -d
 popd >nul
 
+rem Wait for test-server health endpoint
+powershell -NoProfile -Command ^
+  "for ($i = 0; $i -lt 60; $i++) { " ^
+  "  try { Invoke-WebRequest -UseBasicParsing http://localhost:8080/api/health | Out-Null; exit 0 } " ^
+  "  catch { Start-Sleep -Seconds 1 } " ^
+  "} exit 1"
+if errorlevel 1 (
+  echo test-server health check failed
+  exit /b 1
+)
+
 "%UE_EDITOR_CMD%" "%UPROJECT_PATH%" ^
-  -ExecCmds="Automation RunTests PlayHouse.*" ^
+  -ExecCmds="Automation RunTests StartsWith:PlayHouse" ^
   -TestExit="Automation Test Queue Empty" ^
   -ReportExportPath="%REPORT_DIR%" ^
   -unattended -nopause -nosplash

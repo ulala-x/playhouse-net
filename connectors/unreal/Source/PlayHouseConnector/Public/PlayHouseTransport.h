@@ -8,12 +8,12 @@
  * Thread Safety:
  * - Connect/Disconnect/SendBytes: Must be called from the Game Thread
  * - IsConnected: Thread-safe (can be called from any thread)
- * - Callbacks (OnBytesReceived, OnDisconnected, OnTransportError):
+ * - Callbacks (OnConnected, OnBytesReceived, OnDisconnected, OnTransportError):
  *   Invoked on Game Thread (via async tasks or delegates)
  *
  * Lifecycle:
  * 1. Create transport instance
- * 2. Set callback functions (OnBytesReceived, OnDisconnected, OnTransportError)
+ * 2. Set callback functions (OnConnected, OnBytesReceived, OnDisconnected, OnTransportError)
  * 3. Call Connect() from Game Thread
  * 4. Use SendBytes() to send data (Game Thread only)
  * 5. Call Disconnect() when done (Game Thread only)
@@ -29,7 +29,7 @@ public:
      * @param Port The port number to connect to
      * @return true if connection started successfully, false otherwise
      * @note Must be called from Game Thread. For async transports (WebSocket),
-     *       check IsConnected() after OnConnected callback fires.
+     *       wait for OnConnected callback before sending data.
      */
     virtual bool Connect(const FString& Host, int32 Port) = 0;
 
@@ -54,6 +54,12 @@ public:
      * @note Must be called from Game Thread. Data is copied internally for async sending.
      */
     virtual bool SendBytes(const uint8* Data, int32 Size) = 0;
+
+    /**
+     * Callback invoked when the transport is connected.
+     * @note Invoked on Game Thread.
+     */
+    TFunction<void()> OnConnected;
 
     /**
      * Callback invoked when data is received from the remote host.

@@ -75,6 +75,9 @@ public:
                     int Read = SSL_read(Ssl, Buffer.GetData(), BufferSize);
                     if (Read > 0)
                     {
+#if WITH_AUTOMATION_TESTS
+                        UE_LOG(LogTemp, Log, TEXT("[PlayHouseTest] TLS read %d bytes"), Read);
+#endif
                         if (OnBytes)
                         {
                             OnBytes(Buffer.GetData(), Read);
@@ -196,7 +199,6 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
         return false;
     }
 
-    Socket->SetNonBlocking(true);
     Socket->SetNoDelay(true);
 
     if (!Socket->Connect(*Addr))
@@ -276,6 +278,8 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
         return false;
     }
 
+    Socket->SetNonBlocking(true);
+
     Worker = MakeUnique<FTlsWorker>(Socket, Ssl);
     Worker->OnBytes = [this](const uint8* Data, int32 Size) {
         if (OnBytesReceived)
@@ -293,6 +297,10 @@ bool FPlayHouseTlsTransport::Connect(const FString& Host, int32 Port)
     Thread.Reset(FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTlsWorker")));
 
     bConnected.Store(true);
+    if (OnConnected)
+    {
+        OnConnected();
+    }
     return true;
 #endif
 }

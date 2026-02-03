@@ -31,6 +31,18 @@ pushd "$TEST_SERVER_DIR" >/dev/null
   docker compose up -d
 popd >/dev/null
 
+echo "Waiting for test-server health..."
+for i in {1..60}; do
+  if curl -fsS http://localhost:8080/api/health >/dev/null; then
+    break
+  fi
+  sleep 1
+done
+if ! curl -fsS http://localhost:8080/api/health >/dev/null; then
+  echo "test-server health check failed" >&2
+  exit 1
+fi
+
 PROJECT_DIR=$(cd "$(dirname "$UPROJECT_PATH")" && pwd)
 UPROJECT_BASENAME=$(basename "$UPROJECT_PATH")
 
@@ -44,7 +56,7 @@ docker run --rm \
   "$UE_DOCKER_IMAGE" \
   /bin/bash -lc \
   "/home/ue4/Engine/Binaries/Linux/UnrealEditor-Cmd /project/$UPROJECT_BASENAME \
-    -ExecCmds='Automation RunTests PlayHouse.*' \
+    -ExecCmds='Automation RunTests StartsWith:PlayHouse' \
     -TestExit='Automation Test Queue Empty' \
     -ReportExportPath='/reports' \
     -unattended -nopause -nosplash"

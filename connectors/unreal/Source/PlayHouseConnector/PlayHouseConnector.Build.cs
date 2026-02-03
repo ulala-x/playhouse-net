@@ -24,6 +24,7 @@ public class PlayHouseConnector : ModuleRules
 
         PrivateDefinitions.Add("WITH_AUTOMATION_TESTS=1");
         PrivateDefinitions.Add("WITH_DEV_AUTOMATION_TESTS=1");
+        PrivateDefinitions.Add("WITH_AUTOMATION_WORKER=1");
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {

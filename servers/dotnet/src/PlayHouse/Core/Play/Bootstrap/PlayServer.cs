@@ -186,15 +186,13 @@ public sealed class PlayServer : IPlayServerControl, IAsyncDisposable, ICommunic
         // WebSocket 추가
         if (_options.IsWebSocketEnabled)
         {
+            builder.AddWebSocket(_options.WebSocketPath!);
+            _logger.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
+
             if (_options.IsWebSocketTlsEnabled)
             {
                 builder.AddWebSocketWithTls(_options.WebSocketPath!, _options.WebSocketTlsCertificate!);
                 _logger.LogInformation("WebSocket+TLS enabled on path {Path}", _options.WebSocketPath);
-            }
-            else
-            {
-                builder.AddWebSocket(_options.WebSocketPath!);
-                _logger.LogInformation("WebSocket enabled on path {Path}", _options.WebSocketPath);
             }
         }
 

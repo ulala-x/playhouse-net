@@ -50,6 +50,16 @@ public:
     bool IsConnecting() const;
 
 private:
-    TAtomic<bool> bConnected{false};
+    struct FWsTransportState
+    {
+        TAtomic<bool> Alive{true};
+        TAtomic<bool> Connected{false};
+        TFunction<void()> OnConnected;
+        TFunction<void()> OnDisconnected;
+        TFunction<void(const uint8* Data, int32 Size)> OnBytesReceived;
+        TFunction<void(int32 Code, const FString& Message)> OnTransportError;
+    };
+
+    TSharedPtr<FWsTransportState> State;
     TSharedPtr<IWebSocket> Socket;
 };

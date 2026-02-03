@@ -55,15 +55,14 @@ public:
 
                         if (!bSuccess)
                         {
-                            ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
-                            const ESocketErrors Error = SocketSubsystem ? SocketSubsystem->GetLastErrorCode() : SE_NO_ERROR;
-                            if (Error == SE_EWOULDBLOCK)
+                            // Avoid relying on platform error translation (can assert on unknown codes).
+                            const ESocketConnectionState State = Socket->GetConnectionState();
+                            if (State == SCS_Connected)
                             {
-                                // Non-blocking, try again later
+                                // Non-blocking transient failure, try again later.
                                 continue;
                             }
-                            // Connection error
-                            UE_LOG(LogTemp, Warning, TEXT("[PlayHouse] Socket recv error: %d"), (int32)Error);
+                            UE_LOG(LogTemp, Warning, TEXT("[PlayHouse] Socket recv error (state=%d)"), (int32)State);
                             if (OnError)
                             {
                                 OnError(PlayHouse::ErrorCode::ConnectionClosed, TEXT("Socket recv error"));
@@ -170,7 +169,6 @@ bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
         return false;
     }
 
-    Socket->SetNonBlocking(true);
     Socket->SetNoDelay(true);
 
     if (!Socket->Connect(*Addr))
@@ -183,6 +181,8 @@ bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
         }
         return false;
     }
+
+    Socket->SetNonBlocking(true);
 
     Worker = MakeUnique<FTcpWorker>(Socket);
     Worker->OnBytes = [this](const uint8* Data, int32 Size) {
@@ -201,6 +201,10 @@ bool FPlayHouseTcpTransport::Connect(const FString& Host, int32 Port)
     Thread.Reset(FRunnableThread::Create(Worker.Get(), TEXT("PlayHouseTcpWorker")));
 
     bConnected.Store(true);
+    if (OnConnected)
+    {
+        OnConnected();
+    }
     return true;
 }
 

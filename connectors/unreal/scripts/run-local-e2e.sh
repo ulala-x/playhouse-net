@@ -31,8 +31,20 @@ pushd "$TEST_SERVER_DIR" >/dev/null
   docker compose up -d
 popd >/dev/null
 
+echo "Waiting for test-server health..."
+for i in {1..60}; do
+  if curl -fsS http://localhost:8080/api/health >/dev/null; then
+    break
+  fi
+  sleep 1
+done
+if ! curl -fsS http://localhost:8080/api/health >/dev/null; then
+  echo "test-server health check failed" >&2
+  exit 1
+fi
+
 "$UE_EDITOR_CMD" "$UPROJECT_PATH" \
-  -ExecCmds="Automation RunTests PlayHouse.*" \
+  -ExecCmds="Automation RunTests StartsWith:PlayHouse" \
   -TestExit="Automation Test Queue Empty" \
   -ReportExportPath="$REPORT_DIR" \
   -unattended -nopause -nosplash

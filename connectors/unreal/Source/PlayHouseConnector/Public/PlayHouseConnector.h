@@ -6,7 +6,7 @@
 
 class IPlayHouseTransport;
 
-class FPlayHouseConnector
+class PLAYHOUSECONNECTOR_API FPlayHouseConnector
 {
 public:
     ~FPlayHouseConnector();
