@@ -16,7 +16,10 @@ public class PlayHouseConnector : ModuleRules
         PrivateDependencyModuleNames.AddRange(new string[]
         {
             "Sockets",
-            "Networking"
+            "Networking",
+            "HTTP",
+            "Json",
+            "JsonUtilities"
         });
 
         PrivateDependencyModuleNames.Add("WebSockets");
