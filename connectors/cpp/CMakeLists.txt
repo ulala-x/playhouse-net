@@ -25,14 +25,20 @@ if(NOT asio_FOUND)
 endif()
 
 # Boost (Beast) for WebSocket transport
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost/boost/asio.hpp)
-    set(BOOST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost)
-    message(STATUS "Using vendored Boost headers from: ${BOOST_INCLUDE_DIR}")
+set(BOOST_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost)
+if(EXISTS ${BOOST_ROOT_DIR})
+    file(GLOB BOOST_LIB_INCLUDE_DIRS LIST_DIRECTORIES true
+        ${BOOST_ROOT_DIR}/libs/*/include
+        ${BOOST_ROOT_DIR}/libs/*/*/include
+    )
+    list(FILTER BOOST_LIB_INCLUDE_DIRS INCLUDE REGEX ".*/libs/.+/include$")
+    set(BOOST_INCLUDE_DIRS ${BOOST_LIB_INCLUDE_DIRS})
+    message(STATUS "Using vendored Boost headers from: ${BOOST_ROOT_DIR}")
 else()
     find_package(Boost QUIET)
     if(Boost_FOUND)
-        set(BOOST_INCLUDE_DIR ${Boost_INCLUDE_DIRS})
-        message(STATUS "Using system Boost headers from: ${BOOST_INCLUDE_DIR}")
+        set(BOOST_INCLUDE_DIRS ${Boost_INCLUDE_DIRS})
+        message(STATUS "Using system Boost headers")
     else()
         include(FetchContent)
         message(STATUS "Boost not found, fetching headers for WebSocket support")
@@ -45,7 +51,9 @@ else()
         if(NOT boost_headers_POPULATED)
             FetchContent_Populate(boost_headers)
         endif()
-        set(BOOST_INCLUDE_DIR ${boost_headers_SOURCE_DIR})
+        file(GLOB BOOST_LIB_INCLUDE_DIRS LIST_DIRECTORIES true ${boost_headers_SOURCE_DIR}/libs/*/include)
+        list(FILTER BOOST_LIB_INCLUDE_DIRS INCLUDE REGEX ".*/libs/.+/include$")
+        set(BOOST_INCLUDE_DIRS ${BOOST_LIB_INCLUDE_DIRS})
     endif()
 endif()
 
@@ -69,8 +77,8 @@ target_include_directories(playhouse-connector PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-if(BOOST_INCLUDE_DIR)
-    target_include_directories(playhouse-connector SYSTEM PRIVATE ${BOOST_INCLUDE_DIR})
+if(BOOST_INCLUDE_DIRS)
+    target_include_directories(playhouse-connector SYSTEM PRIVATE ${BOOST_INCLUDE_DIRS})
 endif()
 
 # Add asio include directory if using bundled version
