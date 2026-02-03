@@ -92,3 +92,6 @@ tests/benchmark_echo/*.log
 tests/benchmark_echo/**/*.log
 # Boost is too large - download separately
 tests/benchmark_echo/cpp_client/third_party/boost_*/
+
+# Unreal connector release artifacts
+connectors/unreal/dist/
