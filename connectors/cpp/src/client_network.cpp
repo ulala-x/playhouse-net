@@ -1,5 +1,7 @@
 #include "client_network.hpp"
 #include "packet_codec.hpp"
+#include "tcp_connection.hpp"
+#include "ws_connection.hpp"
 #include "playhouse/types.hpp"
 #include <atomic>
 #include <iostream>
@@ -28,7 +30,7 @@ namespace internal {
 class ClientNetwork::Impl {
 public:
     ConnectorConfig config_;
-    TcpConnection connection_;
+    std::unique_ptr<IConnection> connection_;
     RingBuffer receive_buffer_;
     std::atomic<uint16_t> msg_seq_counter_;
     std::map<uint16_t, std::function<void(Packet)>> pending_requests_;
@@ -60,11 +62,17 @@ public:
         , is_authenticated_(false)
         , stop_timeout_checker_(false)
     {
-        connection_.SetReceiveCallback([this](const uint8_t* data, size_t size) {
+        if (config_.use_websocket) {
+            connection_ = std::make_unique<WsConnection>(config_.websocket_path);
+        } else {
+            connection_ = std::make_unique<TcpConnection>();
+        }
+
+        connection_->SetReceiveCallback([this](const uint8_t* data, size_t size) {
             OnDataReceived(data, size);
         });
 
-        connection_.SetDisconnectCallback([this]() {
+        connection_->SetDisconnectCallback([this]() {
             OnDisconnected();
         });
 
@@ -337,7 +345,7 @@ ClientNetwork::~ClientNetwork() = default;
 // C++20 Coroutine version
 asio::awaitable<bool> ClientNetwork::Connect(const std::string& host, uint16_t port) {
     // Start single connection attempt
-    auto connect_future = impl_->connection_.ConnectAsync(host, port);
+    auto connect_future = impl_->connection_->ConnectAsync(host, port);
 
     // Wait for connection result
     // Note: This is still using future.get() which blocks, but we're calling it directly
@@ -367,7 +375,7 @@ std::future<bool> ClientNetwork::ConnectAsync(const std::string& host, uint16_t 
     auto future = promise->get_future();
 
     // Start single connection attempt
-    auto connect_future = impl_->connection_.ConnectAsync(host, port);
+    auto connect_future = impl_->connection_->ConnectAsync(host, port);
 
     // Use std::async instead of detached thread to avoid use-after-free
     // The shared_ptr to ClientNetwork::Impl ensures the object stays alive
@@ -399,12 +407,12 @@ std::future<bool> ClientNetwork::ConnectAsync(const std::string& host, uint16_t 
 
 void ClientNetwork::Disconnect() {
     impl_->ClearPendingRequests();
-    impl_->connection_.Disconnect();
+    impl_->connection_->Disconnect();
     impl_->is_authenticated_ = false;
 }
 
 bool ClientNetwork::IsConnected() const {
-    return impl_->connection_.IsConnected();
+    return impl_->connection_->IsConnected();
 }
 
 bool ClientNetwork::IsAuthenticated() const {
@@ -420,7 +428,7 @@ void ClientNetwork::Send(Packet packet, int64_t stage_id) {
     packet.SetMsgSeq(0);  // Send is always msgSeq 0
 
     Bytes encoded = PacketCodec::EncodeRequest(packet);
-    impl_->connection_.Send(encoded.data(), encoded.size());
+    impl_->connection_->Send(encoded.data(), encoded.size());
 }
 
 // C++20 Coroutine version
@@ -446,7 +454,7 @@ asio::awaitable<Packet> ClientNetwork::Request(Packet packet, int64_t stage_id) 
 
     // Send request
     Bytes encoded = PacketCodec::EncodeRequest(packet);
-    impl_->connection_.Send(encoded.data(), encoded.size());
+    impl_->connection_->Send(encoded.data(), encoded.size());
 
     // Wait for response using non-blocking polling with ASIO timer
     // This avoids blocking the coroutine thread while waiting for the response.
@@ -505,7 +513,7 @@ void ClientNetwork::Request(Packet packet, std::function<void(Packet)> callback,
 
     // Send request
     Bytes encoded = PacketCodec::EncodeRequest(packet);
-    impl_->connection_.Send(encoded.data(), encoded.size());
+    impl_->connection_->Send(encoded.data(), encoded.size());
 }
 
 // Legacy std::future version (deprecated)

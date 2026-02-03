@@ -24,11 +24,37 @@ if(NOT asio_FOUND)
     endif()
 endif()
 
+# Boost (Beast) for WebSocket transport
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost/boost/asio.hpp)
+    set(BOOST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost)
+    message(STATUS "Using vendored Boost headers from: ${BOOST_INCLUDE_DIR}")
+else()
+    find_package(Boost QUIET)
+    if(Boost_FOUND)
+        set(BOOST_INCLUDE_DIR ${Boost_INCLUDE_DIRS})
+        message(STATUS "Using system Boost headers from: ${BOOST_INCLUDE_DIR}")
+    else()
+        include(FetchContent)
+        message(STATUS "Boost not found, fetching headers for WebSocket support")
+        FetchContent_Declare(
+            boost_headers
+            URL https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.gz
+            DOWNLOAD_EXTRACT_TIMESTAMP true
+        )
+        FetchContent_GetProperties(boost_headers)
+        if(NOT boost_headers_POPULATED)
+            FetchContent_Populate(boost_headers)
+        endif()
+        set(BOOST_INCLUDE_DIR ${boost_headers_SOURCE_DIR})
+    endif()
+endif()
+
 # Source files
 set(PLAYHOUSE_SOURCES
     src/connector.cpp
     src/client_network.cpp
     src/tcp_connection.cpp
+    src/ws_connection.cpp
     src/packet.cpp
     src/packet_codec.cpp
     src/ring_buffer.cpp
@@ -43,6 +69,10 @@ target_include_directories(playhouse-connector PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+if(BOOST_INCLUDE_DIR)
+    target_include_directories(playhouse-connector SYSTEM PRIVATE ${BOOST_INCLUDE_DIR})
+endif()
+
 # Add asio include directory if using bundled version
 if(ASIO_INCLUDE_DIR)
     target_include_directories(playhouse-connector SYSTEM PUBLIC
@@ -56,6 +86,7 @@ if(asio_FOUND)
 else()
     target_compile_definitions(playhouse-connector PUBLIC ASIO_STANDALONE)
 endif()
+target_compile_definitions(playhouse-connector PRIVATE BOOST_ERROR_CODE_HEADER_ONLY)
 
 # Platform-specific libraries
 if(WIN32)

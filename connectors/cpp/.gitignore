@@ -32,6 +32,7 @@ vcpkg_installed/
 
 # Third-party dependencies (downloaded at build time)
 third_party/
+!third_party/boost/
 
 # Test results
 Testing/

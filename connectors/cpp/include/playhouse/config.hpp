@@ -2,6 +2,7 @@
 #define PLAYHOUSE_CONFIG_HPP
 
 #include <cstdint>
+#include <string>
 
 namespace playhouse {
 
@@ -27,6 +28,12 @@ struct ConnectorConfig {
 
     /// Maximum reconnection attempts (0 = unlimited)
     uint32_t max_reconnect_attempts = 0;
+
+    /// Use WebSocket transport instead of TCP (default: false)
+    bool use_websocket = false;
+
+    /// WebSocket path for handshake (default: "/ws")
+    std::string websocket_path = "/ws";
 };
 
 } // namespace playhouse

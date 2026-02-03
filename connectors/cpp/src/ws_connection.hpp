@@ -1,41 +1,31 @@
-#ifndef PLAYHOUSE_TCP_CONNECTION_HPP
-#define PLAYHOUSE_TCP_CONNECTION_HPP
+#ifndef PLAYHOUSE_WS_CONNECTION_HPP
+#define PLAYHOUSE_WS_CONNECTION_HPP
 
 #include "connection.hpp"
 
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 
 namespace playhouse {
 namespace internal {
 
-/// TCP connection using asio
-class TcpConnection : public IConnection {
+/// WebSocket connection using Boost.Beast
+class WsConnection : public IConnection {
 public:
-    TcpConnection();
-    ~TcpConnection();
+    explicit WsConnection(std::string websocket_path);
+    ~WsConnection();
 
     // Delete copy operations
-    TcpConnection(const TcpConnection&) = delete;
-    TcpConnection& operator=(const TcpConnection&) = delete;
+    WsConnection(const WsConnection&) = delete;
+    WsConnection& operator=(const WsConnection&) = delete;
 
-    /// Connect to server asynchronously
     std::future<bool> ConnectAsync(const std::string& host, uint16_t port) override;
-
-    /// Disconnect from server
     void Disconnect() override;
-
-    /// Check if connected
     bool IsConnected() const override;
-
-    /// Send data
     void Send(const uint8_t* data, size_t size) override;
-
-    /// Set callback for received data
     void SetReceiveCallback(std::function<void(const uint8_t*, size_t)> callback) override;
-
-    /// Set callback for disconnection
     void SetDisconnectCallback(std::function<void()> callback) override;
 
 private:
@@ -46,4 +36,4 @@ private:
 } // namespace internal
 } // namespace playhouse
 
-#endif // PLAYHOUSE_TCP_CONNECTION_HPP
+#endif // PLAYHOUSE_WS_CONNECTION_HPP

@@ -11,6 +11,9 @@ This guide standardizes E2E testing for the C++ connector using the PlayHouse te
 ## Local (Recommended)
 
 ```bash
+# Ensure Boost headers are available
+git submodule update --init --recursive
+
 # Runs Docker test server + C++ tests
 ./connectors/cpp/scripts/run-local-e2e.sh
 ```
@@ -39,7 +42,7 @@ The test server exposes:
 - WS: 8080/ws
 - WSS: 8443/ws
 
-The current C++ connector supports TCP only. WS/WSS/TLS tests should be enabled when transports are implemented.
+The C++ connector supports TCP and WS. WSS/TLS tests should be enabled when those transports are implemented.
 
 ## CI Integration (Example)
 

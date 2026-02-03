@@ -2,7 +2,7 @@
 #define PLAYHOUSE_CLIENT_NETWORK_HPP
 
 #include "ring_buffer.hpp"
-#include "tcp_connection.hpp"
+#include "connection.hpp"
 #include "playhouse/config.hpp"
 #include "playhouse/packet.hpp"
 
