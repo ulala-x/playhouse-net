@@ -1,0 +1,29 @@
+{
+  "name": "com.playhouse.connector",
+  "version": "0.1.0",
+  "displayName": "PlayHouse Connector",
+  "description": "PlayHouse real-time game server connector for Unity.",
+  "unity": "2022.3",
+  "unityRelease": "0f1",
+  "documentationUrl": "https://github.com/ulalax/playhouse/blob/main/connectors/unity/Documentation~/index.md",
+  "changelogUrl": "https://github.com/ulalax/playhouse/blob/main/connectors/unity/CHANGELOG.md",
+  "licensesUrl": "https://github.com/ulalax/playhouse/blob/main/LICENSE",
+  "keywords": [
+    "network",
+    "multiplayer",
+    "realtime",
+    "game-server",
+    "connector"
+  ],
+  "author": {
+    "name": "PlayHouse Team",
+    "url": "https://github.com/ulalax/playhouse"
+  },
+  "samples": [
+    {
+      "displayName": "Basic Connector",
+      "description": "Basic connection and event handling example.",
+      "path": "Samples~/Basic"
+    }
+  ]
+}
