@@ -10,7 +10,7 @@ class C02_TcpConnectionTest : public BaseIntegrationTest {};
 
 TEST_F(C02_TcpConnectionTest, Connect_AfterStageCreation_Succeeds) {
     // Given: Stage has been created
-    stage_info_ = GetTestServer().CreateTestStage();
+    stage_info_ = GetTestServer().GetOrCreateTestStage();
 
     // When: Attempt TCP connection
     bool connected = ConnectAndWait(5000);
@@ -33,7 +33,7 @@ TEST_F(C02_TcpConnectionTest, IsConnected_AfterConnection_ReturnsTrue) {
 
 TEST_F(C02_TcpConnectionTest, OnConnect_Event_TriggersWithSuccess) {
     // Given: Stage created
-    stage_info_ = GetTestServer().CreateTestStage();
+    stage_info_ = GetTestServer().GetOrCreateTestStage();
 
     bool event_triggered = false;
 
@@ -74,7 +74,7 @@ TEST_F(C02_TcpConnectionTest, Connect_MultipleTimes_Succeeds) {
     connector_->Disconnect();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    auto new_stage_info = GetTestServer().CreateTestStage();
+    auto new_stage_info = GetTestServer().GetOrCreateTestStage();
     (void)new_stage_info;
     bool reconnected = ConnectAndWait(5000);
 

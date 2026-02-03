@@ -11,7 +11,7 @@ class C06_PushMessageTest : public BaseIntegrationTest {};
 
 TEST_F(C06_PushMessageTest, PushMessage_OnReceiveEvent_TriggersCorrectly) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     std::atomic<bool> message_received{false};
     std::string received_msg_id;
@@ -22,8 +22,7 @@ TEST_F(C06_PushMessageTest, PushMessage_OnReceiveEvent_TriggersCorrectly) {
     };
 
     // When: Trigger a push message by sending a broadcast request
-    std::string broadcast_data = "{\"content\":\"Push Test\"}";
-    Bytes payload(broadcast_data.begin(), broadcast_data.end());
+    Bytes payload = proto::EncodeBroadcastRequest("Push Test");
     connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload)));
 
     // Then: Push message should be received
@@ -38,7 +37,7 @@ TEST_F(C06_PushMessageTest, PushMessage_OnReceiveEvent_TriggersCorrectly) {
 
 TEST_F(C06_PushMessageTest, PushMessage_MsgSeqIsZero_IndicatesPush) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     std::atomic<bool> message_received{false};
     uint16_t msg_seq = 999;
@@ -49,8 +48,7 @@ TEST_F(C06_PushMessageTest, PushMessage_MsgSeqIsZero_IndicatesPush) {
     };
 
     // When: Trigger a push message
-    std::string broadcast_data = "{\"content\":\"Push Seq Test\"}";
-    Bytes payload(broadcast_data.begin(), broadcast_data.end());
+    Bytes payload = proto::EncodeBroadcastRequest("Push Seq Test");
     connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload)));
 
     // Then: Message sequence should be 0 (push message indicator)
@@ -64,7 +62,7 @@ TEST_F(C06_PushMessageTest, PushMessage_MsgSeqIsZero_IndicatesPush) {
 
 TEST_F(C06_PushMessageTest, PushMessage_Multiple_AllReceived) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     std::atomic<int> message_count{0};
 
@@ -74,8 +72,7 @@ TEST_F(C06_PushMessageTest, PushMessage_Multiple_AllReceived) {
 
     // When: Trigger multiple push messages
     for (int i = 0; i < 3; i++) {
-        std::string broadcast_data = "{\"content\":\"Push " + std::to_string(i) + "\"}";
-        Bytes payload(broadcast_data.begin(), broadcast_data.end());
+        Bytes payload = proto::EncodeBroadcastRequest("Push " + std::to_string(i));
         connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload)));
 
         // Small delay between sends
@@ -93,7 +90,7 @@ TEST_F(C06_PushMessageTest, PushMessage_Multiple_AllReceived) {
 
 TEST_F(C06_PushMessageTest, PushMessage_WithPayload_PayloadAccessible) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     std::atomic<bool> message_received{false};
     bool payload_not_empty = false;
@@ -104,8 +101,7 @@ TEST_F(C06_PushMessageTest, PushMessage_WithPayload_PayloadAccessible) {
     };
 
     // When: Trigger a push message
-    std::string broadcast_data = "{\"content\":\"Push with payload\"}";
-    Bytes payload(broadcast_data.begin(), broadcast_data.end());
+    Bytes payload = proto::EncodeBroadcastRequest("Push with payload");
     connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload)));
 
     // Then: Payload should be accessible

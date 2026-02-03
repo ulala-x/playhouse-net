@@ -14,12 +14,9 @@ TEST_F(C07_HeartbeatTest, Heartbeat_AutomaticallySent_KeepsConnectionAlive) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("heartbeat_user"));
 
-    // When: Wait for multiple heartbeat intervals
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-
-    // Keep calling MainThreadAction to process heartbeats
+    // When: Wait for multiple heartbeat intervals while processing callbacks
     for (int i = 0; i < 30; i++) {
         connector_->MainThreadAction();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -35,7 +32,7 @@ TEST_F(C07_HeartbeatTest, Heartbeat_LongInterval_ConnectionStable) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("heartbeat_long_user"));
 
     // When: Wait and process callbacks
     for (int i = 0; i < 50; i++) {
@@ -53,11 +50,10 @@ TEST_F(C07_HeartbeatTest, Heartbeat_DoesNotInterfereWithNormalMessages) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("heartbeat_echo_user"));
 
     // When: Send normal messages during heartbeat period
-    std::string echo_data = "{\"content\":\"Test during heartbeat\",\"sequence\":1}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    Bytes payload = proto::EncodeEchoRequest("Test during heartbeat", 1);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
@@ -75,7 +71,7 @@ TEST_F(C07_HeartbeatTest, Heartbeat_ConfiguredInterval_RespectedByConnector) {
     connector_->Init(config_);
 
     // When: Connect to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("heartbeat_config_user"));
 
     // Then: Connection should establish successfully with configured heartbeat
     EXPECT_TRUE(connector_->IsConnected());

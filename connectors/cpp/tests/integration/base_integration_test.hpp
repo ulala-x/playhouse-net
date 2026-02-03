@@ -6,6 +6,7 @@
 #include <playhouse/packet.hpp>
 #include <playhouse/config.hpp>
 #include "test_server_fixture.hpp"
+#include "proto_helpers.hpp"
 #include <memory>
 #include <functional>
 #include <chrono>
@@ -45,6 +46,16 @@ protected:
 
     /// Authenticate and wait for callback
     bool AuthenticateAndWait(Packet packet, bool& out_success, int timeout_ms = 5000);
+
+    /// Authenticate with a user id/token using test server proto
+    bool AuthenticateTestUser(const std::string& user_id = "test_user",
+                              const std::string& token = "valid_token",
+                              int timeout_ms = 5000);
+
+    /// Create stage, connect, and authenticate in one step
+    bool CreateStageConnectAndAuthenticate(const std::string& user_id = "test_user",
+                                           const std::string& token = "valid_token",
+                                           int timeout_ms = 5000);
 
     /// Get the test server fixture (singleton)
     static TestServerFixture& GetTestServer();

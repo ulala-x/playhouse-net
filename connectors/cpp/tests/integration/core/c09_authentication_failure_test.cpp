@@ -13,11 +13,10 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_WithInvalidToken_Fails) {
     ASSERT_TRUE(CreateStageAndConnect());
 
     // Create auth payload with invalid token
-    std::string auth_data = "{\"userId\":\"test_user\",\"token\":\"invalid_token\"}";
-    Bytes payload(auth_data.begin(), auth_data.end());
+    Bytes payload = proto::EncodeAuthenticateRequest("test_user", "invalid_token");
 
     // When: Authenticate with invalid credentials
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
 
     // Then: Authentication should fail or complete
     bool auth_success = false;
@@ -32,7 +31,7 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_WithEmptyCredentials_HandledG
 
     // When: Authenticate with empty credentials
     Bytes empty_payload;
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(empty_payload));
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(empty_payload));
 
     // Then: Should handle gracefully
     bool auth_success = false;
@@ -46,9 +45,8 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_BeforeConnection_ThrowsOrFail
     EXPECT_FALSE(connector_->IsConnected());
 
     // When: Try to authenticate before connection
-    std::string auth_data = "{\"userId\":\"test\",\"token\":\"token\"}";
-    Bytes payload(auth_data.begin(), auth_data.end());
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+    Bytes payload = proto::EncodeAuthenticateRequest("test", "token");
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
 
     // Then: Should fail to complete
     bool auth_success = false;
@@ -65,7 +63,7 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_WithMalformedPayload_HandledG
     Bytes payload(malformed_data.begin(), malformed_data.end());
 
     // When: Authenticate with malformed payload
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
 
     // Then: Should handle gracefully without crashing
     bool auth_success = false;
@@ -87,9 +85,8 @@ TEST_F(C09_AuthenticationFailureTest, Authenticate_OnErrorEvent_MayTrigger) {
     };
 
     // When: Authenticate with invalid data
-    std::string auth_data = "{\"userId\":\"bad_user\",\"token\":\"bad_token\"}";
-    Bytes payload(auth_data.begin(), auth_data.end());
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+    Bytes payload = proto::EncodeAuthenticateRequest("bad_user", "bad_token");
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
 
     bool auth_success = false;
     AuthenticateAndWait(std::move(auth_packet), auth_success, 5000);

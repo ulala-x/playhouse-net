@@ -53,6 +53,9 @@ public:
     /// @return Stage creation response
     CreateStageResponse CreateTestStage();
 
+    /// Reuse or create a cached TestStage (reduces stage creation churn)
+    CreateStageResponse GetOrCreateTestStage();
+
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;
@@ -61,6 +64,7 @@ private:
     uint16_t tcp_port_;
     uint16_t http_port_;
     uint16_t ws_port_;
+    std::optional<CreateStageResponse> cached_test_stage_;
 };
 
 } // namespace playhouse::test

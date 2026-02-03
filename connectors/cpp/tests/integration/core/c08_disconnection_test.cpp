@@ -112,7 +112,7 @@ TEST_F(C08_DisconnectionTest, Reconnect_AfterDisconnection_Succeeds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // When: Reconnect
-    auto new_stage = GetTestServer().CreateTestStage();
+    auto new_stage = GetTestServer().GetOrCreateTestStage();
     (void)new_stage;
     bool reconnected = ConnectAndWait(5000);
 

@@ -11,11 +11,10 @@ class A06_EdgeCaseTest : public BaseIntegrationTest {};
 
 TEST_F(A06_EdgeCaseTest, EmptyMessageId_HandledGracefully) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_empty_msgid_user"));
 
     // When: Send packet with empty message ID
-    std::string data = "{\"test\":\"data\"}";
-    Bytes payload(data.begin(), data.end());
+    Bytes payload = proto::EncodeEchoRequest("edge", 1);
     auto packet = Packet::FromBytes("", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
@@ -31,12 +30,11 @@ TEST_F(A06_EdgeCaseTest, EmptyMessageId_HandledGracefully) {
 
 TEST_F(A06_EdgeCaseTest, VeryLongMessageId_HandledCorrectly) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_long_msgid_user"));
 
     // When: Send packet with very long message ID (near protocol limit of 256)
     std::string long_msg_id(250, 'A');
-    std::string data = "{\"test\":\"data\"}";
-    Bytes payload(data.begin(), data.end());
+    Bytes payload = proto::EncodeEchoRequest("edge", 2);
     auto packet = Packet::FromBytes(long_msg_id, std::move(payload));
 
     Packet response = Packet::Empty("Empty");
@@ -52,12 +50,11 @@ TEST_F(A06_EdgeCaseTest, VeryLongMessageId_HandledCorrectly) {
 
 TEST_F(A06_EdgeCaseTest, SpecialCharactersInMessageId_HandledCorrectly) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_special_msgid_user"));
 
     // When: Send packet with special characters in message ID
     std::string special_msg_id = "Test@Message#123$";
-    std::string data = "{\"test\":\"data\"}";
-    Bytes payload(data.begin(), data.end());
+    Bytes payload = proto::EncodeEchoRequest("edge", 3);
     auto packet = Packet::FromBytes(special_msg_id, std::move(payload));
 
     Packet response = Packet::Empty("Empty");
@@ -74,7 +71,7 @@ TEST_F(A06_EdgeCaseTest, SpecialCharactersInMessageId_HandledCorrectly) {
 TEST_F(A06_EdgeCaseTest, RapidConnectDisconnect_SystemStable) {
     // When: Rapidly connect and disconnect
     for (int i = 0; i < 5; i++) {
-        auto stage = GetTestServer().CreateTestStage();
+        auto stage = GetTestServer().GetOrCreateTestStage();
         (void)stage;
         bool connected = ConnectAndWait(2000);
         if (connected) {
@@ -89,7 +86,7 @@ TEST_F(A06_EdgeCaseTest, RapidConnectDisconnect_SystemStable) {
 
 TEST_F(A06_EdgeCaseTest, MainThreadAction_CalledExcessively_NoIssues) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_mainthread_user"));
 
     // When: Call MainThreadAction many times rapidly
     for (int i = 0; i < 1000; i++) {
@@ -103,11 +100,10 @@ TEST_F(A06_EdgeCaseTest, MainThreadAction_CalledExcessively_NoIssues) {
 
 TEST_F(A06_EdgeCaseTest, MainThreadAction_NeverCalled_RequestFails) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_no_mainthread_user"));
 
     // When: Send request but never call MainThreadAction
-    std::string echo_data = "{\"content\":\"No MainThread\",\"sequence\":1}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    Bytes payload = proto::EncodeEchoRequest("No MainThread", 1);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     bool callback_fired = false;
@@ -124,7 +120,7 @@ TEST_F(A06_EdgeCaseTest, MainThreadAction_NeverCalled_RequestFails) {
 
 TEST_F(A06_EdgeCaseTest, ZeroPayload_HandledCorrectly) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_zero_payload_user"));
 
     // When: Send packet with zero-length payload
     Bytes empty_payload;
@@ -143,7 +139,7 @@ TEST_F(A06_EdgeCaseTest, ZeroPayload_HandledCorrectly) {
 
 TEST_F(A06_EdgeCaseTest, BinaryZeroBytes_HandledCorrectly) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_binary_zero_user"));
 
     // When: Send payload with null bytes
     Bytes null_payload = {0x00, 0x01, 0x00, 0x02, 0x00, 0x03};
@@ -192,17 +188,16 @@ TEST_F(A06_EdgeCaseTest, DoubleInit_HandledGracefully) {
     EXPECT_TRUE(connected) << "Can still connect after double Init";
 }
 
-TEST_F(A06_EdgeCaseTest, CallbackThrowsException_SystemRemains Stable) {
+TEST_F(A06_EdgeCaseTest, CallbackThrowsException_SystemRemainsStable) {
     // Given: Connected with callback that throws
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("edge_callback_user"));
 
     connector_->OnReceive = [](Packet packet) {
         throw std::runtime_error("Callback exception");
     };
 
     // When: Trigger a message that will invoke the throwing callback
-    std::string broadcast_data = "{\"content\":\"Trigger callback\"}";
-    Bytes payload(broadcast_data.begin(), broadcast_data.end());
+    Bytes payload = proto::EncodeBroadcastRequest("Trigger callback");
     connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload)));
 
     // Process callbacks (exception should be caught internally)

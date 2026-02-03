@@ -61,13 +61,28 @@ public:
     }
 
     void Disconnect() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (socket_.is_open()) {
-            asio::error_code ec;
-            socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
-            socket_.close(ec);
+        std::function<void()> callback;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (socket_.is_open()) {
+                asio::error_code ec;
+                socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+                socket_.close(ec);
+            }
+            if (!is_connected_) {
+                return;
+            }
+            is_connected_ = false;
+            callback = std::move(disconnect_callback_);
+            disconnect_callback_ = nullptr;
         }
-        is_connected_ = false;
+        if (callback) {
+            try {
+                callback();
+            } catch (const std::exception& e) {
+                std::cerr << "Disconnect callback error: " << e.what() << std::endl;
+            }
+        }
     }
 
     void StartReceive() {

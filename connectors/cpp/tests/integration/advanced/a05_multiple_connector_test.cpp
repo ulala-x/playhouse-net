@@ -31,6 +31,26 @@ bool ConnectWithWait(Connector& connector, TestServerFixture& server, int timeou
 
     return connected;
 }
+
+bool AuthenticateWithWait(Connector& connector, const std::string& user_id, int timeout_ms = 5000) {
+    bool done = false;
+    bool success = false;
+
+    Bytes payload = proto::EncodeAuthenticateRequest(user_id, "valid_token");
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
+    connector.Authenticate(std::move(auth_packet), [&](bool result) {
+        success = result;
+        done = true;
+    });
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (!done && std::chrono::steady_clock::now() < deadline) {
+        connector.MainThreadAction();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    return done && success;
+}
 } // namespace
 
 TEST_F(A05_MultipleConnectorTest, TwoConnectors_BothConnect_Independently) {
@@ -39,11 +59,13 @@ TEST_F(A05_MultipleConnectorTest, TwoConnectors_BothConnect_Independently) {
     connector2->Init(config_);
 
     // When: Connect both
-    auto stage1 = GetTestServer().CreateTestStage();
-    auto stage2 = GetTestServer().CreateTestStage();
+    auto stage1 = GetTestServer().GetOrCreateTestStage();
+    auto stage2 = GetTestServer().GetOrCreateTestStage();
 
     bool connected1 = ConnectAndWait(5000);
     bool connected2 = ConnectWithWait(*connector2, GetTestServer(), 5000);
+    ASSERT_TRUE(AuthenticateTestUser("multi_conn_user1"));
+    ASSERT_TRUE(AuthenticateWithWait(*connector2, "multi_conn_user2"));
 
     // Then: Both should connect successfully
     EXPECT_TRUE(connected1) << "First connector should connect";
@@ -64,8 +86,9 @@ TEST_F(A05_MultipleConnectorTest, MultipleConnectors_SendMessagesIndependently) 
         auto conn = std::make_unique<Connector>();
         conn->Init(config_);
 
-        auto stage = GetTestServer().CreateTestStage();
-        if (ConnectWithWait(*conn, GetTestServer(), 5000)) {
+        auto stage = GetTestServer().GetOrCreateTestStage();
+        if (ConnectWithWait(*conn, GetTestServer(), 5000)
+            && AuthenticateWithWait(*conn, "multi_conn_batch_" + std::to_string(i))) {
             connectors.push_back(std::move(conn));
         }
     }
@@ -77,8 +100,7 @@ TEST_F(A05_MultipleConnectorTest, MultipleConnectors_SendMessagesIndependently) 
     std::vector<std::optional<Packet>> responses(connectors.size());
 
     for (size_t i = 0; i < connectors.size(); i++) {
-        std::string echo_data = "{\"content\":\"Connector" + std::to_string(i) + "\",\"sequence\":" + std::to_string(i) + "}";
-        Bytes payload(echo_data.begin(), echo_data.end());
+        Bytes payload = proto::EncodeEchoRequest("Connector" + std::to_string(i), static_cast<int32_t>(i));
         auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
         connectors[i]->Request(std::move(packet), [&, i](Packet response) {
@@ -113,11 +135,12 @@ TEST_F(A05_MultipleConnectorTest, Connectors_IndependentLifecycles) {
     auto connector2 = std::make_unique<Connector>();
     connector2->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("multi_conn_lifecycle1"));
 
-    auto stage2 = GetTestServer().CreateTestStage();
+    auto stage2 = GetTestServer().GetOrCreateTestStage();
     (void)stage2;
     bool connected2 = ConnectWithWait(*connector2, GetTestServer(), 5000);
+    ASSERT_TRUE(AuthenticateWithWait(*connector2, "multi_conn_lifecycle2"));
 
     ASSERT_TRUE(connected2);
 
@@ -150,19 +173,18 @@ TEST_F(A05_MultipleConnectorTest, Connectors_SeparateCallbackHandlers) {
     };
 
     // Connect both
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("multi_conn_cb1"));
 
-    auto stage2 = GetTestServer().CreateTestStage();
+    auto stage2 = GetTestServer().GetOrCreateTestStage();
     (void)stage2;
     ASSERT_TRUE(ConnectWithWait(*connector2, GetTestServer(), 5000));
+    ASSERT_TRUE(AuthenticateWithWait(*connector2, "multi_conn_cb2"));
 
     // When: Trigger messages for both
-    std::string broadcast1 = "{\"target\":\"connector1\"}";
-    Bytes payload1(broadcast1.begin(), broadcast1.end());
+    Bytes payload1 = proto::EncodeBroadcastRequest("connector1");
     connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload1)));
 
-    std::string broadcast2 = "{\"target\":\"connector2\"}";
-    Bytes payload2(broadcast2.begin(), broadcast2.end());
+    Bytes payload2 = proto::EncodeBroadcastRequest("connector2");
     connector2->Send(Packet::FromBytes("BroadcastRequest", std::move(payload2)));
 
     // Process callbacks for both
@@ -187,11 +209,10 @@ TEST_F(A05_MultipleConnectorTest, Connectors_SequentialCreationAndDestruction) {
         auto conn = std::make_unique<Connector>();
         conn->Init(config_);
 
-        auto stage = GetTestServer().CreateTestStage();
+        auto stage = GetTestServer().GetOrCreateTestStage();
         (void)stage;
         bool connected = ConnectWithWait(*conn, GetTestServer(), 5000);
-
-        if (connected) {
+        if (connected && AuthenticateWithWait(*conn, "multi_conn_seq_" + std::to_string(i))) {
             conn->Disconnect();
         }
         // conn destroyed here

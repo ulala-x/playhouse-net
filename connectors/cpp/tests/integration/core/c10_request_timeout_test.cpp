@@ -14,12 +14,11 @@ TEST_F(C10_RequestTimeoutTest, Request_WithShortTimeout_TimesOut) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("timeout_short_user"));
 
     // When: Send a request that won't respond in time
-    std::string slow_request_data = "{\"delay\":5000}";  // Ask server to delay 5 seconds
-    Bytes payload(slow_request_data.begin(), slow_request_data.end());
-    auto packet = Packet::FromBytes("SlowRequest", std::move(payload));
+    Bytes payload = proto::EncodeNoResponseRequest(5000);
+    auto packet = Packet::FromBytes("NoResponseRequest", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
     bool completed = RequestAndWait(std::move(packet), response, 500);
@@ -41,11 +40,10 @@ TEST_F(C10_RequestTimeoutTest, Request_WithNormalTimeout_Succeeds) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("timeout_normal_user"));
 
     // When: Send a normal request
-    std::string echo_data = "{\"content\":\"Normal request\",\"sequence\":1}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    Bytes payload = proto::EncodeEchoRequest("Normal request", 1);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
@@ -62,12 +60,11 @@ TEST_F(C10_RequestTimeoutTest, Request_TimeoutMessage_HasTimeoutId) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("timeout_msgid_user"));
 
     // When: Send request that will timeout
-    std::string slow_data = "{\"delay\":10000}";
-    Bytes payload(slow_data.begin(), slow_data.end());
-    auto packet = Packet::FromBytes("SlowRequest", std::move(payload));
+    Bytes payload = proto::EncodeNoResponseRequest(10000);
+    auto packet = Packet::FromBytes("NoResponseRequest", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
     bool completed = RequestAndWait(std::move(packet), response, 500);
@@ -87,14 +84,13 @@ TEST_F(C10_RequestTimeoutTest, Request_MultipleTimeouts_AllHandledCorrectly) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("timeout_multi_user"));
 
     // When: Send multiple requests that will timeout
     int timeout_count = 0;
     for (int i = 0; i < 3; i++) {
-        std::string slow_data = "{\"delay\":5000}";
-        Bytes payload(slow_data.begin(), slow_data.end());
-        auto packet = Packet::FromBytes("SlowRequest", std::move(payload));
+        Bytes payload = proto::EncodeNoResponseRequest(5000);
+        auto packet = Packet::FromBytes("NoResponseRequest", std::move(payload));
 
         Packet response = Packet::Empty("Empty");
         bool completed = RequestAndWait(std::move(packet), response, 200);
@@ -115,18 +111,16 @@ TEST_F(C10_RequestTimeoutTest, Request_AfterTimeout_CanStillSendNew) {
     connector_ = std::make_unique<Connector>();
     connector_->Init(config_);
 
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("timeout_after_user"));
 
     // First request that times out
-    std::string slow_data = "{\"delay\":5000}";
-    Bytes slow_payload(slow_data.begin(), slow_data.end());
-    auto slow_packet = Packet::FromBytes("SlowRequest", std::move(slow_payload));
+    Bytes slow_payload = proto::EncodeNoResponseRequest(5000);
+    auto slow_packet = Packet::FromBytes("NoResponseRequest", std::move(slow_payload));
     Packet slow_response = Packet::Empty("Empty");
     RequestAndWait(std::move(slow_packet), slow_response, 200);
 
     // When: Send a new fast request
-    std::string fast_data = "{\"content\":\"Fast request\",\"sequence\":1}";
-    Bytes fast_payload(fast_data.begin(), fast_data.end());
+    Bytes fast_payload = proto::EncodeEchoRequest("Fast request", 1);
     auto fast_packet = Packet::FromBytes("EchoRequest", std::move(fast_payload));
     Packet fast_response = Packet::Empty("Empty");
     bool completed = RequestAndWait(std::move(fast_packet), fast_response, 5000);

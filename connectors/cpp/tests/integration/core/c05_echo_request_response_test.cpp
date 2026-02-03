@@ -10,11 +10,10 @@ class C05_EchoRequestResponseTest : public BaseIntegrationTest {};
 
 TEST_F(C05_EchoRequestResponseTest, Echo_SimpleMessage_ResponseReceived) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     // Create echo request payload
-    std::string echo_data = "{\"content\":\"Hello World\",\"sequence\":1}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    Bytes payload = proto::EncodeEchoRequest("Hello World", 1);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send echo request
@@ -30,11 +29,10 @@ TEST_F(C05_EchoRequestResponseTest, Echo_SimpleMessage_ResponseReceived) {
 
 TEST_F(C05_EchoRequestResponseTest, Echo_RequestWithCallback_CallbackFires) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     // Create echo request
-    std::string echo_data = "{\"content\":\"Callback Test\",\"sequence\":2}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    Bytes payload = proto::EncodeEchoRequest("Callback Test", 2);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send request with callback
@@ -59,12 +57,11 @@ TEST_F(C05_EchoRequestResponseTest, Echo_RequestWithCallback_CallbackFires) {
 
 TEST_F(C05_EchoRequestResponseTest, Echo_MultipleSequential_AllSucceed) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     // When: Send multiple echo requests sequentially
     for (int i = 0; i < 5; i++) {
-        std::string echo_data = "{\"content\":\"Message" + std::to_string(i) + "\",\"sequence\":" + std::to_string(i) + "}";
-        Bytes payload(echo_data.begin(), echo_data.end());
+        Bytes payload = proto::EncodeEchoRequest("Message" + std::to_string(i), i);
         auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
         Packet response = Packet::Empty("Empty");
@@ -81,12 +78,11 @@ TEST_F(C05_EchoRequestResponseTest, Echo_MultipleSequential_AllSucceed) {
 
 TEST_F(C05_EchoRequestResponseTest, Echo_WithLargeContent_ResponseReceived) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     // Create large echo content (1KB)
     std::string large_content(1000, 'A');
-    std::string echo_data = "{\"content\":\"" + large_content + "\",\"sequence\":99}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    Bytes payload = proto::EncodeEchoRequest(large_content, 99);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send large echo request
@@ -101,11 +97,11 @@ TEST_F(C05_EchoRequestResponseTest, Echo_WithLargeContent_ResponseReceived) {
 
 TEST_F(C05_EchoRequestResponseTest, Echo_WithSpecialCharacters_HandledCorrectly) {
     // Given: Connected and authenticated
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate());
 
     // Create echo with special characters
-    std::string echo_data = "{\"content\":\"Hello 世界 🌍\",\"sequence\":42}";
-    Bytes payload(echo_data.begin(), echo_data.end());
+    std::string echo_data = "Hello \xEC\x84\xB8\xEA\xB3\x84 \xF0\x9F\x8C\x8D";
+    Bytes payload = proto::EncodeEchoRequest(echo_data, 42);
     auto packet = Packet::FromBytes("EchoRequest", std::move(payload));
 
     // When: Send echo request

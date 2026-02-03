@@ -13,11 +13,10 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_WithValidCredentials_Succeeds
     ASSERT_TRUE(CreateStageAndConnect());
 
     // Create simple auth payload
-    std::string auth_data = "{\"userId\":\"test_user\",\"token\":\"valid_token\"}";
-    Bytes payload(auth_data.begin(), auth_data.end());
+    Bytes payload = proto::EncodeAuthenticateRequest("test_user", "valid_token");
 
     // When: Authenticate with valid credentials
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
 
     // Then: Authentication should succeed
     bool auth_success = false;
@@ -31,12 +30,11 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_CallbackVersion_SuccessCallba
     ASSERT_TRUE(CreateStageAndConnect());
 
     // Create auth payload
-    std::string auth_data = "{\"userId\":\"test_user2\",\"token\":\"valid_token\"}";
-    Bytes payload(auth_data.begin(), auth_data.end());
+    Bytes payload = proto::EncodeAuthenticateRequest("test_user2", "valid_token");
 
     // When: Authenticate with callback
     bool callback_fired = false;
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
 
     bool auth_result = false;
     bool completed = AuthenticateAndWait(std::move(auth_packet), auth_result, 5000);
@@ -53,7 +51,7 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_WithEmptyPayload_HandledGrace
 
     // When: Authenticate with empty payload
     Bytes empty_payload;
-    Packet auth_packet = Packet::FromBytes("Authenticate", std::move(empty_payload));
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(empty_payload));
 
     // Then: Should complete without crashing (result depends on server implementation)
     bool result = false;
@@ -70,10 +68,8 @@ TEST_F(C03_AuthenticationSuccessTest, Authenticate_MultipleUsers_EachSucceeds) {
     std::vector<bool> results;
 
     for (int i = 0; i < 3; i++) {
-        std::string user_data = "{\"userId\":\"user" + std::to_string(i) + "\",\"token\":\"valid_token\"}";
-        Bytes payload(user_data.begin(), user_data.end());
-
-        Packet auth_packet = Packet::FromBytes("Authenticate", std::move(payload));
+        Bytes payload = proto::EncodeAuthenticateRequest("user" + std::to_string(i), "valid_token");
+        Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
         bool result = false;
         bool completed = AuthenticateAndWait(std::move(auth_packet), result, 5000);
         results.push_back(completed && result);

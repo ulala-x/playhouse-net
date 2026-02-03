@@ -11,27 +11,31 @@ class C11_ErrorResponseTest : public BaseIntegrationTest {};
 
 TEST_F(C11_ErrorResponseTest, Request_WithError_ErrorCodeSet) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("error_user"));
 
     // When: Send a request that triggers an error
-    std::string error_data = "{\"triggerError\":true}";
-    Bytes payload(error_data.begin(), error_data.end());
-    auto packet = Packet::FromBytes("ErrorRequest", std::move(payload));
+    Bytes payload = proto::EncodeFailRequest(123, "forced error");
+    auto packet = Packet::FromBytes("FailRequest", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
     bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Response should have error code or be handled gracefully
     if (completed) {
-        SUCCEED() << "Error request completed with error code: " << response.GetErrorCode();
+        int32_t fail_code = 0;
+        std::string fail_message;
+        bool decoded = proto::DecodeFailReply(response.GetPayload(), fail_code, fail_message);
+        EXPECT_TRUE(decoded) << "FailReply should be decodable";
+        EXPECT_EQ(fail_code, 123);
+        EXPECT_EQ(fail_message, "forced error");
     } else {
-        SUCCEED() << "Error request timed out as expected";
+        SUCCEED() << "Fail request timed out as expected";
     }
 }
 
 TEST_F(C11_ErrorResponseTest, OnError_Event_TriggersForNetworkErrors) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("error_event_user"));
 
     std::atomic<bool> error_event_fired{false};
     int error_code_received = 0;
@@ -64,7 +68,7 @@ TEST_F(C11_ErrorResponseTest, OnError_Event_TriggersForNetworkErrors) {
 
 TEST_F(C11_ErrorResponseTest, Request_ToInvalidEndpoint_HandledGracefully) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("error_invalid_user"));
 
     // When: Send request to non-existent endpoint
     std::string invalid_data = "{\"content\":\"Invalid endpoint\"}";
@@ -84,27 +88,31 @@ TEST_F(C11_ErrorResponseTest, Request_ToInvalidEndpoint_HandledGracefully) {
 
 TEST_F(C11_ErrorResponseTest, ErrorResponse_WithPayload_PayloadAccessible) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("error_payload_user"));
 
     // When: Trigger an error that returns payload
-    std::string error_data = "{\"errorType\":\"CustomError\"}";
-    Bytes payload(error_data.begin(), error_data.end());
-    auto packet = Packet::FromBytes("CustomErrorRequest", std::move(payload));
+    Bytes payload = proto::EncodeFailRequest(321, "custom error payload");
+    auto packet = Packet::FromBytes("FailRequest", std::move(payload));
 
     Packet response = Packet::Empty("Empty");
     bool completed = RequestAndWait(std::move(packet), response, 5000);
 
     // Then: Error response payload should be accessible
     if (completed) {
-        SUCCEED() << "Error response received, payload size: " << response.GetPayload().size();
+        int32_t fail_code = 0;
+        std::string fail_message;
+        bool decoded = proto::DecodeFailReply(response.GetPayload(), fail_code, fail_message);
+        EXPECT_TRUE(decoded) << "FailReply should be decodable";
+        EXPECT_EQ(fail_code, 321);
+        EXPECT_EQ(fail_message, "custom error payload");
     } else {
-        SUCCEED() << "Error handled via timeout";
+        SUCCEED() << "Fail request timed out";
     }
 }
 
 TEST_F(C11_ErrorResponseTest, MultipleErrors_AllHandledIndependently) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("error_multi_user"));
 
     std::atomic<int> error_count{0};
 
@@ -114,9 +122,9 @@ TEST_F(C11_ErrorResponseTest, MultipleErrors_AllHandledIndependently) {
 
     // When: Trigger multiple errors
     for (int i = 0; i < 3; i++) {
-        std::string error_data = "{\"errorType\":\"Error" + std::to_string(i) + "\"}";
-        Bytes payload(error_data.begin(), error_data.end());
-        auto packet = Packet::FromBytes("ErrorRequest", std::move(payload));
+        std::string message = "Error" + std::to_string(i);
+        Bytes payload = proto::EncodeFailRequest(200 + i, message);
+        auto packet = Packet::FromBytes("FailRequest", std::move(payload));
 
         Packet response = Packet::Empty("Empty");
         RequestAndWait(std::move(packet), response, 3000);
@@ -135,7 +143,7 @@ TEST_F(C11_ErrorResponseTest, MultipleErrors_AllHandledIndependently) {
 
 TEST_F(C11_ErrorResponseTest, ConnectionError_AfterEstablished_TriggersOnError) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("error_connection_user"));
 
     std::atomic<bool> error_triggered{false};
 

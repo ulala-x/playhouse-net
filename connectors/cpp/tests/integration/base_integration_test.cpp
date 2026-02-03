@@ -38,7 +38,11 @@ void BaseIntegrationTest::TearDown() {
 bool BaseIntegrationTest::CreateStageAndConnect(const std::string& stage_type) {
     // Create stage via HTTP API
     try {
-        stage_info_ = test_server_->CreateStage(stage_type);
+        if (stage_type == "TestStage") {
+            stage_info_ = test_server_->GetOrCreateTestStage();
+        } else {
+            stage_info_ = test_server_->CreateStage(stage_type);
+        }
     } catch (const std::exception& e) {
         return false;
     }
@@ -121,6 +125,25 @@ bool BaseIntegrationTest::AuthenticateAndWait(Packet packet, bool& out_success, 
     });
 
     return WaitForConditionWithMainThreadAction([&]() { return done; }, timeout_ms);
+}
+
+bool BaseIntegrationTest::AuthenticateTestUser(const std::string& user_id,
+                                               const std::string& token,
+                                               int timeout_ms) {
+    Bytes payload = proto::EncodeAuthenticateRequest(user_id, token);
+    Packet auth_packet = Packet::FromBytes("AuthenticateRequest", std::move(payload));
+    bool auth_success = false;
+    bool completed = AuthenticateAndWait(std::move(auth_packet), auth_success, timeout_ms);
+    return completed && auth_success;
+}
+
+bool BaseIntegrationTest::CreateStageConnectAndAuthenticate(const std::string& user_id,
+                                                            const std::string& token,
+                                                            int timeout_ms) {
+    if (!CreateStageAndConnect()) {
+        return false;
+    }
+    return AuthenticateTestUser(user_id, token, timeout_ms);
 }
 
 TestServerFixture& BaseIntegrationTest::GetTestServer() {

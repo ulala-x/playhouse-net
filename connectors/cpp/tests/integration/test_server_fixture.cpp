@@ -3,6 +3,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <atomic>
+#include <chrono>
+#include <random>
+#include <thread>
 
 // We'll use a simple HTTP client approach
 // For production, consider using a proper HTTP library like libcurl or cpp-httplib
@@ -16,6 +19,7 @@
     #include <netinet/in.h>
     #include <arpa/inet.h>
     #include <netdb.h>
+    #include <cstring>
     #include <unistd.h>
     #define closesocket close
 #endif
@@ -23,7 +27,10 @@
 namespace playhouse::test {
 
 namespace {
-    std::atomic<int> stage_id_counter{1};
+    std::atomic<int> stage_id_counter{0};
+    std::atomic<int> stage_id_base{0};
+
+    int NextStageId();
 
     std::string GetEnvOrDefault(const char* name, const char* default_value) {
         const char* value = std::getenv(name);
@@ -176,7 +183,7 @@ public:
 
 TestServerFixture::TestServerFixture()
     : impl_(std::make_unique<Impl>())
-    , host_(GetEnvOrDefault("TEST_SERVER_HOST", "localhost"))
+    , host_(GetEnvOrDefault("TEST_SERVER_HOST", "127.0.0.1"))
     , tcp_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_TCP_PORT", "34001"))))
     , http_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_HTTP_PORT", "8080"))))
     , ws_port_(static_cast<uint16_t>(std::stoi(GetEnvOrDefault("TEST_SERVER_WS_PORT", "8080"))))
@@ -186,39 +193,81 @@ TestServerFixture::TestServerFixture()
 TestServerFixture::~TestServerFixture() = default;
 
 CreateStageResponse TestServerFixture::CreateStage(const std::string& stage_type, std::optional<int> max_players) {
-    int64_t stage_id = stage_id_counter.fetch_add(1);
+    const int max_attempts = 15;
+    std::string last_error;
 
-    // Build JSON request
-    std::ostringstream json_body;
-    json_body << "{\"stageType\":\"" << stage_type << "\",\"stageId\":" << stage_id;
-    if (max_players.has_value()) {
-        json_body << ",\"maxPlayers\":" << max_players.value();
-    }
-    json_body << "}";
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        int64_t stage_id = NextStageId();
 
-    try {
-        // Make HTTP POST request
-        std::string response = HttpPost(host_, http_port_, "/api/stages", json_body.str());
+        // Build JSON request
+        std::ostringstream json_body;
+        json_body << "{\"stageType\":\"" << stage_type << "\",\"stageId\":" << stage_id;
+        if (max_players.has_value()) {
+            json_body << ",\"maxPlayers\":" << max_players.value();
+        }
+        json_body << "}";
 
-        // Parse response
-        CreateStageResponse result;
-        result.success = ExtractJsonBool(response, "success");
-        result.stage_id = ExtractJsonInt(response, "stageId");
-        result.stage_type = stage_type;
-        result.reply_payload_id = ExtractJsonString(response, "replyPayloadId");
+        try {
+            // Make HTTP POST request
+            std::string response = HttpPost(host_, http_port_, "/api/stages", json_body.str());
 
-        if (!result.success) {
-            throw std::runtime_error("Stage creation failed on server");
+            // Parse response
+            CreateStageResponse result;
+            result.success = ExtractJsonBool(response, "success");
+            result.stage_id = ExtractJsonInt(response, "stageId");
+            result.stage_type = stage_type;
+            result.reply_payload_id = ExtractJsonString(response, "replyPayloadId");
+
+            if (result.success) {
+                return result;
+            }
+
+            last_error = "Stage creation failed on server (already exists)";
+        } catch (const std::exception& e) {
+            last_error = e.what();
         }
 
-        return result;
-    } catch (const std::exception& e) {
-        throw std::runtime_error(std::string("Failed to create stage: ") + e.what());
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+
+    throw std::runtime_error(std::string("Failed to create stage: ") + last_error);
 }
 
 CreateStageResponse TestServerFixture::CreateTestStage() {
     return CreateStage("TestStage");
+}
+
+CreateStageResponse TestServerFixture::GetOrCreateTestStage() {
+    if (cached_test_stage_.has_value()) {
+        return *cached_test_stage_;
+    }
+
+    cached_test_stage_ = CreateTestStage();
+    return *cached_test_stage_;
+}
+
+namespace {
+    int NextStageId() {
+        int base = stage_id_base.load();
+        if (base == 0) {
+            std::random_device rd;
+            auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+            uint32_t seed = static_cast<uint32_t>(now) ^ rd();
+            std::mt19937 rng(seed);
+            std::uniform_int_distribution<int> dist(1000, 65000);
+            int new_base = dist(rng);
+            int expected = 0;
+            if (stage_id_base.compare_exchange_strong(expected, new_base)) {
+                base = new_base;
+            } else {
+                base = stage_id_base.load();
+            }
+        }
+
+        int offset = stage_id_counter.fetch_add(1);
+        int next = (base + offset) % 65000;
+        return next + 1; // avoid 0
+    }
 }
 
 } // namespace playhouse::test

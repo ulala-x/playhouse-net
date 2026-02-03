@@ -47,24 +47,21 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Build if needed
+# Build
 BUILD_DIR="$SCRIPT_DIR/build"
-if [ ! -d "$BUILD_DIR" ]; then
-    echo -e "${YELLOW}[C++ Connector Test]${NC} Building project..."
-    mkdir -p "$BUILD_DIR"
-    cd "$BUILD_DIR"
-    cmake .. -DBUILD_TESTING=ON
-    cmake --build . --parallel
-    cd "$SCRIPT_DIR"
-fi
+echo -e "${YELLOW}[C++ Connector Test]${NC} Building project..."
+cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -DBUILD_TESTING=ON
+cmake --build "$BUILD_DIR" --parallel
 
 # Run tests
 echo -e "${YELLOW}[C++ Connector Test]${NC} Running tests..."
-TEST_SERVER_HOST=localhost \
+set +e
+TEST_SERVER_HOST=127.0.0.1 \
 TEST_SERVER_HTTP_PORT=$HTTP_PORT \
 TEST_SERVER_TCP_PORT=$TCP_PORT \
-set +e
-ctest --test-dir "$BUILD_DIR" --output-on-failure
+TEST_SERVER_WS_PORT=$HTTP_PORT \
+GTEST_COLOR=1 \
+ctest --test-dir "$BUILD_DIR" --output-on-failure -V
 TEST_STATUS=$?
 set -e
 if [ $TEST_STATUS -ne 0 ]; then

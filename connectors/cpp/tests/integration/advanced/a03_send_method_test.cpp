@@ -11,12 +11,11 @@ class A03_SendMethodTest : public BaseIntegrationTest {};
 
 TEST_F(A03_SendMethodTest, Send_SimpleMessage_NoResponse) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_user"));
 
     // When: Send message without expecting response
-    std::string notify_data = "{\"event\":\"UserAction\",\"action\":\"click\"}";
-    Bytes payload(notify_data.begin(), notify_data.end());
-    connector_->Send(Packet::FromBytes("NotifyRequest", std::move(payload)));
+    Bytes payload = proto::EncodeEchoRequest("Fire and Forget", 1);
+    connector_->Send(Packet::FromBytes("EchoRequest", std::move(payload)));
 
     // Process callbacks to ensure send completes
     for (int i = 0; i < 10; i++) {
@@ -31,13 +30,12 @@ TEST_F(A03_SendMethodTest, Send_SimpleMessage_NoResponse) {
 
 TEST_F(A03_SendMethodTest, Send_MultipleConcurrent_AllSent) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_multi_user"));
 
     // When: Send multiple messages rapidly
     for (int i = 0; i < 10; i++) {
-        std::string notify_data = "{\"event\":\"Event" + std::to_string(i) + "\"}";
-        Bytes payload(notify_data.begin(), notify_data.end());
-        connector_->Send(Packet::FromBytes("NotifyRequest", std::move(payload)));
+        Bytes payload = proto::EncodeEchoRequest("Message " + std::to_string(i), i);
+        connector_->Send(Packet::FromBytes("EchoRequest", std::move(payload)));
     }
 
     // Process callbacks
@@ -53,17 +51,15 @@ TEST_F(A03_SendMethodTest, Send_MultipleConcurrent_AllSent) {
 
 TEST_F(A03_SendMethodTest, Send_VsRequest_BothWork) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_mix_user"));
 
     // When: Mix Send and Request operations
     // Send without response
-    std::string notify_data = "{\"event\":\"Notification\"}";
-    Bytes notify_payload(notify_data.begin(), notify_data.end());
-    connector_->Send(Packet::FromBytes("NotifyRequest", std::move(notify_payload)));
+    Bytes notify_payload = proto::EncodeEchoRequest("Notification", 0);
+    connector_->Send(Packet::FromBytes("EchoRequest", std::move(notify_payload)));
 
     // Request with response
-    std::string echo_data = "{\"content\":\"Echo test\",\"sequence\":1}";
-    Bytes echo_payload(echo_data.begin(), echo_data.end());
+    Bytes echo_payload = proto::EncodeEchoRequest("Echo test", 1);
     auto packet = Packet::FromBytes("EchoRequest", std::move(echo_payload));
 
     // Then: Request should still work after Send
@@ -74,9 +70,37 @@ TEST_F(A03_SendMethodTest, Send_VsRequest_BothWork) {
     SUCCEED() << "Send and Request both work together";
 }
 
+TEST_F(A03_SendMethodTest, Send_Broadcast_Triggers_Push) {
+    // Given: Connected and authenticated
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_broadcast_user"));
+
+    std::atomic<bool> received{false};
+    std::string received_data;
+
+    connector_->OnReceive = [&](Packet packet) {
+        if (packet.GetMsgId() == "BroadcastNotify") {
+            std::string event_type;
+            proto::DecodeBroadcastNotify(packet.GetPayload(), event_type, received_data);
+            received = true;
+        }
+    };
+
+    // When: Send broadcast via Send
+    Bytes payload = proto::EncodeBroadcastRequest("Hello from Send!");
+    connector_->Send(Packet::FromBytes("BroadcastRequest", std::move(payload)));
+
+    // Then: Push message should be received
+    bool completed = WaitForConditionWithMainThreadAction([&]() {
+        return received.load();
+    }, 5000);
+
+    ASSERT_TRUE(completed);
+    EXPECT_EQ(received_data, "Hello from Send!");
+}
+
 TEST_F(A03_SendMethodTest, Send_BeforeDisconnect_HandledGracefully) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_disconnect_user"));
 
     std::atomic<bool> error_triggered{false};
 
@@ -90,9 +114,8 @@ TEST_F(A03_SendMethodTest, Send_BeforeDisconnect_HandledGracefully) {
     connector_->Disconnect();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    std::string notify_data = "{\"event\":\"AfterDisconnect\"}";
-    Bytes payload(notify_data.begin(), notify_data.end());
-    connector_->Send(Packet::FromBytes("NotifyRequest", std::move(payload)));
+    Bytes payload = proto::EncodeEchoRequest("AfterDisconnect", 1);
+    connector_->Send(Packet::FromBytes("EchoRequest", std::move(payload)));
 
     // Process callbacks
     bool completed = WaitForConditionWithMainThreadAction([&]() {
@@ -105,11 +128,11 @@ TEST_F(A03_SendMethodTest, Send_BeforeDisconnect_HandledGracefully) {
 
 TEST_F(A03_SendMethodTest, Send_WithEmptyPayload_HandledCorrectly) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_empty_user"));
 
     // When: Send with empty payload
     Bytes empty_payload;
-    connector_->Send(Packet::FromBytes("EmptyNotify", std::move(empty_payload)));
+    connector_->Send(Packet::FromBytes("EchoRequest", std::move(empty_payload)));
 
     // Process callbacks
     for (int i = 0; i < 10; i++) {
@@ -124,13 +147,12 @@ TEST_F(A03_SendMethodTest, Send_WithEmptyPayload_HandledCorrectly) {
 
 TEST_F(A03_SendMethodTest, Send_LargePayload_Succeeds) {
     // Given: Connected to server
-    ASSERT_TRUE(CreateStageAndConnect());
+    ASSERT_TRUE(CreateStageConnectAndAuthenticate("send_large_user"));
 
     // When: Send large payload via Send method
     std::string large_content(50 * 1024, 'X');  // 50KB
-    std::string large_data = "{\"data\":\"" + large_content + "\"}";
-    Bytes payload(large_data.begin(), large_data.end());
-    connector_->Send(Packet::FromBytes("LargeNotify", std::move(payload)));
+    Bytes payload = proto::EncodeEchoRequest(large_content, 99);
+    connector_->Send(Packet::FromBytes("EchoRequest", std::move(payload)));
 
     // Process callbacks
     for (int i = 0; i < 50; i++) {

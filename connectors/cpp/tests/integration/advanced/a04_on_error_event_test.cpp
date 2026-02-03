@@ -93,7 +93,8 @@ TEST_F(A04_OnErrorEventTest, OnError_WithoutHandler_DoesNotCrash) {
     // Given: Connected without OnError handler
     ASSERT_TRUE(CreateStageAndConnect());
 
-    // OnError is not set
+    // OnError should be cleared for this test
+    connector_->OnError = nullptr;
     EXPECT_FALSE(connector_->OnError);
 
     // When: Trigger error condition
