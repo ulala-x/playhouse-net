@@ -19,7 +19,8 @@
     "dev": "tsc -w",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@playhouse/connector": "^0.1.0"
@@ -45,5 +46,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/ulalax/playhouse.git"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
